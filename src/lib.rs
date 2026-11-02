@@ -1,7 +1,9 @@
 //! Small dependency-free experiment, not the complete Duhme v0180 contract.
 //! Describes *what a source says* without promoting it to ground truth.
 pub mod benchmark;
+pub mod dag_evolution;
 pub mod evolution;
+pub mod provenance_dag;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;

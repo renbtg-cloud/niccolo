@@ -1,0 +1,25 @@
+# Unseen as candidate source; these are separately scored fixtures, not a secret isolated dataset.
+long_chain|1:0:A,2:1:A,3:2:A,4:3:A|4|COUNT:1
+multi_merge|1:0:A,2:0:A,3:1+2:A,4:3:A|4|COUNT:2
+cross_merges|1:0:A,2:0:A,3:1+2:A,4:2:A,5:3+4:A|5|COUNT:2
+shared_merge|1:0:A,2:0:A,3:1+2:A,4:1:A|3,4|COUNT:2
+disjoint|1:0:A,2:0:A,3:1:A,4:2:A|3,4|COUNT:2
+revoked_deep|1:0:R,2:1:A,3:2:A,4:3:A|4|UNKNOWN
+revoked_second_branch|1:0:A,2:0:R,3:1+2:A|3|UNKNOWN
+missing_second_branch|1:0:A,3:1+2:A|3|UNKNOWN
+missing_branch_deep|1:0:A,3:1+4:A,5:3:A|5|UNKNOWN
+cycle_deep|1:2:A,2:3:A,3:1:A,4:1:A|4|UNKNOWN
+cycle_partial|1:0:A,2:3:A,3:2:A,4:1+3:A|4|UNKNOWN
+revoked_observed|1:0:A,2:1:R|2|UNKNOWN
+valid_after_missing_elsewhere|1:0:A,2:90:A|1|COUNT:1
+valid_after_revoked_elsewhere|1:0:A,2:0:R|1|COUNT:1
+shared_leaf|1:0:A,2:1:A,3:2:A,4:2:A|3,4|COUNT:1
+copies_of_two|1:0:A,2:0:A,3:1+2:A,4:3:A,5:3:A|4,5|COUNT:2
+two_distinct_observations|1:0:A,2:0:A,3:1:A,4:2:A,5:3+4:A|3,4,5|COUNT:2
+revoked_root_and_valid|1:0:R,2:0:A,3:1+2:A|3|UNKNOWN
+self_cycle_deep|1:0:A,2:2:A,3:1+2:A|3|UNKNOWN
+bad_duplicate_id|1:0:A,1:0:A|1|UNKNOWN
+bad_duplicate_parent|1:0:A,2:1+1:A|2|UNKNOWN
+missing_observation|1:0:A|999|UNKNOWN
+zero_observation|1:0:A|0|UNKNOWN
+invalid_status|1:0:X|1|UNKNOWN

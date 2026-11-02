@@ -1,4 +1,4 @@
-# Niccolò / Duhme — offline evidence + benchmarking POC 0.2
+# Niccolò / Duhme — experimental Rust core (v0.4)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -21,8 +21,6 @@ The current implementation enforces parts of the boundary and provides synthetic
 ## Run Rust POC
 
 ```bash
-export PATH=/mnt/data/niccolo-tools/rust/bin:$PATH
-cd /mnt/data/niccolo-poc
 cargo test --offline
 cargo run --offline --bin niccolo-demo
 cargo run --offline --bin niccolo-benchmark-demo
@@ -48,3 +46,15 @@ See [EVOLUTION_ENGINE.md](EVOLUTION_ENGINE.md). This adds reproducible code gene
 ```bash
 bash scripts/run-evolution.sh 8 31
 ```
+
+## v0.4 — multi-parent provenance DAG and rule exploration
+
+The new [`SourceGraph`](src/provenance_dag.rs) reports roots of evidence across **multiple derivation parents** (including shared origins), fails closed on missing/withdrawn/cyclic ancestry, and avoids recursive stack use.
+
+The [v0.4 rule search](DAG_EVOLUTION_V004.md) enumerates 12 constrained rule variants, generates independent Rust executables, checks 9 training and 24 holdout cases, and performs concurrency and latency measurements only for qualifying candidates. A 256-case seeded cross-check compares the winning strategy with the library implementation.
+
+```bash
+bash scripts/run-dag-evolution.sh 8 23
+```
+
+**No LLM code generation, live frontier benchmarking, autonomous deployment, arbitrary user code execution, or real-world belief inference has been implemented.**

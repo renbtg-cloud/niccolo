@@ -1,0 +1,13 @@
+rule	train_failed	train_total	holdout_failed	holdout_total	median_us	p95_us	concurrent_failed	concurrent_total	status
+depth0_miss0_rev0	6	9	14	24	NA	NA	NOT_RUN	0	REJECTED
+depth0_miss0_rev1	6	9	13	24	NA	NA	NOT_RUN	0	REJECTED
+depth0_miss1_rev0	6	9	13	24	NA	NA	NOT_RUN	0	REJECTED
+depth0_miss1_rev1	6	9	12	24	NA	NA	NOT_RUN	0	REJECTED
+depth1_miss0_rev0	3	9	13	24	NA	NA	NOT_RUN	0	REJECTED
+depth1_miss0_rev1	2	9	10	24	NA	NA	NOT_RUN	0	REJECTED
+depth1_miss1_rev0	2	9	11	24	NA	NA	NOT_RUN	0	REJECTED
+depth1_miss1_rev1	1	9	8	24	NA	NA	NOT_RUN	0	REJECTED
+depth2_miss0_rev0	2	9	7	24	NA	NA	NOT_RUN	0	REJECTED
+depth2_miss0_rev1	1	9	3	24	NA	NA	NOT_RUN	0	REJECTED
+depth2_miss1_rev0	1	9	4	24	NA	NA	NOT_RUN	0	REJECTED
+depth2_miss1_rev1	0	9	0	24	1311	3780	0	8	REVIEW_ONLY
