@@ -1,11 +1,14 @@
 //! Small dependency-free experiment, not the complete Duhme v0180 contract.
 //! Describes *what a source says* without promoting it to ground truth.
+pub mod api;
+pub mod authz;
 pub mod benchmark;
 pub mod dag_evolution;
 pub mod evolution;
 pub mod postgres_ingest;
 pub mod postgres_repository;
 pub mod provenance_dag;
+pub mod source_catalog;
 pub mod source_import;
 
 use std::collections::{BTreeMap, BTreeSet};

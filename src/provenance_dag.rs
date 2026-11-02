@@ -59,6 +59,9 @@ pub struct SourceGraph {
     nodes: BTreeMap<EvidenceId, SourceNode>,
 }
 impl SourceGraph {
+    pub fn edge_count(&self) -> usize {
+        self.nodes.values().map(|n| n.parents.len()).sum()
+    }
     pub fn insert(&mut self, node: SourceNode) -> Result<(), TraceError> {
         if node.id.0 == 0 || node.parents.iter().any(|p| p.0 == 0) {
             return Err(TraceError::InvalidId);

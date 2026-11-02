@@ -69,6 +69,13 @@ pub struct WorkspaceGraphSnapshot {
 impl WorkspaceGraphSnapshot {
     /// Transaction-consistent graph revision. Compare against a newly loaded
     /// snapshot before acting; detached snapshots are never live subscriptions.
+    pub fn node_count(&self) -> usize {
+        self.ids.len()
+    }
+    pub fn edge_count(&self) -> usize {
+        self.graph.edge_count()
+    }
+
     pub fn revision(&self) -> i64 {
         self.revision
     }

@@ -32,8 +32,8 @@ Apply `sql/0001_init.sql` and `sql/0002_benchmark_evolution.sql` in a disposable
 
 ## Deliberate non-goals and known limitations
 
-- Does not include an HTTP service, LLM adapters, connected frontend, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. Bounded text importers in v0.6 are experimental, not complete handling of real-world exports.
-- Multi-parent graph traversal exists; neither distinct roots nor separate files establish independent eyewitnesses or truthfulness.
+- Does not include an HTTP service, LLM adapters, connected frontend, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. The v0.6 bounded plain-text importers are experimental, not complete handling of real-world exports.
+- Multi-parent graph traversal is implemented, but neither distinct graph roots nor separate uploaded documents establish independent eyewitnesses or truthfulness.
 - Recursive expression depth is representational only; human beliefs are not proven by serialization.
 - No security model is complete just because RLS exists. PostgreSQL roles, authentication, SQL access, export/erasure workflows and trusted authorization binding are still required.
 - All demo data is synthetic; no user conversations or personal records are involved.
@@ -61,19 +61,29 @@ bash scripts/run-dag-evolution.sh 8 23
 
 ## v0.5 — real SQLx + PostgreSQL graph adapter
 
-The [PostgreSQL adapter](src/postgres_repository.rs) binds a workspace to a transaction-local RLS scope and reads nodes and derivation edges in one read-only, repeatable-read snapshot. It explicitly rejects `SUPERUSER`/`BYPASSRLS` logins, maps UUIDs safely into the tested multi-parent graph, and fails closed on withdrawals/cycles/over-budget graphs. See [POSTGRES_SQLX_V005.md](POSTGRES_SQLX_V005.md) for setup, integration test commands, and the remaining authorization risks. PostgreSQL integration tests require an actual disposable database; without `pg-integration`, the Rust unit tests remain runnable offline.
+The [PostgreSQL adapter](src/postgres_repository.rs) binds a workspace to a transaction-local RLS scope and reads nodes and derivation edges in one read-only, repeatable-read snapshot. It explicitly rejects `SUPERUSER`/`BYPASSRLS` logins, maps UUIDs safely into the tested multi-parent graph, and fails closed on withdrawals/cycles/over-budget graphs. See [POSTGRES_SQLX_V005.md](POSTGRES_SQLX_V005.md) for setup, integration test commands, and the remaining authorization risks. PostgreSQL integration tests require an actual disposable database; without the `pg-integration` feature, the original 57 unit tests remain runnable offline.
 
+## v0.6 — source import, revisions and byte-accurate provenance
 
-## v0.6 — bounded import, revisions and byte-accurate provenance
+[Rust parsers](src/source_import.rs) accept bounded UTF-8 plain-text `.eml` and two WhatsApp export header styles, keeping exact source-byte offsets, unverified speaker labels and SHA-256. [SQLx ingestion](src/postgres_ingest.rs) persists metadata + attributed evidence atomically, rejects conflicting retries, and reuses the same records on identical retries. A source document's original bytes must be retained by a separate authorized content store.
 
-[Rust parsers](src/source_import.rs) extract unverified textual attributions from bounded UTF-8 plain-text `.eml` and two WhatsApp export header styles, preserving exact byte offsets and SHA-256. [SQLx ingestion](src/postgres_ingest.rs) writes evidence and source metadata atomically with idempotent retries. Original bytes are retained separately by an authorized source store, not inside `source_documents`; fragments live in PostgreSQL `evidence.content`.
+[SQL migration 0003](sql/0003_sources_and_revisions.sql) adds source fragments and graph-revision triggers. [SQL migration 0004](sql/0004_source_integrity.sql) enforces document bounds/overlap and protects source metadata. The graph distinguishes *shared original reports* from *shared uploaded source files*. Neither conclusion authenticates identities or testimonies.
 
-[Migrations 0003](sql/0003_sources_and_revisions.sql) and [0004](sql/0004_source_integrity.sql) add source fragments, graph revisions, byte bounds, overlap checks and immutable source metadata. Graph assessment distinguishes *common provenance roots* from *shared uploaded source documents* without treating either as proof of independence or coordination.
-
-See [v0.6 technical documentation](SOURCES_SQLX_V006.md) for installation, security limitations, a fresh PostgreSQL 17 test procedure, and the full test matrix. **0/89 failures, 89/89 tests passed** on the development Linux VM and again on an independently initialized test database.
+**Reproducible PostgreSQL integration, limitations, threat model and test evidence:** [SOURCES_SQLX_V006.md](SOURCES_SQLX_V006.md). All 89 tests pass against a fresh PostgreSQL 17.11 database; additional deterministic parser mutations and concurrent ingestion tests are included.
 
 ```bash
 bash scripts/run-v006-validation.sh
 ```
 
-This command requires `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SERVICE_URL` on a previously migrated, disposable database. **Authentication and trusted binding of workspace identity are still missing**; never expose this experimental SQLx adapter directly as a public service.
+The command requires an already-migrated disposable database and two explicit environment variables, `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SERVICE_URL`. The restricted login cannot bypass RLS; an upstream trusted identity boundary is still **missing**, so do not expose this experimental backend directly to clients.
+
+## v0.7 — workspace authentication, API and paginated source metadata
+
+The Rust SQLx backend now exposes a **loopback-only** Axum HTTP interface with database-verified bearer-token permissions. No HTTP request may set the RLS workspace scope merely by asserting its workspace UUID: the token must have a live matching membership with the requested read/write permission. Operators can provision, atomically rotate or revoke opaque tokens through a separate trusted CLI. The app DB role has execute-only access to the auth decision, not the private token/membership tables. The source catalog provides bounded UUID-keyset pagination; assessment never promotes provenance to factual truth.
+
+This is **still a POC**, not a production multitenant security implementation. In particular, the existing mutable workspace GUC remains dangerous under SQL injection or stolen DB credentials; revocation can race an in-flight authorized request. See [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) for the API, schema migration `sql/0005_authz.sql`, the operator instructions, exact threat model, and full tests.
+
+```bash
+bash scripts/run-v007-validation.sh   # requires disposable migrated test DB and two env URLs
+cargo run --offline --bin niccolo-api   # 127.0.0.1:38080, NICCOLO_API_PORT to change
+```
