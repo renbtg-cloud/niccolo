@@ -1,6 +1,6 @@
 [package]
 name = "niccolo-evidence-poc"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "UNLICENSED"
 description = "Offline epistemic-provenance proof of concept for Niccolò/Duhme"
@@ -24,3 +24,13 @@ path = "src/evolution_demo.rs"
 [[bin]]
 name = "niccolo-dag-evolution-demo"
 path = "src/dag_evolution_demo.rs"
+
+[dependencies]
+# Keep the runtime thin; exact vendored releases are pinned in Cargo.lock.
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }
+tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "=1.29.0", features = ["v4"] }
+thiserror = "2"
+
+[features]
+pg-integration = []

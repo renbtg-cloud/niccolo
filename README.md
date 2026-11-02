@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.4)
+# Niccolò / Duhme — experimental Rust core (v0.5)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -32,7 +32,7 @@ Apply `sql/0001_init.sql` and `sql/0002_benchmark_evolution.sql` in a disposable
 
 ## Deliberate non-goals and known limitations
 
-- Does not include Axum, Tokio, SQLx, LLM adapters, frontend, real WhatsApp/.eml ingestion, object storage or full temporal/permission contracts yet. Cargo crates must be transferred/cached to build those offline.
+- Does not include an HTTP service, LLM adapters, frontend, real WhatsApp/.eml ingestion, object storage or full temporal/permission contracts yet. SQLx now loads the provenance graph from a restricted PostgreSQL connection; other runtime services remain future work.
 - Root-lineage grouping uses one known parent per source item, not the complete multi-parent lineage and source-independence model needed for production.
 - Recursive expression depth is representational only; human beliefs are not proven by serialization.
 - No security model is complete just because RLS exists. PostgreSQL roles, authentication, SQL access, export/erasure workflows and trusted authorization binding are still required.
@@ -58,3 +58,7 @@ bash scripts/run-dag-evolution.sh 8 23
 ```
 
 **No LLM code generation, live frontier benchmarking, autonomous deployment, arbitrary user code execution, or real-world belief inference has been implemented.**
+
+## v0.5 — real SQLx + PostgreSQL graph adapter
+
+The [PostgreSQL adapter](src/postgres_repository.rs) binds a workspace to a transaction-local RLS scope and reads nodes and derivation edges in one read-only, repeatable-read snapshot. It explicitly rejects `SUPERUSER`/`BYPASSRLS` logins, maps UUIDs safely into the tested multi-parent graph, and fails closed on withdrawals/cycles/over-budget graphs. See [POSTGRES_SQLX_V005.md](POSTGRES_SQLX_V005.md) for setup, integration test commands, and the remaining authorization risks. PostgreSQL integration tests require an actual disposable database; without the `pg-integration` feature, the original 57 unit tests remain runnable offline.

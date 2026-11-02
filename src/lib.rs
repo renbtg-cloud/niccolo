@@ -3,6 +3,7 @@
 pub mod benchmark;
 pub mod dag_evolution;
 pub mod evolution;
+pub mod postgres_repository;
 pub mod provenance_dag;
 
 use std::collections::{BTreeMap, BTreeSet};
