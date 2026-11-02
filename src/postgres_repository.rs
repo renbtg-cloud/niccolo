@@ -38,6 +38,10 @@ pub struct SharedOrigins {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceAssessment {
     pub report_count: usize,
+    /// A shared uploaded file is a source-context overlap, not evidence of
+    /// copied testimony, truth, or coordinated behavior.
+    pub document_ids_per_report: Vec<BTreeSet<Uuid>>,
+    pub shared_source_documents: Vec<SharedDocuments>,
     pub roots_per_report: Vec<BTreeSet<Uuid>>,
     pub traceable_roots: BTreeSet<Uuid>,
     pub shared_origins: Vec<SharedOrigins>,
@@ -47,13 +51,28 @@ pub struct WorkspaceAssessment {
 
 /// Detached, immutable snapshot. Do not cache beyond an authorization decision
 /// or pretend it reflects revocations committed after it was read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedDocuments {
+    pub left_report_index: usize,
+    pub right_report_index: usize,
+    pub documents: BTreeSet<Uuid>,
+}
+
 pub struct WorkspaceGraphSnapshot {
     graph: SourceGraph,
+    evidence_documents: BTreeMap<Uuid, BTreeSet<Uuid>>,
     ids: BTreeMap<Uuid, EvidenceId>,
     reverse: Vec<Uuid>,
+    revision: i64,
 }
 
 impl WorkspaceGraphSnapshot {
+    /// Transaction-consistent graph revision. Compare against a newly loaded
+    /// snapshot before acting; detached snapshots are never live subscriptions.
+    pub fn revision(&self) -> i64 {
+        self.revision
+    }
+
     fn id(&self, uuid: Uuid) -> Result<EvidenceId, RepositoryError> {
         self.ids
             .get(&uuid)
@@ -90,7 +109,37 @@ impl WorkspaceGraphSnapshot {
         let roots_per_report = roots_per_report
             .iter()
             .map(|roots| self.uuids(roots))
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<Vec<BTreeSet<Uuid>>, _>>()?;
+        let document_ids_per_report: Vec<BTreeSet<Uuid>> = roots_per_report
+            .iter()
+            .map(|roots| {
+                roots
+                    .iter()
+                    .flat_map(|origin| {
+                        self.evidence_documents
+                            .get(origin)
+                            .into_iter()
+                            .flat_map(|docs| docs.iter().copied())
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut shared_source_documents = Vec::new();
+        for left in 0..document_ids_per_report.len() {
+            for right in left + 1..document_ids_per_report.len() {
+                let documents: BTreeSet<Uuid> = document_ids_per_report[left]
+                    .intersection(&document_ids_per_report[right])
+                    .copied()
+                    .collect();
+                if !documents.is_empty() {
+                    shared_source_documents.push(SharedDocuments {
+                        left_report_index: left,
+                        right_report_index: right,
+                        documents,
+                    });
+                }
+            }
+        }
         let shared_origins = shared_origins
             .iter()
             .map(
@@ -109,6 +158,8 @@ impl WorkspaceGraphSnapshot {
             .collect::<Result<_, RepositoryError>>()?;
         Ok(WorkspaceAssessment {
             report_count,
+            document_ids_per_report,
+            shared_source_documents,
             roots_per_report,
             traceable_roots: self.uuids(&traceable_roots)?,
             shared_origins,
@@ -199,8 +250,31 @@ pub async fn load_workspace_graph_with_limits(
             limit: limits.max_edges,
         });
     }
+    // At most one fragment per evidence id (UNIQUE constraint in migration 0003).
+    let source_rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT evidence_id, document_id FROM niccolo.source_fragments ORDER BY evidence_id LIMIT $1"
+    ).bind(limits.max_nodes + 1).fetch_all(&mut *tx).await?;
+    if source_rows.len() as i64 > limits.max_nodes {
+        return Err(RepositoryError::LimitExceeded {
+            kind: "source fragment",
+            limit: limits.max_nodes,
+        });
+    }
+    let revision: i64 =
+        sqlx::query_scalar("SELECT revision FROM niccolo.graph_revisions WHERE workspace_id = $1")
+            .bind(workspace)
+            .fetch_optional(&mut *tx)
+            .await?
+            .unwrap_or(0);
     tx.commit().await?;
 
+    let mut evidence_documents: BTreeMap<Uuid, BTreeSet<Uuid>> = BTreeMap::new();
+    for (evidence_id, document_id) in source_rows {
+        evidence_documents
+            .entry(evidence_id)
+            .or_default()
+            .insert(document_id);
+    }
     let mut ids = BTreeMap::new();
     let mut reverse = Vec::with_capacity(evidence.len());
     for (uuid, _) in &evidence {
@@ -235,7 +309,9 @@ pub async fn load_workspace_graph_with_limits(
     }
     Ok(WorkspaceGraphSnapshot {
         graph,
+        evidence_documents,
         ids,
         reverse,
+        revision,
     })
 }

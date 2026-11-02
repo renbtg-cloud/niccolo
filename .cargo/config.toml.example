@@ -1,0 +1,6 @@
+# Copy this to .cargo/config.toml and replace /PATH/TO/AA/vendor with
+# the extracted offline dependency courier AA/vendor absolute path.
+[source.crates-io]
+replace-with = "vendored-sources"
+[source.vendored-sources]
+directory = "/PATH/TO/AA/vendor"

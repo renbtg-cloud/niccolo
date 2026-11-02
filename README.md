@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.5)
+# Niccolò / Duhme — experimental Rust core (v0.6)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -32,8 +32,8 @@ Apply `sql/0001_init.sql` and `sql/0002_benchmark_evolution.sql` in a disposable
 
 ## Deliberate non-goals and known limitations
 
-- Does not include an HTTP service, LLM adapters, frontend, real WhatsApp/.eml ingestion, object storage or full temporal/permission contracts yet. SQLx now loads the provenance graph from a restricted PostgreSQL connection; other runtime services remain future work.
-- Root-lineage grouping uses one known parent per source item, not the complete multi-parent lineage and source-independence model needed for production.
+- Does not include an HTTP service, LLM adapters, connected frontend, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. Bounded text importers in v0.6 are experimental, not complete handling of real-world exports.
+- Multi-parent graph traversal exists; neither distinct roots nor separate files establish independent eyewitnesses or truthfulness.
 - Recursive expression depth is representational only; human beliefs are not proven by serialization.
 - No security model is complete just because RLS exists. PostgreSQL roles, authentication, SQL access, export/erasure workflows and trusted authorization binding are still required.
 - All demo data is synthetic; no user conversations or personal records are involved.
@@ -61,4 +61,19 @@ bash scripts/run-dag-evolution.sh 8 23
 
 ## v0.5 — real SQLx + PostgreSQL graph adapter
 
-The [PostgreSQL adapter](src/postgres_repository.rs) binds a workspace to a transaction-local RLS scope and reads nodes and derivation edges in one read-only, repeatable-read snapshot. It explicitly rejects `SUPERUSER`/`BYPASSRLS` logins, maps UUIDs safely into the tested multi-parent graph, and fails closed on withdrawals/cycles/over-budget graphs. See [POSTGRES_SQLX_V005.md](POSTGRES_SQLX_V005.md) for setup, integration test commands, and the remaining authorization risks. PostgreSQL integration tests require an actual disposable database; without the `pg-integration` feature, the original 57 unit tests remain runnable offline.
+The [PostgreSQL adapter](src/postgres_repository.rs) binds a workspace to a transaction-local RLS scope and reads nodes and derivation edges in one read-only, repeatable-read snapshot. It explicitly rejects `SUPERUSER`/`BYPASSRLS` logins, maps UUIDs safely into the tested multi-parent graph, and fails closed on withdrawals/cycles/over-budget graphs. See [POSTGRES_SQLX_V005.md](POSTGRES_SQLX_V005.md) for setup, integration test commands, and the remaining authorization risks. PostgreSQL integration tests require an actual disposable database; without `pg-integration`, the Rust unit tests remain runnable offline.
+
+
+## v0.6 — bounded import, revisions and byte-accurate provenance
+
+[Rust parsers](src/source_import.rs) extract unverified textual attributions from bounded UTF-8 plain-text `.eml` and two WhatsApp export header styles, preserving exact byte offsets and SHA-256. [SQLx ingestion](src/postgres_ingest.rs) writes evidence and source metadata atomically with idempotent retries. Original bytes are retained separately by an authorized source store, not inside `source_documents`; fragments live in PostgreSQL `evidence.content`.
+
+[Migrations 0003](sql/0003_sources_and_revisions.sql) and [0004](sql/0004_source_integrity.sql) add source fragments, graph revisions, byte bounds, overlap checks and immutable source metadata. Graph assessment distinguishes *common provenance roots* from *shared uploaded source documents* without treating either as proof of independence or coordination.
+
+See [v0.6 technical documentation](SOURCES_SQLX_V006.md) for installation, security limitations, a fresh PostgreSQL 17 test procedure, and the full test matrix. **0/89 failures, 89/89 tests passed** on the development Linux VM and again on an independently initialized test database.
+
+```bash
+bash scripts/run-v006-validation.sh
+```
+
+This command requires `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SERVICE_URL` on a previously migrated, disposable database. **Authentication and trusted binding of workspace identity are still missing**; never expose this experimental SQLx adapter directly as a public service.

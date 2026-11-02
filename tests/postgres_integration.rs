@@ -300,3 +300,30 @@ async fn resource_limits_fail_closed_without_partial_graph() {
         BTreeSet::from([a])
     );
 }
+
+#[tokio::test]
+async fn graph_revisions_are_snapshot_consistent_and_bumped_by_external_sql() {
+    let (admin, service) = pools().await;
+    let w = workspace(&admin).await;
+    let before = load_workspace_graph(&service, w).await.unwrap();
+    assert_eq!(before.revision(), 0);
+    let a = Uuid::new_v4();
+    evidence(&admin, w, a, true).await;
+    let newer = load_workspace_graph(&service, w).await.unwrap();
+    assert!(newer.revision() > before.revision());
+    sqlx::query(
+        "UPDATE niccolo.evidence SET admissible=false WHERE workspace_id=$1 AND evidence_id=$2",
+    )
+    .bind(w)
+    .bind(a)
+    .execute(&admin)
+    .await
+    .unwrap();
+    let revoked = load_workspace_graph(&service, w).await.unwrap();
+    assert!(revoked.revision() > newer.revision());
+    assert!(matches!(
+        revoked.assess(&[a]),
+        Err(RepositoryError::Trace(TraceError::Withdrawn(_)))
+    ));
+    assert!(newer.assess(&[a]).is_ok());
+}

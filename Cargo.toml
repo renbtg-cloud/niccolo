@@ -1,6 +1,6 @@
 [package]
 name = "niccolo-evidence-poc"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 license = "UNLICENSED"
 description = "Offline epistemic-provenance proof of concept for Niccolò/Duhme"
@@ -31,6 +31,11 @@ sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-toki
 tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread"] }
 uuid = { version = "=1.29.0", features = ["v4"] }
 thiserror = "2"
+sha2 = "0.10"
 
 [features]
 pg-integration = []
+
+[[bin]]
+name = "niccolo-source-demo"
+path = "src/source_demo.rs"
