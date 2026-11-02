@@ -5,9 +5,12 @@ pub mod authz;
 pub mod benchmark;
 pub mod dag_evolution;
 pub mod evolution;
+pub mod human_feedback;
+pub mod identity;
 pub mod postgres_ingest;
 pub mod postgres_repository;
 pub mod provenance_dag;
+pub mod question_refs;
 pub mod source_catalog;
 pub mod source_import;
 

@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.6)
+# Niccolò / Duhme — experimental Rust core (v0.9)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -32,7 +32,7 @@ Apply `sql/0001_init.sql` and `sql/0002_benchmark_evolution.sql` in a disposable
 
 ## Deliberate non-goals and known limitations
 
-- Does not include an HTTP service, LLM adapters, connected frontend, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. The v0.6 bounded plain-text importers are experimental, not complete handling of real-world exports.
+- Does not include public-ready network ingress, LLM adapters, a connected frontend, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. The loopback-only HTTP API and bounded plain-text importers are experimental, not production services.
 - Multi-parent graph traversal is implemented, but neither distinct graph roots nor separate uploaded documents establish independent eyewitnesses or truthfulness.
 - Recursive expression depth is representational only; human beliefs are not proven by serialization.
 - No security model is complete just because RLS exists. PostgreSQL roles, authentication, SQL access, export/erasure workflows and trusted authorization binding are still required.
@@ -87,3 +87,14 @@ This is **still a POC**, not a production multitenant security implementation. I
 bash scripts/run-v007-validation.sh   # requires disposable migrated test DB and two env URLs
 cargo run --offline --bin niccolo-api   # 127.0.0.1:38080, NICCOLO_API_PORT to change
 ```
+
+## v0.8–v0.9 — explicit human identity, feedback, and source pointers
+
+[HUMAN_STEERING_V009.md](HUMAN_STEERING_V009.md) documents the human-confirmed, document-specific identity correction history (v0.8), distinct user feedback (`rejected` vs `insufficient_evidence` vs `unknown`), actor-specific positions that preserve disagreement, and human-authored investigative questions linked to original evidence via typed references (v0.9). New migrations `0006..0008`, SQLx modules and loopback-only API routes are backed by real PostgreSQL integration tests. No consensus, truth, confidence, identity or testimonial independence is inferred.
+
+```bash
+bash scripts/run-v009-validation.sh
+PSQL_BIN=psql bash scripts/run-v009-loopback-smoke.sh
+```
+
+**Known authorization gap:** the HTTP token check and the data transaction are separate, and the workspace GUC remains mutable by SQL running as the service. Do not expose this prototype to untrusted users; the controls do not defend against SQL injection or stolen database credentials.

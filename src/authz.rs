@@ -67,6 +67,35 @@ pub async fn authorize(
     Ok(result)
 }
 
+/// Return a verified principal ID for audit attribution, or None for no grant.
+/// The client never supplies its own principal ID to the HTTP boundary.
+pub async fn authorized_principal(
+    pool: &PgPool,
+    token: &str,
+    workspace: Uuid,
+    capability: Capability,
+) -> Result<Option<Uuid>, AuthError> {
+    let digest = credential_digest(token)?;
+    let mut tx = pool.begin().await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(AuthError::PrivilegedRole);
+    }
+    let principal: Option<Uuid> =
+        sqlx::query_scalar("SELECT niccolo_auth.authorized_principal($1,$2,$3)")
+            .bind(digest)
+            .bind(workspace)
+            .bind(capability.db_value())
+            .fetch_one(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(principal)
+}
+
 /// One-time secret issuance for a trusted admin, outside the HTTP server.
 /// Callers must deliver the returned token securely; only its hash is persisted.
 /// The admin pool is intentionally privileged and must never be used for requests.

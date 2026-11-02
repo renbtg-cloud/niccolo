@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "38080".into())
         .parse::<u16>()?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
-    eprintln!("niccolo v0.7 HTTP API listening on loopback port {port}");
+    eprintln!("niccolo v0.9 HTTP API listening on loopback port {port}");
     axum::serve(listener, api::router(pool)).await?;
     Ok(())
 }
