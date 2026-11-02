@@ -1,0 +1,22 @@
+[package]
+name = "niccolo-evidence-poc"
+version = "0.3.0"
+edition = "2024"
+license = "UNLICENSED"
+description = "Offline epistemic-provenance proof of concept for Niccolò/Duhme"
+
+[lib]
+name = "niccolo_evidence"
+path = "src/lib.rs"
+
+[[bin]]
+name = "niccolo-demo"
+path = "src/main.rs"
+
+[[bin]]
+name = "niccolo-benchmark-demo"
+path = "src/benchmark_demo.rs"
+
+[[bin]]
+name = "niccolo-evolution-demo"
+path = "src/evolution_demo.rs"

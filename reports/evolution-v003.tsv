@@ -1,0 +1,4 @@
+candidate	train_failed	train_total	holdout_failed	holdout_total	median_us	p95_us	concurrent_failed	concurrent_total	status
+naive_report_count	4	8	11	16	N/A	N/A	NOT_RUN	0	REJECTED
+one_step_parent	2	8	8	16	N/A	N/A	NOT_RUN	0	REJECTED
+transitive_trace_root	0	8	0	16	1247	1352	0	8	ELIGIBLE_FOR_REVIEW_NOT_DEPLOYED

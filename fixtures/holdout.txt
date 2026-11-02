@@ -1,0 +1,17 @@
+# These are synthetic held-out epistemic invariants, never included in candidate source.
+complex_shared_root|1:0,2:1,3:2,4:3,5:1,6:5|4,6|COUNT:1
+separate_deep_roots|1:0,2:1,3:2,4:0,5:4,6:5|3,6|COUNT:2
+missing_middle|1:0,2:7,3:2|3|UNKNOWN
+two_node_cycle|1:2,2:1|1|UNKNOWN
+cycle_downstream|1:2,2:3,3:1,4:1|4|UNKNOWN
+naive_trap|1:0,2:1,3:2,4:2,5:2|3,4,5|COUNT:1
+stable_direct|1:0,2:0,3:0,4:0|1,2,3,4|COUNT:4
+single_long_chain|1:0,2:1,3:2,4:3,5:4,6:5,7:6|7|COUNT:1
+merged_two_roots|1:0,2:0,3:1,4:3,5:2,6:5|4,6|COUNT:2
+repeated_with_other|1:0,2:1,3:0|2,2,3|COUNT:2
+single_missing|5:0|7|UNKNOWN
+indirect_one_step_trap|1:0,2:1,3:2|2,3|COUNT:1
+three_branches|1:0,2:1,3:1,4:0,5:4,6:0,7:6|2,5,7|COUNT:3
+mix_missing_and_good|1:0,2:1,3:9|2,3|UNKNOWN
+another_self_cycle|1:0,2:2|2|UNKNOWN
+diamond_like|1:0,2:1,3:2,4:3,5:1|4,5|COUNT:1

@@ -1,0 +1,9 @@
+# case_id|edges (node:parent, 0 means root)|observations|oracle
+three_copies|1:0,2:1,3:1,4:1|2,3,4|COUNT:1
+two_roots|1:0,2:0|1,2|COUNT:2
+nested_derivation|1:0,2:1,3:2,4:3|4|COUNT:1
+missing_parent|1:0,2:9|2|UNKNOWN
+self_cycle|1:1|1|UNKNOWN
+repeat_observation|1:0,2:1|2,2|COUNT:1
+one_direct|1:0|1|COUNT:1
+three_distinct_roots|1:0,2:0,3:0|1,2,3|COUNT:3
