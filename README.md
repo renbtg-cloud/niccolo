@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.12)
+# Niccolò / Duhme — experimental Rust core (v0.13)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -161,3 +161,36 @@ Reproduce with `scripts/run-v012-validation.sh` on an already-migrated,
 **disposable** PostgreSQL database. Provide explicit admin, legacy and
 restricted API DB URLs. The complete tests include live authorization,
 revocation and cross-workspace rejection.
+
+## v0.13 — attributed, immutable, two-source human hypotheses
+
+This release adds **human-authored** review hypotheses without treating
+apparent contradiction as a verified fact. The new SQL migration
+`sql/0010_manual_hypotheses.sql` stores a specific human actor, two different
+workspace-local evidence IDs, the manually selected label
+`apparent_contradiction`, `attribution_question` or `timing_question`,
+and an immutable note. Both evidence foreign keys include `workspace_id`.
+The table is protected by forced RLS, plus all four restrictive API policies
+that bind the transaction to the validated bearer credential.
+
+- `POST /v1/workspaces/{workspace}/hypotheses/{hypothesis}` accepts
+  `{ "kind": "apparent_contradiction", "left_evidence_id": "uuid", "right_evidence_id": "uuid", "human_note": "..." }`
+  and returns HTTP 201 (inserted), 200 (identical replay), 409 (conflicting
+  replay), 403 (no write grant), 404 (unknown/cross-workspace evidence), or
+  400 (invalid inputs). The actor comes from the validated token.
+- `GET /v1/workspaces/{workspace}/hypotheses?limit=25&after=uuid` lists
+  up to 100 records per page using stable UUID keyset ordering.
+- Every record explicitly says `status=HUMAN_HYPOTHESIS` and
+  `is_verified_fact=false`; it does not revise source evidence or constitute
+  a factual finding.
+
+Six dedicated integration tests cover identical/conflicting replay, read-only
+membership, foreign workspace FKs, digest-gated RLS, immutable metadata,
+24 concurrent identical writes, and nine-record pagination. The schema was
+applied from scratch with all ten migrations in a disposable PostgreSQL
+instance. A privileged DB owner can always alter the schema; these tests do
+not claim to defend against a compromised PostgreSQL administrator.
+
+Reproduce with `scripts/run-v013-validation.sh` after applying migrations
+`0001..0010` to a **disposable** database and configuring the admin, legacy,
+and restricted application DB URLs.

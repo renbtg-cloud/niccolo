@@ -7,6 +7,7 @@ pub mod dag_evolution;
 pub mod discovery;
 pub mod evolution;
 pub mod human_feedback;
+pub mod hypotheses;
 pub mod identity;
 pub mod postgres_ingest;
 pub mod postgres_repository;

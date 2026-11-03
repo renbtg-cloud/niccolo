@@ -4,6 +4,7 @@
 use crate::authz::{self, AuthError, Capability};
 use crate::discovery;
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
+use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
@@ -87,6 +88,14 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/documents/{document}/identity-history",
             get(identity_history),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/hypotheses",
+            get(list_hypotheses),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/hypotheses/{hypothesis}",
+            post(record_hypothesis),
         )
         .route("/v1/workspaces/{workspace}/questions", get(list_questions))
         .route(
@@ -686,6 +695,96 @@ impl From<IdentityError> for ApiError {
 struct IdentityCreate {
     display_label: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HypothesisInput {
+    kind: String,
+    left_evidence_id: Uuid,
+    right_evidence_id: Uuid,
+    human_note: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HypothesisPageQuery {
+    after: Option<Uuid>,
+    limit: Option<i64>,
+}
+impl From<HypothesisError> for ApiError {
+    fn from(err: HypothesisError) -> Self {
+        match err {
+            HypothesisError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid human hypothesis"),
+            HypothesisError::Conflict => Self(StatusCode::CONFLICT, "hypothesis ID conflict"),
+            HypothesisError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "workspace or evidence unavailable")
+            }
+            HypothesisError::Database(sqlx::Error::Database(ref db))
+                if matches!(db.code().as_deref(), Some("23514" | "23503")) =>
+            {
+                Self(StatusCode::BAD_REQUEST, "invalid hypothesis reference")
+            }
+            _ => Self(StatusCode::INTERNAL_SERVER_ERROR, "hypotheses unavailable"),
+        }
+    }
+}
+async fn record_hypothesis(
+    State(state): State<AppState>,
+    Path((workspace, hypothesis)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<HypothesisInput>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let r = hypotheses::record(
+        &state.pool,
+        workspace,
+        actor,
+        hypothesis,
+        &input.kind,
+        input.left_evidence_id,
+        input.right_evidence_id,
+        &input.human_note,
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "hypothesis_id":r.id,"kind":r.kind,"left_evidence_id":r.left,
+            "right_evidence_id":r.right,"human_note":r.human_note,
+            "actor_principal_id":r.actor,"replayed":r.replayed,
+            "status":"HUMAN_HYPOTHESIS","is_verified_fact":false
+        }),
+        if r.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+async fn list_hypotheses(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Query(query): Query<HypothesisPageQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (records, next_after) = hypotheses::list(
+        &state.pool,
+        workspace,
+        query.after,
+        query.limit.unwrap_or(25),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "hypotheses":records.iter().map(|r|json!({
+                "hypothesis_id":r.id,"kind":r.kind,"left_evidence_id":r.left,
+                "right_evidence_id":r.right,"human_note":r.human_note,
+                "actor_principal_id":r.actor,"status":"HUMAN_HYPOTHESIS","is_verified_fact":false
+            })).collect::<Vec<_>>(),
+            "next_after":next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
 async fn create_identity(
     State(state): State<AppState>,
     Path((workspace, person)): Path<(Uuid, Uuid)>,
