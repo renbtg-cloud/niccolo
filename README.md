@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.11)
+# Niccolò / Duhme — experimental Rust core (v0.12)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -134,3 +134,30 @@ framework-generated errors retain the response privacy headers.
 
 Run the entire local migrated-database validation with
 `scripts/run-v011-validation.sh` (requires three explicit test-only DB URLs).
+
+## v0.12 — bounded provenance-based investigative leads
+
+The authenticated, read-only `POST /v1/workspaces/{workspace}/leads`
+accepts the same JSON body as `/assess`, e.g. `{"report_ids":["uuid1","uuid2"]}`,
+and returns up to three deterministic, **unapproved investigative proposals**.
+The engine prioritizes a check of common evidence origins, shared uploaded
+source-document context, and original-record attribution. If no overlap is
+recorded, it asks for separately documented context without claiming that
+source boundaries establish witness independence. A single report prompts
+source attribution and original context checks. Each proposal includes a
+stable kind, the associated report indices, bounded provenance pointers (at
+most eight UUIDs), and `provenance_ids_truncated` when that limit applies.
+
+Every call requires valid read permission for the named workspace before the
+SQLx adapter loads evidence. Cycles, missing parents and withdrawn provenance
+fail closed; invisible evidence IDs never become suggestions. The response
+indicates `human_review_required=true`, `independence_established=false`, and
+`generated_from=deterministic_provenance_heuristics`. No LLM, psychological
+interpretation, independent source verification, autonomous follow-up or
+persistent question creation occurs here. Humans may inspect and decide
+whether to add a proposal through the existing audited question API.
+
+Reproduce with `scripts/run-v012-validation.sh` on an already-migrated,
+**disposable** PostgreSQL database. Provide explicit admin, legacy and
+restricted API DB URLs. The complete tests include live authorization,
+revocation and cross-workspace rejection.

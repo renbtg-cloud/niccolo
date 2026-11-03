@@ -4,6 +4,7 @@ pub mod api;
 pub mod authz;
 pub mod benchmark;
 pub mod dag_evolution;
+pub mod discovery;
 pub mod evolution;
 pub mod human_feedback;
 pub mod identity;

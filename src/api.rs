@@ -2,6 +2,7 @@
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
 use crate::authz::{self, AuthError, Capability};
+use crate::discovery;
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::postgres_ingest::{self, ImportError};
@@ -114,6 +115,7 @@ pub fn router(pool: PgPool) -> Router {
         )
         .route("/v1/workspaces/{workspace}/graph", get(graph))
         .route("/v1/workspaces/{workspace}/assess", post(assess))
+        .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
             "/v1/workspaces/{workspace}/sources/{document}",
@@ -296,6 +298,43 @@ async fn assess(
         StatusCode::OK,
     ))
 }
+async fn propose_leads(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Json(request): Json<AssessmentRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    if request.report_ids.is_empty()
+        || request.report_ids.len() > 64
+        || request
+            .report_ids
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != request.report_ids.len()
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "report identifiers must be 1..64 unique values",
+        ));
+    }
+    let snapshot = postgres_repository::load_workspace_graph(&state.pool, workspace).await?;
+    let assessment = snapshot.assess(&request.report_ids)?;
+    let leads = discovery::propose(&assessment);
+    Ok(no_store(
+        json!({
+            "revision":snapshot.revision(),
+            "report_ids":request.report_ids,
+            "proposals":leads,
+            "human_review_required":true,
+            "generated_from":"deterministic_provenance_heuristics",
+            "independence_established":false
+        }),
+        StatusCode::OK,
+    ))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SourceQuery {
