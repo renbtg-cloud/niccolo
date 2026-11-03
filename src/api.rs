@@ -201,17 +201,29 @@ async fn readiness(State(state): State<AppState>) -> Response {
     // A reachable DB is not necessarily a usable or securely configured DB.
     // Fail closed if this pool can bypass RLS, lacks its dedicated API-role
     // membership, or points to an unmigrated schema.
-    let check: Result<(bool, bool, bool, bool, bool), sqlx::Error> = sqlx::query_as(
+    let check: Result<(bool, bool, bool, bool, bool, bool), sqlx::Error> = sqlx::query_as(
         "SELECT NOT (r.rolsuper OR r.rolbypassrls), \
          pg_has_role(current_user,'niccolo_api','member'), \
          to_regclass('niccolo.workspaces') IS NOT NULL, \
          to_regclass('niccolo.source_documents') IS NOT NULL, \
-         to_regprocedure('niccolo_auth.rls_credential_allows(uuid,text)') IS NOT NULL \
-         FROM pg_roles r WHERE r.rolname = current_user",
+         to_regprocedure('niccolo_auth.rls_credential_allows(uuid,text)') IS NOT NULL, \
+         NOT EXISTS ( \
+           SELECT 1 FROM pg_class c \
+           JOIN pg_namespace n ON n.oid=c.relnamespace \
+           JOIN pg_attribute a ON a.attrelid=c.oid \
+           WHERE n.nspname='niccolo' AND c.relkind='r' \
+             AND a.attname='workspace_id' AND NOT a.attisdropped \
+             AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity OR \
+              (SELECT count(*) FROM pg_policy p \
+               WHERE p.polrelid=c.oid AND NOT p.polpermissive \
+                 AND p.polname IN ('api_read_gate','api_write_insert_gate', \
+                                   'api_write_update_gate','api_write_delete_gate') \
+                 AND 'niccolo_api'::regrole::oid=ANY(p.polroles)) <> 4)) \
+         FROM pg_roles r WHERE r.rolname=current_user",
     )
     .fetch_one(&state.pool)
     .await;
-    if matches!(check, Ok((true, true, true, true, true))) {
+    if matches!(check, Ok((true, true, true, true, true, true))) {
         no_store(json!({"status":"ready"}), StatusCode::OK)
     } else {
         no_store(
@@ -796,6 +808,42 @@ mod tests {
             );
             assert_eq!(response.headers()["referrer-policy"], "no-referrer");
             assert_eq!(response.headers()["x-frame-options"], "DENY");
+        }
+    }
+    #[tokio::test]
+    async fn framework_generated_errors_keep_privacy_headers() {
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        let too_big = vec![0_u8; 4 * 1024 * 1024 + 1];
+        let attempts = [
+            (
+                "PUT",
+                "/healthz",
+                Vec::new(),
+                StatusCode::METHOD_NOT_ALLOWED,
+            ),
+            (
+                "POST",
+                "/v1/workspaces/00000000-0000-0000-0000-000000000001/sources/00000000-0000-0000-0000-000000000002",
+                too_big,
+                StatusCode::PAYLOAD_TOO_LARGE,
+            ),
+        ];
+        for (method, path, body, expected) in attempts {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            assert_eq!(response.headers()["referrer-policy"], "no-referrer");
         }
     }
     #[tokio::test]

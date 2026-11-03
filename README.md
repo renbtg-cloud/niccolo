@@ -118,3 +118,19 @@ these three cases against real PostgreSQL with separate restricted, legacy,
 and privileged connections. Readiness does not prove the entire SQL schema,
 gateway or network edge is secure. Never expose the prototype directly to
 untrusted networks. See the v0.10 migration for restrictive row-level security.
+
+Operational readiness also inspects **every** workspace-scoped table for
+`FORCE ROW LEVEL SECURITY` and all four restrictive API policies for
+SELECT/INSERT/UPDATE/DELETE. Live adversarial HTTP probes verified that
+removing any required policy or disabling forced RLS changes `/readyz`
+from HTTP 200 to HTTP 503, and restoring it changes readiness back to 200.
+The probes use a separate disposable database; no live customer database
+or real user data was touched. A malicious database owner can still modify
+policy functions: this does not claim resistance to privileged SQL injection.
+
+Bearer parsing rejects duplicate `Authorization` headers before a credential
+is propagated to the SQL transaction context. Oversized request bodies and
+framework-generated errors retain the response privacy headers.
+
+Run the entire local migrated-database validation with
+`scripts/run-v011-validation.sh` (requires three explicit test-only DB URLs).
