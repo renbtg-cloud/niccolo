@@ -52,6 +52,7 @@ pub async fn list_sources(
         .bind(workspace.to_string())
         .fetch_one(&mut *tx)
         .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
     let rows:Vec<(Uuid,String,String,String,i64,i64)>=sqlx::query_as(
         "SELECT d.document_id,d.format,d.locator,d.sha256,d.byte_length, \
            (SELECT count(*) FROM niccolo.source_fragments f \

@@ -233,6 +233,7 @@ pub async fn load_workspace_graph_with_limits(
         .bind(workspace.to_string())
         .fetch_one(&mut *tx)
         .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
     let evidence: Vec<(Uuid, bool)> = sqlx::query_as(
         "SELECT evidence_id, admissible FROM niccolo.evidence ORDER BY evidence_id LIMIT $1",
     )

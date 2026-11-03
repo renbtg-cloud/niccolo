@@ -73,6 +73,7 @@ async fn scoped(
         .bind(workspace.to_string())
         .fetch_one(&mut *tx)
         .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
     Ok(tx)
 }
 

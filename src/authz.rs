@@ -4,6 +4,28 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+// A network request carries only a SHA-256 digest of its validated bearer,
+// never the raw token, into transaction-local SQL state. Tokio task-local scope
+// prevents a digest from leaking to unrelated concurrent HTTP requests.
+tokio::task_local! { static REQUEST_DIGEST: String; }
+pub async fn with_auth_digest<F: std::future::Future>(digest: String, f: F) -> F::Output {
+    REQUEST_DIGEST.scope(digest, f).await
+}
+/// The SQL migration applies a *restrictive* policy to the dedicated API role:
+/// no transaction-local valid digest -> no protected rows, even if workspace_id
+/// is tampered with. Legacy direct test roles do not receive the extra policy.
+pub async fn bind_auth_digest(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), sqlx::Error> {
+    if let Ok(digest) = REQUEST_DIGEST.try_with(Clone::clone) {
+        let _: String = sqlx::query_scalar("SELECT set_config('niccolo.auth_digest',$1,true)")
+            .bind(digest)
+            .fetch_one(&mut **tx)
+            .await?;
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Capability {
     Read,

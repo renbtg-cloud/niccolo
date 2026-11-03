@@ -59,6 +59,7 @@ async fn scope(
         .bind(workspace.to_string())
         .fetch_one(&mut *tx)
         .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
     Ok(tx)
 }
 /// Idempotent event with immutable attribution. No inference of factual support.

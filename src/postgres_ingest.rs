@@ -59,6 +59,7 @@ pub async fn ingest_source(
         .bind(workspace.to_string())
         .fetch_one(&mut *tx)
         .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
     // Lock the tenant row to serialize concurrent attempts at the same document.
     let visible: Option<Uuid> = sqlx::query_scalar(
         "SELECT workspace_id FROM niccolo.workspaces WHERE workspace_id=$1 FOR UPDATE",

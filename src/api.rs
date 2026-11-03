@@ -27,6 +27,46 @@ pub struct AppState {
     pub pool: PgPool,
 }
 
+/// Reject ambiguous authorization headers before either middleware or handler
+/// can use one of several possible values. Edge proxies may otherwise choose
+/// different credentials from the backend.
+fn unique_bearer(headers: &HeaderMap) -> Option<&str> {
+    let mut values = headers.get_all(header::AUTHORIZATION).iter();
+    let first = values.next()?;
+    if values.next().is_some() {
+        return None;
+    }
+    first.to_str().ok()?.strip_prefix("Bearer ")
+}
+
+/// Bind a validated token digest only for the lifetime of the downstream HTTP
+/// future. All SQLx workspace transactions apply the digest with SET LOCAL.
+async fn request_digest_context(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let raw = unique_bearer(req.headers());
+    if let Some(digest) = raw.and_then(|token| authz::credential_digest(token).ok()) {
+        return authz::with_auth_digest(digest, next.run(req)).await;
+    }
+    next.run(req).await
+}
+
+/// All responses are privacy-sensitive by default, including framework-level
+/// rejections (404/405/413/415), before the request reaches an application handler.
+async fn response_security_headers(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, "nosniff".parse().unwrap());
+    headers.insert("referrer-policy", "no-referrer".parse().unwrap());
+    headers.insert("x-frame-options", "DENY".parse().unwrap());
+    response
+}
+
 pub fn router(pool: PgPool) -> Router {
     Router::new()
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
@@ -81,6 +121,8 @@ pub fn router(pool: PgPool) -> Router {
         )
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
         .with_state(AppState { pool })
+        .layer(axum::middleware::from_fn(request_digest_context))
+        .layer(axum::middleware::from_fn(response_security_headers))
 }
 
 #[derive(Debug)]
@@ -122,14 +164,9 @@ impl From<ImportError> for ApiError {
     }
 }
 fn bearer(headers: &HeaderMap) -> Result<&str, ApiError> {
-    let raw = headers
-        .get(header::AUTHORIZATION)
-        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "missing bearer token"))?
-        .to_str()
-        .map_err(|_| ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
-    raw.strip_prefix("Bearer ")
-        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))
+    unique_bearer(headers).ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))
 }
+
 async fn guard(
     state: &AppState,
     headers: &HeaderMap,
@@ -161,15 +198,26 @@ fn no_store(value: Value, code: StatusCode) -> Response {
     response
 }
 async fn readiness(State(state): State<AppState>) -> Response {
-    match sqlx::query_scalar::<_, i32>("SELECT 1")
-        .fetch_one(&state.pool)
-        .await
-    {
-        Ok(1) => no_store(json!({"status":"ready"}), StatusCode::OK),
-        _ => no_store(
+    // A reachable DB is not necessarily a usable or securely configured DB.
+    // Fail closed if this pool can bypass RLS, lacks its dedicated API-role
+    // membership, or points to an unmigrated schema.
+    let check: Result<(bool, bool, bool, bool, bool), sqlx::Error> = sqlx::query_as(
+        "SELECT NOT (r.rolsuper OR r.rolbypassrls), \
+         pg_has_role(current_user,'niccolo_api','member'), \
+         to_regclass('niccolo.workspaces') IS NOT NULL, \
+         to_regclass('niccolo.source_documents') IS NOT NULL, \
+         to_regprocedure('niccolo_auth.rls_credential_allows(uuid,text)') IS NOT NULL \
+         FROM pg_roles r WHERE r.rolname = current_user",
+    )
+    .fetch_one(&state.pool)
+    .await;
+    if matches!(check, Ok((true, true, true, true, true))) {
+        no_store(json!({"status":"ready"}), StatusCode::OK)
+    } else {
+        no_store(
             json!({"status":"unavailable"}),
             StatusCode::SERVICE_UNAVAILABLE,
-        ),
+        )
     }
 }
 
@@ -715,6 +763,40 @@ mod tests {
         assert!(bearer(&h).is_err());
         h.insert(header::AUTHORIZATION, "Bearer ncl_test".parse().unwrap());
         assert_eq!(bearer(&h).unwrap(), "ncl_test");
+    }
+    #[test]
+    fn ambiguous_bearer_headers_are_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.append(header::AUTHORIZATION, "Bearer token_one".parse().unwrap());
+        headers.append(header::AUTHORIZATION, "Bearer token_two".parse().unwrap());
+        assert!(bearer(&headers).is_err());
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, "Bearer token_one".parse().unwrap());
+        assert_eq!(bearer(&headers).unwrap(), "token_one");
+    }
+    #[tokio::test]
+    async fn all_http_responses_have_privacy_headers() {
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        for path in ["/healthz", "/does-not-exist"] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            assert_eq!(
+                response.headers()[header::X_CONTENT_TYPE_OPTIONS],
+                "nosniff"
+            );
+            assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+            assert_eq!(response.headers()["x-frame-options"], "DENY");
+        }
     }
     #[tokio::test]
     async fn health_is_not_a_private_data_endpoint() {

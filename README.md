@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.9)
+# Niccolò / Duhme — experimental Rust core (v0.11)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -98,3 +98,23 @@ PSQL_BIN=psql bash scripts/run-v009-loopback-smoke.sh
 ```
 
 **Known authorization gap:** the HTTP token check and the data transaction are separate, and the workspace GUC remains mutable by SQL running as the service. Do not expose this prototype to untrusted users; the controls do not defend against SQL injection or stolen database credentials.
+
+## v0.11 — operational readiness and response privacy
+
+The loopback HTTP API now sets `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer`, and `X-Frame-Options: DENY` for **every** response,
+including framework-generated 404/405/413 responses. This is defense in depth,
+not a replacement for TLS, reverse-proxy controls or a full security review.
+
+`/healthz` is a liveness check only; it does not touch the database.
+`/readyz` now reports HTTP 200 only when the database is connected through
+an unprivileged role with `niccolo_api` membership, and the workspace/source
+schema and restrictive bearer-RLS authorization function are installed.
+An administrator connection or legacy unrestricted service role returns 503,
+even if a plain `SELECT 1` would succeed.
+
+The `tests/operational_boundary_integration.rs` integration tests exercise
+these three cases against real PostgreSQL with separate restricted, legacy,
+and privileged connections. Readiness does not prove the entire SQL schema,
+gateway or network edge is secure. Never expose the prototype directly to
+untrusted networks. See the v0.10 migration for restrictive row-level security.
