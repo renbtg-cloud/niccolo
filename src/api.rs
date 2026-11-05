@@ -203,6 +203,10 @@ pub fn router(pool: PgPool) -> Router {
             get(get_situation_revision),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-history",
+            get(list_analysis_history),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}",
             get(get_analysis_snapshot).post(begin_analysis_snapshot),
         )
@@ -791,6 +795,51 @@ impl From<AnalysisOutputError> for ApiError {
             ),
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnalysisHistoryQuery {
+    before: Option<Uuid>,
+    limit: Option<i64>,
+}
+
+async fn list_analysis_history(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<AnalysisHistoryQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (entries, next_before) = analysis_snapshot::history(
+        &state.pool,
+        workspace,
+        situation,
+        query.before,
+        query.limit.unwrap_or(25),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "situation_id": situation,
+            "next_before": next_before,
+            "analyses": entries.iter().map(|entry| json!({
+                "analysis_id": entry.analysis_id,
+                "input_revision": entry.input_revision,
+                "input_fingerprint": entry.input_fingerprint,
+                "goal": entry.goal,
+                "requested_by_principal_id": entry.requested_by,
+                "reanalysis_of": entry.reanalysis_of,
+                "answer_text": entry.answer_text,
+                "coverage_note": entry.coverage_note,
+                "published_by_principal_id": entry.published_by,
+                "current_situation_revision": entry.current_revision,
+                "input_is_current": entry.input_is_current,
+                "historical_output_preserved": entry.answer_text.is_some()
+            })).collect::<Vec<_>>()
+        }),
+        StatusCode::OK,
+    ))
 }
 
 #[derive(Deserialize)]

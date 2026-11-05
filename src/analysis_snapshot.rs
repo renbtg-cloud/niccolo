@@ -322,3 +322,126 @@ pub async fn materialize(
         input_is_current: current_revision == input_revision,
     })
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnalysisHistoryEntry {
+    pub analysis_id: Uuid,
+    pub input_revision: i64,
+    pub input_fingerprint: String,
+    pub goal: String,
+    pub requested_by: Uuid,
+    pub reanalysis_of: Option<Uuid>,
+    pub answer_text: Option<String>,
+    pub coverage_note: Option<String>,
+    pub published_by: Option<Uuid>,
+    pub current_revision: i64,
+    pub input_is_current: bool,
+}
+
+type HistoryRow = (
+    Uuid,
+    i64,
+    String,
+    String,
+    Uuid,
+    Option<Uuid>,
+    Option<String>,
+    Option<String>,
+    Option<Uuid>,
+    i64,
+);
+
+pub async fn history(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    before: Option<Uuid>,
+    limit: i64,
+) -> Result<(Vec<AnalysisHistoryEntry>, Option<Uuid>), AnalysisSnapshotError> {
+    if !(1..=100).contains(&limit) {
+        return Err(AnalysisSnapshotError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, true).await?;
+    let situation_visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.situations WHERE workspace_id=$1 AND situation_id=$2)",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !situation_visible {
+        return Err(AnalysisSnapshotError::Invisible);
+    }
+
+    if let Some(cursor) = before {
+        let cursor_visible: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots \
+             WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(cursor)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !cursor_visible {
+            return Err(AnalysisSnapshotError::Invisible);
+        }
+    }
+
+    let rows: Vec<HistoryRow> = sqlx::query_as(
+        "SELECT s.analysis_id,s.input_revision,s.input_fingerprint,s.goal,\
+                s.requested_by_principal_id,s.reanalysis_of,\
+                o.answer_text,o.coverage_note,o.published_by_principal_id,z.current_revision \
+         FROM niccolo.situation_analysis_snapshots s \
+         JOIN niccolo.situations z USING(workspace_id,situation_id) \
+         LEFT JOIN niccolo.situation_analysis_outputs o USING(workspace_id,situation_id,analysis_id) \
+         WHERE s.workspace_id=$1 AND s.situation_id=$2 \
+           AND ($3::uuid IS NULL OR (s.created_at,s.analysis_id) < (\
+             SELECT c.created_at,c.analysis_id FROM niccolo.situation_analysis_snapshots c \
+             WHERE c.workspace_id=$1 AND c.situation_id=$2 AND c.analysis_id=$3\
+           )) \
+         ORDER BY s.created_at DESC,s.analysis_id DESC \
+         LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(before)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let has_more = rows.len() as i64 > limit;
+    let mut entries = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(
+            |(
+                analysis_id,
+                input_revision,
+                input_fingerprint,
+                goal,
+                requested_by,
+                reanalysis_of,
+                answer_text,
+                coverage_note,
+                published_by,
+                current_revision,
+            )| AnalysisHistoryEntry {
+                analysis_id,
+                input_revision,
+                input_fingerprint,
+                goal,
+                requested_by,
+                reanalysis_of,
+                answer_text,
+                coverage_note,
+                published_by,
+                current_revision,
+                input_is_current: current_revision == input_revision,
+            },
+        )
+        .collect::<Vec<_>>();
+    let next_before = has_more.then(|| entries.last().expect("non-empty page").analysis_id);
+    tx.commit().await?;
+    Ok((std::mem::take(&mut entries), next_before))
+}

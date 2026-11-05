@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.20)
+# Niccolò / Duhme — experimental Rust core (v0.21)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -276,3 +276,15 @@ a declaration that the older answer was false or rejected.
 
 Apply migrations `0001..0014` to a disposable PostgreSQL 17 database, then reproduce the complete
 validation with `scripts/run-v020-validation.sh`. v0.20 still performs no model call.
+
+## v0.21 — visible analysis / reanalysis history
+
+[ANALYSIS_HISTORY_V021.md](ANALYSIS_HISTORY_V021.md) adds a bounded read model over the immutable
+analysis snapshots, reanalysis lineage and completed outputs already stored by v0.17-v0.20. A reader
+can inspect the newest analyses first, see which frozen Situation revision each one actually used,
+follow `reanalysis_of`, retain earlier answers beside later reanalyses, and see whether each input is
+still the current Situation revision. Cursor pagination is bounded and authorization-scoped.
+
+Apply migrations `0001..0014` to a disposable PostgreSQL 17 database, then reproduce the complete
+validation with `scripts/run-v021-validation.sh`. v0.21 still performs no model call and does not
+label historical analyses correct/incorrect merely because their input is no longer current.
