@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.17)
+# Niccolò / Duhme — experimental Rust core (v0.19)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -245,3 +245,22 @@ no unperformed source analysis is claimed.
 Apply migrations `0001..0012` to a disposable PostgreSQL 17 database, then reproduce the complete
 validation with `scripts/run-v017-validation.sh`. The script requires the admin, legacy service and
 dedicated secure API URLs and also runs the dependency-free Node state tests.
+
+## v0.18 — exact materialization of frozen analysis input
+
+[ANALYSIS_INPUT_V018.md](ANALYSIS_INPUT_V018.md) makes the temporal boundary inspectable. A caller
+can retrieve the exact historical Situation revision bound to an analysis snapshot, including the
+focus, active human contributions and source IDs that were present then. The API also reports the
+current Situation revision and whether the frozen input is still current. Later context is never
+retroactively folded into the historical input.
+
+## v0.19 — immutable completed answers
+
+[ANALYSIS_OUTPUTS_V019.md](ANALYSIS_OUTPUTS_V019.md) persists one completed answer and explicit
+coverage note against a frozen analysis snapshot. Exact retries are idempotent; changing the answer,
+coverage or publisher under the same analysis ID is a conflict. Later Situation revisions make
+`input_is_current=false` but do not rewrite the old answer. Migration `sql/0013_analysis_outputs.sql`
+adds the forced-RLS output table with the same four restrictive API gates.
+
+Apply migrations `0001..0013` to a disposable PostgreSQL 17 database, then reproduce the complete
+validation with `scripts/run-v019-validation.sh`. No model call is made by v0.18 or v0.19.

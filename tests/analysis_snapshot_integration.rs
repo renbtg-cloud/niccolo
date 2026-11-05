@@ -334,3 +334,90 @@ async fn concurrent_identical_starts_create_one_immutable_snapshot() {
     assert_eq!(created, 1);
     assert_eq!(replayed, 15);
 }
+
+#[tokio::test]
+async fn materialized_input_is_the_exact_frozen_revision_not_current_context() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    create_situation(&f, situation).await;
+
+    let contribution = Uuid::new_v4();
+    let contribution_path = format!(
+        "/v1/workspaces/{}/situations/{}/contributions/{}",
+        f.workspace, situation, contribution
+    );
+    let (status, before) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            contribution_path,
+            Some(&f.writer),
+            Some(json!({
+                "kind":"hypothetical",
+                "text":"WHAT IF Roberto never saw the email?",
+                "related_evidence_id":null
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(before["revision"], 2);
+
+    let analysis_path = snapshot_path(&f, situation, analysis);
+    let (status, frozen) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            analysis_path.clone(),
+            Some(&f.writer),
+            Some(json!({"goal":"Evaluate the WHAT IF without treating it as fact"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(frozen["input_revision"], 2);
+
+    let focus_path = format!(
+        "/v1/workspaces/{}/situations/{}/focus",
+        f.workspace, situation
+    );
+    let (status, current) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            focus_path,
+            Some(&f.writer),
+            Some(json!({"focus":"A later, different question"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(current["revision"], 3);
+
+    let input_path = format!("{analysis_path}/input");
+    let (status, materialized) = call(
+        f.router.clone(),
+        req("GET", input_path, Some(&f.reader), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(materialized["analysis"]["input_revision"], 2);
+    assert_eq!(materialized["input"]["revision"], 2);
+    assert_eq!(materialized["current_situation_revision"], 3);
+    assert_eq!(materialized["input_is_current"], false);
+    assert_eq!(materialized["future_context_included"], false);
+    assert_eq!(
+        materialized["input"]["contributions"][0]["kind"],
+        "HYPOTHETICAL"
+    );
+    assert_eq!(
+        materialized["input"]["contributions"][0]["is_verified_evidence"],
+        false
+    );
+    assert_ne!(materialized["input"]["focus"], current["focus"]);
+    assert_eq!(
+        materialized["input"]["fingerprint"],
+        materialized["analysis"]["input_fingerprint"]
+    );
+}

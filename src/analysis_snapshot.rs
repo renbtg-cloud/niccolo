@@ -1,4 +1,5 @@
 //! Immutable binding between a requested analysis and the exact Situation revision it may use.
+use crate::situation_store::{self, SituationSnapshot};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -14,6 +15,8 @@ pub enum AnalysisSnapshotError {
     Conflict,
     #[error("situation or analysis snapshot is not visible")]
     Invisible,
+    #[error("stored analysis snapshot does not match its referenced Situation revision")]
+    Integrity,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +28,14 @@ pub struct AnalysisInputSnapshot {
     pub goal: String,
     pub requested_by: Uuid,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MaterializedAnalysisInput {
+    pub analysis: AnalysisInputSnapshot,
+    pub input: SituationSnapshot,
+    pub current_revision: i64,
+    pub input_is_current: bool,
 }
 
 fn clean_goal(input: &str) -> Result<String, AnalysisSnapshotError> {
@@ -213,5 +224,65 @@ pub async fn get(
         goal,
         requested_by,
         replayed: false,
+    })
+}
+
+pub async fn materialize(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<MaterializedAnalysisInput, AnalysisSnapshotError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let stored: Option<(i64, String, String, Uuid)> = sqlx::query_as(
+        "SELECT input_revision,input_fingerprint,goal,requested_by_principal_id \
+         FROM niccolo.situation_analysis_snapshots \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((input_revision, input_fingerprint, goal, requested_by)) = stored else {
+        return Err(AnalysisSnapshotError::Invisible);
+    };
+    let current_revision: Option<i64> = sqlx::query_scalar(
+        "SELECT current_revision FROM niccolo.situations \
+         WHERE workspace_id=$1 AND situation_id=$2",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(current_revision) = current_revision else {
+        return Err(AnalysisSnapshotError::Invisible);
+    };
+    let input = situation_store::snapshot_in_tx(&mut tx, workspace, situation, input_revision)
+        .await
+        .map_err(|error| match error {
+            situation_store::SituationStoreError::Database(error) => {
+                AnalysisSnapshotError::Database(error)
+            }
+            situation_store::SituationStoreError::Invisible => AnalysisSnapshotError::Invisible,
+            _ => AnalysisSnapshotError::Integrity,
+        })?;
+    if input.fingerprint != input_fingerprint {
+        return Err(AnalysisSnapshotError::Integrity);
+    }
+    tx.commit().await?;
+    Ok(MaterializedAnalysisInput {
+        analysis: AnalysisInputSnapshot {
+            analysis_id: analysis,
+            situation_id: situation,
+            input_revision,
+            input_fingerprint,
+            goal,
+            requested_by,
+            replayed: false,
+        },
+        input,
+        current_revision,
+        input_is_current: current_revision == input_revision,
     })
 }

@@ -1,5 +1,6 @@
 //! Small dependency-free experiment, not the complete Duhme v0180 contract.
 //! Describes *what a source says* without promoting it to ground truth.
+pub mod analysis_output;
 pub mod analysis_snapshot;
 pub mod api;
 pub mod authz;

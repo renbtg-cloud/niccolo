@@ -1,6 +1,7 @@
 //! Bound, explicit HTTP boundary. Not a public Internet deployment template.
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
+use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
 use crate::discovery;
@@ -204,6 +205,14 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}",
             get(get_analysis_snapshot).post(begin_analysis_snapshot),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/input",
+            get(get_analysis_input),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/output",
+            get(get_analysis_output).post(publish_analysis_output),
         )
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
         .with_state(AppState { pool })
@@ -766,6 +775,24 @@ impl From<AnalysisSnapshotError> for ApiError {
     }
 }
 
+impl From<AnalysisOutputError> for ApiError {
+    fn from(error: AnalysisOutputError) -> Self {
+        match error {
+            AnalysisOutputError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid analysis output")
+            }
+            AnalysisOutputError::Conflict => Self(StatusCode::CONFLICT, "analysis output conflict"),
+            AnalysisOutputError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis output unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis output unavailable",
+            ),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AnalysisSnapshotRequest {
@@ -820,6 +847,86 @@ async fn get_analysis_snapshot(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let snapshot = analysis_snapshot::get(&state.pool, workspace, situation, analysis).await?;
     Ok(no_store(analysis_snapshot_json(&snapshot), StatusCode::OK))
+}
+
+async fn get_analysis_input(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let materialized =
+        analysis_snapshot::materialize(&state.pool, workspace, situation, analysis).await?;
+    Ok(no_store(
+        json!({
+            "analysis": analysis_snapshot_json(&materialized.analysis),
+            "input": situation_json(&materialized.input),
+            "current_situation_revision": materialized.current_revision,
+            "input_is_current": materialized.input_is_current,
+            "future_context_included": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnalysisOutputRequest {
+    answer_text: String,
+    coverage_note: String,
+}
+
+fn analysis_output_json(output: &analysis_output::AnalysisOutput) -> Value {
+    json!({
+        "analysis_id": output.analysis_id,
+        "situation_id": output.situation_id,
+        "input_revision": output.input_revision,
+        "input_fingerprint": output.input_fingerprint,
+        "answer_text": output.answer_text,
+        "coverage_note": output.coverage_note,
+        "published_by_principal_id": output.published_by,
+        "current_situation_revision": output.current_revision,
+        "input_is_current": output.input_is_current,
+        "replayed": output.replayed,
+        "historical_output_preserved": true
+    })
+}
+
+async fn publish_analysis_output(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<AnalysisOutputRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let output = analysis_output::publish(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        analysis,
+        &input.answer_text,
+        &input.coverage_note,
+    )
+    .await?;
+    Ok(no_store(
+        analysis_output_json(&output),
+        if output.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn get_analysis_output(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let output = analysis_output::get(&state.pool, workspace, situation, analysis).await?;
+    Ok(no_store(analysis_output_json(&output), StatusCode::OK))
 }
 
 impl From<SituationStoreError> for ApiError {

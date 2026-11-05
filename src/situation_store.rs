@@ -155,7 +155,7 @@ async fn current_snapshot_in_tx(
     snapshot_in_tx(tx, workspace, situation, revision).await
 }
 
-async fn snapshot_in_tx(
+pub(crate) async fn snapshot_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,
