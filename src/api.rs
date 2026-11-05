@@ -4,6 +4,7 @@
 use crate::analysis_context_summary::{self, AnalysisContextSummaryError};
 use crate::analysis_context_usage::{self, AnalysisContextUsageError};
 use crate::analysis_coverage::{self, AnalysisCoverageError};
+use crate::analysis_delta::{self, AnalysisDeltaError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
@@ -238,6 +239,10 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/context-usage",
             get(analysis_context_summary),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/delta",
+            get(analysis_delta),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
@@ -863,6 +868,20 @@ impl From<AnalysisContextUsageError> for ApiError {
     }
 }
 
+impl From<AnalysisDeltaError> for ApiError {
+    fn from(error: AnalysisDeltaError) -> Self {
+        match error {
+            AnalysisDeltaError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis delta unavailable",
+            ),
+        }
+    }
+}
+
 impl From<AnalysisCoverageError> for ApiError {
     fn from(error: AnalysisCoverageError) -> Self {
         match error {
@@ -1412,6 +1431,43 @@ async fn analysis_context_summary(
             })).collect::<Vec<_>>(),
             "presence_in_input_does_not_imply_use":true,
             "use_does_not_imply_truth":true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn analysis_delta(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let delta = analysis_delta::get(&state.pool, workspace, situation, analysis).await?;
+    Ok(no_store(
+        json!({
+            "analysis_id":delta.analysis_id,
+            "input_revision":delta.input_revision,
+            "current_situation_revision":delta.current_revision,
+            "input_fingerprint":delta.input_fingerprint,
+            "current_fingerprint":delta.current_fingerprint,
+            "input_is_current":delta.input_is_current,
+            "focus_changed":delta.focus_before!=delta.focus_now,
+            "focus_before":delta.focus_before,
+            "focus_now":delta.focus_now,
+            "added_source_document_ids":delta.added_sources,
+            "removed_source_document_ids":delta.removed_sources,
+            "added_contributions":delta.added_contributions.iter().map(|c|json!({
+                "contribution_id":c.id,"author_principal_id":c.author,"kind":c.kind,
+                "text":c.text,"scope":c.scope,"related_evidence_id":c.related_evidence_id,
+                "is_verified_evidence":false
+            })).collect::<Vec<_>>(),
+            "removed_contributions":delta.removed_contributions.iter().map(|c|json!({
+                "contribution_id":c.contribution_id,"kind":c.kind,"text":c.text,
+                "current_status":c.current_status,"corrected_by":c.corrected_by,
+                "is_verified_evidence":false
+            })).collect::<Vec<_>>(),
+            "delta_is_not_a_truth_judgement":true,
+            "reanalysis_is_not_automatic":true
         }),
         StatusCode::OK,
     ))
