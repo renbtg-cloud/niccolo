@@ -1,32 +1,33 @@
-name: tmp v025 sync
+name: tmp v025 recover
 
 on:
   push:
     branches: [tmp-v025-sync]
     paths:
-      - '.sync/v025.ready'
+      - '.sync/v025.recover'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  recover:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Materialize locally validated v0.25 files
+      - name: Reconstruct staged archive
         shell: bash
         run: |
           set -euo pipefail
           cat .sync/v025.part00 .sync/v025.part01 .sync/v025.part02 .sync/v025.part03 .sync/v025.part04 .sync/v025.part05 .sync/v025.part06 .sync/v025.part07 | base64 -d > /tmp/v025-files.tar.gz
-          echo "43fce1bde83fc20192c766bfa4d868cd8b3f2a062044d86c1b2beea1475c8fa1  /tmp/v025-files.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/v025-files.tar.gz
-          rm -rf .sync .github/workflows/tmp-v025-sync.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "feat: persist human clarification answers as context [skip ci]"
-          git push origin HEAD:tmp-v025-sync
+          sha256sum /tmp/v025-files.tar.gz
+          gzip -t /tmp/v025-files.tar.gz
+          mkdir -p /tmp/v025-recovered
+          tar -xzf /tmp/v025-files.tar.gz -C /tmp/v025-recovered
+          find /tmp/v025-recovered -type f -print | sort
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v025-recovered
+          path: /tmp/v025-recovered
+          if-no-files-found: error
