@@ -16,7 +16,7 @@ use axum::{
     body::Bytes,
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
@@ -66,11 +66,48 @@ async fn response_security_headers(
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, "nosniff".parse().unwrap());
     headers.insert("referrer-policy", "no-referrer".parse().unwrap());
     headers.insert("x-frame-options", "DENY".parse().unwrap());
+    headers.insert(
+        "content-security-policy",
+        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            .parse()
+            .unwrap(),
+    );
     response
 }
 
 pub fn router(pool: PgPool) -> Router {
     Router::new()
+        .route(
+            "/",
+            get(|| async { Html(include_str!("../web/index.html")) }),
+        )
+        .route(
+            "/app.js",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+                    include_str!("../web/app.js"),
+                )
+            }),
+        )
+        .route(
+            "/state.js",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+                    include_str!("../web/state.js"),
+                )
+            }),
+        )
+        .route(
+            "/styles.css",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+                    include_str!("../web/styles.css"),
+                )
+            }),
+        )
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
         .route("/readyz", get(readiness))
         .route(
@@ -928,7 +965,7 @@ mod tests {
     async fn all_http_responses_have_privacy_headers() {
         use tower::ServiceExt;
         let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
-        for path in ["/healthz", "/does-not-exist"] {
+        for path in ["/", "/app.js", "/styles.css", "/healthz", "/does-not-exist"] {
             let response = router
                 .clone()
                 .oneshot(
@@ -946,7 +983,35 @@ mod tests {
             );
             assert_eq!(response.headers()["referrer-policy"], "no-referrer");
             assert_eq!(response.headers()["x-frame-options"], "DENY");
+            assert!(response.headers().contains_key("content-security-policy"));
         }
+    }
+
+    #[tokio::test]
+    async fn first_party_shell_exposes_all_three_intentions_without_database_access() {
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        let response = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(html.contains("I am about to say or do something"));
+        assert!(html.contains("I am trying to understand something"));
+        assert!(html.contains("Help me figure out what matters"));
+        assert!(html.contains("does not upload or claim to analyze them"));
     }
     #[tokio::test]
     async fn framework_generated_errors_keep_privacy_headers() {

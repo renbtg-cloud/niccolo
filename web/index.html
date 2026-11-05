@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Niccolò — Situation Reasoner</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">NICCOLÒ · EXPERIMENTAL v0.15</p>
+      <h1>Think through the situation.</h1>
+      <p class="lede">Thinking buddies, not thinking replacements.</p>
+    </header>
+
+    <section aria-labelledby="intentions-heading">
+      <h2 id="intentions-heading">What are you trying to do?</h2>
+      <div class="intentions" id="intentions">
+        <button type="button" data-intent="act">I am about to say or do something</button>
+        <button type="button" data-intent="understand">I am trying to understand something</button>
+        <button type="button" data-intent="discover">Help me figure out what matters</button>
+      </div>
+      <p id="selected-intent" class="status" aria-live="polite">No intention selected yet.</p>
+    </section>
+
+    <section aria-labelledby="sources-heading">
+      <h2 id="sources-heading">Sources</h2>
+      <p class="hint">Choose exported text or email files. In this milestone the browser only catalogues their names; it does not upload or claim to analyze them.</p>
+      <input id="sources" type="file" multiple accept=".txt,.eml,text/plain,message/rfc822">
+      <ul id="source-list" class="compact-list"></ul>
+    </section>
+
+    <section aria-labelledby="context-heading">
+      <h2 id="context-heading">Situation context</h2>
+      <label for="focus">Current focus</label>
+      <textarea id="focus" rows="2" maxlength="4096" placeholder="What question or decision are we examining?"></textarea>
+      <button id="set-focus" type="button" class="secondary">Set focus</button>
+
+      <label for="premise">Add something I should consider</label>
+      <textarea id="premise" rows="3" maxlength="4096" placeholder="Add context, a correction, or a premise..."></textarea>
+      <label class="check"><input id="what-if" type="checkbox"> This is a WHAT IF, not an assertion about what actually happened.</label>
+      <button id="add-premise" type="button">Add to current situation</button>
+      <ul id="premise-list" class="compact-list"></ul>
+    </section>
+
+    <section aria-labelledby="timeline-heading">
+      <div class="section-title">
+        <h2 id="timeline-heading">Visible revisions</h2>
+        <span id="revision-count" class="badge">revision 1</span>
+      </div>
+      <p class="hint">Changes create a new browser-side revision instead of rewriting earlier state. This UI does not perform an LLM call yet.</p>
+      <ol id="revision-list" class="timeline"></ol>
+    </section>
+
+    <footer>
+      <p>Prototype boundary: local browser state only. No model output, truth claim, identity inference, or hidden source analysis is performed here.</p>
+    </footer>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

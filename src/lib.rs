@@ -13,6 +13,7 @@ pub mod postgres_ingest;
 pub mod postgres_repository;
 pub mod provenance_dag;
 pub mod question_refs;
+pub mod situation;
 pub mod source_catalog;
 pub mod source_import;
 

@@ -1,0 +1,7 @@
+{
+  "name": "niccolo-web-shell",
+  "version": "0.15.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test state.test.mjs" }
+}

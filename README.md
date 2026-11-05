@@ -194,3 +194,30 @@ not claim to defend against a compromised PostgreSQL administrator.
 Reproduce with `scripts/run-v013-validation.sh` after applying migrations
 `0001..0010` to a **disposable** database and configuring the admin, legacy,
 and restricted application DB URLs.
+
+## v0.14 — immutable Situation revisions for visible reanalysis
+
+The experimental core now includes a bounded `Situation` state that preserves the current focus,
+user-reported contextual premises, explicit `WHAT IF` premises, source references, corrections and
+retractions as immutable revision snapshots. Each snapshot carries a deterministic SHA-256
+fingerprint of exactly the focus, active premises and source references used by a reasoning step.
+A correction creates a new premise and marks the old one as corrected; a retraction removes a
+premise from the current snapshot without erasing its historical record. Hypothetical premises keep
+an explicit `Hypothetical` kind and are never silently promoted to evidence.
+
+This is deliberately narrower than the unresolved `MVP-HYP-001`: it does **not** decide durable
+semantics for remembered rejection/deprioritization of machine hypotheses, probability scores, or
+full dependency repair. Those remain design decisions rather than accidental implementation policy.
+
+## v0.15 — dependency-free first-party Situation shell
+
+The loopback Axum process now serves a small first-party web shell at `/`. The page presents the
+three approved entry intentions inside one workflow, catalogues selected `.txt`/`.eml` filenames
+without claiming they were uploaded or analyzed, accepts user-reported context and explicit WHAT-IF
+premises, and shows visible browser-side revisions. It intentionally performs no model call and no
+hidden source analysis yet.
+
+The shell is embedded in the Rust binary with `include_str!` and uses browser-native ES modules;
+there is no CDN or runtime filesystem dependency. Its state reducer is tested with Node 24's built-in
+test runner, so this milestone does not depend on the currently inconsistent prefetched npm lockfile.
+All HTTP responses now also receive a restrictive Content-Security-Policy header.
