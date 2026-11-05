@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.29)
+# Niccolò / Duhme — experimental Rust core (v0.30)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -32,7 +32,7 @@ Apply `sql/0001_init.sql` and `sql/0002_benchmark_evolution.sql` in a disposable
 
 ## Deliberate non-goals and known limitations
 
-- Does not include public-ready network ingress, LLM adapters, a connected frontend, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. The loopback-only HTTP API and bounded plain-text importers are experimental, not production services.
+- Does not include public-ready network ingress, LLM adapters, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. The loopback-only HTTP API and bounded plain-text importers are experimental, not production services.
 - Multi-parent graph traversal is implemented, but neither distinct graph roots nor separate uploaded documents establish independent eyewitnesses or truthfulness.
 - Recursive expression depth is representational only; human beliefs are not proven by serialization.
 - No security model is complete just because RLS exists. PostgreSQL roles, authentication, SQL access, export/erasure workflows and trusted authorization binding are still required.
@@ -353,3 +353,8 @@ Analyses can record exactly which frozen human contributions were actually used.
 ## v0.29 — compact human review
 
 `GET .../analysis-snapshots/{analysis}/review` assembles one repeatable-read review of frozen input, recorded context use, source-fragment coverage, clarification activity, output presence, and structural delta to the current Situation. Counts describe records, not truth or completeness; the response keeps `human_review_required=true`.
+
+
+## v0.30 — first-party web shell wired to persistent Situation state
+
+The zero-dependency first-party shell can now explicitly connect to the loopback API using a workspace UUID, Situation UUID and bearer token kept only in page memory. Focus changes, user-reported context, explicit WHAT-IF context and retractions then use the real persistent Situation API and immutable PostgreSQL revisions. Intention selection remains browser-session steering, and selecting `.txt`/`.eml` files still only catalogues filenames locally: the UI does not pretend those files were uploaded or analyzed. No LLM call is made. A real TCP loopback integration test exercises HTML/JS serving plus persistent Situation creation and context mutation.

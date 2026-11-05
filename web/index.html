@@ -9,10 +9,22 @@
 <body>
   <main class="shell">
     <header>
-      <p class="eyebrow">NICCOLÒ · EXPERIMENTAL v0.15</p>
+      <p class="eyebrow">NICCOLÒ · EXPERIMENTAL v0.30</p>
       <h1>Think through the situation.</h1>
       <p class="lede">Thinking buddies, not thinking replacements.</p>
     </header>
+
+    <section aria-labelledby="backend-heading">
+      <h2 id="backend-heading">Persistent Situation</h2>
+      <p class="hint">Optional loopback-development connection. The bearer token stays only in this page memory; this is not a production login UI.</p>
+      <div class="backend-grid">
+        <label>Workspace UUID<input id="workspace-id" type="text" autocomplete="off" spellcheck="false"></label>
+        <label>Situation UUID<input id="situation-id" type="text" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <label>Bearer token<input id="bearer-token" type="password" autocomplete="off"></label>
+      <button id="connect-backend" type="button" class="secondary">Open / create persistent Situation</button>
+      <p id="backend-status" class="status" aria-live="polite">Browser-only until connected.</p>
+    </section>
 
     <section aria-labelledby="intentions-heading">
       <h2 id="intentions-heading">What are you trying to do?</h2>
@@ -49,12 +61,12 @@
         <h2 id="timeline-heading">Visible revisions</h2>
         <span id="revision-count" class="badge">revision 1</span>
       </div>
-      <p class="hint">Changes create a new browser-side revision instead of rewriting earlier state. This UI does not perform an LLM call yet.</p>
+      <p class="hint">When connected, this timeline comes from immutable PostgreSQL Situation revisions. This UI still does not perform an LLM call.</p>
       <ol id="revision-list" class="timeline"></ol>
     </section>
 
     <footer>
-      <p>Prototype boundary: local browser state only. No model output, truth claim, identity inference, or hidden source analysis is performed here.</p>
+      <p>Prototype boundary: Situation focus and human context may be persisted when explicitly connected. File selection remains local-only and no model output, truth claim, identity inference, or hidden source analysis is performed here.</p>
     </footer>
   </main>
   <script type="module" src="/app.js"></script>

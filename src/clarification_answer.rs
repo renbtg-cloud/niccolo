@@ -173,29 +173,25 @@ pub async fn answer(
         .bind(answer)
         .fetch_optional(&mut *tx)
         .await?;
-        if let Some((
-            contribution_id,
-            stored_text,
-            answered_by,
-            answer_revision,
-            current_revision,
-        )) = raced
+        if let Some((contribution_id, stored_text, answered_by, answer_revision, current_revision)) =
+            raced
+            && stored_text == text
+            && answered_by == actor
+            && contribution_id == answer
         {
-            if stored_text == text && answered_by == actor && contribution_id == answer {
-                tx.commit().await?;
-                return Ok(ClarificationAnswer {
-                    answer_id: answer,
-                    question_id: question,
-                    analysis_id: analysis,
-                    contribution_id,
-                    text: stored_text,
-                    answered_by,
-                    question_input_revision: input_revision,
-                    answer_revision,
-                    current_revision,
-                    replayed: true,
-                });
-            }
+            tx.commit().await?;
+            return Ok(ClarificationAnswer {
+                answer_id: answer,
+                question_id: question,
+                analysis_id: analysis,
+                contribution_id,
+                text: stored_text,
+                answered_by,
+                question_input_revision: input_revision,
+                answer_revision,
+                current_revision,
+                replayed: true,
+            });
         }
         return Err(ClarificationAnswerError::Conflict);
     }

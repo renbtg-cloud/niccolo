@@ -19,6 +19,8 @@ pub enum AnalysisContextUsageError {
     Invisible,
 }
 
+type UsedContributionRow = (Uuid, Uuid, String, String, String, Option<Uuid>, Uuid);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UsedContribution {
     pub contribution_id: Uuid,
@@ -59,10 +61,6 @@ async fn scoped(
     Ok(tx)
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "frozen analysis and contribution identities are independent"
-)]
 pub async fn record(
     pool: &PgPool,
     workspace: Uuid,
@@ -133,7 +131,7 @@ pub async fn list(
     let Some(input_revision) = input_revision else {
         return Err(AnalysisContextUsageError::Invisible);
     };
-    let rows:Vec<(Uuid,Uuid,String,String,String,Option<Uuid>,Uuid)>=sqlx::query_as(
+    let rows: Vec<UsedContributionRow> = sqlx::query_as(
         "SELECT u.contribution_id,c.author_principal_id,c.kind,c.contribution_text,c.scope,c.related_evidence_id,u.recorded_by_principal_id \
          FROM niccolo.situation_analysis_used_contributions u \
          JOIN niccolo.situation_contributions c \

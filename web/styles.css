@@ -27,3 +27,7 @@ textarea { resize: vertical; border: 1px solid #cfc9be; border-radius: 10px; pad
 .badge { background: #eeeae1; border-radius: 999px; padding: 5px 10px; font-size: .82rem; }
 footer { margin-top: 28px; font-size: .9rem; }
 @media (max-width: 700px) { .intentions { grid-template-columns: 1fr; } .intentions button { min-height: auto; } }
+
+input[type=text], input[type=password] { width: 100%; font: inherit; border: 1px solid #cfc9be; border-radius: 10px; padding: 10px; background: #fcfbf8; }
+.backend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 700px) { .backend-grid { grid-template-columns: 1fr; } }

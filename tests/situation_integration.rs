@@ -616,7 +616,27 @@ async fn new_situation_tables_are_forced_rls_and_have_all_api_gates() {
     .fetch_all(&f.admin)
     .await
     .unwrap();
-    assert_eq!(rows.len(), 10);
+    let names = rows
+        .iter()
+        .map(|(name, ..)| name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected = [
+        "situation_analysis_clarification_answers",
+        "situation_analysis_clarification_questions",
+        "situation_analysis_examined_fragments",
+        "situation_analysis_outputs",
+        "situation_analysis_snapshots",
+        "situation_analysis_used_contributions",
+        "situation_contributions",
+        "situation_revision_contributions",
+        "situation_revision_sources",
+        "situation_revisions",
+        "situation_sources",
+        "situations",
+    ]
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(names, expected);
     for (name, rls, forced, gates) in rows {
         assert!(rls, "{name} RLS disabled");
         assert!(forced, "{name} FORCE RLS disabled");
