@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .sync/v025.part00 .sync/v025.part01 .sync/v025.part02 | base64 -d > /tmp/v025-files.tar.gz
+          cat .sync/v025.part00 .sync/v025.part01 .sync/v025.part02 .sync/v025.part03 .sync/v025.part04 .sync/v025.part05 .sync/v025.part06 .sync/v025.part07 | base64 -d > /tmp/v025-files.tar.gz
           echo "43fce1bde83fc20192c766bfa4d868cd8b3f2a062044d86c1b2beea1475c8fa1  /tmp/v025-files.tar.gz" | sha256sum -c -
           tar -xzf /tmp/v025-files.tar.gz
           rm -rf .sync .github/workflows/tmp-v025-sync.yml
