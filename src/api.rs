@@ -1,6 +1,7 @@
 //! Bound, explicit HTTP boundary. Not a public Internet deployment template.
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
+use crate::analysis_coverage::{self, AnalysisCoverageError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
@@ -217,6 +218,14 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/output",
             get(get_analysis_output).post(publish_analysis_output),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/examined-fragments",
+            get(list_examined_fragments),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/examined-fragments/{evidence}",
+            post(record_examined_fragment),
         )
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
         .with_state(AppState { pool })
@@ -779,6 +788,26 @@ impl From<AnalysisSnapshotError> for ApiError {
     }
 }
 
+impl From<AnalysisCoverageError> for ApiError {
+    fn from(error: AnalysisCoverageError) -> Self {
+        match error {
+            AnalysisCoverageError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid analysis coverage request")
+            }
+            AnalysisCoverageError::Conflict => {
+                Self(StatusCode::CONFLICT, "analysis coverage conflict")
+            }
+            AnalysisCoverageError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis fragment unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis coverage unavailable",
+            ),
+        }
+    }
+}
+
 impl From<AnalysisOutputError> for ApiError {
     fn from(error: AnalysisOutputError) -> Self {
         match error {
@@ -979,6 +1008,75 @@ async fn get_analysis_output(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let output = analysis_output::get(&state.pool, workspace, situation, analysis).await?;
     Ok(no_store(analysis_output_json(&output), StatusCode::OK))
+}
+
+fn examined_fragment_json(fragment: &analysis_coverage::ExaminedFragment) -> Value {
+    json!({
+        "evidence_id": fragment.evidence_id,
+        "document_id": fragment.document_id,
+        "ordinal": fragment.ordinal,
+        "byte_start": fragment.byte_start,
+        "byte_end": fragment.byte_end,
+        "speaker_label": fragment.speaker_label,
+        "recorded_by_principal_id": fragment.recorded_by,
+        "replayed": fragment.replayed,
+        "coverage_claim": "EXAMINED_FRAGMENT",
+        "proves_full_source_examined": false
+    })
+}
+
+async fn record_examined_fragment(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, evidence)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let fragment =
+        analysis_coverage::record(&state.pool, workspace, actor, situation, analysis, evidence)
+            .await?;
+    Ok(no_store(
+        examined_fragment_json(&fragment),
+        if fragment.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnalysisCoverageQuery {
+    after: Option<Uuid>,
+    limit: Option<i64>,
+}
+
+async fn list_examined_fragments(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<AnalysisCoverageQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (fragments, next_after) = analysis_coverage::list(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.after,
+        query.limit.unwrap_or(50),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "analysis_id": analysis,
+            "next_after": next_after,
+            "fragments": fragments.iter().map(examined_fragment_json).collect::<Vec<_>>(),
+            "empty_means_no_examined_fragment_was_recorded": true,
+            "empty_does_not_mean_no_source_was_available": true
+        }),
+        StatusCode::OK,
+    ))
 }
 
 impl From<SituationStoreError> for ApiError {

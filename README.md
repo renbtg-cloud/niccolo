@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.21)
+# Niccolò / Duhme — experimental Rust core (v0.22)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -288,3 +288,16 @@ still the current Situation revision. Cursor pagination is bounded and authoriza
 Apply migrations `0001..0014` to a disposable PostgreSQL 17 database, then reproduce the complete
 validation with `scripts/run-v021-validation.sh`. v0.21 still performs no model call and does not
 label historical analyses correct/incorrect merely because their input is no longer current.
+
+## v0.22 — frozen examined-fragment coverage
+
+[ANALYSIS_COVERAGE_V022.md](ANALYSIS_COVERAGE_V022.md) separates source availability from source
+examination. An analysis may record exact imported fragments it examined, but only when those
+fragments came from documents present in that analysis's frozen Situation revision. A document
+added later therefore cannot be retroactively represented as part of an older analysis's examined
+scope. Coverage rows are attributed, append-only through the API boundary, RLS-protected and
+cursor-paginated; listing a fragment never implies the full source was examined or that its content
+is true.
+
+Apply migrations `0001..0015` to a disposable PostgreSQL 17 database, then reproduce the complete
+validation with `scripts/run-v022-validation.sh`. v0.22 still performs no model call.
