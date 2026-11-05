@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.19)
+# Niccolò / Duhme — experimental Rust core (v0.20)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -264,3 +264,15 @@ adds the forced-RLS output table with the same four restrictive API gates.
 
 Apply migrations `0001..0013` to a disposable PostgreSQL 17 database, then reproduce the complete
 validation with `scripts/run-v019-validation.sh`. No model call is made by v0.18 or v0.19.
+
+
+## v0.20 — explicit reanalysis lineage
+
+[REANALYSIS_LINEAGE_V020.md](REANALYSIS_LINEAGE_V020.md) links a new immutable analysis to the
+earlier analysis it deliberately revisits through optional `reanalysis_of`. The new analysis freezes
+whatever Situation revision is current when it starts; the parent analysis and any historical output
+remain unchanged. Parent lineage is same-Situation only, immutable on replay and never interpreted as
+a declaration that the older answer was false or rejected.
+
+Apply migrations `0001..0014` to a disposable PostgreSQL 17 database, then reproduce the complete
+validation with `scripts/run-v020-validation.sh`. v0.20 still performs no model call.

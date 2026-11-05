@@ -759,7 +759,7 @@ impl From<AnalysisSnapshotError> for ApiError {
     fn from(error: AnalysisSnapshotError) -> Self {
         match error {
             AnalysisSnapshotError::Invalid => {
-                Self(StatusCode::BAD_REQUEST, "invalid analysis goal")
+                Self(StatusCode::BAD_REQUEST, "invalid analysis snapshot request")
             }
             AnalysisSnapshotError::Conflict => {
                 Self(StatusCode::CONFLICT, "analysis identifier conflict")
@@ -797,6 +797,7 @@ impl From<AnalysisOutputError> for ApiError {
 #[serde(deny_unknown_fields)]
 struct AnalysisSnapshotRequest {
     goal: String,
+    reanalysis_of: Option<Uuid>,
 }
 
 fn analysis_snapshot_json(snapshot: &analysis_snapshot::AnalysisInputSnapshot) -> Value {
@@ -807,6 +808,7 @@ fn analysis_snapshot_json(snapshot: &analysis_snapshot::AnalysisInputSnapshot) -
         "input_fingerprint": snapshot.input_fingerprint,
         "goal": snapshot.goal,
         "requested_by_principal_id": snapshot.requested_by,
+        "reanalysis_of": snapshot.reanalysis_of,
         "replayed": snapshot.replayed,
         "frozen_input": true,
         "incorporates_future_context": false
@@ -827,6 +829,7 @@ async fn begin_analysis_snapshot(
         situation,
         analysis,
         &input.goal,
+        input.reanalysis_of,
     )
     .await?;
     Ok(no_store(
