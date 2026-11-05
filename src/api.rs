@@ -1,6 +1,7 @@
 //! Bound, explicit HTTP boundary. Not a public Internet deployment template.
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
+use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
 use crate::discovery;
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
@@ -9,6 +10,7 @@ use crate::identity::{self, IdentityAction, IdentityError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::question_refs::{self, ReferenceError};
+use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
 use axum::{
@@ -166,6 +168,42 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/sources/{document}",
             post(ingest),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}",
+            get(get_situation).post(create_situation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/focus",
+            post(set_situation_focus),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/sources/{document}",
+            post(add_situation_source),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/contributions/{contribution}",
+            post(add_situation_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/contributions/{contribution}/corrections/{replacement}",
+            post(correct_situation_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/contributions/{contribution}/retract",
+            post(retract_situation_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/revisions",
+            get(list_situation_revisions),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/revisions/{revision}",
+            get(get_situation_revision),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}",
+            get(get_analysis_snapshot).post(begin_analysis_snapshot),
         )
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
         .with_state(AppState { pool })
@@ -707,6 +745,356 @@ async fn list_question_refs(
         StatusCode::OK,
     ))
 }
+
+impl From<AnalysisSnapshotError> for ApiError {
+    fn from(error: AnalysisSnapshotError) -> Self {
+        match error {
+            AnalysisSnapshotError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid analysis goal")
+            }
+            AnalysisSnapshotError::Conflict => {
+                Self(StatusCode::CONFLICT, "analysis identifier conflict")
+            }
+            AnalysisSnapshotError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis snapshot unavailable",
+            ),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnalysisSnapshotRequest {
+    goal: String,
+}
+
+fn analysis_snapshot_json(snapshot: &analysis_snapshot::AnalysisInputSnapshot) -> Value {
+    json!({
+        "analysis_id": snapshot.analysis_id,
+        "situation_id": snapshot.situation_id,
+        "input_revision": snapshot.input_revision,
+        "input_fingerprint": snapshot.input_fingerprint,
+        "goal": snapshot.goal,
+        "requested_by_principal_id": snapshot.requested_by,
+        "replayed": snapshot.replayed,
+        "frozen_input": true,
+        "incorporates_future_context": false
+    })
+}
+
+async fn begin_analysis_snapshot(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<AnalysisSnapshotRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let snapshot = analysis_snapshot::begin(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        analysis,
+        &input.goal,
+    )
+    .await?;
+    Ok(no_store(
+        analysis_snapshot_json(&snapshot),
+        if snapshot.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn get_analysis_snapshot(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let snapshot = analysis_snapshot::get(&state.pool, workspace, situation, analysis).await?;
+    Ok(no_store(analysis_snapshot_json(&snapshot), StatusCode::OK))
+}
+
+impl From<SituationStoreError> for ApiError {
+    fn from(error: SituationStoreError) -> Self {
+        match error {
+            SituationStoreError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid situation input")
+            }
+            SituationStoreError::Conflict => {
+                Self(StatusCode::CONFLICT, "situation identifier conflict")
+            }
+            SituationStoreError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "situation or source unavailable")
+            }
+            SituationStoreError::Inactive => {
+                Self(StatusCode::CONFLICT, "contribution is no longer active")
+            }
+            SituationStoreError::Database(sqlx::Error::Database(ref db))
+                if matches!(db.code().as_deref(), Some("23514" | "23503")) =>
+            {
+                Self(
+                    StatusCode::BAD_REQUEST,
+                    "situation referential validation failed",
+                )
+            }
+            _ => Self(StatusCode::INTERNAL_SERVER_ERROR, "situation unavailable"),
+        }
+    }
+}
+
+fn situation_json(snapshot: &situation_store::SituationSnapshot) -> Value {
+    json!({
+        "situation_id": snapshot.situation_id,
+        "revision": snapshot.revision,
+        "fingerprint": snapshot.fingerprint,
+        "focus": snapshot.focus,
+        "source_document_ids": snapshot.sources,
+        "contributions": snapshot.contributions.iter().map(|c| json!({
+            "contribution_id": c.id,
+            "author_principal_id": c.author,
+            "kind": c.kind,
+            "text": c.text,
+            "scope": c.scope,
+            "related_evidence_id": c.related_evidence_id,
+            "status_at_revision": "ACTIVE",
+            "is_verified_evidence": false
+        })).collect::<Vec<_>>(),
+        "snapshot_is_frozen": true
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SituationCreateRequest {
+    focus: String,
+}
+
+async fn create_situation(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<SituationCreateRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let result =
+        situation_store::create(&state.pool, workspace, actor, situation, &input.focus).await?;
+    let mut value = situation_json(&result.snapshot);
+    value["replayed"] = json!(result.replayed);
+    Ok(no_store(
+        value,
+        if result.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn get_situation(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let snapshot = situation_store::get_snapshot(&state.pool, workspace, situation, None).await?;
+    Ok(no_store(situation_json(&snapshot), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SituationFocusRequest {
+    focus: String,
+}
+
+async fn set_situation_focus(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<SituationFocusRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let result =
+        situation_store::set_focus(&state.pool, workspace, actor, situation, &input.focus).await?;
+    let mut value = situation_json(&result.snapshot);
+    value["replayed"] = json!(result.replayed);
+    Ok(no_store(value, StatusCode::OK))
+}
+
+async fn add_situation_source(
+    State(state): State<AppState>,
+    Path((workspace, situation, document)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let result =
+        situation_store::add_source(&state.pool, workspace, actor, situation, document).await?;
+    let mut value = situation_json(&result.snapshot);
+    value["replayed"] = json!(result.replayed);
+    Ok(no_store(
+        value,
+        if result.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SituationContributionRequest {
+    kind: String,
+    text: String,
+    related_evidence_id: Option<Uuid>,
+}
+
+async fn add_situation_contribution(
+    State(state): State<AppState>,
+    Path((workspace, situation, contribution)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<SituationContributionRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let kind = ContributionKind::parse(&input.kind).ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "invalid contribution kind",
+    ))?;
+    let result = situation_store::add_contribution(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        contribution,
+        kind,
+        &input.text,
+        input.related_evidence_id,
+    )
+    .await?;
+    let mut value = situation_json(&result.snapshot);
+    value["replayed"] = json!(result.replayed);
+    Ok(no_store(
+        value,
+        if result.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SituationCorrectionRequest {
+    text: String,
+    related_evidence_id: Option<Uuid>,
+}
+
+async fn correct_situation_contribution(
+    State(state): State<AppState>,
+    Path((workspace, situation, contribution, replacement)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<SituationCorrectionRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let result = situation_store::correct_contribution(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        contribution,
+        replacement,
+        &input.text,
+        input.related_evidence_id,
+    )
+    .await?;
+    let mut value = situation_json(&result.snapshot);
+    value["replayed"] = json!(result.replayed);
+    Ok(no_store(
+        value,
+        if result.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn retract_situation_contribution(
+    State(state): State<AppState>,
+    Path((workspace, situation, contribution)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let result = situation_store::retract_contribution(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        contribution,
+    )
+    .await?;
+    let mut value = situation_json(&result.snapshot);
+    value["replayed"] = json!(result.replayed);
+    Ok(no_store(value, StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SituationRevisionQuery {
+    after: Option<i64>,
+    limit: Option<i64>,
+}
+
+async fn list_situation_revisions(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<SituationRevisionQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (revisions, next_after) = situation_store::list_revisions(
+        &state.pool,
+        workspace,
+        situation,
+        query.after.unwrap_or(0),
+        query.limit.unwrap_or(25),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "situation_id": situation,
+            "revisions": revisions.iter().map(|r| json!({
+                "revision": r.revision,
+                "fingerprint": r.fingerprint,
+                "focus": r.focus,
+                "actor_principal_id": r.actor,
+                "cause": r.cause
+            })).collect::<Vec<_>>(),
+            "next_after": next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn get_situation_revision(
+    State(state): State<AppState>,
+    Path((workspace, situation, revision)): Path<(Uuid, Uuid, i64)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let snapshot =
+        situation_store::get_snapshot(&state.pool, workspace, situation, Some(revision)).await?;
+    Ok(no_store(situation_json(&snapshot), StatusCode::OK))
+}
+
 impl From<IdentityError> for ApiError {
     fn from(e: IdentityError) -> Self {
         match e {

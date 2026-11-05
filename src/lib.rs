@@ -1,5 +1,6 @@
 //! Small dependency-free experiment, not the complete Duhme v0180 contract.
 //! Describes *what a source says* without promoting it to ground truth.
+pub mod analysis_snapshot;
 pub mod api;
 pub mod authz;
 pub mod benchmark;
@@ -14,6 +15,7 @@ pub mod postgres_repository;
 pub mod provenance_dag;
 pub mod question_refs;
 pub mod situation;
+pub mod situation_store;
 pub mod source_catalog;
 pub mod source_import;
 

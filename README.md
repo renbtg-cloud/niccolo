@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.13)
+# Niccolò / Duhme — experimental Rust core (v0.17)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -221,3 +221,27 @@ The shell is embedded in the Rust binary with `include_str!` and uses browser-na
 there is no CDN or runtime filesystem dependency. Its state reducer is tested with Node 24's built-in
 test runner, so this milestone does not depend on the currently inconsistent prefetched npm lockfile.
 All HTTP responses now also receive a restrictive Content-Security-Policy header.
+
+
+## v0.16 — persistent Situation revisions
+
+[SITUATIONS_V016.md](SITUATIONS_V016.md) moves bounded Situation state into PostgreSQL.
+The authenticated API now persists focus, incremental source-document membership, attributed
+user-reported / hypothetical / investigative-preference contributions, corrections and retractions.
+Every material change creates an immutable revision with a stable SHA-256 fingerprint and exact
+active source/contribution membership. Historical snapshots are never rewritten to look as though
+they contained later context. Migration `sql/0011_situations.sql` adds six forced-RLS tables and
+all restrictive `niccolo_api` gates.
+
+## v0.17 — frozen analysis-input snapshots
+
+[ANALYSIS_SNAPSHOTS_V017.md](ANALYSIS_SNAPSHOTS_V017.md) adds an immutable binding between
+an analysis request and the exact Situation revision/fingerprint it may use. If the human adds
+context while an operation is in flight, the original analysis binding remains on its older input.
+An idempotent retry of the same `analysis_id` also returns the original input rather than silently
+rebinding to newer context. This is a persistence/concurrency primitive only: no model is called and
+no unperformed source analysis is claimed.
+
+Apply migrations `0001..0012` to a disposable PostgreSQL 17 database, then reproduce the complete
+validation with `scripts/run-v017-validation.sh`. The script requires the admin, legacy service and
+dedicated secure API URLs and also runs the dependency-free Node state tests.
