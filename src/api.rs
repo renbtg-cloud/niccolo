@@ -1,6 +1,7 @@
 //! Bound, explicit HTTP boundary. Not a public Internet deployment template.
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
+use crate::analysis_context_summary::{self, AnalysisContextSummaryError};
 use crate::analysis_context_usage::{self, AnalysisContextUsageError};
 use crate::analysis_coverage::{self, AnalysisCoverageError};
 use crate::analysis_output::{self, AnalysisOutputError};
@@ -233,6 +234,10 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions",
             get(list_used_contributions),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/context-usage",
+            get(analysis_context_summary),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
@@ -819,6 +824,24 @@ impl From<AnalysisSnapshotError> for ApiError {
     }
 }
 
+impl From<AnalysisContextSummaryError> for ApiError {
+    fn from(error: AnalysisContextSummaryError) -> Self {
+        match error {
+            AnalysisContextSummaryError::Invalid => Self(
+                StatusCode::BAD_REQUEST,
+                "invalid analysis context summary request",
+            ),
+            AnalysisContextSummaryError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis context summary unavailable",
+            ),
+        }
+    }
+}
+
 impl From<AnalysisContextUsageError> for ApiError {
     fn from(error: AnalysisContextUsageError) -> Self {
         match error {
@@ -1347,6 +1370,46 @@ async fn list_used_contributions(
             "analysis_id":analysis,
             "next_after":next_after,
             "used_contributions":items.iter().map(used_contribution_json).collect::<Vec<_>>(),
+            "presence_in_input_does_not_imply_use":true,
+            "use_does_not_imply_truth":true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn analysis_context_summary(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<UsedContributionQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (items, next_after) = analysis_context_summary::list(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.after,
+        query.limit.unwrap_or(25),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "analysis_id":analysis,
+            "input_revision":items.first().map(|item| item.input_revision),
+            "next_after":next_after,
+            "contributions":items.iter().map(|item| json!({
+                "contribution_id":item.contribution_id,
+                "author_principal_id":item.author,
+                "kind":item.kind,
+                "text":item.text,
+                "scope":item.scope,
+                "related_evidence_id":item.related_evidence_id,
+                "present_in_frozen_input":true,
+                "used_by_analysis":item.used_by_analysis,
+                "use_recorded_by_principal_id":item.use_recorded_by,
+                "is_verified_evidence":false
+            })).collect::<Vec<_>>(),
             "presence_in_input_does_not_imply_use":true,
             "use_does_not_imply_truth":true
         }),

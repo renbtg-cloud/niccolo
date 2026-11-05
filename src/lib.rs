@@ -1,5 +1,6 @@
 //! Small dependency-free experiment, not the complete Duhme v0180 contract.
 //! Describes *what a source says* without promoting it to ground truth.
+pub mod analysis_context_summary;
 pub mod analysis_context_usage;
 pub mod analysis_coverage;
 pub mod analysis_output;

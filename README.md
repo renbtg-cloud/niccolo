@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.26)
+# Niccolò / Duhme — experimental Rust core (v0.27)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -338,3 +338,8 @@ Targeted clarification answers are persisted as attributed `USER_REPORTED` Situa
 ## v0.26 — explicit context usage
 
 Analyses can record exactly which frozen human contributions were actually used. Presence is not use; use is not truth. See `ANALYSIS_CONTEXT_USAGE_V026.md`.
+
+
+## v0.27 — frozen human context: present vs actually used
+
+`GET .../analysis-snapshots/{analysis}/context-usage` lists every human contribution that was present in the frozen analysis input and separately reports whether the analysis recorded it as actually used. Presence does not imply use, and use does not make a user report, hypothetical, or investigative preference true or verified evidence. Later contributions never appear in an older frozen input.
