@@ -6,6 +6,7 @@ use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
 use crate::clarification::{self, ClarificationError};
+use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
@@ -235,6 +236,14 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/clarifications/{question}",
             post(propose_analysis_clarification),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/clarifications/{question}/answers",
+            get(list_clarification_answers),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/clarifications/{question}/answers/{answer}",
+            post(answer_clarification),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/examined-fragments/{evidence}",
@@ -821,6 +830,26 @@ impl From<AnalysisCoverageError> for ApiError {
     }
 }
 
+impl From<ClarificationAnswerError> for ApiError {
+    fn from(error: ClarificationAnswerError) -> Self {
+        match error {
+            ClarificationAnswerError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid clarification answer")
+            }
+            ClarificationAnswerError::Conflict => {
+                Self(StatusCode::CONFLICT, "clarification answer conflict")
+            }
+            ClarificationAnswerError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "clarification unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "clarification answer unavailable",
+            ),
+        }
+    }
+}
+
 impl From<ClarificationError> for ApiError {
     fn from(error: ClarificationError) -> Self {
         match error {
@@ -1124,6 +1153,96 @@ async fn list_analysis_clarifications(
             "clarifications": questions.iter().map(clarification_json).collect::<Vec<_>>(),
             "questions_are_not_evidence": true,
             "later_context_does_not_rewrite_question_origin": true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClarificationAnswerRequest {
+    text: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClarificationAnswerQuery {
+    after: Option<Uuid>,
+    limit: Option<i64>,
+}
+
+fn clarification_answer_json(answer: &clarification_answer::ClarificationAnswer) -> Value {
+    json!({
+        "answer_id": answer.answer_id,
+        "question_id": answer.question_id,
+        "analysis_id": answer.analysis_id,
+        "contribution_id": answer.contribution_id,
+        "text": answer.text,
+        "answered_by_principal_id": answer.answered_by,
+        "question_input_revision": answer.question_input_revision,
+        "answer_revision": answer.answer_revision,
+        "current_situation_revision": answer.current_revision,
+        "answer_is_in_original_analysis_input": answer.answer_revision <= answer.question_input_revision,
+        "kind": "USER_REPORTED",
+        "is_evidence": false,
+        "replayed": answer.replayed
+    })
+}
+
+async fn answer_clarification(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, question, answer)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ClarificationAnswerRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let answer = clarification_answer::answer(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        analysis,
+        question,
+        answer,
+        &input.text,
+    )
+    .await?;
+    Ok(no_store(
+        clarification_answer_json(&answer),
+        if answer.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_clarification_answers(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, question)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<ClarificationAnswerQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (answers, next_after) = clarification_answer::list(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        question,
+        query.after,
+        query.limit.unwrap_or(25),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "analysis_id": analysis,
+            "question_id": question,
+            "next_after": next_after,
+            "answers": answers.iter().map(clarification_answer_json).collect::<Vec<_>>(),
+            "answers_are_new_attributed_context": true,
+            "answers_do_not_rewrite_frozen_analysis_input": true,
+            "answers_are_not_evidence": true
         }),
         StatusCode::OK,
     ))

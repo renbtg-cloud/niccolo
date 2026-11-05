@@ -85,7 +85,7 @@ pub struct MutationResult {
 
 type ActiveContributionRow = (Uuid, Uuid, String, String, String, Option<Uuid>);
 
-fn clean_text(input: &str) -> Result<String, SituationStoreError> {
+pub(crate) fn clean_text(input: &str) -> Result<String, SituationStoreError> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed.len() > 4096 || trimmed.chars().any(char::is_control) {
         return Err(SituationStoreError::Invalid);
@@ -134,7 +134,7 @@ async fn visible_situation(
     .await
 }
 
-async fn current_snapshot_in_tx(
+pub(crate) async fn current_snapshot_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,
@@ -217,7 +217,7 @@ pub(crate) async fn snapshot_in_tx(
     })
 }
 
-async fn checkpoint(
+pub(crate) async fn checkpoint(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,

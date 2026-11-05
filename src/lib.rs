@@ -7,6 +7,7 @@ pub mod api;
 pub mod authz;
 pub mod benchmark;
 pub mod clarification;
+pub mod clarification_answer;
 pub mod dag_evolution;
 pub mod discovery;
 pub mod evolution;
