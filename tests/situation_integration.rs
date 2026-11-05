@@ -616,7 +616,7 @@ async fn new_situation_tables_are_forced_rls_and_have_all_api_gates() {
     .fetch_all(&f.admin)
     .await
     .unwrap();
-    assert_eq!(rows.len(), 9);
+    assert_eq!(rows.len(), 10);
     for (name, rls, forced, gates) in rows {
         assert!(rls, "{name} RLS disabled");
         assert!(forced, "{name} FORCE RLS disabled");

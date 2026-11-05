@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.23)
+# Niccolò / Duhme — experimental Rust core (v0.24)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -315,3 +315,16 @@ coverage summary.
 
 No migration is added by v0.23; apply `0001..0015` to a disposable PostgreSQL 17 database and run
 `scripts/run-v023-validation.sh`. v0.23 still performs no model call.
+
+
+## v0.24 — clarification questions bound to frozen analysis input
+
+[CLARIFICATIONS_V024.md](CLARIFICATIONS_V024.md) lets an authorized caller persist a targeted
+clarification question together with the exact immutable analysis snapshot that motivated it and an
+explicit reason the missing answer could matter. The question reuses the existing investigative
+question/feedback machinery and remains a question, never evidence. Later Situation revisions do not
+rewrite the question's origin; the API exposes when its motivating input is no longer current.
+
+Migration `sql/0016_analysis_clarification_questions.sql` adds the forced-RLS binding table. Apply
+`0001..0016` to a disposable PostgreSQL 17 database and run `scripts/run-v024-validation.sh`. v0.24
+still performs no model call and does not automatically ask or answer a clarification.
