@@ -6,6 +6,7 @@ use crate::analysis_context_usage::{self, AnalysisContextUsageError};
 use crate::analysis_coverage::{self, AnalysisCoverageError};
 use crate::analysis_delta::{self, AnalysisDeltaError};
 use crate::analysis_output::{self, AnalysisOutputError};
+use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
 use crate::clarification::{self, ClarificationError};
@@ -243,6 +244,10 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/delta",
             get(analysis_delta),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/review",
+            get(analysis_review),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
@@ -868,6 +873,20 @@ impl From<AnalysisContextUsageError> for ApiError {
     }
 }
 
+impl From<AnalysisReviewError> for ApiError {
+    fn from(error: AnalysisReviewError) -> Self {
+        match error {
+            AnalysisReviewError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis review unavailable",
+            ),
+        }
+    }
+}
+
 impl From<AnalysisDeltaError> for ApiError {
     fn from(error: AnalysisDeltaError) -> Self {
         match error {
@@ -1468,6 +1487,30 @@ async fn analysis_delta(
             })).collect::<Vec<_>>(),
             "delta_is_not_a_truth_judgement":true,
             "reanalysis_is_not_automatic":true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn analysis_review(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let r = analysis_review::get(&state.pool, workspace, situation, analysis).await?;
+    Ok(no_store(
+        json!({
+            "analysis_id":r.analysis_id,"goal":r.goal,"requested_by_principal_id":r.requested_by,
+            "reanalysis_of":r.reanalysis_of,"input_revision":r.input_revision,
+            "current_situation_revision":r.current_revision,"input_is_current":r.input_is_current,
+            "output_present":r.output_present,
+            "sources":{"present_in_input":r.input_source_count,"catalogued_fragments":r.catalogued_fragment_count,"examined_fragments":r.examined_fragment_count},
+            "human_context":{"present_in_input":r.input_context_count,"recorded_as_used":r.used_context_count},
+            "clarifications":{"questions":r.clarification_question_count,"answered_questions":r.answered_question_count,"answers":r.clarification_answer_count},
+            "delta":{"focus_changed":r.focus_changed,"sources_added":r.added_source_count,"sources_removed":r.removed_source_count,"context_added":r.added_context_count,"context_removed":r.removed_context_count},
+            "counts_do_not_establish_completeness_or_truth":true,
+            "human_review_required":true
         }),
         StatusCode::OK,
     ))

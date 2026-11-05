@@ -5,6 +5,7 @@ pub mod analysis_context_usage;
 pub mod analysis_coverage;
 pub mod analysis_delta;
 pub mod analysis_output;
+pub mod analysis_review;
 pub mod analysis_snapshot;
 pub mod api;
 pub mod authz;

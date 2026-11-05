@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.28)
+# Niccolò / Duhme — experimental Rust core (v0.29)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -348,3 +348,8 @@ Analyses can record exactly which frozen human contributions were actually used.
 ## v0.28 — deterministic delta since a frozen analysis input
 
 `GET .../analysis-snapshots/{analysis}/delta` compares the exact frozen Situation revision with the current Situation in one repeatable-read transaction. It exposes focus changes, source additions/removals, contribution additions, and old contributions that are now corrected or retracted. The delta is not a truth judgement and does not automatically trigger reanalysis.
+
+
+## v0.29 — compact human review
+
+`GET .../analysis-snapshots/{analysis}/review` assembles one repeatable-read review of frozen input, recorded context use, source-fragment coverage, clarification activity, output presence, and structural delta to the current Situation. Counts describe records, not truth or completeness; the response keeps `human_review_required=true`.
