@@ -224,6 +224,10 @@ pub fn router(pool: PgPool) -> Router {
             get(list_examined_fragments),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/coverage",
+            get(analysis_coverage_summary),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/examined-fragments/{evidence}",
             post(record_examined_fragment),
         )
@@ -1049,6 +1053,43 @@ async fn record_examined_fragment(
 struct AnalysisCoverageQuery {
     after: Option<Uuid>,
     limit: Option<i64>,
+}
+
+async fn analysis_coverage_summary(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<AnalysisCoverageQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (documents, next_after) = analysis_coverage::summarize(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.after,
+        query.limit.unwrap_or(50),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "analysis_id": analysis,
+            "coverage_scope": "FROZEN_ANALYSIS_INPUT",
+            "next_after": next_after,
+            "documents": documents.iter().map(|document| json!({
+                "document_id": document.document_id,
+                "format": document.format,
+                "catalogued_fragment_count": document.catalogued_fragment_count,
+                "examined_fragment_count": document.examined_fragment_count,
+                "all_catalogued_fragments_examined": document.catalogued_fragment_count > 0
+                    && document.catalogued_fragment_count == document.examined_fragment_count,
+                "proves_full_source_examined": false
+            })).collect::<Vec<_>>(),
+            "source_present_does_not_mean_examined": true,
+            "all_catalogued_fragments_examined_does_not_prove_unsupported_media_examined": true
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn list_examined_fragments(

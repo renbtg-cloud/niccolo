@@ -22,6 +22,14 @@ pub enum AnalysisCoverageError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentCoverage {
+    pub document_id: Uuid,
+    pub format: String,
+    pub catalogued_fragment_count: i64,
+    pub examined_fragment_count: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExaminedFragment {
     pub evidence_id: Uuid,
     pub document_id: Uuid,
@@ -226,4 +234,71 @@ pub async fn list(
     let next_after = has_more.then(|| fragments.last().expect("non-empty page").evidence_id);
     tx.commit().await?;
     Ok((fragments, next_after))
+}
+
+pub async fn summarize(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<(Vec<DocumentCoverage>, Option<Uuid>), AnalysisCoverageError> {
+    if !(1..=100).contains(&limit) {
+        return Err(AnalysisCoverageError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, true).await?;
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3)",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !visible {
+        return Err(AnalysisCoverageError::Invisible);
+    }
+    let rows: Vec<(Uuid, String, i64, i64)> = sqlx::query_as(
+        "SELECT rs.document_id,d.format,COUNT(f.evidence_id)::bigint,COUNT(c.evidence_id)::bigint \
+         FROM niccolo.situation_analysis_snapshots s \
+         JOIN niccolo.situation_revision_sources rs \
+           ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id AND rs.revision=s.input_revision \
+         JOIN niccolo.source_documents d \
+           ON d.workspace_id=rs.workspace_id AND d.document_id=rs.document_id \
+         LEFT JOIN niccolo.source_fragments f \
+           ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id \
+         LEFT JOIN niccolo.situation_analysis_examined_fragments c \
+           ON c.workspace_id=s.workspace_id AND c.situation_id=s.situation_id \
+          AND c.analysis_id=s.analysis_id AND c.evidence_id=f.evidence_id \
+         WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 \
+           AND ($4::uuid IS NULL OR rs.document_id > $4) \
+         GROUP BY rs.document_id,d.format ORDER BY rs.document_id LIMIT $5",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(after)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    let has_more = rows.len() as i64 > limit;
+    let documents = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(
+            |(document_id, format, catalogued_fragment_count, examined_fragment_count)| {
+                DocumentCoverage {
+                    document_id,
+                    format,
+                    catalogued_fragment_count,
+                    examined_fragment_count,
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    let next_after = has_more.then(|| documents.last().expect("non-empty page").document_id);
+    tx.commit().await?;
+    Ok((documents, next_after))
 }

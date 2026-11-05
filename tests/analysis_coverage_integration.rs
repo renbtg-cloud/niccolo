@@ -391,3 +391,213 @@ async fn concurrent_identical_coverage_records_one_row() {
     .unwrap();
     assert_eq!(count, 1);
 }
+
+fn coverage_summary_path(f: &Setup, situation: Uuid, analysis: Uuid) -> String {
+    format!("{}/coverage", analysis_path(f, situation, analysis))
+}
+
+#[tokio::test]
+async fn coverage_summary_distinguishes_present_partial_and_all_catalogued_text() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    let (document, ids) = seed_document(&f, 2).await;
+    add_source(&f, situation, document).await;
+    begin_analysis(&f, situation, analysis, None).await;
+
+    let summary_path = coverage_summary_path(&f, situation, analysis);
+    let (_, none) = call(
+        f.router.clone(),
+        req("GET", summary_path.clone(), &f.reader, None),
+    )
+    .await;
+    let doc = &none["documents"][0];
+    assert_eq!(doc["catalogued_fragment_count"], 2);
+    assert_eq!(doc["examined_fragment_count"], 0);
+    assert_eq!(doc["all_catalogued_fragments_examined"], false);
+    assert_eq!(doc["proves_full_source_examined"], false);
+    assert_eq!(none["source_present_does_not_mean_examined"], true);
+
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                format!("{}/{}", coverage_path(&f, situation, analysis), ids[0]),
+                &f.writer,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (_, partial) = call(
+        f.router.clone(),
+        req("GET", summary_path.clone(), &f.reader, None),
+    )
+    .await;
+    assert_eq!(partial["documents"][0]["examined_fragment_count"], 1);
+    assert_eq!(
+        partial["documents"][0]["all_catalogued_fragments_examined"],
+        false
+    );
+
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                format!("{}/{}", coverage_path(&f, situation, analysis), ids[1]),
+                &f.writer,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (_, complete_catalogue) =
+        call(f.router.clone(), req("GET", summary_path, &f.reader, None)).await;
+    assert_eq!(
+        complete_catalogue["documents"][0]["examined_fragment_count"],
+        2
+    );
+    assert_eq!(
+        complete_catalogue["documents"][0]["all_catalogued_fragments_examined"],
+        true
+    );
+    assert_eq!(
+        complete_catalogue["documents"][0]["proves_full_source_examined"],
+        false
+    );
+    assert_eq!(
+        complete_catalogue["all_catalogued_fragments_examined_does_not_prove_unsupported_media_examined"],
+        true
+    );
+}
+
+#[tokio::test]
+async fn coverage_summary_uses_frozen_source_set_not_current_situation_sources() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let original = Uuid::new_v4();
+    let reanalysis = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    let (first_doc, _) = seed_document(&f, 1).await;
+    add_source(&f, situation, first_doc).await;
+    begin_analysis(&f, situation, original, None).await;
+
+    let (later_doc, _) = seed_document(&f, 1).await;
+    add_source(&f, situation, later_doc).await;
+
+    let (_, old) = call(
+        f.router.clone(),
+        req(
+            "GET",
+            coverage_summary_path(&f, situation, original),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(old["documents"].as_array().unwrap().len(), 1);
+    assert_eq!(old["documents"][0]["document_id"], first_doc.to_string());
+
+    begin_analysis(&f, situation, reanalysis, Some(original)).await;
+    let (_, newer) = call(
+        f.router.clone(),
+        req(
+            "GET",
+            coverage_summary_path(&f, situation, reanalysis),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    let ids = newer["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["document_id"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(ids.contains(first_doc.to_string().as_str()));
+    assert!(ids.contains(later_doc.to_string().as_str()));
+}
+
+#[tokio::test]
+async fn coverage_summary_is_bounded_paginated_and_rejects_invalid_limit() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    for _ in 0..3 {
+        let (document, _) = seed_document(&f, 1).await;
+        add_source(&f, situation, document).await;
+    }
+    begin_analysis(&f, situation, analysis, None).await;
+    let base = coverage_summary_path(&f, situation, analysis);
+    let (_, first) = call(
+        f.router.clone(),
+        req("GET", format!("{base}?limit=2"), &f.reader, None),
+    )
+    .await;
+    assert_eq!(first["documents"].as_array().unwrap().len(), 2);
+    let cursor = first["next_after"].as_str().unwrap();
+    let (_, second) = call(
+        f.router.clone(),
+        req(
+            "GET",
+            format!("{base}?limit=2&after={cursor}"),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(second["documents"].as_array().unwrap().len(), 1);
+    assert!(second["next_after"].is_null());
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req("GET", format!("{base}?limit=0"), &f.reader, None),
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn zero_catalogued_fragments_never_claims_complete_source_examination() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    let (document, ids) = seed_document(&f, 0).await;
+    assert!(ids.is_empty());
+    add_source(&f, situation, document).await;
+    begin_analysis(&f, situation, analysis, None).await;
+
+    let (status, summary) = call(
+        f.router.clone(),
+        req(
+            "GET",
+            coverage_summary_path(&f, situation, analysis),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(summary["documents"][0]["catalogued_fragment_count"], 0);
+    assert_eq!(summary["documents"][0]["examined_fragment_count"], 0);
+    assert_eq!(
+        summary["documents"][0]["all_catalogued_fragments_examined"],
+        false
+    );
+    assert_eq!(
+        summary["documents"][0]["proves_full_source_examined"],
+        false
+    );
+}

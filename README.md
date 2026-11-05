@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.22)
+# Niccolò / Duhme — experimental Rust core (v0.23)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -301,3 +301,17 @@ is true.
 
 Apply migrations `0001..0015` to a disposable PostgreSQL 17 database, then reproduce the complete
 validation with `scripts/run-v022-validation.sh`. v0.22 still performs no model call.
+
+
+## v0.23 — truthful per-source coverage summary
+
+[ANALYSIS_COVERAGE_SUMMARY_V023.md](ANALYSIS_COVERAGE_SUMMARY_V023.md) summarizes each document
+that belonged to an analysis's frozen input separately from the exact fragment records introduced in
+v0.22. The API reports catalogued text-fragment count versus examined-fragment count and can say
+when every **catalogued fragment** was examined. It deliberately never promotes that condition to
+"the full source was examined": unsupported media, missing export content and other uncatalogued
+material remain outside the claim. Later Situation sources do not appear in an older analysis's
+coverage summary.
+
+No migration is added by v0.23; apply `0001..0015` to a disposable PostgreSQL 17 database and run
+`scripts/run-v023-validation.sh`. v0.23 still performs no model call.
