@@ -1,6 +1,7 @@
 //! Bound, explicit HTTP boundary. Not a public Internet deployment template.
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
+use crate::analysis_context_usage::{self, AnalysisContextUsageError};
 use crate::analysis_coverage::{self, AnalysisCoverageError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
@@ -228,6 +229,14 @@ pub fn router(pool: PgPool) -> Router {
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/coverage",
             get(analysis_coverage_summary),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions",
+            get(list_used_contributions),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
+            post(record_used_contribution),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/clarifications",
@@ -810,6 +819,27 @@ impl From<AnalysisSnapshotError> for ApiError {
     }
 }
 
+impl From<AnalysisContextUsageError> for ApiError {
+    fn from(error: AnalysisContextUsageError) -> Self {
+        match error {
+            AnalysisContextUsageError::Invalid => Self(
+                StatusCode::BAD_REQUEST,
+                "invalid analysis context usage request",
+            ),
+            AnalysisContextUsageError::Conflict => {
+                Self(StatusCode::CONFLICT, "analysis context usage conflict")
+            }
+            AnalysisContextUsageError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "analysis contribution unavailable")
+            }
+            _ => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis context usage unavailable",
+            ),
+        }
+    }
+}
+
 impl From<AnalysisCoverageError> for ApiError {
     fn from(error: AnalysisCoverageError) -> Self {
         match error {
@@ -1243,6 +1273,82 @@ async fn list_clarification_answers(
             "answers_are_new_attributed_context": true,
             "answers_do_not_rewrite_frozen_analysis_input": true,
             "answers_are_not_evidence": true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UsedContributionQuery {
+    after: Option<Uuid>,
+    limit: Option<i64>,
+}
+
+fn used_contribution_json(item: &analysis_context_usage::UsedContribution) -> Value {
+    json!({
+        "contribution_id":item.contribution_id,
+        "author_principal_id":item.author,
+        "kind":item.kind,
+        "text":item.text,
+        "scope":item.scope,
+        "related_evidence_id":item.related_evidence_id,
+        "input_revision":item.input_revision,
+        "recorded_by_principal_id":item.recorded_by,
+        "replayed":item.replayed,
+        "used_does_not_imply_true":true,
+        "is_verified_evidence":false
+    })
+}
+
+async fn record_used_contribution(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, contribution)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let item = analysis_context_usage::record(
+        &state.pool,
+        workspace,
+        actor,
+        situation,
+        analysis,
+        contribution,
+    )
+    .await?;
+    Ok(no_store(
+        used_contribution_json(&item),
+        if item.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_used_contributions(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<UsedContributionQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (items, next_after) = analysis_context_usage::list(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.after,
+        query.limit.unwrap_or(25),
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "analysis_id":analysis,
+            "next_after":next_after,
+            "used_contributions":items.iter().map(used_contribution_json).collect::<Vec<_>>(),
+            "presence_in_input_does_not_imply_use":true,
+            "use_does_not_imply_truth":true
         }),
         StatusCode::OK,
     ))

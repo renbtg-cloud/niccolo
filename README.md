@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.25)
+# Niccolò / Duhme — experimental Rust core (v0.26)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -333,3 +333,8 @@ still performs no model call and does not automatically ask or answer a clarific
 ## v0.25 — clarification answers become later context
 
 Targeted clarification answers are persisted as attributed `USER_REPORTED` Situation contributions. They create later revisions, remain non-evidence, and never rewrite the frozen input that caused the question. See `CLARIFICATION_ANSWERS_V025.md`.
+
+
+## v0.26 — explicit context usage
+
+Analyses can record exactly which frozen human contributions were actually used. Presence is not use; use is not truth. See `ANALYSIS_CONTEXT_USAGE_V026.md`.
