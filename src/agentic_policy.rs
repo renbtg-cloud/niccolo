@@ -147,16 +147,29 @@ pub async fn plan_for_intent(
         steps.push(StepInput{step_id:clarify,ordinal:6,kind:"PROPOSE_CLARIFICATION".into(),label:format!("Address {} recorded clarification/evidence/conflict/source-request pressure point(s)",clarification_pressure),requires_human:false,depends_on:vec![alternatives]});
         synth_deps = vec![clarify];
     }
+    let synthesis_label = match intent {
+        Some(HumanIntent::AboutToActOrSay) => {
+            "Synthesize decision support before the human acts: consequences, uncertainty, alternatives, and explicit non-execution"
+        }
+        Some(HumanIntent::Understand) => {
+            "Synthesize provisional understanding with evidence/inference separation and competing interpretations"
+        }
+        Some(HumanIntent::FigureOutWhatMatters) => {
+            "Synthesize what appears material, why it matters, uncertainty, and attention-worthy unresolved questions"
+        }
+        None => "Synthesize provisional answer with evidence/inference separation",
+    };
     steps.push(StepInput {
         step_id: synth,
         ordinal: steps.len() as i32 + 1,
         kind: "SYNTHESIZE".into(),
-        label: "Synthesize provisional answer with evidence/inference separation".into(),
+        label: synthesis_label.into(),
         requires_human: false,
         depends_on: synth_deps,
     });
     steps.push(StepInput{step_id:challenge,ordinal:steps.len() as i32+1,kind:"CHALLENGE_SYNTHESIS".into(),label:"Adversarially challenge the synthesis: seek counterevidence, assumption risk, competing explanations and coverage gaps".into(),requires_human:false,depends_on:vec![synth]});
-    let needs_human = clarification_pressure > 0
+    let needs_human = matches!(intent, Some(HumanIntent::AboutToActOrSay))
+        || clarification_pressure > 0
         || sig.triggered_stop_conditions > 0
         || r.added_source_count > 0
         || r.added_context_count > 0
