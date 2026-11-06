@@ -702,3 +702,52 @@ async fn source_speaker_labels_are_visible_without_becoming_identities() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+#[tokio::test]
+async fn identity_catalog_is_paginated_and_human_curated() {
+    let (_admin, _app, w, _, token, router) = setup().await;
+    let first = Uuid::from_u128(1);
+    let second = Uuid::from_u128(2);
+
+    for (person, label) in [(first, "Ana"), (second, "Roberto")] {
+        let path = format!("/v1/workspaces/{w}/identities/{person}");
+        let (status, _) = invoke(
+            router.clone(),
+            request(
+                "POST",
+                &path,
+                Some(&token),
+                Some("application/json"),
+                None,
+                json!({"display_label":label}).to_string().as_bytes(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+
+    let path = format!("/v1/workspaces/{w}/identities?limit=1");
+    let (status, page1) = invoke(
+        router.clone(),
+        request("GET", &path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page1["catalog_is_human_curated"], true);
+    assert_eq!(page1["identities"].as_array().unwrap().len(), 1);
+    assert_eq!(page1["identities"][0]["person_id"], first.to_string());
+    assert_eq!(page1["identities"][0]["display_label"], "Ana");
+    assert_eq!(page1["next_after"], first.to_string());
+
+    let path = format!("/v1/workspaces/{w}/identities?after={first}&limit=1");
+    let (status, page2) = invoke(
+        router,
+        request("GET", &path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page2["identities"].as_array().unwrap().len(), 1);
+    assert_eq!(page2["identities"][0]["person_id"], second.to_string());
+    assert_eq!(page2["identities"][0]["display_label"], "Roberto");
+    assert!(page2["next_after"].is_null());
+}
+
