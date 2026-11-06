@@ -203,3 +203,94 @@ async fn v1041_v1060_reasoning_packet_uses_only_fragments_from_frozen_revision()
             .all(|fragment| fragment.document_id == before)
     );
 }
+
+#[tokio::test]
+async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_budget() {
+    let h = setup().await;
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &situation_path,
+            &h.token,
+            Some(json!({"focus":"Bound the frozen source packet"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let many = (0..300)
+        .map(|i| {
+            format!(
+                "01/01/2026, 10:{:02} - Ana: FROZEN_FRAGMENT_{:03}\\n",
+                i % 60,
+                i
+            )
+        })
+        .collect::<String>();
+    let many: &'static str = Box::leak(many.into_boxed_str());
+    let document = ingest_and_attach(&h, "many.txt", many).await;
+
+    let analysis = Uuid::new_v4();
+    let analysis_path = format!("{situation_path}/analysis-snapshots/{analysis}");
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &analysis_path,
+            &h.token,
+            Some(json!({"goal":"Bound source material deterministically"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let digest = authz::credential_digest(&h.token).unwrap();
+    let build = || async {
+        authz::with_auth_digest(digest, async {
+            reasoning_packet::build(
+                &h.secure,
+                AnalysisScope {
+                    workspace: h.workspace,
+                    situation: h.situation,
+                    analysis,
+                },
+            )
+            .await
+            .unwrap()
+        })
+        .await
+    };
+    let first = build().await;
+    let second = build().await;
+
+    assert_eq!(first.frozen_input.sources, vec![document]);
+    assert_eq!(first.frozen_input.source_fragment_count_total, 300);
+    assert_eq!(first.frozen_input.source_fragment_count_included, 256);
+    assert!(first.frozen_input.source_packet_truncated);
+    assert_eq!(
+        first.frozen_input.source_fragments.first().unwrap().ordinal,
+        0
+    );
+    assert_eq!(
+        first.frozen_input.source_fragments.last().unwrap().ordinal,
+        255
+    );
+    assert_eq!(
+        first.frozen_input.source_fragments,
+        second.frozen_input.source_fragments
+    );
+    assert_eq!(
+        reasoning_packet::sha256(&first).unwrap(),
+        reasoning_packet::sha256(&second).unwrap()
+    );
+    assert!(
+        first
+            .frozen_input
+            .source_fragments
+            .iter()
+            .all(|fragment| fragment.document_id == document)
+    );
+}
+
