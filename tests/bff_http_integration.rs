@@ -320,7 +320,6 @@ async fn v316_v325_agentic_plan_is_inspectable_through_bff() {
     panic!("agentic plan was not visible");
 }
 
-
 #[tokio::test]
 async fn v391_v430_human_intent_bff_creates_frozen_analysis_and_uses_same_agentic_runtime() {
     let s = setup().await;
@@ -368,3 +367,209 @@ async fn v391_v430_human_intent_bff_creates_frozen_analysis_and_uses_same_agenti
     assert_eq!(frozen["incorporates_future_context"], false);
     assert!(frozen["goal"].as_str().unwrap().contains("evidence"));
 }
+
+fn intent_request(operation: Uuid, analysis: Uuid, intent: &str) -> Value {
+    json!({
+        "analysis_id": analysis,
+        "intent": intent,
+        "goal": null,
+        "reanalysis_of": null,
+        "idempotency_key": format!("intent-aware-{operation}"),
+        "step_budget": 32,
+        "context": {"surface":"intent-aware-planning-test","human_owns_project":true}
+    })
+}
+
+async fn agentic_plan(s: &Seed, operation: Uuid) -> Value {
+    let (status, _, plan) = invoke(
+        s.router.clone(),
+        req("GET", &path(s, operation, "/agentic"), &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    plan
+}
+
+fn step<'a>(plan: &'a Value, kind: &str) -> Option<&'a Value> {
+    plan["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|value| value["kind"] == kind)
+}
+
+#[tokio::test]
+async fn v431_v440_about_to_act_or_say_forces_explicit_human_boundary() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let (status, _, value) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(intent_request(operation, analysis, "ABOUT_TO_ACT_OR_SAY")),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["operation"]["state"], "WAITING_FOR_HUMAN");
+    assert_eq!(value["operation"]["terminal"], false);
+
+    let plan = agentic_plan(&s, operation).await;
+    let synthesis = step(&plan, "SYNTHESIZE").unwrap();
+    assert!(
+        synthesis["label"]
+            .as_str()
+            .unwrap()
+            .contains("before the human acts")
+    );
+    let human = step(&plan, "REQUEST_HUMAN_DECISION").unwrap();
+    assert_eq!(human["requires_human"], true);
+    assert_eq!(human["state"], "WAITING_FOR_HUMAN");
+    assert!(
+        human["label"]
+            .as_str()
+            .unwrap()
+            .contains("human must choose")
+    );
+    assert_eq!(step(&plan, "PREPARE_HANDOFF").unwrap()["state"], "PENDING");
+}
+
+#[tokio::test]
+async fn v441_v450_understand_changes_synthesis_without_forcing_human_choice() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let (status, _, value) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(intent_request(operation, analysis, "UNDERSTAND")),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["operation"]["state"], "SUCCEEDED");
+
+    let plan = agentic_plan(&s, operation).await;
+    assert!(step(&plan, "REQUEST_HUMAN_DECISION").is_none());
+    assert!(
+        step(&plan, "SYNTHESIZE").unwrap()["label"]
+            .as_str()
+            .unwrap()
+            .contains("provisional understanding")
+    );
+    assert_eq!(plan["complete"], true);
+}
+
+#[tokio::test]
+async fn v451_v460_figure_out_what_matters_keeps_attention_distinct_from_truth() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let (status, _, value) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(intent_request(
+                operation,
+                analysis,
+                "FIGURE_OUT_WHAT_MATTERS",
+            )),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["operation"]["state"], "SUCCEEDED");
+
+    let plan = agentic_plan(&s, operation).await;
+    let synthesis = step(&plan, "SYNTHESIZE").unwrap()["label"]
+        .as_str()
+        .unwrap();
+    assert!(synthesis.contains("what appears material"));
+    assert!(synthesis.contains("attention-worthy unresolved questions"));
+    assert!(step(&plan, "REQUEST_HUMAN_DECISION").is_none());
+}
+
+#[tokio::test]
+async fn v461_v470_human_intent_is_durable_input_with_non_execution_boundary() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let request = intent_request(operation, analysis, "ABOUT_TO_ACT_OR_SAY");
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(request),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let raw: String = sqlx::query_scalar(
+        "SELECT input_json FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(operation)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    let input: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(input["human_intent"], "ABOUT_TO_ACT_OR_SAY");
+    assert_eq!(input["human_owns_project"], true);
+    assert_eq!(input["automatic_external_action_allowed"], false);
+}
+
+#[tokio::test]
+async fn v471_v480_exact_intent_replay_reuses_operation_and_plan() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let request = intent_request(operation, analysis, "ABOUT_TO_ACT_OR_SAY");
+
+    for expected_replay in [false, true] {
+        let (status, _, value) = invoke(
+            s.router.clone(),
+            req(
+                "POST",
+                &intent_path(&s, operation, "/sync"),
+                &s.token,
+                Some(request.clone()),
+                None,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["analysis_replayed"], expected_replay);
+        assert_eq!(value["operation"]["operation_id"], operation.to_string());
+        assert_eq!(value["operation"]["state"], "WAITING_FOR_HUMAN");
+    }
+
+    let plan = agentic_plan(&s, operation).await;
+    assert_eq!(plan["plan_revision"], 1);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(operation)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+}
+
