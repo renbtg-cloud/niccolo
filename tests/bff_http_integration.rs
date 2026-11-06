@@ -779,8 +779,11 @@ async fn v761_v780_human_requested_reanalysis_preserves_prior_and_creates_linked
         "step_budget": 32
     });
 
-    let (status, _, value) =
-        invoke(s.router.clone(), req("POST", &route, &s.token, Some(request), None)).await;
+    let (status, _, value) = invoke(
+        s.router.clone(),
+        req("POST", &route, &s.token, Some(request), None),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(value["kind"], "REANALYZE");
     assert_eq!(value["state"], "SUCCEEDED");
@@ -817,4 +820,3 @@ async fn v761_v780_human_requested_reanalysis_preserves_prior_and_creates_linked
     .unwrap();
     assert_eq!(prior_count, 1);
 }
-
