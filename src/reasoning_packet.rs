@@ -8,7 +8,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -28,6 +28,17 @@ pub struct FrozenContribution {
     pub related_evidence_id: Option<Uuid>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenSourceFragment {
+    pub document_id: Uuid,
+    pub evidence_id: Uuid,
+    pub ordinal: i32,
+    pub format: String,
+    pub locator: String,
+    pub speaker_label: String,
+    pub content: String,
+    pub source_class: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PacketClaim {
     pub claim_id: Uuid,
     pub ordinal: i32,
@@ -42,6 +53,11 @@ pub struct FrozenInputPacket {
     pub focus: String,
     pub goal: String,
     pub sources: Vec<Uuid>,
+    pub source_fragments: Vec<FrozenSourceFragment>,
+    pub source_fragment_count_total: i64,
+    pub source_fragment_count_included: usize,
+    pub source_bytes_included: usize,
+    pub source_packet_truncated: bool,
     pub contributions: Vec<FrozenContribution>,
     pub input_is_current: bool,
     pub current_revision: i64,
@@ -83,11 +99,135 @@ pub struct PolicySignalPacket {
 fn dep<E: std::fmt::Display>(e: E) -> PacketError {
     PacketError::Dependency(e.to_string())
 }
+const MAX_SOURCE_FRAGMENTS: i64 = 256;
+const MAX_SOURCE_BYTES: usize = 384 * 1024;
+
+type FrozenFragmentRow = (Uuid, Uuid, i32, String, String, String, String, String);
+
+async fn packet_tx(
+    pool: &PgPool,
+    workspace: Uuid,
+) -> Result<Transaction<'_, Postgres>, PacketError> {
+    let mut tx = pool.begin().await.map_err(dep)?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await
+        .map_err(dep)?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(dep)?;
+    if privileged {
+        return Err(PacketError::Dependency(
+            "privileged SQL login prohibited".into(),
+        ));
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(dep)?;
+    crate::authz::bind_auth_digest(&mut tx).await.map_err(dep)?;
+    Ok(tx)
+}
+
+async fn frozen_source_fragments(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    revision: i64,
+) -> Result<(Vec<FrozenSourceFragment>, i64, usize, bool), PacketError> {
+    let mut tx = packet_tx(pool, workspace).await?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint \
+         FROM niccolo.situation_revision_sources rs \
+         JOIN niccolo.source_fragments f ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id \
+         WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(dep)?;
+    let rows: Vec<FrozenFragmentRow> = sqlx::query_as(
+        "SELECT d.document_id,f.evidence_id,f.ordinal,d.format,d.locator,f.speaker_label,e.content,e.source_class \
+         FROM niccolo.situation_revision_sources rs \
+         JOIN niccolo.source_documents d ON d.workspace_id=rs.workspace_id AND d.document_id=rs.document_id \
+         JOIN niccolo.source_fragments f ON f.workspace_id=d.workspace_id AND f.document_id=d.document_id \
+         JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
+         WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3 \
+         ORDER BY d.document_id,f.ordinal \
+         LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .bind(MAX_SOURCE_FRAGMENTS + 1)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(dep)?;
+    tx.commit().await.map_err(dep)?;
+
+    let mut fragments = Vec::new();
+    let mut bytes = 0usize;
+    let mut truncated = total > MAX_SOURCE_FRAGMENTS;
+    for (
+        document_id,
+        evidence_id,
+        ordinal,
+        format,
+        locator,
+        speaker_label,
+        content,
+        source_class,
+    ) in rows
+    {
+        if fragments.len() >= MAX_SOURCE_FRAGMENTS as usize {
+            truncated = true;
+            break;
+        }
+        let next = bytes.saturating_add(content.len());
+        if next > MAX_SOURCE_BYTES {
+            truncated = true;
+            break;
+        }
+        bytes = next;
+        fragments.push(FrozenSourceFragment {
+            document_id,
+            evidence_id,
+            ordinal,
+            format,
+            locator,
+            speaker_label,
+            content,
+            source_class,
+        });
+    }
+    if fragments.len() as i64 != total {
+        truncated = true;
+    }
+    Ok((fragments, total, bytes, truncated))
+}
 pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacket, PacketError> {
     let frozen =
         analysis_snapshot::materialize(pool, scope.workspace, scope.situation, scope.analysis)
             .await
             .map_err(dep)?;
+    let (
+        source_fragments,
+        source_fragment_count_total,
+        source_bytes_included,
+        source_packet_truncated,
+    ) = frozen_source_fragments(
+        pool,
+        scope.workspace,
+        scope.situation,
+        frozen.input.revision,
+    )
+    .await?;
     let claims =
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
             .await
@@ -125,6 +265,11 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             focus: frozen.input.focus,
             goal: frozen.analysis.goal,
             sources: frozen.input.sources,
+            source_fragment_count_included: source_fragments.len(),
+            source_fragments,
+            source_fragment_count_total,
+            source_bytes_included,
+            source_packet_truncated,
             contributions: frozen
                 .input
                 .contributions
