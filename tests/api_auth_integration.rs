@@ -686,11 +686,7 @@ async fn source_speaker_labels_are_visible_without_becoming_identities() {
     assert_eq!(speakers[1]["speaker_label"], "Bob");
     assert_eq!(speakers[1]["fragment_count"], 1);
 
-    let (status, _) = invoke(
-        router.clone(),
-        request("GET", &path, None, None, None, b""),
-    )
-    .await;
+    let (status, _) = invoke(router.clone(), request("GET", &path, None, None, None, b"")).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     let missing = format!("{}/speakers", source(w, Uuid::new_v4()));
@@ -739,15 +735,11 @@ async fn identity_catalog_is_paginated_and_human_curated() {
     assert_eq!(page1["next_after"], first.to_string());
 
     let path = format!("/v1/workspaces/{w}/identities?after={first}&limit=1");
-    let (status, page2) = invoke(
-        router,
-        request("GET", &path, Some(&token), None, None, b""),
-    )
-    .await;
+    let (status, page2) =
+        invoke(router, request("GET", &path, Some(&token), None, None, b"")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(page2["identities"].as_array().unwrap().len(), 1);
     assert_eq!(page2["identities"][0]["person_id"], second.to_string());
     assert_eq!(page2["identities"][0]["display_label"], "Roberto");
     assert!(page2["next_after"].is_null());
 }
-
