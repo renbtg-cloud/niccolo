@@ -43,6 +43,7 @@ export class NiccoloClient {
   correctSituationContribution(contributionId, replacementId, text, relatedEvidenceId = null) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}/corrections/${replacementId}`, { body: { text, related_evidence_id: relatedEvidenceId } }); }
   retractSituationContribution(contributionId) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}/retract`, { body: {} }); }
   revisions() { return this.request('GET', `${situationPath(this.config)}/revisions?after=0&limit=100`); }
+  analysisHistory(before = null, limit = 100) { const q = before ? `?before=${before}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${situationPath(this.config)}/analysis-history${q}`); }
   analysisReview(id) { return this.request('GET', `${analysisPath(this.config,id)}/review`); }
   analysisCoverage(id) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`); }
   analysisContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`); }

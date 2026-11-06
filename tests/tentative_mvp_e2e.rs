@@ -25,6 +25,13 @@ use std::{
 use tower::ServiceExt;
 use uuid::Uuid;
 
+struct ProviderFixture {
+    model: CurlOpenAiCompatibleModel,
+    stop: Arc<AtomicBool>,
+    thread: thread::JoinHandle<()>,
+    purposes: Arc<Mutex<Vec<String>>>,
+}
+
 struct Harness {
     _admin: PgPool,
     router: Router,
@@ -127,12 +134,7 @@ fn read_request(socket: &mut std::net::TcpStream) -> String {
     String::from_utf8_lossy(&bytes).to_string()
 }
 
-fn provider() -> (
-    CurlOpenAiCompatibleModel,
-    Arc<AtomicBool>,
-    thread::JoinHandle<()>,
-    Arc<Mutex<Vec<String>>>,
-) {
+fn provider() -> ProviderFixture {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
@@ -177,7 +179,12 @@ fn provider() -> (
         json_mode: true,
     })
     .unwrap();
-    (model, stop, handle, purposes)
+    ProviderFixture {
+        model,
+        stop,
+        thread: handle,
+        purposes,
+    }
 }
 
 async fn setup() -> Harness {
@@ -194,24 +201,26 @@ async fn setup() -> Harness {
     let workspace = Uuid::new_v4();
     let situation = Uuid::new_v4();
     let principal = Uuid::new_v4();
-    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'tentative-mvp-e2e')")
-        .bind(workspace)
-        .execute(&admin)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'tentative-mvp-e2e')",
+    )
+    .bind(workspace)
+    .execute(&admin)
+    .await
+    .unwrap();
     let token = authz::provision_token(&admin, principal, workspace, true, true, 1)
         .await
         .unwrap();
-    let (model, provider_stop, provider_thread, purposes) = provider();
+    let provider = provider();
     Harness {
         _admin: admin,
-        router: api::router_with_model(secure, Arc::new(model)),
+        router: api::router_with_model(secure, Arc::new(provider.model)),
         workspace,
         situation,
         token,
-        provider_stop,
-        provider_thread: Some(provider_thread),
-        purposes,
+        provider_stop: provider.stop,
+        provider_thread: Some(provider.thread),
+        purposes: provider.purposes,
     }
 }
 
@@ -268,10 +277,7 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     }
     let h = setup().await;
 
-    let situation_path = format!(
-        "/v1/workspaces/{}/situations/{}",
-        h.workspace, h.situation
-    );
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
     let (status, situation) = invoke(
         h.router.clone(),
         json_request(
@@ -338,11 +344,13 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(speakers["speaker_labels_are_verified_identities"], false);
-    assert!(speakers["speakers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|speaker| speaker["speaker_label"] == "Ana"));
+    assert!(
+        speakers["speakers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|speaker| speaker["speaker_label"] == "Ana")
+    );
 
     let person = Uuid::new_v4();
     let identity_path = format!("/v1/workspaces/{}/identities/{person}", h.workspace);
@@ -430,6 +438,10 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
 
     let purposes = h.purposes.lock().unwrap().clone();
     assert!(purposes.iter().any(|purpose| purpose == "SYNTHESIZE"));
-    assert!(purposes.iter().any(|purpose| purpose == "CHALLENGE_SYNTHESIS"));
+    assert!(
+        purposes
+            .iter()
+            .any(|purpose| purpose == "CHALLENGE_SYNTHESIS")
+    );
     assert!(purposes.iter().any(|purpose| purpose == "ASSESS_CONTEXT"));
 }
