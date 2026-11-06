@@ -23,6 +23,7 @@ export class NiccoloClient {
   analysisCoverage(id) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`); }
   analysisContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`); }
   analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
+  analysisOutput(id) { return this.request('GET', `${analysisPath(this.config,id)}/output`); }
   dashboard(id, operationId) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`); }
   runIntentSync(operationId, task) { return this.request('POST', `${intentPath(this.config,operationId)}/sync`, { body: task }); }
   runIntentAsync(operationId, task) { return this.request('POST', `${intentPath(this.config,operationId)}/async`, { body: task }); }
