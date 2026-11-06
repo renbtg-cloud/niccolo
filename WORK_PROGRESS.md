@@ -26,3 +26,16 @@ Closed after focused validation:
 - v1.001-v1.040: native in-process OpenAI-compatible provider hardening. Earlier commits ed8b37c and 27e0e29 used stale v0.641-v0.680 wording; this note corrects the tracking label without rewriting history.
 - v1.041-v1.080: frozen source fragments in the reasoning packet, so the real provider receives the actual source material rather than document IDs alone.
 - follow-on: model-produced claim provenance must bind only to source/context IDs present in the frozen reasoning input.
+
+## v1.001-v1.040 — native OpenAI-compatible provider
+
+Closed after validation:
+- native provider contract tests: 3/3 passed;
+- legacy/config compatibility tests: 3/3 passed;
+- tentative-MVP E2E using the native provider: 1/1 passed;
+- rustfmt check passed;
+- strict Clippy with pg-integration passed;
+- niccolo-api now selects the native in-process provider from the existing environment configuration.
+- the curl implementation remains compatibility/test code only; it is no longer the runtime path.
+
+Next: v1.041-v1.080 makes frozen source fragments part of the reasoning packet and proves the provider receives the actual source bytes/text.
