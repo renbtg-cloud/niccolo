@@ -85,6 +85,7 @@ pub struct BundleAnswer {
 type HeaderRow = (
     i64,
     String,
+    i64,
     String,
     Uuid,
     Option<Uuid>,
@@ -102,6 +103,7 @@ pub struct AnalysisBundle {
     pub analysis_id: Uuid,
     pub input_revision: i64,
     pub input_fingerprint: String,
+    pub identity_event_no_max: i64,
     pub goal: String,
     pub requested_by: Uuid,
     pub reanalysis_of: Option<Uuid>,
@@ -152,7 +154,7 @@ pub async fn load_bundle(
 ) -> Result<AnalysisBundle, ManifestError> {
     let mut tx = scoped(pool, workspace).await?;
     let header: Option<HeaderRow> = sqlx::query_as(
-        "SELECT s.input_revision,s.input_fingerprint,s.goal,s.requested_by_principal_id,s.reanalysis_of,\
+        "SELECT s.input_revision,s.input_fingerprint,s.identity_event_no_max,s.goal,s.requested_by_principal_id,s.reanalysis_of,\
                 o.answer_text,o.coverage_note,o.published_by_principal_id \
          FROM niccolo.situation_analysis_snapshots s \
          JOIN niccolo.situation_analysis_outputs o USING(workspace_id,situation_id,analysis_id) \
@@ -166,6 +168,7 @@ pub async fn load_bundle(
     let Some((
         input_revision,
         input_fingerprint,
+        identity_event_no_max,
         goal,
         requested_by,
         reanalysis_of,
@@ -350,6 +353,7 @@ pub async fn load_bundle(
         analysis_id: analysis,
         input_revision,
         input_fingerprint,
+        identity_event_no_max,
         goal,
         requested_by,
         reanalysis_of,
@@ -377,6 +381,7 @@ struct ManifestCore<'a> {
     analysis_id: Uuid,
     input_revision: i64,
     input_fingerprint: &'a str,
+    identity_event_no_max: i64,
     goal: &'a str,
     requested_by: Uuid,
     reanalysis_of: Option<Uuid>,
@@ -396,12 +401,13 @@ pub fn canonical_json(bundle: &AnalysisBundle) -> Result<Vec<u8>, ManifestError>
     // intentionally excluded: they are append-only events that may legitimately arrive after
     // the analysis itself has been sealed.
     let core = ManifestCore {
-        manifest_core_version: 1,
+        manifest_core_version: 2,
         workspace_id: bundle.workspace_id,
         situation_id: bundle.situation_id,
         analysis_id: bundle.analysis_id,
         input_revision: bundle.input_revision,
         input_fingerprint: &bundle.input_fingerprint,
+        identity_event_no_max: bundle.identity_event_no_max,
         goal: &bundle.goal,
         requested_by: bundle.requested_by,
         reanalysis_of: bundle.reanalysis_of,
