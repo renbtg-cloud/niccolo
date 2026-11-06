@@ -220,6 +220,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
+            "/v1/workspaces/{workspace}/sources/{document}/speakers",
+            get(list_source_speakers),
+        )
+        .route(
             "/v1/workspaces/{workspace}/sources/{document}",
             post(ingest),
         )
@@ -620,6 +624,39 @@ async fn list_sources(
                 "document_id":d.document_id,"format":d.format,"locator":d.locator,
                 "sha256":d.sha256,"byte_length":d.byte_length,"fragment_count":d.fragment_count
             })).collect::<Vec<_>>(),"next_after":page.next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn list_source_speakers(
+    State(state): State<AppState>,
+    Path((workspace, document)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let speakers = source_catalog::document_speakers(&state.pool, workspace, document)
+        .await
+        .map_err(|error| match error {
+            source_catalog::CatalogError::InvisibleDocument => {
+                ApiError(StatusCode::NOT_FOUND, "source unavailable")
+            }
+            source_catalog::CatalogError::TooManySpeakers => {
+                ApiError(StatusCode::UNPROCESSABLE_ENTITY, "speaker label limit exceeded")
+            }
+            _ => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "source speakers unavailable",
+            ),
+        })?;
+    Ok(no_store(
+        json!({
+            "document_id": document,
+            "speakers": speakers.iter().map(|speaker| json!({
+                "speaker_label": speaker.speaker_label,
+                "fragment_count": speaker.fragment_count,
+            })).collect::<Vec<_>>(),
+            "speaker_labels_are_verified_identities": false,
         }),
         StatusCode::OK,
     ))
