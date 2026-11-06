@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.30)
+# Niccolò / Duhme — experimental Rust core (v0.56)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -358,3 +358,10 @@ Analyses can record exactly which frozen human contributions were actually used.
 ## v0.30 — first-party web shell wired to persistent Situation state
 
 The zero-dependency first-party shell can now explicitly connect to the loopback API using a workspace UUID, Situation UUID and bearer token kept only in page memory. Focus changes, user-reported context, explicit WHAT-IF context and retractions then use the real persistent Situation API and immutable PostgreSQL revisions. Intention selection remains browser-session steering, and selecting `.txt`/`.eml` files still only catalogues filenames locally: the UI does not pretend those files were uploaded or analyzed. No LLM call is made. A real TCP loopback integration test exercises HTML/JS serving plus persistent Situation creation and context mutation.
+
+
+## v0.31–v0.56 — inspectable reasoning and human control
+
+The experimental core now records structured claims, explicit source/context use, append-only human review, claim lineage across reanalysis, uncertainty history, and action proposals whose acceptance is explicitly **not** execution. It also provides deterministic human-review read models and portable hashes. See [ANALYSIS_CLAIMS_V031_038.md](ANALYSIS_CLAIMS_V031_038.md) and [HUMAN_CONTROL_V039_056.md](HUMAN_CONTROL_V039_056.md).
+
+This work still does **not** implement the open `MVP-HYP-001` remembered rejection/deprioritization semantics.
