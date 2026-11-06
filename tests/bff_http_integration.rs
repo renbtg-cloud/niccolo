@@ -850,7 +850,10 @@ async fn v921_v940_reanalysis_revision_endpoint_reports_recorded_change_without_
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(created["result"]["new_analysis_id"], new_analysis.to_string());
+    assert_eq!(
+        created["result"]["new_analysis_id"],
+        new_analysis.to_string()
+    );
 
     let route = format!(
         "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/reanalysis-revision",
@@ -867,4 +870,3 @@ async fn v921_v940_reanalysis_revision_endpoint_reports_recorded_change_without_
         false
     );
 }
-
