@@ -1,0 +1,21 @@
+name: tmp export main now
+on:
+  push:
+    branches: [tmp-export-main-now]
+    paths: ['.export-now/ready']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .git .export-now .github/workflows/tmp-export-main-now.yml
+          tar -czf /tmp/niccolo-main-now.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-main-now
+          path: /tmp/niccolo-main-now.tar.gz
