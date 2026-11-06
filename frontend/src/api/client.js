@@ -1,6 +1,7 @@
 export class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 export function situationPath(c) { return `/v1/workspaces/${c.workspace}/situations/${c.situation}`; }
 export function operationPath(c, id) { return `${situationPath(c)}/bff/operations/${id}`; }
+export function intentPath(c, id) { return `${situationPath(c)}/bff/intents/${id}`; }
 export function analysisPath(c, id) { return `${situationPath(c)}/analysis-snapshots/${id}`; }
 export class NiccoloClient {
   constructor(config, fetchImpl = fetch) { this.config = config; this.fetch = fetchImpl; }
@@ -23,6 +24,8 @@ export class NiccoloClient {
   analysisContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`); }
   analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
   dashboard(id, operationId) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`); }
+  runIntentSync(operationId, task) { return this.request('POST', `${intentPath(this.config,operationId)}/sync`, { body: task }); }
+  runIntentAsync(operationId, task) { return this.request('POST', `${intentPath(this.config,operationId)}/async`, { body: task }); }
   runSync(operationId, task) { return this.request('POST', `${operationPath(this.config,operationId)}/sync`, { body: task }); }
   runAsync(operationId, task) { return this.request('POST', `${operationPath(this.config,operationId)}/async`, { body: task }); }
   operation(operationId, etag) { return this.request('GET', operationPath(this.config,operationId), { etag }); }
