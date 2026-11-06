@@ -31,6 +31,18 @@ impl IdentityAction {
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentitySubject {
+    pub person_id: Uuid,
+    pub display_label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityPage {
+    pub identities: Vec<IdentitySubject>,
+    pub next_after: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssignmentEvent {
     pub event_id: Uuid,
     pub event_no: i64,
@@ -79,6 +91,47 @@ async fn scoped(
 
 type StoredIdentityRow = (i64, Uuid, String, String, Option<Uuid>, String, Uuid);
 type IdentityHistoryRow = (Uuid, i64, Uuid, String, String, Option<Uuid>, Uuid, String);
+
+pub async fn list_identities(
+    pool: &PgPool,
+    workspace: Uuid,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<IdentityPage, IdentityError> {
+    if !(1..=100).contains(&limit) {
+        return Err(IdentityError::Input);
+    }
+    let mut tx = scoped(pool, workspace, true).await?;
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT person_id,display_label
+         FROM niccolo.identity_subjects
+         WHERE workspace_id=$1 AND ($2::uuid IS NULL OR person_id > $2)
+         ORDER BY person_id
+         LIMIT $3",
+    )
+    .bind(workspace)
+    .bind(after)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let has_more = rows.len() as i64 > limit;
+    let identities: Vec<_> = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|(person_id, display_label)| IdentitySubject {
+            person_id,
+            display_label,
+        })
+        .collect();
+    let next_after = has_more
+        .then(|| identities.last().map(|identity| identity.person_id))
+        .flatten();
+    Ok(IdentityPage {
+        identities,
+        next_after,
+    })
+}
 
 pub async fn create_identity(
     pool: &PgPool,
