@@ -27,6 +27,7 @@ struct ProviderFixture {
     stop: Arc<AtomicBool>,
     thread: thread::JoinHandle<()>,
     purposes: Arc<Mutex<Vec<String>>>,
+    wires: Arc<Mutex<Vec<String>>>,
 }
 
 struct Harness {
@@ -38,6 +39,7 @@ struct Harness {
     provider_stop: Arc<AtomicBool>,
     provider_thread: Option<thread::JoinHandle<()>>,
     purposes: Arc<Mutex<Vec<String>>>,
+    wires: Arc<Mutex<Vec<String>>>,
 }
 
 impl Drop for Harness {
@@ -139,11 +141,14 @@ fn provider() -> ProviderFixture {
     let stop_thread = stop.clone();
     let purposes = Arc::new(Mutex::new(Vec::new()));
     let purposes_thread = purposes.clone();
+    let wires = Arc::new(Mutex::new(Vec::new()));
+    let wires_thread = wires.clone();
     let handle = thread::spawn(move || {
         while !stop_thread.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((mut socket, _)) => {
                     let wire = read_request(&mut socket);
+                    wires_thread.lock().unwrap().push(wire.clone());
                     let (purpose, content) = response_content(&wire);
                     purposes_thread.lock().unwrap().push(purpose);
                     let envelope = json!({
@@ -178,6 +183,7 @@ fn provider() -> ProviderFixture {
         stop,
         thread: handle,
         purposes,
+        wires,
     }
 }
 
@@ -215,6 +221,7 @@ async fn setup() -> Harness {
         provider_stop: provider.stop,
         provider_thread: Some(provider.thread),
         purposes: provider.purposes,
+        wires: provider.wires,
     }
 }
 
@@ -431,4 +438,14 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
             .any(|purpose| purpose == "CHALLENGE_SYNTHESIS")
     );
     assert!(purposes.iter().any(|purpose| purpose == "ASSESS_CONTEXT"));
+
+    let wires = h.wires.lock().unwrap().clone();
+    assert!(
+        wires.iter().any(|wire| wire.contains("I will arrive at noon")),
+        "provider requests must include source fragment text from the frozen Situation input"
+    );
+    assert!(
+        wires.iter().any(|wire| wire.contains("I remember Ana sounding unusually certain.")),
+        "human context must remain available to the provider separately from source evidence"
+    );
 }
