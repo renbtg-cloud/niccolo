@@ -647,3 +647,68 @@ pub async fn release_execution(
     tx.commit().await?;
     Ok(changed == 1)
 }
+
+/// v0.321-v0.330: claim the oldest executable operation in one authorized workspace.
+/// Workers remain workspace-scoped; this does not introduce a privileged cross-tenant scanner.
+pub async fn claim_next_in_workspace(
+    pool: &PgPool,
+    workspace: Uuid,
+    owner: &str,
+    lease_ms: i64,
+) -> Result<Option<OperationScope>, BffOperationError> {
+    if owner.trim().is_empty() || owner.len() > 128 || !(1_000..=300_000).contains(&lease_ms) {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let claimed: Option<(Uuid, Uuid)> = sqlx::query_as(
+        "WITH candidate AS ( \
+           SELECT situation_id, operation_id FROM niccolo.bff_operations \
+           WHERE workspace_id=$1 AND state IN ('QUEUED','RUNNING') \
+             AND (execution_owner IS NULL OR execution_lease_until < clock_timestamp()) \
+           ORDER BY created_at, operation_id \
+           FOR UPDATE SKIP LOCKED LIMIT 1 \
+         ) \
+         UPDATE niccolo.bff_operations o \
+         SET execution_owner=$2, \
+             execution_lease_until=clock_timestamp()+($3::bigint * interval '1 millisecond'), \
+             execution_attempts=execution_attempts+1, updated_at=clock_timestamp() \
+         FROM candidate c \
+         WHERE o.workspace_id=$1 AND o.situation_id=c.situation_id AND o.operation_id=c.operation_id \
+         RETURNING o.situation_id,o.operation_id",
+    )
+    .bind(workspace)
+    .bind(owner)
+    .bind(lease_ms)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(claimed.map(|(situation, operation)| OperationScope {
+        workspace,
+        situation,
+        operation,
+    }))
+}
+
+pub async fn execution_owned_by(
+    pool: &PgPool,
+    scope: OperationScope,
+    owner: &str,
+) -> Result<bool, BffOperationError> {
+    if owner.trim().is_empty() || owner.len() > 128 {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let owned: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.bff_operations \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND execution_owner=$4 AND execution_lease_until >= clock_timestamp())",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(owner)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(owned)
+}
