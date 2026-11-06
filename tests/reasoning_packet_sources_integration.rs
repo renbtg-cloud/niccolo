@@ -1,0 +1,205 @@
+#![cfg(feature = "pg-integration")]
+
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use http_body_util::BodyExt;
+use niccolo_evidence::{analysis_structure::AnalysisScope, api, authz, reasoning_packet};
+use serde_json::{Value, json};
+use sqlx::{PgPool, postgres::PgPoolOptions};
+use tower::ServiceExt;
+use uuid::Uuid;
+
+struct Harness {
+    router: Router,
+    secure: PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    token: String,
+}
+
+async fn setup() -> Harness {
+    let admin = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").expect("admin DB"))
+        .await
+        .unwrap();
+    let secure = PgPoolOptions::new()
+        .max_connections(12)
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").expect("secure DB"))
+        .await
+        .unwrap();
+    let workspace = Uuid::new_v4();
+    let situation = Uuid::new_v4();
+    let principal = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'reasoning-packet-sources')",
+    )
+    .bind(workspace)
+    .execute(&admin)
+    .await
+    .unwrap();
+    let token = authz::provision_token(&admin, principal, workspace, true, true, 1)
+        .await
+        .unwrap();
+    Harness {
+        router: api::router(secure.clone()),
+        secure,
+        workspace,
+        situation,
+        token,
+    }
+}
+
+fn json_request(method: &str, path: &str, token: &str, body: Option<Value>) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::ACCEPT, "application/json");
+    let bytes = body
+        .map(|value| serde_json::to_vec(&value).unwrap())
+        .unwrap_or_default();
+    if !bytes.is_empty() {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+    }
+    builder.body(Body::from(bytes)).unwrap()
+}
+
+fn source_request(path: &str, token: &str, locator: &str, body: &'static str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(path)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::ACCEPT, "application/json")
+        .header(header::CONTENT_TYPE, "text/plain")
+        .header("x-source-locator", locator)
+        .body(Body::from(body))
+        .unwrap()
+}
+
+async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
+    let response = router.oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({})),
+    )
+}
+
+async fn ingest_and_attach(h: &Harness, locator: &str, text: &'static str) -> Uuid {
+    let document = Uuid::new_v4();
+    let source_path = format!("/v1/workspaces/{}/sources/{document}", h.workspace);
+    let (status, _) = invoke(
+        h.router.clone(),
+        source_request(&source_path, &h.token, locator, text),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let attach_path = format!(
+        "/v1/workspaces/{}/situations/{}/sources/{document}",
+        h.workspace, h.situation
+    );
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request("POST", &attach_path, &h.token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    document
+}
+
+#[tokio::test]
+async fn v1041_v1060_reasoning_packet_uses_only_fragments_from_frozen_revision() {
+    let h = setup().await;
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
+    let (status, created) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &situation_path,
+            &h.token,
+            Some(json!({"focus":"Understand the sequence"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["revision"], 1);
+
+    let before = ingest_and_attach(
+        &h,
+        "before.txt",
+        "01/01/2026, 10:00 - Ana: BEFORE_FREEZE_SOURCE\n",
+    )
+    .await;
+
+    let analysis = Uuid::new_v4();
+    let analysis_path = format!(
+        "{situation_path}/analysis-snapshots/{analysis}"
+    );
+    let (status, frozen) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &analysis_path,
+            &h.token,
+            Some(json!({"goal":"Use only what was frozen"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let frozen_revision = frozen["input_revision"].as_i64().unwrap();
+
+    let after = ingest_and_attach(
+        &h,
+        "after.txt",
+        "01/01/2026, 10:01 - Beto: AFTER_FREEZE_SOURCE\n",
+    )
+    .await;
+    assert_ne!(before, after);
+
+    let digest = authz::credential_digest(&h.token).unwrap();
+    let packet = authz::with_auth_digest(digest, async {
+        reasoning_packet::build(
+            &h.secure,
+            AnalysisScope {
+                workspace: h.workspace,
+                situation: h.situation,
+                analysis,
+            },
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+
+    assert_eq!(packet.frozen_input.revision, frozen_revision);
+    assert_eq!(packet.frozen_input.sources, vec![before]);
+    assert_eq!(packet.frozen_input.source_fragment_count_total, 1);
+    assert_eq!(packet.frozen_input.source_fragment_count_included, 1);
+    assert!(!packet.frozen_input.source_packet_truncated);
+    assert!(
+        packet
+            .frozen_input
+            .source_fragments
+            .iter()
+            .any(|fragment| fragment.content.contains("BEFORE_FREEZE_SOURCE"))
+    );
+    assert!(
+        packet
+            .frozen_input
+            .source_fragments
+            .iter()
+            .all(|fragment| !fragment.content.contains("AFTER_FREEZE_SOURCE"))
+    );
+    assert!(
+        packet
+            .frozen_input
+            .source_fragments
+            .iter()
+            .all(|fragment| fragment.document_id == before)
+    );
+}
