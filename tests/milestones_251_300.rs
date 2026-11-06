@@ -1,8 +1,8 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::{
-    agentic_controller, agentic_policy, agentic_runtime, bff_executor,
+    agentic_controller, agentic_policy, agentic_runtime,
     analysis_structure::AnalysisScope,
-    authz,
+    authz, bff_executor,
     bff_operations::{self, NewOperation, OperationScope},
     model_adapter::{self, DeterministicModel, InvocationScope, ModelRequest},
     reasoning_packet,
@@ -1010,24 +1010,36 @@ async fn v311_v320_execution_lease_serializes_delivery_surfaces() {
     let s = seed(&admin).await;
     let scope = op(&app, s).await;
     authz::with_auth_digest("test-digest".into(), async {
-        assert!(bff_operations::claim_execution(&app, scope, "sync-request-a", 30_000)
-            .await
-            .unwrap());
-        assert!(!bff_operations::claim_execution(&app, scope, "async-worker-b", 30_000)
-            .await
-            .unwrap());
-        assert!(bff_operations::heartbeat_execution(&app, scope, "sync-request-a", 30_000)
-            .await
-            .unwrap());
-        assert!(bff_operations::release_execution(&app, scope, "sync-request-a")
-            .await
-            .unwrap());
-        assert!(bff_operations::claim_execution(&app, scope, "async-worker-b", 30_000)
-            .await
-            .unwrap());
-        assert!(bff_operations::release_execution(&app, scope, "async-worker-b")
-            .await
-            .unwrap());
+        assert!(
+            bff_operations::claim_execution(&app, scope, "sync-request-a", 30_000)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !bff_operations::claim_execution(&app, scope, "async-worker-b", 30_000)
+                .await
+                .unwrap()
+        );
+        assert!(
+            bff_operations::heartbeat_execution(&app, scope, "sync-request-a", 30_000)
+                .await
+                .unwrap()
+        );
+        assert!(
+            bff_operations::release_execution(&app, scope, "sync-request-a")
+                .await
+                .unwrap()
+        );
+        assert!(
+            bff_operations::claim_execution(&app, scope, "async-worker-b", 30_000)
+                .await
+                .unwrap()
+        );
+        assert!(
+            bff_operations::release_execution(&app, scope, "async-worker-b")
+                .await
+                .unwrap()
+        );
     })
     .await;
     let attempts: i32 = sqlx::query_scalar(
@@ -1048,7 +1060,8 @@ async fn v301_v310_sync_and_async_share_one_executor_without_double_execution() 
     let s = seed(&admin).await;
     let scope = op(&app, s).await;
     authz::with_auth_digest("test-digest".into(), async {
-        let model = std::sync::Arc::new(DeterministicModel::new("test", "shared-executor-v1").unwrap());
+        let model =
+            std::sync::Arc::new(DeterministicModel::new("test", "shared-executor-v1").unwrap());
         let a_pool = app.clone();
         let b_pool = app.clone();
         let a_model = model.clone();
@@ -1056,19 +1069,22 @@ async fn v301_v310_sync_and_async_share_one_executor_without_double_execution() 
         let a = tokio::spawn(async move {
             authz::with_auth_digest("test-digest".into(), async move {
                 bff_executor::execute(&a_pool, scope, s.principal, a_model.as_ref()).await
-            }).await
+            })
+            .await
         });
         let b = tokio::spawn(async move {
             authz::with_auth_digest("test-digest".into(), async move {
                 bff_executor::execute(&b_pool, scope, s.principal, b_model.as_ref()).await
-            }).await
+            })
+            .await
         });
         let (a, b) = tokio::join!(a, b);
         assert!(a.unwrap().is_ok());
         assert!(b.unwrap().is_ok());
         let final_view = bff_operations::get(&app, scope).await.unwrap();
         assert_ne!(final_view.state, "QUEUED");
-    }).await;
+    })
+    .await;
     let attempts: i32 = sqlx::query_scalar(
         "SELECT execution_attempts FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
     )
@@ -1093,9 +1109,18 @@ async fn v321_v330_two_workers_claim_distinct_operations_in_one_workspace() {
         assert_ne!(a.operation, b.operation);
         assert!([first.operation, second.operation].contains(&a.operation));
         assert!([first.operation, second.operation].contains(&b.operation));
-        assert!(bff_operations::release_execution(&app, a, "worker-a").await.unwrap());
-        assert!(bff_operations::release_execution(&app, b, "worker-b").await.unwrap());
-    }).await;
+        assert!(
+            bff_operations::release_execution(&app, a, "worker-a")
+                .await
+                .unwrap()
+        );
+        assert!(
+            bff_operations::release_execution(&app, b, "worker-b")
+                .await
+                .unwrap()
+        );
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1104,20 +1129,41 @@ async fn v331_v340_expired_worker_lease_is_reclaimable_without_new_domain_task()
     let s = seed(&admin).await;
     let scope = op(&app, s).await;
     authz::with_auth_digest("test-digest".into(), async {
-        assert!(bff_operations::claim_execution(&app, scope, "dead-worker", 30_000).await.unwrap());
-    }).await;
+        assert!(
+            bff_operations::claim_execution(&app, scope, "dead-worker", 30_000)
+                .await
+                .unwrap()
+        );
+    })
+    .await;
     sqlx::query("UPDATE niccolo.bff_operations SET execution_lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
         .bind(s.workspace).bind(s.situation).bind(scope.operation).execute(&admin).await.unwrap();
     authz::with_auth_digest("test-digest".into(), async {
-        let reclaimed = bff_operations::claim_next_in_workspace(&app, s.workspace, "replacement-worker", 30_000)
-            .await.unwrap().expect("reclaimed operation");
+        let reclaimed = bff_operations::claim_next_in_workspace(
+            &app,
+            s.workspace,
+            "replacement-worker",
+            30_000,
+        )
+        .await
+        .unwrap()
+        .expect("reclaimed operation");
         assert_eq!(reclaimed, scope);
-        assert!(bff_operations::execution_owned_by(&app, scope, "replacement-worker").await.unwrap());
-        assert!(bff_operations::release_execution(&app, scope, "replacement-worker").await.unwrap());
-    }).await;
+        assert!(
+            bff_operations::execution_owned_by(&app, scope, "replacement-worker")
+                .await
+                .unwrap()
+        );
+        assert!(
+            bff_operations::release_execution(&app, scope, "replacement-worker")
+                .await
+                .unwrap()
+        );
+    })
+    .await;
     let attempts:i32=sqlx::query_scalar("SELECT execution_attempts FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
         .bind(s.workspace).bind(s.situation).bind(scope.operation).fetch_one(&admin).await.unwrap();
-    assert_eq!(attempts,2);
+    assert_eq!(attempts, 2);
 }
 
 #[tokio::test]
@@ -1128,7 +1174,8 @@ async fn v341_v360_pull_observation_wakes_on_event_version_or_timeout() {
     authz::with_auth_digest("test-digest".into(), async {
         let current = bff_operations::get(&app, scope).await.unwrap();
         let first = bff_operations::observe(&app, scope, current.state_version, 0, 1000, 50)
-            .await.unwrap();
+            .await
+            .unwrap();
         assert!(!first.operation_changed);
         assert!(first.events_changed);
         assert!(!first.timed_out);
@@ -1142,7 +1189,9 @@ async fn v341_v360_pull_observation_wakes_on_event_version_or_timeout() {
             first.next_after_event,
             40,
             50,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         assert!(timeout.timed_out);
         assert!(!timeout.operation_changed);
         assert!(!timeout.events_changed);
@@ -1153,8 +1202,11 @@ async fn v341_v360_pull_observation_wakes_on_event_version_or_timeout() {
         let changer = tokio::spawn(async move {
             authz::with_auth_digest("test-digest".into(), async move {
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                bff_operations::start(&a, scope, current.state_version, actor).await.unwrap();
-            }).await;
+                bff_operations::start(&a, scope, current.state_version, actor)
+                    .await
+                    .unwrap();
+            })
+            .await;
         });
         let changed = bff_operations::observe(
             &app,
@@ -1163,9 +1215,12 @@ async fn v341_v360_pull_observation_wakes_on_event_version_or_timeout() {
             first.next_after_event,
             1000,
             50,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         changer.await.unwrap();
         assert!(changed.operation_changed || changed.events_changed);
         assert_eq!(changed.operation.state, "RUNNING");
-    }).await;
+    })
+    .await;
 }

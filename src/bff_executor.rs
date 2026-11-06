@@ -1,8 +1,8 @@
 //! v0.301-v0.310: one execution path behind every BFF delivery surface.
 //! Sync, async, pull and future push transports observe the same durable operation.
 use crate::bff_operations::{self, OperationScope, OperationView};
-use crate::{agentic_runtime, reanalysis_runtime};
 use crate::model_adapter::ReasoningModel;
+use crate::{agentic_runtime, reanalysis_runtime};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -26,15 +26,8 @@ async fn mark_failed_best_effort(
     if let Ok(current) = bff_operations::get(pool, scope).await
         && !current.terminal
     {
-        let _ = bff_operations::fail(
-            pool,
-            scope,
-            current.state_version,
-            actor,
-            code,
-            message,
-        )
-        .await;
+        let _ =
+            bff_operations::fail(pool, scope, current.state_version, actor, code, message).await;
     }
 }
 
@@ -64,13 +57,20 @@ async fn run_with_owned_lease(
         };
         match running.kind.as_str() {
             "AGENTIC_ANALYSIS" => agentic_runtime::run_until_boundary(pool, scope, actor, model)
-                .await.map(|_| ()).map_err(|e| BffExecutionError::Agentic(e.to_string())),
+                .await
+                .map(|_| ())
+                .map_err(|e| BffExecutionError::Agentic(e.to_string())),
             "REANALYZE" => reanalysis_runtime::execute(pool, scope, actor)
-                .await.map(|_| ()).map_err(|e| BffExecutionError::Reanalysis(e.to_string())),
+                .await
+                .map(|_| ())
+                .map_err(|e| BffExecutionError::Reanalysis(e.to_string())),
             _ => bff_operations::execute_deterministic(pool, scope, actor)
-                .await.map(|_| ()).map_err(BffExecutionError::from),
+                .await
+                .map(|_| ())
+                .map_err(BffExecutionError::from),
         }
-    }.await;
+    }
+    .await;
 
     let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
     if let Err(error) = result {
@@ -94,7 +94,9 @@ pub async fn worker_once(
     worker_id: &str,
     model: &(dyn ReasoningModel + Send + Sync),
 ) -> Result<Option<WorkerRun>, BffExecutionError> {
-    let Some(scope) = bff_operations::claim_next_in_workspace(pool, workspace, worker_id, 300_000).await? else {
+    let Some(scope) =
+        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, 300_000).await?
+    else {
         return Ok(None);
     };
     let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;

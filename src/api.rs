@@ -2480,10 +2480,19 @@ async fn bff_operation_sync(
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
     submit_bff(&state, workspace, situation, operation, actor, request).await?;
-    let scope = OperationScope { workspace, situation, operation };
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
     let view = bff_executor::execute(&state.pool, scope, actor, state.model.as_ref())
         .await
-        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "operation execution failed"))?;
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "operation execution failed",
+            )
+        })?;
     Ok(bff_response(view, StatusCode::OK))
 }
 async fn bff_operation_async(
@@ -2500,11 +2509,16 @@ async fn bff_operation_async(
     if !view.terminal && view.state != "WAITING_FOR_HUMAN" {
         let pool = state.pool.clone();
         let model = state.model.clone();
-        let scope = OperationScope { workspace, situation, operation };
+        let scope = OperationScope {
+            workspace,
+            situation,
+            operation,
+        };
         tokio::spawn(async move {
             authz::with_auth_digest(digest, async move {
                 let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
-            }).await;
+            })
+            .await;
         });
     }
     Ok(bff_response(view, StatusCode::ACCEPTED))
@@ -2590,15 +2604,23 @@ async fn observe_bff_operation(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let observation = bff_operations::observe(
         &state.pool,
-        OperationScope { workspace, situation, operation },
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
         q.after_version,
         q.after_event.unwrap_or(0),
         q.timeout_ms.unwrap_or(5000),
         q.limit.unwrap_or(50),
-    ).await.map_err(bff_error)?;
+    )
+    .await
+    .map_err(bff_error)?;
     let etag = observation.operation.etag.clone();
     let mut response = no_store(json!(observation), StatusCode::OK);
-    response.headers_mut().insert(header::ETAG, etag.parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
     Ok(response)
 }
 
