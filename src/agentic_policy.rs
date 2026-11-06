@@ -1,6 +1,6 @@
 //! v0.261-v0.350: deterministic planner from recorded analysis state and explicit human-agency signals.
 //! It chooses investigation structure, not the user's decisions or external actions.
-use crate::{agentic_controller::StepInput, analysis_review};
+use crate::{agentic_controller::StepInput, analysis_review, bff_intent::HumanIntent};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -61,6 +61,16 @@ pub async fn default_plan(
     workspace: Uuid,
     situation: Uuid,
     analysis: Uuid,
+) -> Result<Vec<StepInput>, PolicyError> {
+    plan_for_intent(pool, workspace, situation, analysis, None).await
+}
+
+pub async fn plan_for_intent(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    intent: Option<HumanIntent>,
 ) -> Result<Vec<StepInput>, PolicyError> {
     let r = analysis_review::get(pool, workspace, situation, analysis).await?;
     let sig = signals(pool, workspace, situation, analysis).await?;
