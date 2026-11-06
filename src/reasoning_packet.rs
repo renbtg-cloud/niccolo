@@ -28,6 +28,17 @@ pub struct FrozenContribution {
     pub related_evidence_id: Option<Uuid>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenIdentityBinding {
+    pub document_id: Uuid,
+    pub speaker_label: String,
+    pub action: String,
+    pub person_id: Option<Uuid>,
+    pub display_label: Option<String>,
+    pub event_id: Uuid,
+    pub event_no: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrozenSourceFragment {
     pub document_id: Uuid,
     pub evidence_id: Uuid,
@@ -53,6 +64,10 @@ pub struct FrozenInputPacket {
     pub focus: String,
     pub goal: String,
     pub sources: Vec<Uuid>,
+    pub identity_event_no_max: i64,
+    pub identity_bindings: Vec<FrozenIdentityBinding>,
+    pub identity_bindings_are_human_confirmed: bool,
+    pub matching_speaker_labels_imply_same_person: bool,
     pub source_fragments: Vec<FrozenSourceFragment>,
     pub source_fragment_count_total: i64,
     pub source_fragment_count_included: usize,
@@ -131,6 +146,55 @@ async fn packet_tx(
         .map_err(dep)?;
     crate::authz::bind_auth_digest(&mut tx).await.map_err(dep)?;
     Ok(tx)
+}
+
+#[derive(sqlx::FromRow)]
+struct FrozenIdentityRow {
+    document_id: Uuid,
+    speaker_label: String,
+    action: String,
+    person_id: Option<Uuid>,
+    display_label: Option<String>,
+    event_id: Uuid,
+    event_no: i64,
+}
+
+async fn frozen_identity_bindings(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    revision: i64,
+    identity_event_no_max: i64,
+) -> Result<Vec<FrozenIdentityBinding>, PacketError> {
+    let mut tx = scoped(pool, workspace).await?;
+    let rows: Vec<FrozenIdentityRow> = sqlx::query_as(
+        "SELECT DISTINCT ON (e.document_id,e.speaker_label) \
+         e.document_id,e.speaker_label,e.operation AS action,e.person_id,s.display_label,e.event_id,e.event_no \
+         FROM niccolo.situation_revision_sources rs \
+         JOIN niccolo.identity_events e ON e.workspace_id=rs.workspace_id AND e.document_id=rs.document_id \
+         LEFT JOIN niccolo.identity_subjects s ON s.workspace_id=e.workspace_id AND s.person_id=e.person_id \
+         WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3 AND e.event_no <= $4 \
+         ORDER BY e.document_id,e.speaker_label,e.event_no DESC",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .bind(identity_event_no_max)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| FrozenIdentityBinding {
+            document_id: row.document_id,
+            speaker_label: row.speaker_label,
+            action: row.action,
+            person_id: row.person_id,
+            display_label: row.display_label,
+            event_id: row.event_id,
+            event_no: row.event_no,
+        })
+        .collect())
 }
 
 async fn frozen_source_fragments(
