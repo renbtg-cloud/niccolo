@@ -45,6 +45,7 @@ export class NiccoloClient {
   revisions() { return this.request('GET', `${situationPath(this.config)}/revisions?after=0&limit=100`); }
   analysisHistory(before = null, limit = 100) { const q = before ? `?before=${before}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${situationPath(this.config)}/analysis-history${q}`); }
   analysisReview(id) { return this.request('GET', `${analysisPath(this.config,id)}/review`); }
+  reanalysisRevision(id) { return this.request('GET', `${analysisPath(this.config,id)}/reanalysis-revision`); }
   analysisCoverage(id) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`); }
   analysisContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`); }
   analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
