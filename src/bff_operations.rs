@@ -712,3 +712,57 @@ pub async fn execution_owned_by(
     tx.commit().await?;
     Ok(owned)
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperationObservation {
+    pub operation: OperationView,
+    pub events: Vec<OperationEventView>,
+    pub next_after_event: i64,
+    pub operation_changed: bool,
+    pub events_changed: bool,
+    pub timed_out: bool,
+}
+
+/// v0.341-v0.360: one bounded PULL observation for state + event cursor.
+/// The browser may stay simple: wait until either the operation version or event stream changes.
+pub async fn observe(
+    pool: &PgPool,
+    scope: OperationScope,
+    after_version: i64,
+    after_event: i64,
+    timeout_ms: u64,
+    event_limit: i64,
+) -> Result<OperationObservation, BffOperationError> {
+    if after_version < 0
+        || after_event < 0
+        || !(1..=10_000).contains(&timeout_ms)
+        || !(1..=200).contains(&event_limit)
+    {
+        return Err(BffOperationError::Invalid);
+    }
+    let started = tokio::time::Instant::now();
+    loop {
+        let operation = get(pool, scope).await?;
+        let page = events(pool, scope, after_event, event_limit).await?;
+        let operation_changed = operation.state_version > after_version;
+        let events_changed = !page.events.is_empty();
+        let timed_out = started.elapsed().as_millis() >= u128::from(timeout_ms);
+        if operation_changed || events_changed || operation.terminal || timed_out {
+            let next_after_event = page
+                .events
+                .last()
+                .map(|event| event.seq)
+                .unwrap_or(after_event);
+            return Ok(OperationObservation {
+                operation,
+                events: page.events,
+                next_after_event,
+                operation_changed,
+                events_changed,
+                timed_out,
+            });
+        }
+        let remaining = timeout_ms.saturating_sub(started.elapsed().as_millis() as u64);
+        tokio::time::sleep(std::time::Duration::from_millis(remaining.min(100))).await;
+    }
+}

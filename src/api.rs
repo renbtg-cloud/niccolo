@@ -278,6 +278,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(wait_bff_operation),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/observe",
+            get(observe_bff_operation),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/agentic",
             get(get_agentic_operation).post(plan_agentic_operation),
         )
@@ -2385,6 +2389,13 @@ struct BffWaitQuery {
     timeout_ms: Option<u64>,
 }
 #[derive(Deserialize)]
+struct BffObserveQuery {
+    after_version: i64,
+    after_event: Option<i64>,
+    timeout_ms: Option<u64>,
+    limit: Option<i64>,
+}
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BffCancelRequest {
     expected_version: i64,
@@ -2568,6 +2579,27 @@ async fn wait_bff_operation(
     .await
     .map_err(bff_error)?;
     Ok(bff_response(view, StatusCode::OK))
+}
+
+async fn observe_bff_operation(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(q): Query<BffObserveQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let observation = bff_operations::observe(
+        &state.pool,
+        OperationScope { workspace, situation, operation },
+        q.after_version,
+        q.after_event.unwrap_or(0),
+        q.timeout_ms.unwrap_or(5000),
+        q.limit.unwrap_or(50),
+    ).await.map_err(bff_error)?;
+    let etag = observation.operation.etag.clone();
+    let mut response = no_store(json!(observation), StatusCode::OK);
+    response.headers_mut().insert(header::ETAG, etag.parse().unwrap());
+    Ok(response)
 }
 
 async fn resolve_agentic_human_boundary(
