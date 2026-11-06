@@ -16,13 +16,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Materialize VM-validated v0.250 source
+      - name: Apply VM-validated v0.250 patch
         shell: bash
         run: |
           set -euo pipefail
-          cat .sync/v250.part00 .sync/v250.part01 .sync/v250.part02 .sync/v250.part03 .sync/v250.part04 .sync/v250.part05 .sync/v250.part06 .sync/v250.part07 .sync/v250.part08 .sync/v250.part09 .sync/v250.tail00 .sync/v250.tail01 .sync/v250.tail02 .sync/v250.tail03 .sync/v250.tail04 .sync/v250.tail05 .sync/v250.tail06 .sync/v250.tail07 .sync/v250.tail08 .sync/v250.tail09 .sync/v250.tail10 .sync/v250.tail11 .sync/v250.tail12 .sync/v250.tail13 .sync/v250.tail14 .sync/v250.tail15 .sync/v250.tail16 .sync/v250.tail17 .sync/v250.tail18 .sync/v250.tail19 .sync/v250.tail20 .sync/v250.tail21 .sync/v250.tail22 .sync/v250.tail23 .sync/v250.tail24 .sync/v250.tail25 .sync/v250.tail26 .sync/v250.tail27 .sync/v250.tail28 .sync/v250.tail29 .sync/v250.tail30 .sync/v250.tail31 .sync/v250.tail32 .sync/v250.tail33 .sync/v250.tail34 .sync/v250.tail35 .sync/v250.tail36 .sync/v250.tail37 .sync/v250.tail38 .sync/v250.tail39 .sync/v250.tail40 .sync/v250.tail41 .sync/v250.tail42 .sync/v250.tail43 .sync/v250.tail44 .sync/v250.tail45 .sync/v250.tail46 .sync/v250.tail47 .sync/v250.tail48 | base64 -d > /tmp/niccolo-v250-overlay.tar.gz
-          echo "cef3233c4ab13fc0431b8e5e1f6312348617a822ef877215cc9d4b33acc85b1c  /tmp/niccolo-v250-overlay.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/niccolo-v250-overlay.tar.gz
+          cat .sync/v250.patch00 .sync/v250.patch01 .sync/v250.patch02 .sync/v250.patch03 .sync/v250.patch04 .sync/v250.patch05 .sync/v250.patch06 .sync/v250.patch07 .sync/v250.patch08 .sync/v250.patch09 .sync/v250.patch10 .sync/v250.patch11 .sync/v250.patch12 .sync/v250.patch13 .sync/v250.patch14 .sync/v250.patch15 .sync/v250.patch16 .sync/v250.patch17 | base64 -d > /tmp/v250.patch.gz
+          echo "0b4dd3cd339ef284146f4881a6b085e1e39dfbb567e69a5b79ad812278d3c444  /tmp/v250.patch.gz" | sha256sum -c -
+          gunzip -c /tmp/v250.patch.gz > /tmp/v250.patch
+          echo "f47a2ca9f3b7d90cb8babfc69fa3afef324a580796bba868f7c0bdb325983b8a  /tmp/v250.patch" | sha256sum -c -
+          git apply --check /tmp/v250.patch
+          git apply /tmp/v250.patch
           rm -rf .sync .github/workflows/tmp-v250-sync.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
