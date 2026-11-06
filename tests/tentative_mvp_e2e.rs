@@ -25,6 +25,13 @@ use std::{
 use tower::ServiceExt;
 use uuid::Uuid;
 
+struct ProviderFixture {
+    model: CurlOpenAiCompatibleModel,
+    stop: Arc<AtomicBool>,
+    thread: thread::JoinHandle<()>,
+    purposes: Arc<Mutex<Vec<String>>>,
+}
+
 struct Harness {
     _admin: PgPool,
     router: Router,
@@ -127,12 +134,7 @@ fn read_request(socket: &mut std::net::TcpStream) -> String {
     String::from_utf8_lossy(&bytes).to_string()
 }
 
-fn provider() -> (
-    CurlOpenAiCompatibleModel,
-    Arc<AtomicBool>,
-    thread::JoinHandle<()>,
-    Arc<Mutex<Vec<String>>>,
-) {
+fn provider() -> ProviderFixture {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
@@ -177,7 +179,12 @@ fn provider() -> (
         json_mode: true,
     })
     .unwrap();
-    (model, stop, handle, purposes)
+    ProviderFixture {
+        model,
+        stop,
+        thread: handle,
+        purposes,
+    }
 }
 
 async fn setup() -> Harness {
@@ -204,16 +211,16 @@ async fn setup() -> Harness {
     let token = authz::provision_token(&admin, principal, workspace, true, true, 1)
         .await
         .unwrap();
-    let (model, provider_stop, provider_thread, purposes) = provider();
+    let provider = provider();
     Harness {
         _admin: admin,
-        router: api::router_with_model(secure, Arc::new(model)),
+        router: api::router_with_model(secure, Arc::new(provider.model)),
         workspace,
         situation,
         token,
-        provider_stop,
-        provider_thread: Some(provider_thread),
-        purposes,
+        provider_stop: provider.stop,
+        provider_thread: Some(provider.thread),
+        purposes: provider.purposes,
     }
 }
 
