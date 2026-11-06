@@ -1,30 +1,31 @@
-# Test progress — v1.161-v1.200
+# Validation — v1.161-v1.200
 
-Status: full Rust/PostgreSQL regression about to start.
+FINAL STATUS: DONE
 
-Committed implementation:
-- immutable analysis snapshot watermark for the maximum human identity event visible at freeze time;
-- frozen human-confirmed identity bindings in the reasoning packet;
-- provider-input observability for identity binding count and identity event horizon;
-- Human Review visibility for frozen identity bindings;
-- analysis manifest core v2 includes the frozen identity horizon;
-- permanent freeze-semantics test committed before validation.
+Identity mapping is now frozen as part of analysis input semantics rather than read from current mutable state.
 
-Validated so far:
+Implemented:
+- analysis snapshots persist the maximum human identity-event number visible at freeze time;
+- reasoning packets include the latest explicit human identity binding for each frozen document/speaker pair at or before that horizon;
+- later identity corrections do not silently alter an earlier analysis;
+- matching speaker labels still do not imply the same person;
+- reasoning-input observability exposes the frozen identity horizon and binding count;
+- Human Review shows how many human-confirmed identity bindings were frozen;
+- analysis manifest core v2 includes the identity-event horizon in its deterministic audit hash.
+
+Validation:
 - focused frozen-source/identity packet suite: 0/3 failed; 3/3 passed;
 - analysis manifest regression: 0/30 failed; 30/30 passed;
-- strict Clippy with pg-integration: passed;
-- rustfmt check: passed;
+- full Rust/PostgreSQL regression: 0/402 failed; 402/402 passed across 45 test results/suites;
 - frontend: 0/32 failed; 32/32 passed across 8 test files;
-- production frontend build: passed.
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with pg-integration: passed.
 
-Identity freeze invariant proven:
-- a human assigns speaker Ana to person P1;
-- the analysis freezes;
-- the human later corrects Ana to P2;
-- the old analysis reasoning packet still contains P1 and the original identity-event horizon;
-- matching speaker labels never imply the same person automatically.
+Freeze invariant proven:
+- human assigns source speaker Ana to P1;
+- analysis freezes;
+- human later corrects Ana to P2;
+- the old analysis reasoning packet still contains P1 and the original identity-event horizon.
 
-Next action: full Rust/PostgreSQL regression.
-
-This is a five-minute progress checkpoint, not DONE.
+This preserves historical truthfulness without converting literal speaker labels into inferred identity.
