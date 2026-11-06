@@ -820,3 +820,51 @@ async fn v761_v780_human_requested_reanalysis_preserves_prior_and_creates_linked
     .unwrap();
     assert_eq!(prior_count, 1);
 }
+
+#[tokio::test]
+async fn v921_v940_reanalysis_revision_endpoint_reports_recorded_change_without_causality() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let new_analysis = Uuid::new_v4();
+
+    let (status, _, created) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &path(&s, operation, "/sync"),
+            &s.token,
+            Some(json!({
+                "kind":"REANALYZE",
+                "target_analysis_id":s.analysis,
+                "parent_operation_id":null,
+                "idempotency_key":format!("revision-view-{operation}"),
+                "input":{
+                    "new_analysis_id":new_analysis,
+                    "goal":"Explain recorded change without inferring causality"
+                },
+                "deadline_at":null,
+                "step_budget":32
+            })),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["result"]["new_analysis_id"], new_analysis.to_string());
+
+    let route = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/reanalysis-revision",
+        s.workspace, s.situation, new_analysis
+    );
+    let (status, _, revision) =
+        invoke(s.router.clone(), req("GET", &route, &s.token, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revision["prior_analysis_id"], s.analysis.to_string());
+    assert_eq!(revision["new_analysis_id"], new_analysis.to_string());
+    assert_eq!(revision["unlinked_claims_are_inferred_change"], false);
+    assert_eq!(
+        revision["input_change_proves_causal_reason_for_output_change"],
+        false
+    );
+}
+

@@ -21,6 +21,7 @@ use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::question_refs::{self, ReferenceError};
+use crate::reanalysis_revision;
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
@@ -355,6 +356,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/review",
             get(analysis_review),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/reanalysis-revision",
+            get(get_reanalysis_revision),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
@@ -1554,6 +1559,33 @@ async fn list_used_contributions(
         }),
         StatusCode::OK,
     ))
+}
+
+async fn get_reanalysis_revision(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = reanalysis_revision::explain(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        reanalysis_revision::RevisionError::Invisible => {
+            ApiError(StatusCode::NOT_FOUND, "reanalysis revision not found")
+        }
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "reanalysis revision unavailable",
+        ),
+    })?;
+    Ok(no_store(json!(view), StatusCode::OK))
 }
 
 async fn analysis_context_summary(
