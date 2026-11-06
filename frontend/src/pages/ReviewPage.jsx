@@ -8,11 +8,12 @@ import { coverageSignals, recordedChanges, proactiveLeads, reanalysisPrompt } fr
 import { launchApprovedReanalysis } from '../state/reanalysisLaunch.js';
 import { useReanalysisRevision } from '../hooks/useReanalysisRevision.js';
 import { useClarifications } from '../hooks/useClarifications.js';
+import { useReasoningInput } from '../hooks/useReasoningInput.js';
 import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
 
 export function ReviewPage(){
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
- const clarifications=useClarifications();
+ const clarifications=useClarifications(); const reasoningInput=useReasoningInput();
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
  if(!client)return <p>Connect first.</p>;
  if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
@@ -27,6 +28,7 @@ export function ReviewPage(){
    {!r&&<p>Loading review…</p>}
   {r&&<>
      <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
+     {reasoningInput.data&&<article className={`review-panel ${reasoningInput.data.source_packet_truncated?'input-warning':''}`}><h3>What reached the reasoning model</h3><p><strong>{reasoningInput.data.source_fragment_count_included}/{reasoningInput.data.source_fragment_count_total}</strong> frozen source fragment(s) included · {reasoningInput.data.source_bytes_included} source byte(s).</p>{reasoningInput.data.source_packet_truncated&&<p><strong>Input was truncated by the explicit reasoning budget.</strong> The model did not receive every frozen source fragment.</p>}<p><small>Frozen revision {reasoningInput.data.input_revision} · packet SHA-256 <code>{reasoningInput.data.reasoning_packet_sha256}</code>. This is input observability, not a truth or completeness score.</small></p></article>}
      <div className="review-grid">
        <article><h3>What Niccolò actually used</h3>{coverage.map(x=><p key={x.label}><strong>{x.used}/{x.total}</strong> {x.label.toLowerCase()}</p>)}<p><small>These are recorded coverage counts, not a completeness or truth score.</small></p></article>
        <article><h3>What changed afterward</h3>{changes.length? <ul>{changes.map(x=><li key={x}>{x}</li>)}</ul> : <p>No recorded Situation delta after the frozen input.</p>}</article>
