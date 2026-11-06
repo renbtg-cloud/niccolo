@@ -24,7 +24,7 @@ use crate::question_refs::{self, ReferenceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
-use crate::{agentic_controller, agentic_policy, bff_dashboard, bff_executor};
+use crate::{agentic_controller, agentic_policy, bff_dashboard, bff_epistemic, bff_executor};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -106,6 +106,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(frontend_index),
         )
         .route("/analysis", get(frontend_index))
+        .route("/reasoning", get(frontend_index))
         .route("/operations", get(frontend_index))
         .route("/review", get(frontend_index))
         .route("/inspector", get(frontend_index))
@@ -309,6 +310,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/dashboard",
             get(get_bff_dashboard),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/epistemic",
+            get(get_bff_epistemic),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/input",
@@ -2345,6 +2350,25 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
+}
+
+async fn get_bff_epistemic(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = bff_epistemic::get(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "epistemic view unavailable"))?;
+    Ok(no_store(json!(view), StatusCode::OK))
 }
 
 #[derive(Deserialize)]
