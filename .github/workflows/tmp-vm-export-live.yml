@@ -1,0 +1,23 @@
+name: tmp vm export live
+
+on:
+  push:
+    branches: [tmp-vm-export-live]
+    paths:
+      - '.vm-export-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pack source
+        run: |
+          tar --exclude=.git --exclude=.github/workflows/tmp-vm-export-live.yml --exclude=.vm-export-trigger -czf niccolo-main.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-main-source
+          path: niccolo-main.tar.gz
