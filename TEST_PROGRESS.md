@@ -2,21 +2,26 @@
 
 ## v1.041-v1.080 — frozen-source reasoning
 
-Status: focused frozen-source validation passed; completing boundedness and provider propagation.
+FINAL STATUS: DONE
 
-Current durable checkpoint on main:
-- WIP 1: test suite ready; starting frozen-source reasoning v1.041-v1.080
-- WIP 2: include bounded frozen source fragments in reasoning packet
-- WIP 3: freeze-bound source packet test ready before validation
+Validated on the committed test suite and current implementation:
 
-Focused result:
-- 0/1 failed; 1/1 passed.
-- The packet included the source fragment present at the frozen Situation revision.
-- A source attached after the analysis freeze was excluded.
+- focused frozen-revision source selection: 0/1 failed; 1/1 passed;
+- deterministic truncation/boundedness: 0/1 failed; 1/1 passed;
+- tentative-MVP provider E2E: 0/1 failed; 1/1 passed;
+- full Rust/PostgreSQL regression: 0/401 failed; 401/401 passed;
+- frontend: 0/30 failed; 30/30 passed across 8 test files;
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with pg-integration: passed.
 
-Next action:
-- add permanent deterministic truncation/boundedness coverage;
-- verify the frozen packet is what reaches model-facing steps;
-- close the block with DONE only after the committed suite passes.
+Validated boundaries:
 
-This file is intentionally used for five-minute visible progress checkpoints during active work.
+- model-facing source fragments come only from the frozen Situation revision;
+- sources attached after the freeze are excluded;
+- frozen source packets are capped at 256 fragments;
+- truncation is explicit rather than silent;
+- repeated packet construction is deterministic and produces a stable hash;
+- the real OpenAI-compatible TCP provider path receives frozen source text and human context as distinct material.
+
+This file also remains the active five-minute checkpoint surface for ongoing work.
