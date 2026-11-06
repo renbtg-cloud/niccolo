@@ -35,4 +35,23 @@ describe('BFF client',()=>{
    expect(calls[0][0]).toContain('/sources?after=7&limit=25');
    expect(calls[0][1]).toBe('GET');
  });
+
+ it('covers the explicit human identity mapping surfaces',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,{identities:[],speakers:[],bindings:[],events:[]});});
+   await x.sourceSpeakers('doc');
+   await x.identities(0,25);
+   await x.createIdentity('person','Ana P.');
+   await x.effectiveIdentities('doc');
+   await x.identityHistory('doc',3,20);
+   await x.recordIdentityEvent('event',{document_id:'doc',speaker_label:'Ana',operation:'assign',person_id:'person',human_reason:'confirmed by user'});
+   expect(calls[0][0]).toContain('/sources/doc/speakers');
+   expect(calls[1][0]).toContain('/identities?after=0&limit=25');
+   expect(calls[2][0]).toContain('/identities/person');
+   expect(JSON.parse(calls[2][1].body).display_label).toBe('Ana P.');
+   expect(calls[3][0]).toContain('/documents/doc/identities');
+   expect(calls[4][0]).toContain('/documents/doc/identity-history?after=3&limit=20');
+   expect(calls[5][0]).toContain('/identity-events/event');
+   expect(JSON.parse(calls[5][1].body).human_reason).toBe('confirmed by user');
+ });
 });
