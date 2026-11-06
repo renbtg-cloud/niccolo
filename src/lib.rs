@@ -455,6 +455,8 @@ pub mod reanalysis_advisor;
 
 pub mod bff_dashboard;
 
+pub mod bff_epistemic;
+
 pub mod model_artifacts;
 
 pub mod reanalysis_runtime;
