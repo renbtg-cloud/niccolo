@@ -174,6 +174,21 @@ fn row_to_view(row: OperationRow) -> Result<OperationView, BffOperationError> {
     })
 }
 
+pub async fn input(pool: &PgPool, scope: OperationScope) -> Result<Value, BffOperationError> {
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let raw: Option<String> = sqlx::query_scalar(
+        "SELECT input_json FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let raw = raw.ok_or(BffOperationError::Invisible)?;
+    Ok(serde_json::from_str(&raw)?)
+}
+
 pub async fn submit(
     pool: &PgPool,
     scope: OperationScope,
