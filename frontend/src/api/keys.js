@@ -6,6 +6,7 @@ export const qk = {
   identityBindings: (c, document) => ['identity-bindings', c.workspace, document],
   identityHistory: (c, document) => ['identity-history', c.workspace, document],
   revisions: (c) => ['revisions', c.workspace, c.situation],
+  analysisHistory: (c) => ['analysis-history', c.workspace, c.situation],
   operation: (c, id) => ['operation', c.workspace, c.situation, id],
   operationEvents: (c, id) => ['operation-events', c.workspace, c.situation, id],
   operationObservation: (c, id) => ['operation-observation', c.workspace, c.situation, id],
