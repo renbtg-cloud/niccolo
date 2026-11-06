@@ -1,6 +1,8 @@
 //! Human-readable epistemic read model for the first-party UI.
 //! Grouping happens server-side so the browser renders domain state rather than inventing it.
-use crate::{analysis_assumptions, analysis_claims, analysis_structure::AnalysisScope, human_agency};
+use crate::{
+    analysis_assumptions, analysis_claims, analysis_structure::AnalysisScope, human_agency,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
@@ -204,14 +206,10 @@ async fn provenance(
 }
 
 pub async fn get(pool: &PgPool, scope: AnalysisScope) -> Result<EpistemicView, EpistemicError> {
-    let claims = analysis_claims::list_claims(
-        pool,
-        scope.workspace,
-        scope.situation,
-        scope.analysis,
-    )
-    .await
-    .map_err(dep)?;
+    let claims =
+        analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
+            .await
+            .map_err(dep)?;
     let lens = analysis_assumptions::lens(pool, scope).await.map_err(dep)?;
     let gaps = human_agency::evidence_gaps(pool, scope)
         .await

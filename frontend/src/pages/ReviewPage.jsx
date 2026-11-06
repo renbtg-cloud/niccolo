@@ -12,11 +12,11 @@ export function ReviewPage(){
  if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
  if(review.error||dashboard.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {(review.error??dashboard.error).message}</p></section>;
  const r=review.data; const d=dashboard.data;
- const coverage=coverageSignals(r); const changes=recoredChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d);
+ const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d);
  return <section><h2>Human review</h2>
    {!r&&<p>Loading review…</p>}
   {r&&<>
-     <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
+     <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
      <div className="review-grid">
        <article><h3>What Niccolò actually used</h3>{coverage.map(x=><p key={x.label}><strong>{x.used}/{x.total}</strong> {x.label.toLowerCase()}</p>)}<p><small>These are recorded coverage counts, not a completeness or truth score.</small></p></article>
        <article><h3>What changed afterward</h3>{changes.length? <ul>{changes.map(x=><li key={x}>{x}</li>)}</ul> : <p>No recorded Situation delta after the frozen input.</p>}</article>
