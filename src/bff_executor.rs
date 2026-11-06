@@ -51,27 +51,40 @@ pub async fn execute(
         return Ok(current);
     }
 
-    // Every executable task enters RUNNING through the same durable transition.
-    let running = if current.state == "QUEUED" {
-        bff_operations::start(pool, scope, current.state_version, actor).await?
-    } else {
-        current
-    };
+    // A delivery surface is an observer until it acquires the durable lease.
+    // This prevents a sync retry and an async worker from running the same task twice.
+    let lease_owner = format!("exec-{}", Uuid::new_v4());
+    if !bff_operations::claim_execution(pool, scope, &lease_owner, 300_000).await? {
+        return Ok(bff_operations::get(pool, scope).await?);
+    }
 
-    let result = match running.kind.as_str() {
-        "AGENTIC_ANALYSIS" => agentic_runtime::run_until_boundary(pool, scope, actor, model)
-            .await
-            .map(|_| ())
-            .map_err(|e| BffExecutionError::Agentic(e.to_string())),
-        "REANALYZE" => reanalysis_runtime::execute(pool, scope, actor)
-            .await
-            .map(|_| ())
-            .map_err(|e| BffExecutionError::Reanalysis(e.to_string())),
-        _ => bff_operations::execute_deterministic(pool, scope, actor)
-            .await
-            .map(|_| ())
-            .map_err(BffExecutionError::from),
-    };
+    let result = async {
+        // Every executable task enters RUNNING through the same durable transition.
+        let current = bff_operations::get(pool, scope).await?;
+        let running = if current.state == "QUEUED" {
+            bff_operations::start(pool, scope, current.state_version, actor).await?
+        } else {
+            current
+        };
+
+        match running.kind.as_str() {
+            "AGENTIC_ANALYSIS" => agentic_runtime::run_until_boundary(pool, scope, actor, model)
+                .await
+                .map(|_| ())
+                .map_err(|e| BffExecutionError::Agentic(e.to_string())),
+            "REANALYZE" => reanalysis_runtime::execute(pool, scope, actor)
+                .await
+                .map(|_| ())
+                .map_err(|e| BffExecutionError::Reanalysis(e.to_string())),
+            _ => bff_operations::execute_deterministic(pool, scope, actor)
+                .await
+                .map(|_| ())
+                .map_err(BffExecutionError::from),
+        }
+    }
+    .await;
+
+    let _ = bff_operations::release_execution(pool, scope, &lease_owner).await;
 
     if let Err(error) = result {
         let code = match &error {
