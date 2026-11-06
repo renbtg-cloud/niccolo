@@ -759,3 +759,62 @@ async fn v601_v620_claim_provenance_returns_exact_source_and_separates_human_con
     );
     assert_eq!(view["human_context_is_evidence"], false);
 }
+
+#[tokio::test]
+async fn v761_v780_human_requested_reanalysis_preserves_prior_and_creates_linked_snapshot() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let new_analysis = Uuid::new_v4();
+    let route = path(&s, operation, "/sync");
+    let request = json!({
+        "kind": "REANALYZE",
+        "target_analysis_id": s.analysis,
+        "parent_operation_id": null,
+        "idempotency_key": format!("reanalysis-{operation}"),
+        "input": {
+            "new_analysis_id": new_analysis,
+            "goal": "Revisit the prior analysis using the current Situation"
+        },
+        "deadline_at": null,
+        "step_budget": 32
+    });
+
+    let (status, _, value) =
+        invoke(s.router.clone(), req("POST", &route, &s.token, Some(request), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["kind"], "REANALYZE");
+    assert_eq!(value["state"], "SUCCEEDED");
+    assert_eq!(value["target_analysis_id"], s.analysis.to_string());
+    assert_eq!(value["result"]["prior_analysis_id"], s.analysis.to_string());
+    assert_eq!(value["result"]["new_analysis_id"], new_analysis.to_string());
+    assert_eq!(value["result"]["historical_output_preserved"], true);
+    assert_eq!(value["result"]["human_requested_operation"], true);
+    assert_eq!(value["result"]["agentic_execution_started"], false);
+
+    let lineage: (Option<Uuid>, String) = sqlx::query_as(
+        "SELECT reanalysis_of,goal FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(new_analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    assert_eq!(lineage.0, Some(s.analysis));
+    assert_eq!(
+        lineage.1,
+        "Revisit the prior analysis using the current Situation"
+    );
+
+    let prior_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    assert_eq!(prior_count, 1);
+}
+
