@@ -443,3 +443,8 @@ pub mod proactive_briefing;
 pub mod reanalysis_revision;
 
 pub mod operation_budget;
+
+pub mod reanalysis_runtime;
+pub mod analysis_quality;
+pub mod reanalysis_advisor;
+pub mod investigation_policy;
