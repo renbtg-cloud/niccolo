@@ -652,3 +652,53 @@ async fn rotation_is_atomic_and_preserves_expiration() {
     assert!(authz::rotate_token(&admin, &original).await.is_err());
     assert!(authz::rotate_token(&app, &rotated).await.is_err());
 }
+
+#[tokio::test]
+async fn source_speaker_labels_are_visible_without_becoming_identities() {
+    let (_admin, _app, w, _, token, router) = setup().await;
+    let document = Uuid::new_v4();
+    let (status, _) = invoke(
+        router.clone(),
+        request(
+            "POST",
+            &source(w, document),
+            Some(&token),
+            Some("text/plain"),
+            Some("fixture://identity-review"),
+            CHAT,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let path = format!("{}/speakers", source(w, document));
+    let (status, view) = invoke(
+        router.clone(),
+        request("GET", &path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["speaker_labels_are_verified_identities"], false);
+    let speakers = view["speakers"].as_array().unwrap();
+    assert_eq!(speakers.len(), 2);
+    assert_eq!(speakers[0]["speaker_label"], "Ana");
+    assert_eq!(speakers[0]["fragment_count"], 1);
+    assert_eq!(speakers[1]["speaker_label"], "Bob");
+    assert_eq!(speakers[1]["fragment_count"], 1);
+
+    let (status, _) = invoke(
+        router.clone(),
+        request("GET", &path, None, None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let missing = format!("{}/speakers", source(w, Uuid::new_v4()));
+    let (status, _) = invoke(
+        router,
+        request("GET", &missing, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
