@@ -4,7 +4,7 @@
 use crate::analysis_structure::AnalysisScope;
 use crate::{
     agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, human_agency,
-    human_control,
+    human_control, proactive_briefing,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -68,6 +68,7 @@ pub struct ReasoningPacket {
     pub lens: analysis_assumptions::AnalysisLens,
     pub evidence_gaps: Vec<human_agency::EvidenceGapView>,
     pub policy_signals: PolicySignalPacket,
+    pub proactive_leads: proactive_briefing::ProactiveBriefing,
     pub current_human_control: CurrentHumanControl,
     pub packet_asserts_truth: bool,
 }
@@ -111,6 +112,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
     let signals = agentic_policy::signals(pool, scope.workspace, scope.situation, scope.analysis)
         .await
         .map_err(dep)?;
+    let proactive_leads = proactive_briefing::build(pool, scope).await.map_err(dep)?;
     Ok(ReasoningPacket {
         format: "niccolo.reasoning-packet".into(),
         version: 1,
@@ -157,6 +159,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             triggered_stop_conditions: signals.triggered_stop_conditions,
             source_requests: signals.source_requests,
         },
+        proactive_leads,
         current_human_control: CurrentHumanControl {
             goals,
             priorities,

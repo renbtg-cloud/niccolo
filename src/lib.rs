@@ -464,3 +464,9 @@ pub mod reasoning_updates;
 pub mod analysis_quality;
 
 pub mod adversarial_challenge;
+
+pub mod operation_budget;
+
+pub mod proactive_briefing;
+
+pub mod reanalysis_revision;

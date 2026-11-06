@@ -287,6 +287,9 @@ impl model_adapter::ReasoningModel for FlakyModel {
                     value: json!({"ok":true}),
                     prompt_tokens: Some(3),
                     completion_tokens: Some(2),
+                    effective_provider: None,
+                    effective_model: None,
+                    fallback_used: false,
                 })
             }
         })
@@ -694,6 +697,309 @@ async fn v901_v1000_adversarial_challenge_is_persisted_reviewable_and_never_trut
             .await
             .unwrap();
         assert_eq!(q.open_material_challenge_count, 0);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn v1001_v1100_human_boundary_is_durable_and_explicitly_resumes_without_inferred_consent() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    let analysis_scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,description,recorded_by_principal_id) VALUES($1,$2,$3,$4,'Missing source before decision',$5)").bind(s.workspace).bind(s.situation).bind(s.analysis).bind(Uuid::new_v4()).bind(s.principal).execute(&admin).await.unwrap();
+    authz::with_auth_digest("test-digest".into(), async {
+        let model = DeterministicModel::new("test", "deterministic-v1").unwrap();
+        let first = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+            .await
+            .unwrap();
+        assert!(first.waiting_for_human);
+        assert_eq!(first.state, "WAITING_FOR_HUMAN");
+        let view = agentic_controller::view(&app, scope).await.unwrap();
+        let human = view
+            .steps
+            .iter()
+            .find(|x| x.state == "WAITING_FOR_HUMAN")
+            .unwrap();
+        let r = agentic_controller::resolve_human_boundary(
+            &app,
+            scope,
+            human.step_id,
+            Uuid::new_v4(),
+            s.principal,
+            "CONTINUE",
+            "I understand the unresolved gap; continue with a provisional handoff.",
+        )
+        .await
+        .unwrap();
+        assert!(r.human_response_persisted);
+        assert!(!r.system_inferred_consent);
+        assert_eq!(r.operation_state, "RUNNING");
+        let second = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+            .await
+            .unwrap();
+        assert!(second.terminal);
+        assert_eq!(second.state, "SUCCEEDED");
+        let q = niccolo_evidence::analysis_quality::report(&app, analysis_scope)
+            .await
+            .unwrap();
+        assert!(q.provisional);
+    })
+    .await;
+    let n:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3").bind(s.workspace).bind(s.situation).bind(scope.operation).fetch_one(&admin).await.unwrap();
+    assert_eq!(n, 1);
+}
+
+#[tokio::test]
+async fn v1101_v1200_operation_budget_is_cumulative_bounded_and_not_a_quality_score() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = OperationScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        operation: Uuid::new_v4(),
+    };
+    authz::with_auth_digest("test-digest".into(), async {
+        bff_operations::submit(
+            &app,
+            scope,
+            &NewOperation {
+                kind: "AGENTIC_ANALYSIS".into(),
+                target_analysis_id: Some(s.analysis),
+                parent_operation_id: None,
+                idempotency_key: Some(format!("budget-{}", scope.operation)),
+                input: json!({"model_budget":{"max_invocations":1,"max_total_tokens":10}}),
+                deadline_at: None,
+                step_budget: 32,
+                requested_by: s.principal,
+            },
+        )
+        .await
+        .unwrap();
+        let before = niccolo_evidence::operation_budget::require_available(&app, scope)
+            .await
+            .unwrap();
+        assert_eq!(before.max_invocations, 1);
+        assert_eq!(before.used_invocations, 0);
+        assert!(!before.budget_is_quality_score);
+        let steps = agentic_policy::default_plan(&app, s.workspace, s.situation, s.analysis)
+            .await
+            .unwrap();
+        let (rev, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+            .await
+            .unwrap();
+        let model = DeterministicModel::new("test", "budget-model").unwrap();
+        model_adapter::invoke_recorded(
+            &app,
+            InvocationScope {
+                operation: scope,
+                plan_revision: rev,
+                step_id: steps[0].step_id,
+            },
+            s.principal,
+            &model,
+            &ModelRequest {
+                purpose: "INSPECT_SOURCES".into(),
+                input: json!({}),
+                output_contract: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            niccolo_evidence::operation_budget::require_available(&app, scope).await,
+            Err(niccolo_evidence::operation_budget::BudgetError::Invocations)
+        ));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn v1201_v1300_failover_records_the_provider_that_actually_answered() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(),async {
+  let steps=agentic_policy::default_plan(&app,s.workspace,s.situation,s.analysis).await.unwrap();let(rev,_)=agentic_controller::create_plan(&app,scope,s.principal,&steps).await.unwrap();
+  let primary:std::sync::Arc<dyn model_adapter::ReasoningModel>=std::sync::Arc::new(model_adapter::UnavailableModel);
+  let fallback:std::sync::Arc<dyn model_adapter::ReasoningModel>=std::sync::Arc::new(DeterministicModel::new("fallback-provider","fallback-model").unwrap());
+  let router=model_adapter::FailoverModel::new(primary,fallback);
+  let v=model_adapter::invoke_recorded(&app,InvocationScope{operation:scope,plan_revision:rev,step_id:steps[0].step_id},s.principal,&router,&ModelRequest{purpose:"INSPECT_SOURCES".into(),input:json!({}),output_contract:json!({})}).await.unwrap();
+  assert_eq!(v.provider,"niccolo-router");assert_eq!(v.effective_provider.as_deref(),Some("fallback-provider"));assert_eq!(v.effective_model.as_deref(),Some("fallback-model"));assert!(v.fallback_used);
+  let row:(Option<String>,Option<String>,bool)=sqlx::query_as("SELECT effective_provider,effective_model,fallback_used FROM niccolo.model_invocations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND invocation_id=$4").bind(s.workspace).bind(s.situation).bind(scope.operation).bind(v.invocation_id).fetch_one(&admin).await.unwrap();assert_eq!(row,(Some("fallback-provider".into()),Some("fallback-model".into()),true));
+ }).await;
+}
+
+#[tokio::test]
+async fn v1301_v1400_material_state_discovered_after_planning_creates_versioned_human_gate() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    let ascope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let challenge = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        niccolo_evidence::adversarial_challenge::apply(
+            &app,
+            ascope,
+            s.principal,
+            &niccolo_evidence::adversarial_challenge::ChallengeArtifact {
+                challenges: vec![niccolo_evidence::adversarial_challenge::ChallengeItem {
+                    challenge_id: challenge,
+                    kind: "COUNTEREVIDENCE".into(),
+                    text: "Material counterevidence remains unresolved".into(),
+                    materiality: 90,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+        let model = DeterministicModel::new("test", "dynamic-gate").unwrap();
+        let out = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+            .await
+            .unwrap();
+        assert!(out.waiting_for_human);
+        assert_eq!(out.state, "WAITING_FOR_HUMAN");
+        let view = agentic_controller::view(&app, scope).await.unwrap();
+        assert_eq!(view.plan_revision, 2);
+        let h = view
+            .steps
+            .iter()
+            .find(|x| x.kind == "REQUEST_HUMAN_DECISION")
+            .unwrap();
+        assert_eq!(h.state, "WAITING_FOR_HUMAN");
+        assert!(h.requires_human);
+        let r = agentic_controller::resolve_human_boundary(
+            &app,
+            scope,
+            h.step_id,
+            Uuid::new_v4(),
+            s.principal,
+            "CONTINUE",
+            "I reviewed the material counterevidence and accept a provisional handoff.",
+        )
+        .await
+        .unwrap();
+        assert!(!r.system_inferred_consent);
+        let done = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+            .await
+            .unwrap();
+        assert!(done.terminal);
+        assert_eq!(done.state, "SUCCEEDED");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn v1401_v1500_stale_started_step_recovers_without_resetting_completed_work() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(),async {
+  let steps=agentic_policy::default_plan(&app,s.workspace,s.situation,s.analysis).await.unwrap();let(rev,_)=agentic_controller::create_plan(&app,scope,s.principal,&steps).await.unwrap();let first=steps[0].step_id;
+  agentic_controller::start_step(&app,scope,first,s.principal).await.unwrap();
+  sqlx::query("UPDATE niccolo.agentic_step_events SET created_at=clock_timestamp()-interval '10 minutes' WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'").bind(s.workspace).bind(s.situation).bind(scope.operation).bind(rev).bind(first).execute(&admin).await.unwrap();
+  let recovered=agentic_controller::recover_stale_started(&app,scope,s.principal,120).await.unwrap();assert!(recovered.ready_step_ids.contains(&first));assert_eq!(recovered.steps.iter().find(|x|x.step_id==first).unwrap().state,"PENDING");
+  agentic_controller::start_step(&app,scope,first,s.principal).await.unwrap();agentic_controller::finish_step(&app,scope,first,s.principal,"SUCCEEDED","retry completed").await.unwrap();
+  let again=agentic_controller::recover_stale_started(&app,scope,s.principal,120).await.unwrap();assert_eq!(again.steps.iter().find(|x|x.step_id==first).unwrap().state,"SUCCEEDED");
+ }).await;
+}
+
+#[tokio::test]
+async fn v1601_v1700_proactive_briefing_is_two_or_three_bounded_leads_not_evidence() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    for i in 0..5 {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,description,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(s.workspace).bind(s.situation).bind(s.analysis).bind(Uuid::new_v4()).bind(format!("Gap {i}")).bind(s.principal).execute(&admin).await.unwrap();
+    }
+    authz::with_auth_digest("test-digest".into(), async {
+        let b = niccolo_evidence::proactive_briefing::build(&app, scope)
+            .await
+            .unwrap();
+        assert_eq!(b.leads.len(), 3);
+        assert!(b.truncated);
+        assert!(b.user_owns_which_lead_to_pursue);
+        assert!(b.leads.iter().all(|x| !x.lead_is_evidence
+            && !x.lead_establishes_truth
+            && x.user_may_ignore
+            && !x.system_may_execute_external_action));
+        let packet = reasoning_packet::build(&app, scope).await.unwrap();
+        assert_eq!(packet.proactive_leads.leads.len(), 3);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn v1701_v1800_reanalysis_explanation_separates_recorded_delta_lineage_and_causality() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let new = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        niccolo_evidence::situation_store::set_focus(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            "Changed focus for reanalysis",
+        )
+        .await
+        .unwrap();
+        niccolo_evidence::analysis_snapshot::begin(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            new,
+            "re-evaluate",
+            Some(s.analysis),
+        )
+        .await
+        .unwrap();
+    })
+    .await;
+    for analysis in [s.analysis, new] {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id) VALUES($1,$2,$3,'fixture output','fixture coverage',$4)")
+            .bind(s.workspace).bind(s.situation).bind(analysis).bind(s.principal).execute(&admin).await.unwrap();
+    }
+    let old_claim = Uuid::new_v4();
+    let new_claim = Uuid::new_v4();
+    for (a, c, t) in [
+        (s.analysis, old_claim, "Old inference"),
+        (new, new_claim, "New inference"),
+    ] {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_claims(workspace_id,situation_id,analysis_id,claim_id,ordinal,claim_kind,claim_text,created_by_principal_id) VALUES($1,$2,$3,$4,1,'INFERENCE',$5,$6)").bind(s.workspace).bind(s.situation).bind(a).bind(c).bind(t).bind(s.principal).execute(&admin).await.unwrap();
+    }
+    authz::with_auth_digest("test-digest".into(), async {
+        let e = niccolo_evidence::reanalysis_revision::explain(
+            &app,
+            AnalysisScope {
+                workspace: s.workspace,
+                situation: s.situation,
+                analysis: new,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(e.prior_analysis_id, s.analysis);
+        assert!(e.focus_changed);
+        assert_eq!(e.prior_input_revision, 1);
+        assert_eq!(e.new_input_revision, 2);
+        assert_eq!(e.unlinked_prior_claims, vec![old_claim]);
+        assert_eq!(e.unlinked_new_claims, vec![new_claim]);
+        assert!(!e.unlinked_claims_are_inferred_change);
+        assert!(!e.input_change_proves_causal_reason_for_output_change);
     })
     .await;
 }

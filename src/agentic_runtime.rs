@@ -3,7 +3,7 @@
 use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_quality, bff_operations,
-    model_adapter, model_artifacts, reasoning_packet, reasoning_updates,
+    model_adapter, model_artifacts, operation_budget, reasoning_packet, reasoning_updates,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,8 @@ pub enum RuntimeError {
     Quality(#[from] analysis_quality::QualityError),
     #[error("adversarial challenge invalid: {0}")]
     Challenge(#[from] adversarial_challenge::ChallengeError),
+    #[error("operation budget unavailable: {0}")]
+    Budget(#[from] operation_budget::BudgetError),
     #[error("agentic operation requires an analysis")]
     MissingAnalysis,
 }
@@ -85,6 +87,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     }
     let op = bff_operations::get(pool, scope).await?;
     let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
+    let _operation_budget = operation_budget::require_available(pool, scope).await?;
     let packet = reasoning_packet::build(
         pool,
         crate::analysis_structure::AnalysisScope {
@@ -201,6 +204,7 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
     model: &M,
 ) -> Result<RunOutcome, RuntimeError> {
     ensure_default_plan(pool, scope, actor).await?;
+    let _ = agentic_controller::recover_stale_started(pool, scope, actor, 120).await?;
     let mut completed = 0usize;
     loop {
         let view = agentic_controller::view(pool, scope).await?;
@@ -224,7 +228,22 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
                 },
             )
             .await?;
-            let result = json!({"agentic":true,"plan_revision":view.plan_revision,"plan_sha256":view.plan_sha256,"budget_used":view.budget_used,"steps":view.steps.len(),"quality":quality});
+            let already_had_human_review = view
+                .steps
+                .iter()
+                .any(|s| s.kind == "REQUEST_HUMAN_DECISION");
+            if quality.human_attention_recommended && !already_had_human_review {
+                let reason = format!(
+                    "{} open evidence gap(s), {} clarification(s), {} material adversarial challenge(s)",
+                    quality.open_evidence_gap_count,
+                    quality.clarification_count,
+                    quality.open_material_challenge_count
+                );
+                let followup = agentic_policy::human_attention_plan(&reason)?;
+                agentic_controller::create_plan(pool, scope, actor, &followup).await?;
+                continue;
+            }
+            let result = json!({"agentic":true,"plan_revision":view.plan_revision,"plan_sha256":view.plan_sha256,"budget_used":view.budget_used,"steps":view.steps.len(),"quality":quality,"explicit_human_review_occurred":already_had_human_review});
             let final_view = if op.state == "RUNNING" {
                 bff_operations::succeed(pool, scope, op.state_version, actor, &result).await?
             } else {

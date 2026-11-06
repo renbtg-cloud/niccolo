@@ -35,6 +35,12 @@ pub struct ModelResponse {
     pub value: Value,
     pub prompt_tokens: Option<i64>,
     pub completion_tokens: Option<i64>,
+    #[serde(default)]
+    pub effective_provider: Option<String>,
+    #[serde(default)]
+    pub effective_model: Option<String>,
+    #[serde(default)]
+    pub fallback_used: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,7 +125,49 @@ impl ReasoningModel for DeterministicModel {
                 value,
                 prompt_tokens: Some(0),
                 completion_tokens: Some(0),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
             })
+        })
+    }
+}
+
+pub struct FailoverModel {
+    primary: std::sync::Arc<dyn ReasoningModel>,
+    fallback: std::sync::Arc<dyn ReasoningModel>,
+}
+impl FailoverModel {
+    pub fn new(
+        primary: std::sync::Arc<dyn ReasoningModel>,
+        fallback: std::sync::Arc<dyn ReasoningModel>,
+    ) -> Self {
+        Self { primary, fallback }
+    }
+}
+impl ReasoningModel for FailoverModel {
+    fn provider(&self) -> &str {
+        "niccolo-router"
+    }
+    fn model(&self) -> &str {
+        "explicit-failover-v1"
+    }
+    fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
+        Box::pin(async move {
+            match self.primary.invoke(request).await {
+                Ok(mut r) => {
+                    r.effective_provider = Some(self.primary.provider().into());
+                    r.effective_model = Some(self.primary.model().into());
+                    Ok(r)
+                }
+                Err(_) => {
+                    let mut r = self.fallback.invoke(request).await?;
+                    r.effective_provider = Some(self.fallback.provider().into());
+                    r.effective_model = Some(self.fallback.model().into());
+                    r.fallback_used = true;
+                    Ok(r)
+                }
+            }
         })
     }
 }
@@ -139,6 +187,9 @@ pub struct InvocationView {
     pub request_sha256: String,
     pub response_sha256: Option<String>,
     pub response: Option<Value>,
+    pub effective_provider: Option<String>,
+    pub effective_model: Option<String>,
+    pub fallback_used: bool,
 }
 
 fn digest(text: &str) -> String {
@@ -241,6 +292,15 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
                     sqlx::query("UPDATE niccolo.model_invocations SET response_json=$7,response_sha256=$8,status='SUCCEEDED',prompt_tokens=$9,completion_tokens=$10,attempt_count=$11,latency_ms=$12,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
                   .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&response_json).bind(&response_sha).bind(response.prompt_tokens).bind(response.completion_tokens).bind(attempt as i32).bind(started.elapsed().as_millis() as i64).execute(&mut *tx).await?;
+                    let effective_provider = response
+                        .effective_provider
+                        .clone()
+                        .unwrap_or_else(|| model.provider().into());
+                    let effective_model = response
+                        .effective_model
+                        .clone()
+                        .unwrap_or_else(|| model.model().into());
+                    sqlx::query("UPDATE niccolo.model_invocations SET effective_provider=$7,effective_model=$8,fallback_used=$9 WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6").bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&effective_provider).bind(&effective_model).bind(response.fallback_used).execute(&mut *tx).await?;
                     tx.commit().await?;
                     return Ok(InvocationView {
                         invocation_id: invocation,
@@ -250,6 +310,9 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                         request_sha256: request_sha,
                         response_sha256: Some(response_sha),
                         response: Some(response.value),
+                        effective_provider: Some(effective_provider),
+                        effective_model: Some(effective_model),
+                        fallback_used: response.fallback_used,
                     });
                 }
             }

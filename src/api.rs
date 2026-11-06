@@ -284,6 +284,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_agentic_operation).post(plan_agentic_operation),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/agentic/steps/{step}/human-response",
+            post(resolve_agentic_human_boundary),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/cancel",
             post(cancel_bff_operation),
         )
@@ -2388,6 +2392,13 @@ struct BffCancelRequest {
     expected_version: i64,
     reason: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AgenticHumanResponseRequest {
+    response_id: Uuid,
+    decision: String,
+    response_text: String,
+}
 
 fn bff_error(e: BffOperationError) -> ApiError {
     match e {
@@ -2641,6 +2652,51 @@ async fn wait_bff_operation(
     .await
     .map_err(bff_error)?;
     Ok(bff_response(view, StatusCode::OK))
+}
+
+async fn resolve_agentic_human_boundary(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, step)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<AgenticHumanResponseRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
+    let resolved = agentic_controller::resolve_human_boundary(
+        &state.pool,
+        scope,
+        step,
+        request.response_id,
+        actor,
+        &request.decision,
+        &request.response_text,
+    )
+    .await
+    .map_err(|e| match e {
+        agentic_controller::ControllerError::StateConflict => {
+            ApiError(StatusCode::CONFLICT, "agentic human boundary conflict")
+        }
+        agentic_controller::ControllerError::Invisible => {
+            ApiError(StatusCode::NOT_FOUND, "agentic step not found")
+        }
+        _ => ApiError(StatusCode::BAD_REQUEST, "invalid agentic human response"),
+    })?;
+    let controller = agentic_controller::view(&state.pool, scope)
+        .await
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "agentic plan unavailable",
+            )
+        })?;
+    Ok(no_store(
+        json!({"resolution":resolved,"controller":controller}),
+        StatusCode::OK,
+    ))
 }
 async fn get_agentic_operation(
     State(state): State<AppState>,

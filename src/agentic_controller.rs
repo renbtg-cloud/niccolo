@@ -189,7 +189,7 @@ pub async fn view(pool: &PgPool, scope: OperationScope) -> Result<ControllerView
         return Err(ControllerError::Invisible);
     };
     type Row = (Uuid, i32, String, String, bool, Option<String>);
-    let rows:Vec<Row>=sqlx::query_as("SELECT s.step_id,s.ordinal,s.step_kind,s.label,s.requires_human,(SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1) FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 ORDER BY s.ordinal").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut *tx).await?;
+    let rows:Vec<Row>=sqlx::query_as("SELECT s.step_id,s.ordinal,s.step_kind,s.label,s.requires_human,NULLIF((SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1),'RETRY_READY') FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 ORDER BY s.ordinal").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut *tx).await?;
     let deps:Vec<(Uuid,Uuid)>=sqlx::query_as("SELECT step_id,depends_on_step_id FROM niccolo.agentic_step_dependencies WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut *tx).await?;
     let budget_used:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND event_kind='STARTED'").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_one(&mut *tx).await?;
     tx.commit().await?;
@@ -325,6 +325,113 @@ pub async fn resume_step(
     // RESUMED means active again, so add a STARTED event as the latest operational state.
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','resumed after human input',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
+    tx.commit().await?;
+    view(pool, scope).await
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HumanBoundaryResolution {
+    pub decision: String,
+    pub operation_state: String,
+    pub plan_revision: i64,
+    pub step_id: Uuid,
+    pub human_response_persisted: bool,
+    pub system_inferred_consent: bool,
+}
+pub async fn resolve_human_boundary(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+    response_id: Uuid,
+    actor: Uuid,
+    decision: &str,
+    response_text: &str,
+) -> Result<HumanBoundaryResolution, ControllerError> {
+    if !matches!(decision, "CONTINUE" | "STOP" | "REPLAN")
+        || response_text.trim().is_empty()
+        || response_text.len() > 4096
+    {
+        return Err(ControllerError::Invalid);
+    }
+    let before = view(pool, scope).await?;
+    let s = before
+        .steps
+        .iter()
+        .find(|x| x.step_id == step)
+        .ok_or(ControllerError::Invisible)?;
+    if s.state != "WAITING_FOR_HUMAN" {
+        return Err(ControllerError::StateConflict);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_id).bind(decision).bind(response_text.trim()).bind(actor).execute(&mut *tx).await?;
+    let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).fetch_optional(&mut *tx).await?;
+    if row != Some((decision.into(), response_text.trim().into(), actor)) {
+        return Err(ControllerError::StateConflict);
+    }
+    tx.commit().await?;
+    let op = bff_operations::get(pool, scope).await?;
+    if decision == "STOP" {
+        let v = bff_operations::cancel(
+            pool,
+            scope,
+            op.state_version,
+            actor,
+            "human stopped agentic continuation",
+        )
+        .await?;
+        return Ok(HumanBoundaryResolution {
+            decision: decision.into(),
+            operation_state: v.state,
+            plan_revision: before.plan_revision,
+            step_id: step,
+            human_response_persisted: true,
+            system_inferred_consent: false,
+        });
+    }
+    if op.state == "WAITING_FOR_HUMAN" {
+        let _ = bff_operations::resume(pool, scope, op.state_version, actor).await?;
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7),($1,$2,$3,$4,$5,'SUCCEEDED',$8,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_text.trim()).bind(actor).bind(if decision=="REPLAN"{"human requested replanning"}else{"human explicitly continued"}).execute(&mut *tx).await?;
+    tx.commit().await?;
+    if decision == "REPLAN" {
+        let op = bff_operations::get(pool, scope).await?;
+        let analysis = op.target_analysis_id.ok_or(ControllerError::Invalid)?;
+        let steps =
+            crate::agentic_policy::default_plan(pool, scope.workspace, scope.situation, analysis)
+                .await
+                .map_err(|_| ControllerError::Invalid)?;
+        let _ = create_plan(pool, scope, actor, &steps).await?;
+    }
+    let op = bff_operations::get(pool, scope).await?;
+    Ok(HumanBoundaryResolution {
+        decision: decision.into(),
+        operation_state: op.state,
+        plan_revision: view(pool, scope).await?.plan_revision,
+        step_id: step,
+        human_response_persisted: true,
+        system_inferred_consent: false,
+    })
+}
+
+/// v1.401-v1.500: recover only genuinely stale STARTED steps. Recovery is an
+/// append-only state transition; completed/waiting steps are never reset.
+pub async fn recover_stale_started(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    stale_after_seconds: i32,
+) -> Result<ControllerView, ControllerError> {
+    if !(30..=86400).contains(&stale_after_seconds) {
+        return Err(ControllerError::Invalid);
+    }
+    let before = view(pool, scope).await?;
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let stale:Vec<Uuid>=sqlx::query_scalar("SELECT s.step_id FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 AND (SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)='STARTED' AND (SELECT e.created_at FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)<clock_timestamp()-make_interval(secs=>$5)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(stale_after_seconds).fetch_all(&mut *tx).await?;
+    for step in stale {
+        sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code='RECOVERY_STALE',error_message='orphaned invocation recovered after stale threshold',completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND status='STARTED'").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RETRY_READY','stale STARTED step recovered for bounded retry',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
+    }
     tx.commit().await?;
     view(pool, scope).await
 }

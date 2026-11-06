@@ -173,3 +173,33 @@ pub async fn default_plan(
     }
     Ok(steps)
 }
+
+/// v1.301-v1.400: follow-up handback created only when reasoning itself discovers
+/// material unresolved state after the original plan was constructed.
+pub fn human_attention_plan(reason: &str) -> Result<Vec<StepInput>, PolicyError> {
+    if reason.trim().is_empty() {
+        return Err(PolicyError::Database(sqlx::Error::Protocol(
+            "empty attention reason".into(),
+        )));
+    }
+    let human = id();
+    let handoff = id();
+    Ok(vec![
+        StepInput {
+            step_id: human,
+            ordinal: 1,
+            kind: "REQUEST_HUMAN_DECISION".into(),
+            label: format!("Human review required after reasoning: {}", reason.trim()),
+            requires_human: true,
+            depends_on: vec![],
+        },
+        StepInput {
+            step_id: handoff,
+            ordinal: 2,
+            kind: "PREPARE_HANDOFF".into(),
+            label: "Prepare handback after explicit human review".into(),
+            requires_human: false,
+            depends_on: vec![human],
+        },
+    ])
+}

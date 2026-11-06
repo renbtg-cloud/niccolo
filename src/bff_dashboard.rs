@@ -4,7 +4,7 @@ use crate::{
     agentic_controller, analysis_review,
     analysis_structure::AnalysisScope,
     bff_operations::{self, OperationScope},
-    investigation_policy, reanalysis_advisor, situation_store,
+    investigation_policy, proactive_briefing, reanalysis_advisor, situation_store,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -39,6 +39,7 @@ pub struct Dashboard {
     pub active_context_count: usize,
     pub analysis: DashboardAnalysis,
     pub investigation: investigation_policy::InvestigationQueue,
+    pub proactive: proactive_briefing::ProactiveBriefing,
     pub reanalysis: reanalysis_advisor::ReanalysisRecommendation,
     pub operation: Option<bff_operations::OperationView>,
     pub controller: Option<agentic_controller::ControllerView>,
@@ -60,6 +61,7 @@ pub async fn get(
     let investigation = investigation_policy::queue(pool, scope, 8)
         .await
         .map_err(dep)?;
+    let proactive = proactive_briefing::build(pool, scope).await.map_err(dep)?;
     let reanalysis = reanalysis_advisor::assess(pool, scope).await.map_err(dep)?;
     let (operation, controller) = if let Some(id) = operation {
         let os = OperationScope {
@@ -91,6 +93,7 @@ pub async fn get(
             input_context_count: review.input_context_count,
         },
         investigation,
+        proactive,
         reanalysis,
         operation,
         controller,
