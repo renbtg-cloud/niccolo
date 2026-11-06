@@ -15,7 +15,7 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          base64 -d .sync/v1000.patch.xz.b64 > /tmp/v1000.patch.xz
+          cat .sync/v1000.part00 .sync/v1000.part01 .sync/v1000.part02 .sync/v1000.part03 .sync/v1000.part04 | base64 -d > /tmp/v1000.patch.xz
           echo "9dbb7485e145cd9b2fc860cc2a236e9edb2901c76f74e74371d80ddd80ab7ada  /tmp/v1000.patch.xz" | sha256sum -c -
           xz -dc /tmp/v1000.patch.xz > /tmp/v1000.patch
           echo "2ee1955e4e37e758100a9e137006b6a362603010931a6274355a0d128021c462  /tmp/v1000.patch" | sha256sum -c -
