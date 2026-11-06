@@ -29,3 +29,17 @@ Work resumed from the published identity-review validation checkpoint.
 The next action is the full Rust/PostgreSQL regression on the exact exported main snapshot.
 This checkpoint exists intentionally under the five-minute push protocol; it does not claim DONE.
 
+## Final regression
+
+FINAL STATUS: DONE
+
+- Rust/PostgreSQL full regression: 0/393 failed; 393/393 passed across 42 suites.
+- Focused identity integration: 0/11 failed; 11/11 passed.
+- Identity/source BFF HTTP tests: passed.
+- Frontend: 0/20 failed; 20/20 passed across 5 test files.
+- Production frontend build: passed.
+- rustfmt check: passed.
+- strict Clippy with pg-integration: passed.
+
+The identity review flow remains explicitly human-controlled: source speaker labels are not identities, matching labels are not automatically merged, and identity assignment/clear operations remain attributed append-only events.
+
