@@ -64,6 +64,12 @@ fn path(s: &Seed, id: Uuid, suffix: &str) -> String {
         s.workspace, s.situation, id, suffix
     )
 }
+fn intent_path(s: &Seed, id: Uuid, suffix: &str) -> String {
+    format!(
+        "/v1/workspaces/{}/situations/{}/bff/intents/{}{}",
+        s.workspace, s.situation, id, suffix
+    )
+}
 fn req(
     method: &str,
     path: &str,
@@ -312,4 +318,53 @@ async fn v316_v325_agentic_plan_is_inspectable_through_bff() {
         tokio::task::yield_now().await;
     }
     panic!("agentic plan was not visible");
+}
+
+
+#[tokio::test]
+async fn v391_v430_human_intent_bff_creates_frozen_analysis_and_uses_same_agentic_runtime() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let request = json!({
+        "analysis_id": analysis,
+        "intent": "UNDERSTAND",
+        "goal": null,
+        "reanalysis_of": null,
+        "idempotency_key": format!("intent-{operation}"),
+        "step_budget": 32,
+        "context": {"surface":"http-integration","human_owns_project":true}
+    });
+    let (status, headers, value) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(request),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["analysis_id"], analysis.to_string());
+    assert_eq!(value["intent"], "UNDERSTAND");
+    assert_eq!(value["operation"]["operation_id"], operation.to_string());
+    assert_eq!(value["operation"]["state"], "SUCCEEDED");
+    assert!(headers.get(header::ETAG).is_some());
+
+    let analysis_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}",
+        s.workspace, s.situation, analysis
+    );
+    let (status, _, frozen) = invoke(
+        s.router.clone(),
+        req("GET", &analysis_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(frozen["analysis_id"], analysis.to_string());
+    assert_eq!(frozen["frozen_input"], true);
+    assert_eq!(frozen["incorporates_future_context"], false);
+    assert!(frozen["goal"].as_str().unwrap().contains("evidence"));
 }
