@@ -108,6 +108,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/analysis", get(frontend_index))
         .route("/reasoning", get(frontend_index))
+        .route("/feedback", get(frontend_index))
         .route("/identities", get(frontend_index))
         .route("/operations", get(frontend_index))
         .route("/review", get(frontend_index))
