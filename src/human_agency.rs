@@ -1,0 +1,397 @@
+//! v0.121-v0.140: human-owned rationale, evidence gaps, goals, and next steps.
+use crate::analysis_structure::AnalysisScope;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
+
+#[derive(Debug, thiserror::Error)]
+pub enum AgencyError {
+    #[error("database unavailable: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("privileged SQL login prohibited")]
+    Privileged,
+    #[error("invalid agency input")]
+    Invalid,
+}
+
+async fn scoped(
+    pool: &PgPool,
+    workspace: Uuid,
+    read_only: bool,
+) -> Result<Transaction<'_, Postgres>, AgencyError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(if read_only {
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+    } else {
+        "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
+    })
+    .execute(&mut *tx)
+    .await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(AgencyError::Privileged);
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
+    Ok(tx)
+}
+fn valid(s: &str) -> bool {
+    !s.trim().is_empty() && s.len() <= 4096
+}
+
+type DecisionRationaleRow = (Uuid, Option<Uuid>, String, Option<String>, Uuid);
+type GoalRow = (Uuid, String, String, Uuid, Option<String>);
+type NextStepRow = (Uuid, String, String, String, Option<String>);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecisionRationaleInput {
+    pub rationale_id: Uuid,
+    pub option_id: Option<Uuid>,
+    pub rationale: String,
+    pub tradeoff_ack: Option<String>,
+    pub recorded_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionRationaleView {
+    pub rationale_id: Uuid,
+    pub option_id: Option<Uuid>,
+    pub rationale: String,
+    pub tradeoff_ack: Option<String>,
+    pub recorded_by: Uuid,
+    pub rationale_decides_for_human: bool,
+}
+
+pub async fn record_decision_rationale(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    decision: Uuid,
+    input: &DecisionRationaleInput,
+) -> Result<(), AgencyError> {
+    if !valid(&input.rationale) || input.tradeoff_ack.as_ref().is_some_and(|x| !valid(x)) {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_decision_rationales(workspace_id,situation_id,analysis_id,decision_id,rationale_id,option_id,rationale_text,tradeoff_ack,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).bind(input.rationale_id).bind(input.option_id).bind(&input.rationale).bind(&input.tradeoff_ack).bind(input.recorded_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn decision_rationales(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    decision: Uuid,
+) -> Result<Vec<DecisionRationaleView>, AgencyError> {
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let rows: Vec<DecisionRationaleRow> = sqlx::query_as("SELECT rationale_id,option_id,rationale_text,tradeoff_ack,recorded_by_principal_id FROM niccolo.situation_analysis_decision_rationales WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND decision_id=$4 ORDER BY created_at,rationale_id")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(rationale_id, option_id, rationale, tradeoff_ack, recorded_by)| {
+                DecisionRationaleView {
+                    rationale_id,
+                    option_id,
+                    rationale,
+                    tradeoff_ack,
+                    recorded_by,
+                    rationale_decides_for_human: false,
+                }
+            },
+        )
+        .collect())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceGapInput {
+    pub gap_id: Uuid,
+    pub claim_id: Option<Uuid>,
+    pub description: String,
+    pub requested_source_kind: Option<String>,
+    pub recorded_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceGapEvent {
+    pub event_id: Uuid,
+    pub kind: String,
+    pub evidence_id: Option<Uuid>,
+    pub note: String,
+    pub recorded_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceGapView {
+    pub gap_id: Uuid,
+    pub claim_id: Option<Uuid>,
+    pub description: String,
+    pub requested_source_kind: Option<String>,
+    pub state: String,
+    pub evidence_id: Option<Uuid>,
+    pub satisfied_means_claim_true: bool,
+    pub automatically_ranked: bool,
+}
+
+pub async fn record_evidence_gap(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    input: &EvidenceGapInput,
+) -> Result<(), AgencyError> {
+    if !valid(&input.description)
+        || input
+            .requested_source_kind
+            .as_ref()
+            .is_some_and(|x| x.trim().is_empty() || x.len() > 256)
+    {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,claim_id,description,requested_source_kind,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(input.gap_id).bind(input.claim_id).bind(&input.description).bind(&input.requested_source_kind).bind(input.recorded_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn append_gap_event(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    gap: Uuid,
+    event: &EvidenceGapEvent,
+) -> Result<(), AgencyError> {
+    if !matches!(event.kind.as_str(), "SATISFIED" | "WAIVED" | "REOPENED")
+        || !valid(&event.note)
+        || (event.kind == "SATISFIED") != event.evidence_id.is_some()
+    {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gap_events(workspace_id,situation_id,analysis_id,gap_id,event_id,event_kind,evidence_id,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(gap).bind(event.event_id).bind(&event.kind).bind(event.evidence_id).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn evidence_gaps(
+    pool: &PgPool,
+    scope: AnalysisScope,
+) -> Result<Vec<EvidenceGapView>, AgencyError> {
+    type GapRow = (
+        Uuid,
+        Option<Uuid>,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<Uuid>,
+    );
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let rows:Vec<GapRow>=sqlx::query_as("SELECT g.gap_id,g.claim_id,g.description,g.requested_source_kind,(SELECT e.event_kind FROM niccolo.situation_analysis_evidence_gap_events e WHERE e.workspace_id=g.workspace_id AND e.situation_id=g.situation_id AND e.analysis_id=g.analysis_id AND e.gap_id=g.gap_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1),(SELECT e.evidence_id FROM niccolo.situation_analysis_evidence_gap_events e WHERE e.workspace_id=g.workspace_id AND e.situation_id=g.situation_id AND e.analysis_id=g.analysis_id AND e.gap_id=g.gap_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_evidence_gaps g WHERE g.workspace_id=$1 AND g.situation_id=$2 AND g.analysis_id=$3 ORDER BY g.gap_id")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(gap_id, claim_id, description, requested_source_kind, state, evidence_id)| {
+                EvidenceGapView {
+                    gap_id,
+                    claim_id,
+                    description,
+                    requested_source_kind,
+                    state: state.unwrap_or_else(|| "OPEN".into()),
+                    evidence_id,
+                    satisfied_means_claim_true: false,
+                    automatically_ranked: false,
+                }
+            },
+        )
+        .collect())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GoalInput {
+    pub goal_id: Uuid,
+    pub goal: String,
+    pub success_criterion: String,
+    pub owner: Uuid,
+    pub created_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GoalEvent {
+    pub event_id: Uuid,
+    pub kind: String,
+    pub note: String,
+    pub recorded_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoalView {
+    pub goal_id: Uuid,
+    pub goal: String,
+    pub success_criterion: String,
+    pub owner: Uuid,
+    pub state: String,
+    pub system_owns_goal: bool,
+}
+
+pub async fn create_goal(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    input: &GoalInput,
+) -> Result<(), AgencyError> {
+    if !valid(&input.goal) || !valid(&input.success_criterion) {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_goals(workspace_id,situation_id,goal_id,goal_text,success_criterion,owner_principal_id,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+        .bind(workspace).bind(situation).bind(input.goal_id).bind(&input.goal).bind(&input.success_criterion).bind(input.owner).bind(input.created_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn append_goal_event(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    goal: Uuid,
+    event: &GoalEvent,
+) -> Result<(), AgencyError> {
+    if !matches!(event.kind.as_str(), "ACHIEVED" | "REOPENED" | "ABANDONED") || !valid(&event.note)
+    {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_goal_events(workspace_id,situation_id,goal_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+        .bind(workspace).bind(situation).bind(goal).bind(event.event_id).bind(&event.kind).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn goals(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<GoalView>, AgencyError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let rows: Vec<GoalRow> = sqlx::query_as("SELECT g.goal_id,g.goal_text,g.success_criterion,g.owner_principal_id,(SELECT e.event_kind FROM niccolo.situation_goal_events e WHERE e.workspace_id=g.workspace_id AND e.situation_id=g.situation_id AND e.goal_id=g.goal_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_goals g WHERE g.workspace_id=$1 AND g.situation_id=$2 ORDER BY g.goal_id")
+        .bind(workspace).bind(situation).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(goal_id, goal, success_criterion, owner, state)| GoalView {
+                goal_id,
+                goal,
+                success_criterion,
+                owner,
+                state: state.unwrap_or_else(|| "ACTIVE".into()),
+                system_owns_goal: false,
+            },
+        )
+        .collect())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NextStepInput {
+    pub step_id: Uuid,
+    pub kind: String,
+    pub text: String,
+    pub rationale: String,
+    pub proposed_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NextStepEvent {
+    pub event_id: Uuid,
+    pub kind: String,
+    pub note: String,
+    pub recorded_by: Uuid,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NextStepView {
+    pub step_id: Uuid,
+    pub kind: String,
+    pub text: String,
+    pub rationale: String,
+    pub state: String,
+    pub automatically_ranked: bool,
+    pub accepted_means_executed: bool,
+    pub system_may_execute_without_human: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NextStepPackage {
+    pub steps: Vec<NextStepView>,
+    pub human_owns_next_action: bool,
+    pub package_executes_actions: bool,
+}
+
+pub async fn propose_next_step(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    input: &NextStepInput,
+) -> Result<(), AgencyError> {
+    if !matches!(
+        input.kind.as_str(),
+        "ASK_HUMAN" | "GATHER_EVIDENCE" | "REANALYZE" | "USER_ACTION"
+    ) || !valid(&input.text)
+        || !valid(&input.rationale)
+    {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_next_steps(workspace_id,situation_id,analysis_id,step_id,step_kind,step_text,rationale,proposed_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(input.step_id).bind(&input.kind).bind(&input.text).bind(&input.rationale).bind(input.proposed_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn append_next_step_event(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    step: Uuid,
+    event: &NextStepEvent,
+) -> Result<(), AgencyError> {
+    if !matches!(
+        event.kind.as_str(),
+        "ACCEPTED" | "DEFERRED" | "DISMISSED" | "REOPENED"
+    ) || !valid(&event.note)
+    {
+        return Err(AgencyError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_next_step_events(workspace_id,situation_id,analysis_id,step_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(step).bind(event.event_id).bind(&event.kind).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn next_steps(
+    pool: &PgPool,
+    scope: AnalysisScope,
+) -> Result<NextStepPackage, AgencyError> {
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let rows: Vec<NextStepRow> = sqlx::query_as("SELECT s.step_id,s.step_kind,s.step_text,s.rationale,(SELECT e.event_kind FROM niccolo.situation_analysis_next_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.analysis_id=s.analysis_id AND e.step_id=s.step_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_next_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 ORDER BY s.step_id")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(NextStepPackage {
+        steps: rows
+            .into_iter()
+            .map(|(step_id, kind, text, rationale, state)| NextStepView {
+                step_id,
+                kind,
+                text,
+                rationale,
+                state: state.unwrap_or_else(|| "PROPOSED".into()),
+                automatically_ranked: false,
+                accepted_means_executed: false,
+                system_may_execute_without_human: false,
+            })
+            .collect(),
+        human_owns_next_action: true,
+        package_executes_actions: false,
+    })
+}
+
+pub fn next_steps_sha256(value: &NextStepPackage) -> Result<String, serde_json::Error> {
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_string(value)?.as_bytes())
+    ))
+}

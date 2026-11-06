@@ -1,6 +1,6 @@
 [package]
 name = "niccolo-evidence-poc"
-version = "0.100.0"
+version = "0.180.0"
 edition = "2024"
 license = "UNLICENSED"
 description = "Offline epistemic-provenance proof of concept for Niccolò/Duhme"
