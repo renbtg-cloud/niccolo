@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.56)
+# Niccolò / Duhme — experimental Rust core (v0.80)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -365,3 +365,10 @@ The zero-dependency first-party shell can now explicitly connect to the loopback
 The experimental core now records structured claims, explicit source/context use, append-only human review, claim lineage across reanalysis, uncertainty history, and action proposals whose acceptance is explicitly **not** execution. It also provides deterministic human-review read models and portable hashes. See [ANALYSIS_CLAIMS_V031_038.md](ANALYSIS_CLAIMS_V031_038.md) and [HUMAN_CONTROL_V039_056.md](HUMAN_CONTROL_V039_056.md).
 
 This work still does **not** implement the open `MVP-HYP-001` remembered rejection/deprioritization semantics.
+
+
+## v0.57–v0.80 — human control, traceability, and inspectability
+
+This slice adds bounded activity pagination, human-selected attention pins, explicit reanalysis requests, separate action authorization/revocation, deterministic Situation exports, context non-use explanations, claim-to-output spans, exact review-package acknowledgements and a deterministic control ledger. See [HUMAN_CONTROL_V057_080.md](HUMAN_CONTROL_V057_080.md).
+
+Human steering remains steering: pins do not create automatic priority, requests/suggestions do not start analyses, authorization is not execution, and context exclusion is not a truth judgment or remembered rejection policy.
