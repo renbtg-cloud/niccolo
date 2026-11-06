@@ -10,6 +10,10 @@ pub enum CatalogError {
     PrivilegedRole,
     #[error("limit must be between 1 and 100")]
     InvalidLimit,
+    #[error("source document unavailable")]
+    InvisibleDocument,
+    #[error("source document has too many distinct speaker labels")]
+    TooManySpeakers,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +25,12 @@ pub struct SourceMetadata {
     pub byte_length: i64,
     pub fragment_count: i64,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpeakerSummary {
+    pub speaker_label: String,
+    pub fragment_count: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct SourcePage {
     pub documents: Vec<SourceMetadata>,
@@ -88,6 +98,66 @@ pub async fn list_sources(
         documents,
         next_after,
     })
+}
+
+
+pub async fn document_speakers(
+    pool: &PgPool,
+    workspace: Uuid,
+    document: Uuid,
+) -> Result<Vec<SpeakerSummary>, CatalogError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(CatalogError::PrivilegedRole);
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
+
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.source_documents WHERE workspace_id=$1 AND document_id=$2)",
+    )
+    .bind(workspace)
+    .bind(document)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !visible {
+        return Err(CatalogError::InvisibleDocument);
+    }
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT speaker_label,count(*)::bigint
+         FROM niccolo.source_fragments
+         WHERE workspace_id=$1 AND document_id=$2
+         GROUP BY speaker_label
+         ORDER BY speaker_label
+         LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(document)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    if rows.len() > 1000 {
+        return Err(CatalogError::TooManySpeakers);
+    }
+    Ok(rows
+        .into_iter()
+        .map(|(speaker_label, fragment_count)| SpeakerSummary {
+            speaker_label,
+            fragment_count,
+        })
+        .collect())
 }
 
 #[cfg(test)]

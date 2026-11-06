@@ -1,6 +1,8 @@
 export class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 export function situationPath(c) { return `/v1/workspaces/${c.workspace}/situations/${c.situation}`; }
 export function sourcesPath(c) { return `/v1/workspaces/${c.workspace}/sources`; }
+export function documentPath(c, id) { return `/v1/workspaces/${c.workspace}/documents/${id}`; }
+export function identitiesPath(c) { return `/v1/workspaces/${c.workspace}/identities`; }
 export function operationPath(c, id) { return `${situationPath(c)}/bff/operations/${id}`; }
 export function intentPath(c, id) { return `${situationPath(c)}/bff/intents/${id}`; }
 export function analysisPath(c, id) { return `${situationPath(c)}/analysis-snapshots/${id}`; }
@@ -29,6 +31,12 @@ export class NiccoloClient {
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
   sources(after = 0, limit = 100) { return this.request('GET', `${sourcesPath(this.config)}?after=${after}&limit=${limit}`); }
+  sourceSpeakers(documentId) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/speakers`); }
+  identities(after = 0, limit = 100) { return this.request('GET', `${identitiesPath(this.config)}?after=${after}&limit=${limit}`); }
+  createIdentity(personId, displayLabel) { return this.request('POST', `${identitiesPath(this.config)}/${personId}`, { body: { display_label: displayLabel } }); }
+  effectiveIdentities(documentId) { return this.request('GET', `${documentPath(this.config, documentId)}/identities`); }
+  identityHistory(documentId, after = 0, limit = 100) { return this.request('GET', `${documentPath(this.config, documentId)}/identity-history?after=${after}&limit=${limit}`); }
+  recordIdentityEvent(eventId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/identity-events/${eventId}`, { body }); }
   ingestSource(documentId, { locator, contentType, body }) { return this.requestRaw('POST', `${sourcesPath(this.config)}/${documentId}`, { body, contentType, locator }); }
   addSituationSource(documentId) { return this.request('POST', `${situationPath(this.config)}/sources/${documentId}`); }
   revisions() { return this.request('GET', `${situationPath(this.config)}/revisions?after=0&limit=100`); }

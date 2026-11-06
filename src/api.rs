@@ -107,6 +107,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/analysis", get(frontend_index))
         .route("/reasoning", get(frontend_index))
+        .route("/identities", get(frontend_index))
         .route("/operations", get(frontend_index))
         .route("/review", get(frontend_index))
         .route("/inspector", get(frontend_index))
@@ -167,6 +168,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
         .route("/readyz", get(readiness))
         .route(
+            "/v1/workspaces/{workspace}/identities",
+            get(list_identity_subjects),
+        )
+        .route(
             "/v1/workspaces/{workspace}/identities/{person}",
             post(create_identity),
         )
@@ -219,6 +224,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/assess", post(assess))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/speakers",
+            get(list_source_speakers),
+        )
         .route(
             "/v1/workspaces/{workspace}/sources/{document}",
             post(ingest),
@@ -620,6 +629,39 @@ async fn list_sources(
                 "document_id":d.document_id,"format":d.format,"locator":d.locator,
                 "sha256":d.sha256,"byte_length":d.byte_length,"fragment_count":d.fragment_count
             })).collect::<Vec<_>>(),"next_after":page.next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn list_source_speakers(
+    State(state): State<AppState>,
+    Path((workspace, document)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let speakers = source_catalog::document_speakers(&state.pool, workspace, document)
+        .await
+        .map_err(|error| match error {
+            source_catalog::CatalogError::InvisibleDocument => {
+                ApiError(StatusCode::NOT_FOUND, "source unavailable")
+            }
+            source_catalog::CatalogError::TooManySpeakers => {
+                ApiError(StatusCode::UNPROCESSABLE_ENTITY, "speaker label limit exceeded")
+            }
+            _ => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "source speakers unavailable",
+            ),
+        })?;
+    Ok(no_store(
+        json!({
+            "document_id": document,
+            "speakers": speakers.iter().map(|speaker| json!({
+                "speaker_label": speaker.speaker_label,
+                "fragment_count": speaker.fragment_count,
+            })).collect::<Vec<_>>(),
+            "speaker_labels_are_verified_identities": false,
         }),
         StatusCode::OK,
     ))
@@ -2103,6 +2145,40 @@ async fn list_hypotheses(
                 "actor_principal_id":r.actor,"status":"HUMAN_HYPOTHESIS","is_verified_fact":false
             })).collect::<Vec<_>>(),
             "next_after":next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn list_identity_subjects(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    Query(query): Query<SourceQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = identity::list_identities(
+        &state.pool,
+        workspace,
+        query.after,
+        query.limit.unwrap_or(100),
+    )
+    .await
+    .map_err(|error| match error {
+        IdentityError::Input => ApiError(StatusCode::BAD_REQUEST, "invalid identity page"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "identity catalog unavailable",
+        ),
+    })?;
+    Ok(no_store(
+        json!({
+            "identities": page.identities.iter().map(|identity| json!({
+                "person_id": identity.person_id,
+                "display_label": identity.display_label,
+            })).collect::<Vec<_>>(),
+            "next_after": page.next_after,
+            "catalog_is_human_curated": true,
         }),
         StatusCode::OK,
     ))
