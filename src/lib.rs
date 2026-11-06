@@ -445,6 +445,8 @@ pub mod agentic_policy;
 
 pub mod model_adapter;
 
+pub mod openai_compatible;
+
 pub mod agentic_runtime;
 
 pub mod reasoning_packet;
