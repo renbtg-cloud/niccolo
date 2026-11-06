@@ -11,4 +11,28 @@ describe('BFF client',()=>{
  it('exposes one compact pull observation surface',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{operation:{state:'RUNNING',state_version:4},events:[],next_after_event:9});});const r=await x.observeOperation('id',4,9,3200,77);expect(calls[0][0]).toContain('/observe?after_version=4&after_event=9&timeout_ms=3200&limit=77');expect(r.value.next_after_event).toBe(9);});
 
  it('reads the backend-owned epistemic reasoning view',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{claims:[],claims_are_verified_facts:false,browser_is_domain_authority:false});});const r=await x.epistemic('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');expect(calls[0][0]).toContain('/analysis-snapshots/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bff/epistemic');expect(calls[0][1]).toBe('GET');expect(r.value.claims_are_verified_facts).toBe(false);});
+
+ it('uploads raw source bytes and attaches the document to the Situation',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{
+     calls.push([u,o]);
+     return response(o.method==='POST'?201:200,{document_id:'doc',source_document_ids:['doc']});
+   });
+   const raw=new Uint8Array([65,66,67]);
+   await x.ingestSource('doc',{locator:'chat.txt',contentType:'text/plain',body:raw});
+   await x.addSituationSource('doc');
+   expect(calls[0][0]).toContain('/v1/workspaces/11111111-1111-4111-8111-111111111111/sources/doc');
+   expect(calls[0][1].headers['Content-Type']).toBe('text/plain');
+   expect(calls[0][1].headers['X-Source-Locator']).toBe('chat.txt');
+   expect(calls[0][1].body).toBe(raw);
+   expect(calls[1][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/sources/doc');
+   expect(calls[1][1].method).toBe('POST');
+ });
+ it('lists the workspace source catalog through the BFF client',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{documents:[],next_after:null});});
+   await x.sources(7,25);
+   expect(calls[0][0]).toContain('/sources?after=7&limit=25');
+   expect(calls[0][1]).toBe('GET');
+ });
 });
