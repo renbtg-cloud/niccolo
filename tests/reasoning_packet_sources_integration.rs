@@ -312,3 +312,154 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
     assert_eq!(summary["summary_is_provider_input_observability"], true);
 }
 
+#[tokio::test]
+async fn v1161_v1180_reasoning_packet_freezes_human_identity_assignment_at_analysis_horizon() {
+    let h = setup().await;
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &situation_path,
+            &h.token,
+            Some(json!({"focus":"Keep identity mapping historical"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let document = ingest_and_attach(
+        &h,
+        "identity-freeze.txt",
+        "01/01/2026, 10:00 - Ana: identity freeze source\n",
+    )
+    .await;
+
+    let first_person = Uuid::new_v4();
+    let first_identity_path = format!("/v1/workspaces/{}/identities/{first_person}", h.workspace);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &first_identity_path,
+            &h.token,
+            Some(json!({"display_label":"Ana — first human mapping"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let first_event = Uuid::new_v4();
+    let first_event_path = format!("/v1/workspaces/{}/identity-events/{first_event}", h.workspace);
+    let (status, first_assignment) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &first_event_path,
+            &h.token,
+            Some(json!({
+                "document_id":document,
+                "speaker_label":"Ana",
+                "operation":"assign",
+                "person_id":first_person,
+                "human_reason":"first explicit human mapping"
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let first_event_no = first_assignment["event_no"].as_i64().unwrap();
+
+    let analysis = Uuid::new_v4();
+    let analysis_path = format!("{situation_path}/analysis-snapshots/{analysis}");
+    let (status, frozen) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &analysis_path,
+            &h.token,
+            Some(json!({"goal":"Use the human-confirmed identity available at freeze time"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(frozen["identity_event_no_max"], first_event_no);
+
+    let second_person = Uuid::new_v4();
+    let second_identity_path = format!("/v1/workspaces/{}/identities/{second_person}", h.workspace);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &second_identity_path,
+            &h.token,
+            Some(json!({"display_label":"Ana — later corrected mapping"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let second_event = Uuid::new_v4();
+    let second_event_path = format!("/v1/workspaces/{}/identity-events/{second_event}", h.workspace);
+    let (status, later_assignment) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &second_event_path,
+            &h.token,
+            Some(json!({
+                "document_id":document,
+                "speaker_label":"Ana",
+                "operation":"assign",
+                "person_id":second_person,
+                "human_reason":"later explicit correction"
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert!(later_assignment["event_no"].as_i64().unwrap() > first_event_no);
+
+    let digest = authz::credential_digest(&h.token).unwrap();
+    let packet = authz::with_auth_digest(digest, async {
+        reasoning_packet::build(
+            &h.secure,
+            AnalysisScope {
+                workspace: h.workspace,
+                situation: h.situation,
+                analysis,
+            },
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+
+    assert_eq!(packet.frozen_input.identity_event_no_max, first_event_no);
+    assert_eq!(packet.frozen_input.identity_bindings.len(), 1);
+    let binding = &packet.frozen_input.identity_bindings[0];
+    assert_eq!(binding.document_id, document);
+    assert_eq!(binding.speaker_label, "Ana");
+    assert_eq!(binding.person_id, Some(first_person));
+    assert_eq!(
+        binding.display_label.as_deref(),
+        Some("Ana — first human mapping")
+    );
+    assert_eq!(binding.event_id, first_event);
+    assert_eq!(binding.event_no, first_event_no);
+    assert!(packet.frozen_input.identity_bindings_are_human_confirmed);
+    assert!(!packet.frozen_input.matching_speaker_labels_imply_same_person);
+
+    let summary_path = format!("{analysis_path}/bff/reasoning-input");
+    let (status, summary) = invoke(
+        h.router.clone(),
+        json_request("GET", &summary_path, &h.token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(summary["identity_event_no_max"], first_event_no);
+    assert_eq!(summary["identity_binding_count"], 1);
+    assert_eq!(summary["identity_bindings_are_human_confirmed"], true);
+    assert_eq!(summary["matching_speaker_labels_imply_same_person"], false);
+}
+
