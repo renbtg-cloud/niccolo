@@ -1,8 +1,8 @@
 //! OpenAI-compatible reasoning provider for the tentative MVP.
 //!
-//! The core stays provider-neutral. This adapter shells out to curl without a
-//! command shell, keeps credentials out of argv, and expects a JSON object
-//! response that satisfies Niccolò's per-step contract.
+//! The core stays provider-neutral. The runtime path uses the native TLS
+//! adapter from model_adapter. The curl adapter remains only as a compatibility
+//! implementation and test oracle while the native path is validated.
 use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, ModelResponse, OpenAiCompatibleModel, ReasoningModel};
 use serde_json::{Value, json};
 use std::{

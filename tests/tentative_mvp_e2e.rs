@@ -6,10 +6,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{
-    api, authz,
-    openai_compatible::{CurlOpenAiCompatibleModel, OpenAiCompatibleConfig},
-};
+use niccolo_evidence::{api, authz, model_adapter::OpenAiCompatibleModel};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::{
@@ -26,7 +23,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 struct ProviderFixture {
-    model: CurlOpenAiCompatibleModel,
+    model: OpenAiCompatibleModel,
     stop: Arc<AtomicBool>,
     thread: thread::JoinHandle<()>,
     purposes: Arc<Mutex<Vec<String>>>,
@@ -169,15 +166,12 @@ fn provider() -> ProviderFixture {
             }
         }
     });
-    let model = CurlOpenAiCompatibleModel::new(OpenAiCompatibleConfig {
-        provider: "mock-compatible".into(),
-        base_url: format!("http://{address}/v1"),
-        api_key: "e2e-secret".into(),
-        model: "mock-e2e-model".into(),
-        curl_bin: "curl".into(),
-        max_time_secs: 5,
-        json_mode: true,
-    })
+    let model = OpenAiCompatibleModel::new(
+        "mock-compatible",
+        "mock-e2e-model",
+        &format!("http://{address}/v1/chat/completions"),
+        "e2e-secret",
+    )
     .unwrap();
     ProviderFixture {
         model,
@@ -268,13 +262,6 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer() {
-    if std::process::Command::new("curl")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        panic!("curl is required for the real-provider tentative MVP path");
-    }
     let h = setup().await;
 
     let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
