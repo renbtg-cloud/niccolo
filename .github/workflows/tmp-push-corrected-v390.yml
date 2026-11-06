@@ -1,0 +1,45 @@
+name: push corrected v390 history
+on:
+  push:
+    branches: [tmp-push-rewrite-v390]
+    paths: ['.sync/run-v390-push']
+permissions:
+  contents: write
+jobs:
+  push-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push each corrected checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .sync/v390bundle.part.00 .sync/v390bundle.part.01 .sync/v390bundle.part.02 | base64 -d > /tmp/rewrite.bundle.xz
+          echo "2f1a6252b5fb8baed73adf328bac27703be227fc38c88c6f1d6c75a4a01a091e  /tmp/rewrite.bundle.xz" | sha256sum -c -
+          xz -dc /tmp/rewrite.bundle.xz > /tmp/rewrite.bundle
+          git bundle verify /tmp/rewrite.bundle
+          git fetch /tmp/rewrite.bundle refs/heads/rewrite:refs/remotes/v390-rewrite
+
+          checkpoints=(
+            54e5d4c01bd4e042884f75521187c7d650fc0333
+            e167af5e188077f1e9b30fdff327472ff04c1e9b
+            001a1acac52ccc288f626cb9553197a9e93dc1d2
+            b6e77d07f0a4ab7b1c6034a94a0789c607c98704
+            ade34fcc72b31f2bdc288dd7cef24309b1c463c3
+            1587d625971c0520635545c62c15ede231f470fc
+            5fd7a9b3a04b7f1d4863c64c7ceaaed18e393ee0
+            9687a686366771d7b5e59b76329a5b826d2144bf
+            5d9e46fb4a3c14cb585c4e4799f352b941e7a3e0
+            c77b835f5fa940a581443cfdb4d1785d9b9f1762
+            0e5afc805117f6283de6c459b6ff5b792a4f03fb
+            7911c9313d6ff5923baeddf9f001367178ba79f7
+            159309e8a51aa96f0966d9781ecc3083a17e736f
+            d4c787fcffd0484ad6e04b25b0f061a4693748a8
+          )
+          for sha in "${checkpoints[@]}"; do
+            git cat-file -e "${sha}^{commit}"
+            echo "FORCE PUSH ${sha} :: $(git show -s --format=%s "${sha}")"
+            git push --force origin "${sha}:refs/heads/main"
+          done
