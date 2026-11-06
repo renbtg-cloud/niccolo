@@ -675,3 +675,88 @@ async fn v561_v575_epistemic_read_model_groups_reasoning_without_promoting_it_to
     assert_eq!(view["browser_is_domain_authority"], false);
 }
 
+#[tokio::test]
+async fn v601_v620_claim_provenance_returns_exact_source_and_separates_human_context() {
+    let s = setup().await;
+    let (principal, input_revision): (Uuid, i64) = sqlx::query_as(
+        "SELECT requested_by_principal_id,input_revision FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    let document = Uuid::new_v4();
+    let evidence = Uuid::new_v4();
+    let contribution = Uuid::new_v4();
+    let claim = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'chat.txt#1','Hello from Ana\n','REPORTED_SPEECH')")
+        .bind(s.workspace).bind(evidence).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'WHATSAPP_EXPORT','chat.txt','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',15)")
+        .bind(s.workspace).bind(document).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) VALUES($1,$2,0,$3,0,15,'Ana')")
+        .bind(s.workspace).bind(document).bind(evidence).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_sources(workspace_id,situation_id,document_id,added_by_principal_id) VALUES($1,$2,$3,$4)")
+        .bind(s.workspace).bind(s.situation).bind(document).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_revision_sources(workspace_id,situation_id,revision,document_id) VALUES($1,$2,$3,$4)")
+        .bind(s.workspace).bind(s.situation).bind(input_revision).bind(document).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_examined_fragments(workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(evidence).bind(principal).execute(&s.admin).await.unwrap();
+
+    sqlx::query("INSERT INTO niccolo.situation_contributions(workspace_id,situation_id,contribution_id,author_principal_id,kind,contribution_text) VALUES($1,$2,$3,$4,'USER_REPORTED','I remember the tone as sarcastic')")
+        .bind(s.workspace).bind(s.situation).bind(contribution).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_revision_contributions(workspace_id,situation_id,revision,contribution_id) VALUES($1,$2,$3,$4)")
+        .bind(s.workspace).bind(s.situation).bind(input_revision).bind(contribution).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_used_contributions(workspace_id,situation_id,analysis_id,input_revision,contribution_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(input_revision).bind(contribution).bind(principal).execute(&s.admin).await.unwrap();
+
+    sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id) VALUES($1,$2,$3,'Provisional answer','Fixture output for provenance',$4)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_claims(workspace_id,situation_id,analysis_id,claim_id,ordinal,claim_kind,claim_text,created_by_principal_id) VALUES($1,$2,$3,$4,1,'INFERENCE','The message may be sarcastic',$5)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(claim).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_claim_fragments(workspace_id,situation_id,analysis_id,claim_id,evidence_id,relation,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'SUPPORTS_AS_USED',$6)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(claim).bind(evidence).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_claim_contributions(workspace_id,situation_id,analysis_id,claim_id,contribution_id,relation,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'QUALIFIES',$6)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(claim).bind(contribution).bind(principal).execute(&s.admin).await.unwrap();
+
+    let route = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/bff/epistemic",
+        s.workspace, s.situation, s.analysis
+    );
+    let (status, _, view) =
+        invoke(s.router.clone(), req("GET", &route, &s.token, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        view["claims"][0]["source_provenance"][0]["evidence_id"],
+        evidence.to_string()
+    );
+    assert_eq!(
+        view["claims"][0]["source_provenance"][0]["relation"],
+        "SUPPORTS_AS_USED"
+    );
+    assert_eq!(
+        view["claims"][0]["source_provenance"][0]["content"],
+        "Hello from Ana\n"
+    );
+    assert_eq!(
+        view["claims"][0]["source_provenance"][0]["locator"],
+        "chat.txt"
+    );
+    assert_eq!(
+        view["claims"][0]["human_context"][0]["contribution_id"],
+        contribution.to_string()
+    );
+    assert_eq!(
+        view["claims"][0]["human_context"][0]["relation"],
+        "QUALIFIES"
+    );
+    assert_eq!(view["claim_fragment_relations_establish_truth"], false);
+    assert_eq!(
+        view["claim_fragment_link_count_is_independent_evidence_count"],
+        false
+    );
+    assert_eq!(view["human_context_is_evidence"], false);
+}
+
