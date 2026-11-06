@@ -2367,7 +2367,12 @@ async fn get_bff_epistemic(
         },
     )
     .await
-    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "epistemic view unavailable"))?;
+    .map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic view unavailable",
+        )
+    })?;
     Ok(no_store(json!(view), StatusCode::OK))
 }
 
