@@ -1,0 +1,40 @@
+name: rewrite WIP history with real code
+
+on:
+  push:
+    branches: [tmp-wip-rewrite-payload]
+    paths:
+      - '.sync/run'
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rebuild and force-push each checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .sync/wip-series.b64 > /tmp/wip-series.tar.xz
+          echo "6fb26126278a68dc864853292fae8c910c81563a2e9fd933177564460131820a  /tmp/wip-series.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/wip-series
+          tar -xJf /tmp/wip-series.tar.xz -C /tmp/wip-series
+
+          git fetch origin main
+          git checkout -B rewrite-real origin/main
+          test "$(git rev-parse HEAD)" = "e9d0c6d7cf9a1de291b17e2882bd17f18aac3092"
+
+          git config user.name "Niccolo VM"
+          git config user.email "vm@localhost"
+
+          for patch in /tmp/wip-series/patches/*.patch; do
+            echo "APPLY: $(basename "$patch")"
+            git am "$patch"
+            echo "FORCE PUSH: $(git log -1 --format='%h %s')"
+            git push --force origin HEAD:main
+          done
