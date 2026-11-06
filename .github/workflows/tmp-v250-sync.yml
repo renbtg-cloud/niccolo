@@ -20,9 +20,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .sync/v250.patch00 .sync/v250.patch01 .sync/v250.patch02 .sync/v250.patch03 .sync/v250.patch04 .sync/v250.patch05 .sync/v250.patch06 .sync/v250.patch07 .sync/v250.patch08 .sync/v250.patch09 .sync/v250.patch10 .sync/v250.patch11 .sync/v250.patch12 .sync/v250.patch13 .sync/v250.patch14 .sync/v250.patch15 .sync/v250.patch16 .sync/v250.patch17 | base64 -d > /tmp/v250.patch.gz
-          echo "0b4dd3cd339ef284146f4881a6b085e1e39dfbb567e69a5b79ad812278d3c444  /tmp/v250.patch.gz" | sha256sum -c -
-          gunzip -c /tmp/v250.patch.gz > /tmp/v250.patch
+          cat .sync/v250.xz00 .sync/v250.xz01 .sync/v250.xz02 .sync/v250.xz03 .sync/v250.xz04 .sync/v250.xz05 .sync/v250.xz06 .sync/v250.xz07 .sync/v250.xz08 .sync/v250.xz09 .sync/v250.xz10 .sync/v250.xz11 .sync/v250.xz12 .sync/v250.xz13 .sync/v250.xz14 | base64 -d > /tmp/v250.patch.xz
+          echo "f60d0c38689ae0f4aa42c60418be4bf9ec9e7963c331770ee99bbd1e9964d3fb  /tmp/v250.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v250.patch.xz > /tmp/v250.patch
           echo "f47a2ca9f3b7d90cb8babfc69fa3afef324a580796bba868f7c0bdb325983b8a  /tmp/v250.patch" | sha256sum -c -
           git apply --check /tmp/v250.patch
           git apply /tmp/v250.patch
