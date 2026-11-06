@@ -646,9 +646,10 @@ async fn list_source_speakers(
             source_catalog::CatalogError::InvisibleDocument => {
                 ApiError(StatusCode::NOT_FOUND, "source unavailable")
             }
-            source_catalog::CatalogError::TooManySpeakers => {
-                ApiError(StatusCode::UNPROCESSABLE_ENTITY, "speaker label limit exceeded")
-            }
+            source_catalog::CatalogError::TooManySpeakers => ApiError(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "speaker label limit exceeded",
+            ),
             _ => ApiError(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "source speakers unavailable",
