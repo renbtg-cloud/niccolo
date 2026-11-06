@@ -1,0 +1,38 @@
+name: rewrite complete v390 history
+on:
+  push:
+    branches: [tmp-rewrite-v390-complete]
+    paths: ['.sync/run-v390-rewrite']
+permissions:
+  contents: write
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rebuild complete WIP/DONE history and force-push each checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .sync/v390-series.b64 > /tmp/v390-series.tar.xz
+          echo "ca9e9c63954f9528f259a5acdfe81dbe555b064949e8e66eadb186fa4a075449  /tmp/v390-series.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/v390-series
+          tar -xJf /tmp/v390-series.tar.xz -C /tmp/v390-series
+
+          git fetch origin main
+          git checkout -B rewrite-v390 e9d0c6d7cf9a1de291b17e2882bd17f18aac3092
+          git config user.name "Niccolo VM"
+          git config user.email "vm@localhost"
+
+          while IFS=$'\t' read -r n oldsha msg; do
+            echo "CHECKPOINT $n $oldsha: $msg"
+            git rm -rf . >/dev/null 2>&1 || true
+            git clean -fdx >/dev/null 2>&1 || true
+            cp -a "/tmp/v390-series/snapshots/$n/." .
+            git add -A
+            git commit --allow-empty -m "$msg"
+            echo "FORCE PUSH $(git rev-parse --short HEAD): $msg"
+            git push --force origin HEAD:main
+          done < /tmp/v390-series/manifest.tsv
