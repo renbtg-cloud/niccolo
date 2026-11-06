@@ -36,3 +36,12 @@ Additional regression findings:
 - Frontend production build: passed.
 
 The full Rust/PostgreSQL regression is being rerun from the corrected test suite.
+
+Harness correction before the next full run:
+
+- The first full regression attempt omitted `NICCOLO_NEXT_ADMIN_URL` and `NICCOLO_NEXT_APP_URL`.
+- Historical milestone suites therefore fell back to the obsolete local default on port 55432 and failed for environment reasons.
+- The corrected harness binds `NICCOLO_NEXT_ADMIN_URL` to the disposable admin database and `NICCOLO_NEXT_APP_URL` to the existing restricted `niccolo_next_app` role on PostgreSQL 17.
+- This checkpoint does not count those harness failures as product/test failures.
+
+A corrected full regression is starting from the same provider code plus the permanent cancellation-race test fix.
