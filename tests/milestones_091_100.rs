@@ -1,10 +1,10 @@
-use niccolo_next::analysis_actions::{self, ActionProposal};
-use niccolo_next::analysis_claims::{self, ClaimLineage, NewClaim};
-use niccolo_next::analysis_compare::{self, AnalysisCompareError};
-use niccolo_next::analysis_structure::{self, AnalysisScope, Uncertainty};
-use niccolo_next::review_agenda;
-use niccolo_next::review_governance::{self, HandoffReceipt, ScopeEvent, SessionDisposition};
-use niccolo_next::review_workflow::{self, ReviewSessionScope};
+use niccolo_evidence::analysis_actions::{self, ActionProposal};
+use niccolo_evidence::analysis_claims::{self, ClaimLineage, NewClaim};
+use niccolo_evidence::analysis_compare::{self, AnalysisCompareError};
+use niccolo_evidence::analysis_structure::{self, AnalysisScope, Uncertainty};
+use niccolo_evidence::review_agenda;
+use niccolo_evidence::review_governance::{self, HandoffReceipt, ScopeEvent, SessionDisposition};
+use niccolo_evidence::review_workflow::{self, ReviewSessionScope};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -47,16 +47,20 @@ async fn seed(admin: &PgPool) -> Seed {
         prior: Uuid::new_v4(),
         current: Uuid::new_v4(),
     };
-    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id,display_name) VALUES($1,'reviewer'),($2,'recipient')")
-        .bind(s.principal).bind(s.other_principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,name) VALUES($1,'w')")
+    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id) VALUES($1),($2)")
+        .bind(s.principal)
+        .bind(s.other_principal)
+        .execute(admin)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'w')")
         .bind(s.workspace)
         .execute(admin)
         .await
         .unwrap();
     sqlx::query("INSERT INTO niccolo.situations(workspace_id,situation_id,focus,created_by_principal_id,current_revision) VALUES($1,$2,'focus 2',$3,2)")
         .bind(s.workspace).bind(s.situation).bind(s.principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id) VALUES($1,$2,1,'focus 1',$3,$5),($1,$2,2,'focus 2',$4,$5)")
+    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause) VALUES($1,$2,1,'focus 1',$3,$5,'CREATED'),($1,$2,2,'focus 2',$4,$5,'FOCUS_CHANGED')")
         .bind(s.workspace).bind(s.situation).bind("a".repeat(64)).bind("b".repeat(64)).bind(s.principal).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of) VALUES($1,$2,$3,1,$5,'understand',$6,NULL),($1,$2,$4,2,$7,'reanalyze',$6,$3)")
         .bind(s.workspace).bind(s.situation).bind(s.prior).bind(s.current).bind("a".repeat(64)).bind(s.principal).bind("b".repeat(64)).execute(admin).await.unwrap();
@@ -344,6 +348,8 @@ async fn v096_lineage_completeness_is_measurable_but_not_correctness() {
 
 async fn make_pending(admin: &PgPool, app: &PgPool, s: Seed, c: Uuid) -> (Uuid, Uuid, Uuid, Uuid) {
     let q = Uuid::new_v4();
+    sqlx::query("INSERT INTO niccolo.investigative_questions(workspace_id,question_id,question) VALUES($1,$2,'What remains open?')")
+        .bind(s.workspace).bind(q).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_questions(workspace_id,situation_id,analysis_id,question_id,reason,proposed_by_principal_id) VALUES($1,$2,$3,$4,'open',$5)")
         .bind(s.workspace).bind(s.situation).bind(s.current).bind(q).bind(s.principal).execute(admin).await.unwrap();
     review_workflow::link_claim_question(

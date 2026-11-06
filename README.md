@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.180)
+# Niccolò / Duhme — experimental Rust core (v0.250)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -360,29 +360,23 @@ Analyses can record exactly which frozen human contributions were actually used.
 The zero-dependency first-party shell can now explicitly connect to the loopback API using a workspace UUID, Situation UUID and bearer token kept only in page memory. Focus changes, user-reported context, explicit WHAT-IF context and retractions then use the real persistent Situation API and immutable PostgreSQL revisions. Intention selection remains browser-session steering, and selecting `.txt`/`.eml` files still only catalogues filenames locally: the UI does not pretend those files were uploaded or analyzed. No LLM call is made. A real TCP loopback integration test exercises HTML/JS serving plus persistent Situation creation and context mutation.
 
 
-## v0.31–v0.56 — inspectable reasoning and human control
+## v0.31–v0.250 — inspectable reasoning, human agency, durable BFF and React V1 substrate
 
-The experimental core now records structured claims, explicit source/context use, append-only human review, claim lineage across reanalysis, uncertainty history, and action proposals whose acceptance is explicitly **not** execution. It also provides deterministic human-review read models and portable hashes. See [ANALYSIS_CLAIMS_V031_038.md](ANALYSIS_CLAIMS_V031_038.md) and [HUMAN_CONTROL_V039_056.md](HUMAN_CONTROL_V039_056.md).
+The current implementation checkpoint substantially expands the experimental core while keeping the human as
+the owner of the project and of every consequential authorization. Structured reasoning state, human review,
+uncertainty, decision/support records, stop conditions, handback and other human-agency contracts now sit beside
+the earlier immutable Situation/analysis history.
 
-This work still does **not** implement the open `MVP-HYP-001` remembered rejection/deprioritization semantics.
+The BFF exposes the same durable operation through distinct synchronous, asynchronous and pull-oriented
+interfaces. Async observation includes operation IDs, state versions, conditional GET via `ETag`, polling hints
+and cursor-paginated events; those interaction paths share one domain operation model rather than duplicating
+business logic. A bounded agentic controller represents work as a versioned DAG with hard step budgets and
+explicit human pause/resume points.
 
+The first-party frontend is now React-based and intentionally **visually simple but state-complete**: React
+Query for server state, Zustand for client/session state, Router for navigation, and React Hook Form + Zod for
+validated forms. The public first-cohort version is intentionally named **V1.0.0.0.0.0**. V1 may remain mostly
+request/response + pull; push can be added later as another observation interface without redesigning the BFF.
 
-## v0.57–v0.80 — human control, traceability, and inspectability
-
-This slice adds bounded activity pagination, human-selected attention pins, explicit reanalysis requests, separate action authorization/revocation, deterministic Situation exports, context non-use explanations, claim-to-output spans, exact review-package acknowledgements and a deterministic control ledger. See [HUMAN_CONTROL_V057_080.md](HUMAN_CONTROL_V057_080.md).
-
-Human steering remains steering: pins do not create automatic priority, requests/suggestions do not start analyses, authorization is not execution, and context exclusion is not a truth judgment or remembered rejection policy.
-
-
-## v0.81–v0.100 — explicit human review workflow
-
-Human review is now a first-class, inspectable workflow: sessions, notes/bookmarks, explicit use rationales, claim questions, revision conditions/events, deterministic handoff, human-selected review scope, exact-hash receipts, direct reanalysis comparison, lineage completeness, unranked pending items, session-local dispositions, and deterministic review agendas. See [HUMAN_REVIEW_V081_100.md](HUMAN_REVIEW_V081_100.md).
-
-These controls preserve human ownership. A review choice does not become remembered future policy, a handoff does not delegate authority, and no suggestion, agenda, or disposition starts analysis or executes an action.
-
-
-## v0.101–v0.180 — human-owned decisions and agency gates
-
-This slice adds human-owned review checklists, decision points/options, explicit assumptions and alternatives, decision rationales, evidence gaps, Situation goals, unranked next steps, human-declared priorities and constraints, projected consequences, stop conditions, source requests, purpose-bound claim assessments, explicit conflict sets, and deterministic handback. See HUMAN_AGENCY_V101_180.md.
-
-The boundary is deliberate: no acceptance implies execution, no source request fetches automatically, projected consequences are not facts, claim assessments do not establish truth, conflict sets are not silently resolved, and MVP-HYP-001 remains unimplemented.
+See [MVP_ARCHITECTURE_V250.md](MVP_ARCHITECTURE_V250.md) for the architectural checkpoint and validation
+record. This remains experimental and is not a ready-to-market claim.

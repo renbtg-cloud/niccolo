@@ -1,16 +1,16 @@
-use niccolo_next::analysis_assumptions::{
+use niccolo_evidence::analysis_assumptions::{
     self, AlternativeInput, AssumptionEvent, AssumptionInput,
 };
-use niccolo_next::analysis_claims::{self, NewClaim};
-use niccolo_next::analysis_structure::AnalysisScope;
-use niccolo_next::decision_points::{self, DecisionOption, SelectionEvent};
-use niccolo_next::human_agency::{
+use niccolo_evidence::analysis_claims::{self, NewClaim};
+use niccolo_evidence::analysis_structure::AnalysisScope;
+use niccolo_evidence::decision_points::{self, DecisionOption, SelectionEvent};
+use niccolo_evidence::human_agency::{
     self, DecisionRationaleInput, EvidenceGapEvent, EvidenceGapInput, GoalEvent, GoalInput,
     NextStepEvent, NextStepInput,
 };
-use niccolo_next::human_briefing;
-use niccolo_next::review_checklist::{self, ChecklistEvent};
-use niccolo_next::review_workflow::{self, ReviewSessionScope};
+use niccolo_evidence::human_briefing;
+use niccolo_evidence::review_checklist::{self, ChecklistEvent};
+use niccolo_evidence::review_workflow::{self, ReviewSessionScope};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -50,14 +50,19 @@ async fn seed(admin: &PgPool) -> Seed {
         other: Uuid::new_v4(),
         analysis: Uuid::new_v4(),
     };
-    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id,display_name) VALUES($1,'human'),($2,'other')").bind(s.principal).bind(s.other).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,name) VALUES($1,'w')")
+    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id) VALUES($1),($2)")
+        .bind(s.principal)
+        .bind(s.other)
+        .execute(admin)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'w')")
         .bind(s.workspace)
         .execute(admin)
         .await
         .unwrap();
     sqlx::query("INSERT INTO niccolo.situations(workspace_id,situation_id,focus,created_by_principal_id,current_revision) VALUES($1,$2,'current focus',$3,2)").bind(s.workspace).bind(s.situation).bind(s.principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id) VALUES($1,$2,1,'old focus',$3,$5),($1,$2,2,'current focus',$4,$5)").bind(s.workspace).bind(s.situation).bind("a".repeat(64)).bind("b".repeat(64)).bind(s.principal).execute(admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause) VALUES($1,$2,1,'old focus',$3,$5,'CREATED'),($1,$2,2,'current focus',$4,$5,'FOCUS_CHANGED')").bind(s.workspace).bind(s.situation).bind("a".repeat(64)).bind("b".repeat(64)).bind(s.principal).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id) VALUES($1,$2,$3,1,$4,'understand',$5)").bind(s.workspace).bind(s.situation).bind(s.analysis).bind("a".repeat(64)).bind(s.principal).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id) VALUES($1,$2,$3,'answer','bounded',$4)").bind(s.workspace).bind(s.situation).bind(s.analysis).bind(s.principal).execute(admin).await.unwrap();
     s
@@ -552,7 +557,13 @@ async fn v125_v129_evidence_gap_satisfaction_does_not_make_claim_true_and_can_re
     assert_eq!(before[0].state, "OPEN");
     assert!(!before[0].automatically_ranked);
     let ev = Uuid::new_v4();
-    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,evidence_id,document_id,source_start,source_end) VALUES($1,$2,$3,0,10)").bind(s.workspace).bind(ev).bind(Uuid::new_v4()).execute(&admin).await.unwrap();
+    let doc = Uuid::new_v4();
+    sqlx::query("INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'gap:0-10','source found','DIRECT_OBSERVATION')")
+        .bind(s.workspace).bind(ev).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'EML','gap-source',$3,100)")
+        .bind(s.workspace).bind(doc).bind("5".repeat(64)).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) VALUES($1,$2,0,$3,0,10,'Source')")
+        .bind(s.workspace).bind(doc).bind(ev).execute(&admin).await.unwrap();
     human_agency::append_gap_event(
         &app,
         scope(s),
@@ -706,7 +717,7 @@ async fn v135_invalid_next_step_kind_is_rejected() {
     assert!(r.is_err());
 }
 
-use niccolo_next::human_control::{
+use niccolo_evidence::human_control::{
     self, ConsequenceInput, ConstraintEvent, ConstraintInput, PriorityInput, StopConditionEvent,
     StopConditionInput,
 };
@@ -917,7 +928,7 @@ async fn v156_v160_triggered_stop_condition_blocks_automation_and_requires_human
     );
 }
 
-use niccolo_next::human_handoff::{
+use niccolo_evidence::human_handoff::{
     self, ClaimAssessmentInput, ConflictInput, SourceRequestEvent, SourceRequestInput,
 };
 

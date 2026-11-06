@@ -406,31 +406,61 @@ mod tests {
         assert!(!s.independence_established);
     }
 }
+
+pub mod action_authorization;
+pub mod analysis_actions;
+pub mod analysis_assumptions;
 pub mod analysis_claims;
-pub mod analysis_manifest;
+pub mod analysis_compare;
 pub mod analysis_export;
 pub mod analysis_integrity;
-pub mod analysis_structure;
-pub mod analysis_actions;
-pub mod analysis_timeline;
+pub mod analysis_manifest;
 pub mod analysis_read_models;
-pub mod review_package;
+pub mod analysis_structure;
+pub mod analysis_timeline;
 pub mod attention_control;
-pub mod reanalysis_control;
-pub mod action_authorization;
-pub mod review_session;
-pub mod situation_activity;
-pub mod inspection;
-pub mod review_acknowledgement;
 pub mod control_ledger;
-pub mod review_workflow;
+pub mod decision_points;
+pub mod human_agency;
+pub mod human_briefing;
+pub mod human_control;
+pub mod human_handoff;
+pub mod inspection;
+pub mod reanalysis_control;
 pub mod reasoning_handoff;
-pub mod review_governance;
-pub mod analysis_compare;
+pub mod review_acknowledgement;
 pub mod review_agenda;
 pub mod review_checklist;
-pub mod decision_points;
-pub mod analysis_assumptions;
-pub mod human_briefing;
-pub mod human_agency;
-pub mod human_control;
+pub mod review_governance;
+pub mod review_package;
+pub mod review_session;
+pub mod review_workflow;
+pub mod situation_activity;
+
+pub mod bff_operations;
+
+pub mod agentic_controller;
+
+pub mod agentic_policy;
+
+pub mod model_adapter;
+
+pub mod agentic_runtime;
+
+pub mod reasoning_packet;
+
+pub mod investigation_policy;
+
+pub mod reanalysis_advisor;
+
+pub mod bff_dashboard;
+
+pub mod model_artifacts;
+
+pub mod reanalysis_runtime;
+
+pub mod reasoning_updates;
+
+pub mod analysis_quality;
+
+pub mod adversarial_challenge;

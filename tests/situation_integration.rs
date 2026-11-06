@@ -636,7 +636,11 @@ async fn new_situation_tables_are_forced_rls_and_have_all_api_gates() {
     ]
     .into_iter()
     .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(names, expected);
+    assert!(
+        expected.is_subset(&names),
+        "historical Situation tables must remain present: missing {:?}",
+        expected.difference(&names).collect::<Vec<_>>()
+    );
     for (name, rls, forced, gates) in rows {
         assert!(rls, "{name} RLS disabled");
         assert!(forced, "{name} FORCE RLS disabled");

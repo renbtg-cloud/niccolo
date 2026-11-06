@@ -1,0 +1,330 @@
+//! v0.211-v0.225: durable agentic plan DAG with explicit human gates and step budget.
+use crate::bff_operations::{self, OperationScope};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use uuid::Uuid;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ControllerError {
+    #[error("database unavailable: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("invalid plan")]
+    Invalid,
+    #[error("plan not visible")]
+    Invisible,
+    #[error("step is not ready")]
+    NotReady,
+    #[error("step budget exhausted")]
+    BudgetExhausted,
+    #[error("state conflict")]
+    StateConflict,
+    #[error("operation unavailable: {0}")]
+    Operation(#[from] bff_operations::BffOperationError),
+    #[error("serialization failed: {0}")]
+    Serialization(#[from] serde_json::Error),
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepInput {
+    pub step_id: Uuid,
+    pub ordinal: i32,
+    pub kind: String,
+    pub label: String,
+    pub requires_human: bool,
+    pub depends_on: Vec<Uuid>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepView {
+    pub step_id: Uuid,
+    pub ordinal: i32,
+    pub kind: String,
+    pub label: String,
+    pub requires_human: bool,
+    pub depends_on: Vec<Uuid>,
+    pub state: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControllerView {
+    pub plan_revision: i64,
+    pub plan_sha256: String,
+    pub steps: Vec<StepView>,
+    pub ready_step_ids: Vec<Uuid>,
+    pub budget_used: i64,
+    pub budget_total: i32,
+    pub waiting_for_human: bool,
+    pub complete: bool,
+    pub blocked: bool,
+}
+
+fn valid_kind(k: &str) -> bool {
+    matches!(
+        k,
+        "INSPECT_SOURCES"
+            | "ASSESS_CONTEXT"
+            | "PROPOSE_CLARIFICATION"
+            | "SYNTHESIZE"
+            | "CHALLENGE_SYNTHESIS"
+            | "CHECK_ASSUMPTIONS"
+            | "CHECK_ALTERNATIVES"
+            | "CHECK_STOP_CONDITIONS"
+            | "REQUEST_HUMAN_DECISION"
+            | "PREPARE_HANDOFF"
+    )
+}
+async fn scoped(
+    pool: &PgPool,
+    workspace: Uuid,
+    read_only: bool,
+) -> Result<Transaction<'_, Postgres>, ControllerError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(if read_only {
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+    } else {
+        "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
+    })
+    .execute(&mut *tx)
+    .await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(ControllerError::Invalid);
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
+    Ok(tx)
+}
+fn canonical_steps(steps: &[StepInput]) -> Result<String, ControllerError> {
+    let mut x = steps.to_vec();
+    x.sort_by_key(|s| s.ordinal);
+    Ok(serde_json::to_string(&x)?)
+}
+fn validate(steps: &[StepInput]) -> Result<(), ControllerError> {
+    if steps.is_empty() || steps.len() > 512 {
+        return Err(ControllerError::Invalid);
+    }
+    let ids: BTreeSet<_> = steps.iter().map(|s| s.step_id).collect();
+    let ords: BTreeSet<_> = steps.iter().map(|s| s.ordinal).collect();
+    if ids.len() != steps.len()
+        || ords.len() != steps.len()
+        || steps.iter().any(|s| {
+            s.ordinal < 1
+                || !valid_kind(&s.kind)
+                || s.label.trim().is_empty()
+                || s.label.len() > 1024
+                || s.depends_on
+                    .iter()
+                    .any(|d| *d == s.step_id || !ids.contains(d))
+        })
+    {
+        return Err(ControllerError::Invalid);
+    }
+    let mut indeg: BTreeMap<Uuid, usize> = ids.iter().map(|id| (*id, 0)).collect();
+    let mut edges: BTreeMap<Uuid, Vec<Uuid>> = BTreeMap::new();
+    for s in steps {
+        for d in &s.depends_on {
+            *indeg.get_mut(&s.step_id).unwrap() += 1;
+            edges.entry(*d).or_default().push(s.step_id);
+        }
+    }
+    let mut q: VecDeque<_> = indeg
+        .iter()
+        .filter(|(_, n)| **n == 0)
+        .map(|(id, _)| *id)
+        .collect();
+    let mut seen = 0;
+    while let Some(id) = q.pop_front() {
+        seen += 1;
+        if let Some(next) = edges.get(&id) {
+            for n in next {
+                let x = indeg.get_mut(n).unwrap();
+                *x -= 1;
+                if *x == 0 {
+                    q.push_back(*n);
+                }
+            }
+        }
+    }
+    if seen != steps.len() {
+        return Err(ControllerError::Invalid);
+    }
+    Ok(())
+}
+pub async fn create_plan(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    steps: &[StepInput],
+) -> Result<(i64, String), ControllerError> {
+    validate(steps)?;
+    let json = canonical_steps(steps)?;
+    let sha = format!("{:x}", Sha256::digest(json.as_bytes()));
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let rev:i64=sqlx::query_scalar("SELECT coalesce(max(plan_revision),0)+1 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_one(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_plans(workspace_id,situation_id,operation_id,plan_revision,plan_sha256,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(&sha).bind(actor).execute(&mut *tx).await?;
+    let mut ordered = steps.to_vec();
+    ordered.sort_by_key(|s| s.ordinal);
+    for s in &ordered {
+        sqlx::query("INSERT INTO niccolo.agentic_steps(workspace_id,situation_id,operation_id,plan_revision,step_id,ordinal,step_kind,label,requires_human) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(s.ordinal).bind(&s.kind).bind(&s.label).bind(s.requires_human).execute(&mut *tx).await?;
+    }
+    for s in &ordered {
+        for d in &s.depends_on {
+            sqlx::query("INSERT INTO niccolo.agentic_step_dependencies(workspace_id,situation_id,operation_id,plan_revision,step_id,depends_on_step_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(d).execute(&mut *tx).await?;
+        }
+    }
+    tx.commit().await?;
+    Ok((rev, sha))
+}
+pub async fn view(pool: &PgPool, scope: OperationScope) -> Result<ControllerView, ControllerError> {
+    let op = bff_operations::get(pool, scope).await?;
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let plan:Option<(i64,String)>=sqlx::query_as("SELECT plan_revision,plan_sha256 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 ORDER BY plan_revision DESC LIMIT 1").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_optional(&mut *tx).await?;
+    let Some((rev, sha)) = plan else {
+        return Err(ControllerError::Invisible);
+    };
+    type Row = (Uuid, i32, String, String, bool, Option<String>);
+    let rows:Vec<Row>=sqlx::query_as("SELECT s.step_id,s.ordinal,s.step_kind,s.label,s.requires_human,(SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1) FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 ORDER BY s.ordinal").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut *tx).await?;
+    let deps:Vec<(Uuid,Uuid)>=sqlx::query_as("SELECT step_id,depends_on_step_id FROM niccolo.agentic_step_dependencies WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut *tx).await?;
+    let budget_used:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND event_kind='STARTED'").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+    let mut depmap: BTreeMap<Uuid, Vec<Uuid>> = BTreeMap::new();
+    for (d, p) in deps {
+        depmap.entry(d).or_default().push(p)
+    }
+    let state: BTreeMap<Uuid, String> = rows
+        .iter()
+        .map(|(id, _, _, _, _, st)| (*id, st.clone().unwrap_or_else(|| "PENDING".into())))
+        .collect();
+    let steps: Vec<StepView> = rows
+        .into_iter()
+        .map(|(id, ordinal, kind, label, requires_human, st)| StepView {
+            step_id: id,
+            ordinal,
+            kind,
+            label,
+            requires_human,
+            depends_on: depmap.remove(&id).unwrap_or_default(),
+            state: st.unwrap_or_else(|| "PENDING".into()),
+        })
+        .collect();
+    let ready_step_ids = steps
+        .iter()
+        .filter(|s| {
+            s.state == "PENDING"
+                && s.depends_on.iter().all(|d| {
+                    matches!(
+                        state.get(d).map(String::as_str),
+                        Some("SUCCEEDED" | "SKIPPED")
+                    )
+                })
+        })
+        .map(|s| s.step_id)
+        .collect::<Vec<_>>();
+    let waiting_for_human =
+        steps.iter().any(|s| s.state == "WAITING_FOR_HUMAN") || op.state == "WAITING_FOR_HUMAN";
+    let complete = steps
+        .iter()
+        .all(|s| matches!(s.state.as_str(), "SUCCEEDED" | "SKIPPED"));
+    let blocked = !complete && !waiting_for_human && ready_step_ids.is_empty();
+    Ok(ControllerView {
+        plan_revision: rev,
+        plan_sha256: sha,
+        steps,
+        ready_step_ids,
+        budget_used,
+        budget_total: op.step_budget,
+        waiting_for_human,
+        complete,
+        blocked,
+    })
+}
+pub async fn start_step(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+    actor: Uuid,
+) -> Result<ControllerView, ControllerError> {
+    let before = view(pool, scope).await?;
+    if before.budget_used >= i64::from(before.budget_total) {
+        return Err(ControllerError::BudgetExhausted);
+    }
+    if !before.ready_step_ids.contains(&step) {
+        return Err(ControllerError::NotReady);
+    }
+    let op = bff_operations::get(pool, scope).await?;
+    if op.state == "QUEUED" {
+        let _ = bff_operations::start(pool, scope, op.state_version, actor).await?;
+    } else if op.state != "RUNNING" {
+        return Err(ControllerError::StateConflict);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','controller started step',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
+    tx.commit().await?;
+    view(pool, scope).await
+}
+pub async fn finish_step(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+    actor: Uuid,
+    outcome: &str,
+    note: &str,
+) -> Result<ControllerView, ControllerError> {
+    if !matches!(
+        outcome,
+        "SUCCEEDED" | "FAILED" | "WAITING_FOR_HUMAN" | "SKIPPED" | "CANCELLED"
+    ) || note.trim().is_empty()
+    {
+        return Err(ControllerError::Invalid);
+    }
+    let before = view(pool, scope).await?;
+    let s = before
+        .steps
+        .iter()
+        .find(|x| x.step_id == step)
+        .ok_or(ControllerError::Invisible)?;
+    if s.state != "STARTED" {
+        return Err(ControllerError::StateConflict);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(outcome).bind(note).bind(actor).execute(&mut *tx).await?;
+    tx.commit().await?;
+    if outcome == "WAITING_FOR_HUMAN" {
+        let op = bff_operations::get(pool, scope).await?;
+        let _ = bff_operations::wait_for_human(pool, scope, op.state_version, actor, note).await?;
+    }
+    view(pool, scope).await
+}
+pub async fn resume_step(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+    actor: Uuid,
+    note: &str,
+) -> Result<ControllerView, ControllerError> {
+    let before = view(pool, scope).await?;
+    let s = before
+        .steps
+        .iter()
+        .find(|x| x.step_id == step)
+        .ok_or(ControllerError::Invisible)?;
+    if s.state != "WAITING_FOR_HUMAN" || note.trim().is_empty() {
+        return Err(ControllerError::StateConflict);
+    }
+    let op = bff_operations::get(pool, scope).await?;
+    let _ = bff_operations::resume(pool, scope, op.state_version, actor).await?;
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(note).bind(actor).execute(&mut *tx).await?;
+    tx.commit().await?;
+    // RESUMED means active again, so add a STARTED event as the latest operational state.
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','resumed after human input',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
+    tx.commit().await?;
+    view(pool, scope).await
+}

@@ -9,18 +9,23 @@ use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
+use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
+use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::question_refs::{self, ReferenceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
+use crate::{
+    agentic_controller, agentic_policy, agentic_runtime, bff_dashboard, reanalysis_runtime,
+};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -32,11 +37,13 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub model: Arc<dyn ReasoningModel>,
 }
 
 /// Reject ambiguous authorization headers before either middleware or handler
@@ -85,11 +92,41 @@ async fn response_security_headers(
     response
 }
 
+async fn frontend_index() -> Html<&'static str> {
+    Html(include_str!("../frontend/dist/index.html"))
+}
+
 pub fn router(pool: PgPool) -> Router {
+    router_with_model(pool, Arc::new(UnavailableModel))
+}
+
+pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router {
     Router::new()
         .route(
             "/",
-            get(|| async { Html(include_str!("../web/index.html")) }),
+            get(frontend_index),
+        )
+        .route("/analysis", get(frontend_index))
+        .route("/operations", get(frontend_index))
+        .route("/review", get(frontend_index))
+        .route("/inspector", get(frontend_index))
+        .route(
+            "/assets/app.js",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+                    include_str!("../frontend/dist/assets/app.js"),
+                )
+            }),
+        )
+        .route(
+            "/assets/app.css",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+                    include_str!("../frontend/dist/assets/app.css"),
+                )
+            }),
         )
         .route(
             "/app.js",
@@ -223,8 +260,40 @@ pub fn router(pool: PgPool) -> Router {
             get(list_analysis_history),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/sync",
+            post(bff_operation_sync),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/async",
+            post(bff_operation_async),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}",
+            get(get_bff_operation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/events",
+            get(get_bff_operation_events),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
+            get(wait_bff_operation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/agentic",
+            get(get_agentic_operation).post(plan_agentic_operation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/cancel",
+            post(cancel_bff_operation),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}",
             get(get_analysis_snapshot).post(begin_analysis_snapshot),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/dashboard",
+            get(get_bff_dashboard),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/input",
@@ -283,7 +352,7 @@ pub fn router(pool: PgPool) -> Router {
             post(record_examined_fragment),
         )
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
-        .with_state(AppState { pool })
+        .with_state(AppState { pool, model })
         .layer(axum::middleware::from_fn(request_digest_context))
         .layer(axum::middleware::from_fn(response_security_headers))
 }
@@ -2261,4 +2330,411 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
+}
+
+#[derive(Deserialize)]
+struct BffDashboardQuery {
+    operation: Option<Uuid>,
+}
+async fn get_bff_dashboard(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(q): Query<BffDashboardQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = bff_dashboard::get(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+        q.operation,
+    )
+    .await
+    .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "dashboard unavailable"))?;
+    Ok(no_store(json!(view), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BffOperationRequest {
+    kind: String,
+    target_analysis_id: Option<Uuid>,
+    parent_operation_id: Option<Uuid>,
+    idempotency_key: Option<String>,
+    #[serde(default = "empty_object")]
+    input: Value,
+    deadline_at: Option<String>,
+    step_budget: Option<i32>,
+}
+fn empty_object() -> Value {
+    json!({})
+}
+#[derive(Deserialize)]
+struct BffEventsQuery {
+    after: Option<i64>,
+    limit: Option<i64>,
+}
+#[derive(Deserialize)]
+struct BffWaitQuery {
+    after_version: i64,
+    timeout_ms: Option<u64>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BffCancelRequest {
+    expected_version: i64,
+    reason: String,
+}
+
+fn bff_error(e: BffOperationError) -> ApiError {
+    match e {
+        BffOperationError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid operation request")
+        }
+        BffOperationError::Invisible => ApiError(StatusCode::NOT_FOUND, "operation not found"),
+        BffOperationError::IdempotencyConflict | BffOperationError::StateConflict => {
+            ApiError(StatusCode::CONFLICT, "operation conflict")
+        }
+        BffOperationError::UnsupportedKind => ApiError(
+            StatusCode::NOT_IMPLEMENTED,
+            "operation kind not executable yet",
+        ),
+        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "operation unavailable"),
+    }
+}
+fn bff_response(view: bff_operations::OperationView, status: StatusCode) -> Response {
+    let etag = view.etag.clone();
+    let retry = view.retry_after_ms;
+    let mut response = (status, Json(view)).into_response();
+    response
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
+    if let Some(ms) = retry {
+        response
+            .headers_mut()
+            .insert("x-poll-after-ms", ms.to_string().parse().unwrap());
+        response.headers_mut().insert(
+            header::RETRY_AFTER,
+            ms.div_ceil(1000).to_string().parse().unwrap(),
+        );
+    }
+    response
+}
+async fn submit_bff(
+    state: &AppState,
+    workspace: Uuid,
+    situation: Uuid,
+    operation: Uuid,
+    actor: Uuid,
+    request: BffOperationRequest,
+) -> Result<bff_operations::OperationView, ApiError> {
+    bff_operations::submit(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        &NewOperation {
+            kind: request.kind,
+            target_analysis_id: request.target_analysis_id,
+            parent_operation_id: request.parent_operation_id,
+            idempotency_key: request.idempotency_key,
+            input: request.input,
+            deadline_at: request.deadline_at,
+            step_budget: request.step_budget.unwrap_or(32),
+            requested_by: actor,
+        },
+    )
+    .await
+    .map_err(bff_error)
+}
+async fn bff_operation_sync(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<BffOperationRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let submitted = submit_bff(&state, workspace, situation, operation, actor, request).await?;
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
+    let view = if submitted.kind == "AGENTIC_ANALYSIS" {
+        match agentic_runtime::run_until_boundary(&state.pool, scope, actor, state.model.as_ref())
+            .await
+        {
+            Ok(_) => bff_operations::get(&state.pool, scope)
+                .await
+                .map_err(bff_error)?,
+            Err(e) => {
+                let current = bff_operations::get(&state.pool, scope)
+                    .await
+                    .map_err(bff_error)?;
+                if !current.terminal {
+                    let _ = bff_operations::fail(
+                        &state.pool,
+                        scope,
+                        current.state_version,
+                        actor,
+                        "AGENTIC_EXECUTION_FAILED",
+                        &e.to_string(),
+                    )
+                    .await;
+                }
+                return Err(ApiError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "agentic operation failed",
+                ));
+            }
+        }
+    } else if submitted.kind == "REANALYZE" {
+        reanalysis_runtime::execute(&state.pool, scope, actor)
+            .await
+            .map_err(|_| {
+                ApiError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "reanalysis operation failed",
+                )
+            })?
+    } else {
+        bff_operations::execute_deterministic(&state.pool, scope, actor)
+            .await
+            .map_err(bff_error)?
+    };
+    Ok(bff_response(view, StatusCode::OK))
+}
+async fn bff_operation_async(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<BffOperationRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let digest = unique_bearer(&headers)
+        .and_then(|token| authz::credential_digest(token).ok())
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
+    let view = submit_bff(&state, workspace, situation, operation, actor, request).await?;
+    if matches!(
+        view.kind.as_str(),
+        "BUILD_BRIEFING" | "BUILD_HANDOFF" | "AGENTIC_ANALYSIS" | "REANALYZE"
+    ) && !view.terminal
+    {
+        let pool = state.pool.clone();
+        let model = state.model.clone();
+        let kind = view.kind.clone();
+        let scope = OperationScope {
+            workspace,
+            situation,
+            operation,
+        };
+        tokio::spawn(async move {
+            authz::with_auth_digest(digest, async move {
+                let result = if kind == "AGENTIC_ANALYSIS" {
+                    agentic_runtime::run_until_boundary(&pool, scope, actor, model.as_ref())
+                        .await
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                } else if kind == "REANALYZE" {
+                    reanalysis_runtime::execute(&pool, scope, actor)
+                        .await
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                } else {
+                    bff_operations::execute_deterministic(&pool, scope, actor)
+                        .await
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                };
+                if let Err(message) = result
+                    && let Ok(current) = bff_operations::get(&pool, scope).await
+                    && !current.terminal
+                {
+                    let _ = bff_operations::fail(
+                        &pool,
+                        scope,
+                        current.state_version,
+                        actor,
+                        "EXECUTION_FAILED",
+                        &message,
+                    )
+                    .await;
+                }
+            })
+            .await;
+        });
+    }
+    Ok(bff_response(view, StatusCode::ACCEPTED))
+}
+async fn get_bff_operation(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = bff_operations::get(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+    )
+    .await
+    .map_err(bff_error)?;
+    if headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|x| x.to_str().ok())
+        == Some(view.etag.as_str())
+    {
+        let mut response = StatusCode::NOT_MODIFIED.into_response();
+        response
+            .headers_mut()
+            .insert(header::ETAG, view.etag.parse().unwrap());
+        return Ok(response);
+    }
+    Ok(bff_response(view, StatusCode::OK))
+}
+async fn get_bff_operation_events(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(q): Query<BffEventsQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = bff_operations::events(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        q.after.unwrap_or(0),
+        q.limit.unwrap_or(50),
+    )
+    .await
+    .map_err(bff_error)?;
+    Ok(no_store(json!(page), StatusCode::OK))
+}
+async fn wait_bff_operation(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(q): Query<BffWaitQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = bff_operations::wait_for_version(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        q.after_version,
+        q.timeout_ms.unwrap_or(5000),
+    )
+    .await
+    .map_err(bff_error)?;
+    Ok(bff_response(view, StatusCode::OK))
+}
+async fn get_agentic_operation(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = agentic_controller::view(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+    )
+    .await
+    .map_err(|_| ApiError(StatusCode::NOT_FOUND, "agentic plan not found"))?;
+    Ok(no_store(json!(view), StatusCode::OK))
+}
+async fn plan_agentic_operation(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
+    let op = bff_operations::get(&state.pool, scope)
+        .await
+        .map_err(bff_error)?;
+    if op.kind != "AGENTIC_ANALYSIS" {
+        return Err(ApiError(StatusCode::CONFLICT, "not an agentic operation"));
+    }
+    let analysis = op.target_analysis_id.ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "agentic operation requires analysis",
+    ))?;
+    let steps = agentic_policy::default_plan(&state.pool, workspace, situation, analysis)
+        .await
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "agentic planning unavailable",
+            )
+        })?;
+    match agentic_controller::view(&state.pool, scope).await {
+        Ok(view) => Ok(no_store(json!(view), StatusCode::OK)),
+        Err(agentic_controller::ControllerError::Invisible) => {
+            agentic_controller::create_plan(&state.pool, scope, actor, &steps)
+                .await
+                .map_err(|_| {
+                    ApiError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "agentic planning unavailable",
+                    )
+                })?;
+            let view = agentic_controller::view(&state.pool, scope)
+                .await
+                .map_err(|_| {
+                    ApiError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "agentic plan unavailable",
+                    )
+                })?;
+            Ok(no_store(json!(view), StatusCode::CREATED))
+        }
+        Err(_) => Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "agentic plan unavailable",
+        )),
+    }
+}
+async fn cancel_bff_operation(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<BffCancelRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = bff_operations::cancel(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        request.expected_version,
+        actor,
+        &request.reason,
+    )
+    .await
+    .map_err(bff_error)?;
+    Ok(bff_response(view, StatusCode::OK))
 }

@@ -1,0 +1,22 @@
+{
+  "name":"niccolo-web-v1",
+  "version":"1.0.0.0.0.0",
+  "private":true,
+  "type":"module",
+  "scripts":{"dev":"vite","build":"vite build","test":"vitest run"},
+  "dependencies":{
+    "@hookform/resolvers":"5.9.2",
+    "@tanstack/react-query":"5.105.3",
+    "react":"19.3.1",
+    "react-dom":"19.3.1",
+    "react-hook-form":"7.91.0",
+    "react-router-dom":"7.18.5",
+    "zod":"4.6.7",
+    "zustand":"5.0.16"
+  },
+  "devDependencies":{
+    "@vitejs/plugin-react":"4.7.0",
+    "vite":"7.3.7",
+    "vitest":"3.2.7"
+  }
+}

@@ -21,10 +21,10 @@ struct Seed {
 }
 
 async fn pools() -> (PgPool, PgPool) {
-    let admin_url = std::env::var("NICCOLO_PG_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://oai@127.0.0.1:55432/niccolo_test".to_string());
-    let app_url = std::env::var("NICCOLO_PG_SERVICE_URL").unwrap_or_else(|_| {
-        "postgres://niccolo_service_test@127.0.0.1:55432/niccolo_test".to_string()
+    let admin_url = std::env::var("NICCOLO_NEXT_ADMIN_URL")
+        .unwrap_or_else(|_| "postgres://oai@127.0.0.1:55432/niccolo_next_test".to_string());
+    let app_url = std::env::var("NICCOLO_NEXT_APP_URL").unwrap_or_else(|_| {
+        "postgres://niccolo_next_app@127.0.0.1:55432/niccolo_next_test".to_string()
     });
     let admin = PgPoolOptions::new()
         .max_connections(8)
@@ -47,19 +47,19 @@ async fn seed(admin: &PgPool) -> Seed {
         analysis1: Uuid::new_v4(),
         analysis2: Uuid::new_v4(),
     };
-    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id,display_name) VALUES($1,'user')")
+    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id) VALUES($1)")
         .bind(s.principal)
         .execute(admin)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,name) VALUES($1,'w')")
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'w')")
         .bind(s.workspace)
         .execute(admin)
         .await
         .unwrap();
     sqlx::query("INSERT INTO niccolo.situations(workspace_id,situation_id,focus,created_by_principal_id,current_revision) VALUES($1,$2,'current focus',$3,2)")
         .bind(s.workspace).bind(s.situation).bind(s.principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id) VALUES($1,$2,1,'old focus',$3,$5),($1,$2,2,'current focus',$4,$5)")
+    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause) VALUES($1,$2,1,'old focus',$3,$5,'CREATED'),($1,$2,2,'current focus',$4,$5,'FOCUS_CHANGED')")
         .bind(s.workspace).bind(s.situation).bind("a".repeat(64)).bind("b".repeat(64)).bind(s.principal).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of) VALUES($1,$2,$3,1,$5,'understand',$6,NULL),($1,$2,$4,2,$7,'reanalyze',$6,$3)")
         .bind(s.workspace).bind(s.situation).bind(s.analysis1).bind(s.analysis2).bind("a".repeat(64)).bind(s.principal).bind("b".repeat(64)).execute(admin).await.unwrap();

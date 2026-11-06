@@ -1,0 +1,8 @@
+import { describe,it,expect } from 'vitest';import { NiccoloClient,operationPath } from './client.js';
+const c={workspace:'11111111-1111-4111-8111-111111111111',situation:'22222222-2222-4222-8222-222222222222',token:'x'};
+function response(status,value,headers={}){return {status,ok:status>=200&&status<300,headers:{get:(k)=>headers[k.toLowerCase()]??null},json:async()=>value};}
+describe('BFF client',()=>{
+ it('uses distinct sync/async surfaces over same operation path',async()=>{const calls=[];const f=async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?202:200,{state:'QUEUED'},{'etag':'"op-1"','x-poll-after-ms':'750'});};const x=new NiccoloClient(c,f);await x.runAsync('33333333-3333-4333-8333-333333333333',{kind:'AGENTIC_ANALYSIS'});expect(calls[0][0]).toContain('/async');expect(operationPath(c,'x')).toContain('/bff/operations/x');});
+ it('preserves conditional pull 304',async()=>{const x=new NiccoloClient(c,async()=>response(304,{}, {'etag':'"same"'}));const r=await x.operation('id','"same"');expect(r.notModified).toBe(true);expect(r.etag).toBe('"same"');});
+ it('exposes bounded long-pull and agentic inspection without changing task semantics',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{state:'RUNNING'});});await x.waitOperation('id',3,2500);await x.agentic('id');await x.planAgentic('id');expect(calls[0][0]).toContain('/wait?after_version=3&timeout_ms=2500');expect(calls[1][0]).toContain('/agentic');expect(calls[2][1]).toBe('POST');});
+});
