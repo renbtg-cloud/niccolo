@@ -27,6 +27,7 @@ export class NiccoloClient {
   runAsync(operationId, task) { return this.request('POST', `${operationPath(this.config,operationId)}/async`, { body: task }); }
   operation(operationId, etag) { return this.request('GET', operationPath(this.config,operationId), { etag }); }
   waitOperation(operationId, afterVersion, timeoutMs = 5000) { return this.request('GET', `${operationPath(this.config,operationId)}/wait?after_version=${afterVersion}&timeout_ms=${timeoutMs}`); }
+  observeOperation(operationId, afterVersion = 0, afterEvent = 0, timeoutMs = 5000, limit = 100) { return this.request('GET', `${operationPath(this.config,operationId)}/observe?after_version=${afterVersion}&after_event=${afterEvent}&timeout_ms=${timeoutMs}&limit=${limit}`); }
   agentic(operationId) { return this.request('GET', `${operationPath(this.config,operationId)}/agentic`); }
   planAgentic(operationId) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic`); }
   respondAgentic(operationId, stepId, body) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic/steps/${stepId}/human-response`, { body }); }
