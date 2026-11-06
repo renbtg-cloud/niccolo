@@ -472,3 +472,5 @@ pub mod proactive_briefing;
 pub mod reanalysis_revision;
 
 pub mod bff_executor;
+
+pub mod bff_intent;
