@@ -167,6 +167,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
         .route("/readyz", get(readiness))
         .route(
+            "/v1/workspaces/{workspace}/identities",
+            get(list_identity_subjects),
+        )
+        .route(
             "/v1/workspaces/{workspace}/identities/{person}",
             post(create_identity),
         )
@@ -2140,6 +2144,40 @@ async fn list_hypotheses(
                 "actor_principal_id":r.actor,"status":"HUMAN_HYPOTHESIS","is_verified_fact":false
             })).collect::<Vec<_>>(),
             "next_after":next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn list_identity_subjects(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    Query(query): Query<SourceQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = identity::list_identities(
+        &state.pool,
+        workspace,
+        query.after,
+        query.limit.unwrap_or(100),
+    )
+    .await
+    .map_err(|error| match error {
+        IdentityError::Input => ApiError(StatusCode::BAD_REQUEST, "invalid identity page"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "identity catalog unavailable",
+        ),
+    })?;
+    Ok(no_store(
+        json!({
+            "identities": page.identities.iter().map(|identity| json!({
+                "person_id": identity.person_id,
+                "display_label": identity.display_label,
+            })).collect::<Vec<_>>(),
+            "next_after": page.next_after,
+            "catalog_is_human_curated": true,
         }),
         StatusCode::OK,
     ))
