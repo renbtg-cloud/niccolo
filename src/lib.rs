@@ -450,3 +450,5 @@ pub mod reanalysis_advisor;
 pub mod investigation_policy;
 
 pub mod bff_dashboard;
+
+pub mod agentic_runtime;
