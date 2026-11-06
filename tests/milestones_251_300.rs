@@ -560,7 +560,7 @@ async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evid
     };
     let evidence = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'provider://frozen/1','Frozen provider evidence','OBSERVED')",
+        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'provider://frozen/1','Frozen provider evidence','DIRECT_OBSERVATION')",
     )
     .bind(s.workspace)
     .bind(evidence)
