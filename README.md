@@ -1,4 +1,4 @@
-# Niccolò / Duhme — experimental Rust core (v0.80)
+# Niccolò / Duhme — experimental Rust core (v0.100)
 
 A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
 
@@ -372,3 +372,10 @@ This work still does **not** implement the open `MVP-HYP-001` remembered rejecti
 This slice adds bounded activity pagination, human-selected attention pins, explicit reanalysis requests, separate action authorization/revocation, deterministic Situation exports, context non-use explanations, claim-to-output spans, exact review-package acknowledgements and a deterministic control ledger. See [HUMAN_CONTROL_V057_080.md](HUMAN_CONTROL_V057_080.md).
 
 Human steering remains steering: pins do not create automatic priority, requests/suggestions do not start analyses, authorization is not execution, and context exclusion is not a truth judgment or remembered rejection policy.
+
+
+## v0.81–v0.100 — explicit human review workflow
+
+Human review is now a first-class, inspectable workflow: sessions, notes/bookmarks, explicit use rationales, claim questions, revision conditions/events, deterministic handoff, human-selected review scope, exact-hash receipts, direct reanalysis comparison, lineage completeness, unranked pending items, session-local dispositions, and deterministic review agendas. See [HUMAN_REVIEW_V081_100.md](HUMAN_REVIEW_V081_100.md).
+
+These controls preserve human ownership. A review choice does not become remembered future policy, a handoff does not delegate authority, and no suggestion, agenda, or disposition starts analysis or executes an action.

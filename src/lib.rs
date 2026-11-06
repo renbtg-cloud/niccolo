@@ -423,3 +423,8 @@ pub mod situation_activity;
 pub mod inspection;
 pub mod review_acknowledgement;
 pub mod control_ledger;
+pub mod review_workflow;
+pub mod reasoning_handoff;
+pub mod review_governance;
+pub mod analysis_compare;
+pub mod review_agenda;
