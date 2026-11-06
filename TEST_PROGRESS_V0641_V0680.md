@@ -45,3 +45,11 @@ Harness correction before the next full run:
 - This checkpoint does not count those harness failures as product/test failures.
 
 A corrected full regression is starting from the same provider code plus the permanent cancellation-race test fix.
+
+Corrected full regression:
+
+- Rust/PostgreSQL: 0/391 failed; 391/391 passed across 42 test targets/results.
+- The historical milestone suites used the explicit `NICCOLO_NEXT_*` URLs and the restricted `niccolo_next_app` role.
+- Provider-focused TCP transport tests remained green inside the complete run.
+
+Remaining before DONE: API startup/configuration behavior with no provider, incomplete provider configuration, and a configured mock-compatible provider.
