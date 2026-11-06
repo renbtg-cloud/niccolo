@@ -175,7 +175,28 @@ pub async fn plan_for_intent(
         || r.added_context_count > 0
         || r.focus_changed;
     if needs_human {
-        steps.push(StepInput{step_id:human,ordinal:steps.len() as i32+1,kind:"REQUEST_HUMAN_DECISION".into(),label:"Return unresolved material choice, stop gate, or source-acquisition decision to the human".into(),requires_human:true,depends_on:vec![challenge]});
+        let human_label = match intent {
+            Some(HumanIntent::AboutToActOrSay) => {
+                "Return control before action: the human must choose whether, what, and how to act or speak"
+            }
+            Some(HumanIntent::Understand) => {
+                "Return unresolved material interpretation, stop gate, or source-acquisition decision to the human"
+            }
+            Some(HumanIntent::FigureOutWhatMatters) => {
+                "Return material attention/prioritization choices to the human without silently ranking them as truth"
+            }
+            None => {
+                "Return unresolved material choice, stop gate, or source-acquisition decision to the human"
+            }
+        };
+        steps.push(StepInput {
+            step_id: human,
+            ordinal: steps.len() as i32 + 1,
+            kind: "REQUEST_HUMAN_DECISION".into(),
+            label: human_label.into(),
+            requires_human: true,
+            depends_on: vec![challenge],
+        });
         steps.push(StepInput {
             step_id: handoff,
             ordinal: steps.len() as i32 + 1,
