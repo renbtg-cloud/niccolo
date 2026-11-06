@@ -454,3 +454,5 @@ pub mod bff_dashboard;
 pub mod agentic_runtime;
 
 pub mod reasoning_packet;
+
+pub mod reasoning_updates;
