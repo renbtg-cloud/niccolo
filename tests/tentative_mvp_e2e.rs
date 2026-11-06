@@ -194,11 +194,13 @@ async fn setup() -> Harness {
     let workspace = Uuid::new_v4();
     let situation = Uuid::new_v4();
     let principal = Uuid::new_v4();
-    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'tentative-mvp-e2e')")
-        .bind(workspace)
-        .execute(&admin)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'tentative-mvp-e2e')",
+    )
+    .bind(workspace)
+    .execute(&admin)
+    .await
+    .unwrap();
     let token = authz::provision_token(&admin, principal, workspace, true, true, 1)
         .await
         .unwrap();
@@ -268,10 +270,7 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     }
     let h = setup().await;
 
-    let situation_path = format!(
-        "/v1/workspaces/{}/situations/{}",
-        h.workspace, h.situation
-    );
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
     let (status, situation) = invoke(
         h.router.clone(),
         json_request(
@@ -338,11 +337,13 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(speakers["speaker_labels_are_verified_identities"], false);
-    assert!(speakers["speakers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|speaker| speaker["speaker_label"] == "Ana"));
+    assert!(
+        speakers["speakers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|speaker| speaker["speaker_label"] == "Ana")
+    );
 
     let person = Uuid::new_v4();
     let identity_path = format!("/v1/workspaces/{}/identities/{person}", h.workspace);
@@ -430,6 +431,10 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
 
     let purposes = h.purposes.lock().unwrap().clone();
     assert!(purposes.iter().any(|purpose| purpose == "SYNTHESIZE"));
-    assert!(purposes.iter().any(|purpose| purpose == "CHALLENGE_SYNTHESIS"));
+    assert!(
+        purposes
+            .iter()
+            .any(|purpose| purpose == "CHALLENGE_SYNTHESIS")
+    );
     assert!(purposes.iter().any(|purpose| purpose == "ASSESS_CONTEXT"));
 }
