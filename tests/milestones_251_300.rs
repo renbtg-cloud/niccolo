@@ -1119,3 +1119,53 @@ async fn v331_v340_expired_worker_lease_is_reclaimable_without_new_domain_task()
         .bind(s.workspace).bind(s.situation).bind(scope.operation).fetch_one(&admin).await.unwrap();
     assert_eq!(attempts,2);
 }
+
+#[tokio::test]
+async fn v341_v360_pull_observation_wakes_on_event_version_or_timeout() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        let current = bff_operations::get(&app, scope).await.unwrap();
+        let first = bff_operations::observe(&app, scope, current.state_version, 0, 1000, 50)
+            .await.unwrap();
+        assert!(!first.operation_changed);
+        assert!(first.events_changed);
+        assert!(!first.timed_out);
+        assert!(first.next_after_event > 0);
+
+        let started = std::time::Instant::now();
+        let timeout = bff_operations::observe(
+            &app,
+            scope,
+            current.state_version,
+            first.next_after_event,
+            40,
+            50,
+        ).await.unwrap();
+        assert!(timeout.timed_out);
+        assert!(!timeout.operation_changed);
+        assert!(!timeout.events_changed);
+        assert!(started.elapsed() >= std::time::Duration::from_millis(35));
+
+        let a = app.clone();
+        let actor = s.principal;
+        let changer = tokio::spawn(async move {
+            authz::with_auth_digest("test-digest".into(), async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                bff_operations::start(&a, scope, current.state_version, actor).await.unwrap();
+            }).await;
+        });
+        let changed = bff_operations::observe(
+            &app,
+            scope,
+            current.state_version,
+            first.next_after_event,
+            1000,
+            50,
+        ).await.unwrap();
+        changer.await.unwrap();
+        assert!(changed.operation_changed || changed.events_changed);
+        assert_eq!(changed.operation.state, "RUNNING");
+    }).await;
+}
