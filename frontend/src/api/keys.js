@@ -1,6 +1,10 @@
 export const qk = {
   situation: (c) => ['situation', c.workspace, c.situation],
   sources: (c) => ['sources', c.workspace],
+  sourceSpeakers: (c, document) => ['source-speakers', c.workspace, document],
+  identities: (c) => ['identities', c.workspace],
+  identityBindings: (c, document) => ['identity-bindings', c.workspace, document],
+  identityHistory: (c, document) => ['identity-history', c.workspace, document],
   revisions: (c) => ['revisions', c.workspace, c.situation],
   operation: (c, id) => ['operation', c.workspace, c.situation, id],
   operationEvents: (c, id) => ['operation-events', c.workspace, c.situation, id],
