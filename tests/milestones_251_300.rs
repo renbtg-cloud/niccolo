@@ -1076,3 +1076,46 @@ async fn v301_v310_sync_and_async_share_one_executor_without_double_execution() 
     .fetch_one(&admin).await.unwrap();
     assert_eq!(attempts, 1);
 }
+
+#[tokio::test]
+async fn v321_v330_two_workers_claim_distinct_operations_in_one_workspace() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let first = op(&app, s).await;
+    let second = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        let (a, b) = tokio::join!(
+            bff_operations::claim_next_in_workspace(&app, s.workspace, "worker-a", 30_000),
+            bff_operations::claim_next_in_workspace(&app, s.workspace, "worker-b", 30_000),
+        );
+        let a = a.unwrap().expect("worker a claim");
+        let b = b.unwrap().expect("worker b claim");
+        assert_ne!(a.operation, b.operation);
+        assert!([first.operation, second.operation].contains(&a.operation));
+        assert!([first.operation, second.operation].contains(&b.operation));
+        assert!(bff_operations::release_execution(&app, a, "worker-a").await.unwrap());
+        assert!(bff_operations::release_execution(&app, b, "worker-b").await.unwrap());
+    }).await;
+}
+
+#[tokio::test]
+async fn v331_v340_expired_worker_lease_is_reclaimable_without_new_domain_task() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        assert!(bff_operations::claim_execution(&app, scope, "dead-worker", 30_000).await.unwrap());
+    }).await;
+    sqlx::query("UPDATE niccolo.bff_operations SET execution_lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
+        .bind(s.workspace).bind(s.situation).bind(scope.operation).execute(&admin).await.unwrap();
+    authz::with_auth_digest("test-digest".into(), async {
+        let reclaimed = bff_operations::claim_next_in_workspace(&app, s.workspace, "replacement-worker", 30_000)
+            .await.unwrap().expect("reclaimed operation");
+        assert_eq!(reclaimed, scope);
+        assert!(bff_operations::execution_owned_by(&app, scope, "replacement-worker").await.unwrap());
+        assert!(bff_operations::release_execution(&app, scope, "replacement-worker").await.unwrap());
+    }).await;
+    let attempts:i32=sqlx::query_scalar("SELECT execution_attempts FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
+        .bind(s.workspace).bind(s.situation).bind(scope.operation).fetch_one(&admin).await.unwrap();
+    assert_eq!(attempts,2);
+}
