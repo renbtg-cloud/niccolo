@@ -9,6 +9,7 @@ use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
+use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
@@ -256,6 +257,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-history",
             get(list_analysis_history),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/sync",
+            post(bff_intent_sync),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/async",
+            post(bff_intent_async),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/sync",
@@ -2425,6 +2434,100 @@ fn bff_error(e: BffOperationError) -> ApiError {
         _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "operation unavailable"),
     }
 }
+fn intent_error(error: IntentError) -> ApiError {
+    match error {
+        IntentError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid human intent request"),
+        IntentError::Analysis(error) => error.into(),
+        IntentError::Operation(error) => bff_error(error),
+    }
+}
+
+fn intent_response(
+    mut launch: bff_intent::IntentLaunch,
+    operation: bff_operations::OperationView,
+    status: StatusCode,
+) -> Response {
+    launch.operation = operation;
+    let etag = launch.operation.etag.clone();
+    let retry = launch.operation.retry_after_ms;
+    let mut response = (status, Json(launch)).into_response();
+    response
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
+    if let Some(ms) = retry {
+        response
+            .headers_mut()
+            .insert("x-poll-after-ms", ms.to_string().parse().unwrap());
+        response.headers_mut().insert(
+            header::RETRY_AFTER,
+            ms.div_ceil(1000).to_string().parse().unwrap(),
+        );
+    }
+    response
+}
+
+async fn prepare_intent(
+    state: &AppState,
+    workspace: Uuid,
+    situation: Uuid,
+    operation: Uuid,
+    actor: Uuid,
+    request: &IntentRequest,
+) -> Result<bff_intent::IntentLaunch, ApiError> {
+    bff_intent::submit(&state.pool, workspace, situation, operation, actor, request)
+        .await
+        .map_err(intent_error)
+}
+
+async fn bff_intent_sync(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<IntentRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let launch = prepare_intent(&state, workspace, situation, operation, actor, &request).await?;
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
+    let view = bff_executor::execute(&state.pool, scope, actor, state.model.as_ref())
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "intent execution failed"))?;
+    Ok(intent_response(launch, view, StatusCode::OK))
+}
+
+async fn bff_intent_async(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<IntentRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let digest = unique_bearer(&headers)
+        .and_then(|token| authz::credential_digest(token).ok())
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
+    let launch = prepare_intent(&state, workspace, situation, operation, actor, &request).await?;
+    let view = launch.operation.clone();
+    if !view.terminal && view.state != "WAITING_FOR_HUMAN" {
+        let pool = state.pool.clone();
+        let model = state.model.clone();
+        let scope = OperationScope {
+            workspace,
+            situation,
+            operation,
+        };
+        tokio::spawn(async move {
+            authz::with_auth_digest(digest, async move {
+                let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
+            })
+            .await;
+        });
+    }
+    Ok(intent_response(launch, view, StatusCode::ACCEPTED))
+}
+
 fn bff_response(view: bff_operations::OperationView, status: StatusCode) -> Response {
     let etag = view.etag.clone();
     let retry = view.retry_after_ms;
