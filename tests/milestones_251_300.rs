@@ -457,6 +457,7 @@ async fn v601_v700_synthesis_artifact_is_atomic_typed_and_feeds_epistemic_state(
             text: "A is plausible".into(),
             qualification: Some("not established".into()),
         }],
+        source_links: vec![],
         assumptions: vec![niccolo_evidence::model_artifacts::ArtifactAssumption {
             assumption_id: assumption,
             claim_id: Some(claim),
@@ -520,6 +521,7 @@ async fn v601_v700_synthesis_artifact_is_atomic_typed_and_feeds_epistemic_state(
                 qualification: None,
             },
         ],
+        source_links: vec![],
         assumptions: vec![],
         alternatives: vec![],
         evidence_gaps: vec![],
@@ -543,6 +545,131 @@ async fn v601_v700_synthesis_artifact_is_atomic_typed_and_feeds_epistemic_state(
     })
     .await;
     let output_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.situation_analysis_outputs WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3").bind(s2.workspace).bind(s2.situation).bind(s2.analysis).fetch_one(&admin).await.unwrap();
+    assert_eq!(output_count, 0);
+}
+
+
+#[tokio::test]
+async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evidence() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let evidence = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'provider://frozen/1','Frozen provider evidence','OBSERVED')",
+    )
+    .bind(s.workspace)
+    .bind(evidence)
+    .execute(&admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_examined_fragments(workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(evidence)
+    .bind(s.principal)
+    .execute(&admin)
+    .await
+    .unwrap();
+
+    let claim = Uuid::new_v4();
+    let artifact = niccolo_evidence::model_artifacts::SynthesisArtifact {
+        answer_text: "A claim with explicit frozen-source provenance.".into(),
+        coverage_note: "One examined fragment.".into(),
+        claims: vec![niccolo_evidence::model_artifacts::ArtifactClaim {
+            claim_id: claim,
+            ordinal: 1,
+            kind: "INFERENCE".into(),
+            text: "The frozen fragment supports this interpretation".into(),
+            qualification: Some("support as used is not proof".into()),
+        }],
+        source_links: vec![niccolo_evidence::model_artifacts::ArtifactSourceLink {
+            claim_id: claim,
+            evidence_id: evidence,
+            relation: "SUPPORTS_AS_USED".into(),
+        }],
+        assumptions: vec![],
+        alternatives: vec![],
+        evidence_gaps: vec![],
+        clarifications: vec![],
+    };
+
+    authz::with_auth_digest("test-digest".into(), async {
+        let applied =
+            niccolo_evidence::model_artifacts::apply(&app, scope, s.principal, &artifact)
+                .await
+                .unwrap();
+        assert_eq!(applied.source_link_count, 1);
+        assert!(!applied.recorded_output_is_truth);
+    })
+    .await;
+
+    let stored: (String, Uuid) = sqlx::query_as(
+        "SELECT relation,recorded_by_principal_id FROM niccolo.situation_analysis_claim_fragments WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND claim_id=$4 AND evidence_id=$5",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(claim)
+    .bind(evidence)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(stored, ("SUPPORTS_AS_USED".into(), s.principal));
+
+    let s2 = seed(&admin).await;
+    let invalid_claim = Uuid::new_v4();
+    let invalid = niccolo_evidence::model_artifacts::SynthesisArtifact {
+        answer_text: "Must roll back.".into(),
+        coverage_note: "Invalid source link.".into(),
+        claims: vec![niccolo_evidence::model_artifacts::ArtifactClaim {
+            claim_id: invalid_claim,
+            ordinal: 1,
+            kind: "INFERENCE".into(),
+            text: "Cannot cite evidence that was not examined".into(),
+            qualification: None,
+        }],
+        source_links: vec![niccolo_evidence::model_artifacts::ArtifactSourceLink {
+            claim_id: invalid_claim,
+            evidence_id: Uuid::new_v4(),
+            relation: "SUPPORTS_AS_USED".into(),
+        }],
+        assumptions: vec![],
+        alternatives: vec![],
+        evidence_gaps: vec![],
+        clarifications: vec![],
+    };
+    let failed = authz::with_auth_digest("test-digest".into(), async {
+        niccolo_evidence::model_artifacts::apply(
+            &app,
+            AnalysisScope {
+                workspace: s2.workspace,
+                situation: s2.situation,
+                analysis: s2.analysis,
+            },
+            s2.principal,
+            &invalid,
+        )
+        .await
+    })
+    .await;
+    assert!(failed.is_err());
+    let output_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_outputs WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s2.workspace)
+    .bind(s2.situation)
+    .bind(s2.analysis)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
     assert_eq!(output_count, 0);
 }
 
