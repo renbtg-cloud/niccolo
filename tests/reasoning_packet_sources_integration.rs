@@ -223,7 +223,7 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
     let many = (0..300)
         .map(|i| {
             format!(
-                "01/01/2026, 10:{:02} - Ana: FROZEN_FRAGMENT_{:03}\\n",
+                "01/01/2026, 10:{:02} - Ana: FROZEN_FRAGMENT_{:03}\n",
                 i % 60,
                 i
             )
