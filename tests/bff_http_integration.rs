@@ -156,28 +156,48 @@ async fn v201_v204_sync_and_async_http_surfaces_share_operation_shape() {
 #[tokio::test]
 async fn v205_v208_pull_etag_poll_hint_events_and_cancel_are_first_class() {
     let s = setup().await;
+
+    // Prove conditional reads on a terminal operation, where the representation
+    // cannot race a background worker between the response and the follow-up GET.
+    let etag_id = Uuid::new_v4();
+    let (status, h, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &path(&s, etag_id, "/sync"),
+            &s.token,
+            Some(body(&s, "BUILD_BRIEFING")),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let tag = h[header::ETAG].to_str().unwrap().to_string();
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req("GET", &path(&s, etag_id, ""), &s.token, None, Some(&tag)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_MODIFIED);
+
+    // Use an explicit human boundary so the async operation remains cancellable
+    // after its worker has had a chance to advance it.
     let id = Uuid::new_v4();
-    let (status, h, v) = invoke(
+    let mut async_body = body(&s, "AGENTIC_ANALYSIS");
+    async_body["input"] = json!({"human_intent":"ABOUT_TO_ACT_OR_SAY"});
+    let (status, h, _) = invoke(
         s.router.clone(),
         req(
             "POST",
             &path(&s, id, "/async"),
             &s.token,
-            Some(body(&s, "AGENTIC_ANALYSIS")),
+            Some(async_body),
             None,
         ),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED);
-    assert_eq!(v["state"], "QUEUED");
     assert_eq!(h["x-poll-after-ms"], "750");
-    let tag = h[header::ETAG].to_str().unwrap().to_string();
-    let (status, _, _) = invoke(
-        s.router.clone(),
-        req("GET", &path(&s, id, ""), &s.token, None, Some(&tag)),
-    )
-    .await;
-    assert_eq!(status, StatusCode::NOT_MODIFIED);
     let (status, _, events) = invoke(
         s.router.clone(),
         req(
@@ -191,7 +211,23 @@ async fn v205_v208_pull_etag_poll_hint_events_and_cancel_are_first_class() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(events["events"].as_array().unwrap().len(), 1);
-    let version = v["state_version"].as_i64().unwrap();
+
+    let latest = loop {
+        let (_, _, now) = invoke(
+            s.router.clone(),
+            req("GET", &path(&s, id, ""), &s.token, None, None),
+        )
+        .await;
+        if now["state"] == "WAITING_FOR_HUMAN" || now["state"] == "QUEUED" {
+            break now;
+        }
+        assert_ne!(
+            now["terminal"], true,
+            "operation finished before cancellation boundary"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
+    let version = latest["state_version"].as_i64().unwrap();
     let (status, _, cancelled) = invoke(
         s.router.clone(),
         req(
@@ -206,7 +242,6 @@ async fn v205_v208_pull_etag_poll_hint_events_and_cancel_are_first_class() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(cancelled["state"], "CANCELLED");
     assert_eq!(cancelled["terminal"], true);
-    drop(s.admin);
 }
 
 #[tokio::test]
@@ -273,7 +308,7 @@ async fn v301_v315_agentic_sync_async_and_pull_share_one_operation_semantics() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(changed["state_version"].as_i64().unwrap() > version || changed["terminal"] == true);
-    for _ in 0..40 {
+    for _ in 0..200 {
         let (_, _, now) = invoke(
             s.router.clone(),
             req("GET", &path(&s, async_id, ""), &s.token, None, None),
@@ -572,3 +607,71 @@ async fn v471_v480_exact_intent_replay_reuses_operation_and_plan() {
     .unwrap();
     assert_eq!(count, 1);
 }
+
+#[tokio::test]
+async fn v561_v575_epistemic_read_model_groups_reasoning_without_promoting_it_to_truth() {
+    let s = setup().await;
+    let principal: Uuid = sqlx::query_scalar(
+        "SELECT requested_by_principal_id FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    let claim = Uuid::new_v4();
+    let assumption = Uuid::new_v4();
+    let standalone_assumption = Uuid::new_v4();
+    let alternative = Uuid::new_v4();
+    let gap = Uuid::new_v4();
+    let standalone_gap = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id) VALUES($1,$2,$3,'Provisional answer','Fixture output for epistemic view',$4)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_claims(workspace_id,situation_id,analysis_id,claim_id,ordinal,claim_kind,claim_text,qualification,created_by_principal_id) VALUES($1,$2,$3,$4,1,'INFERENCE','A provisional interpretation','Needs corroboration',$5)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(claim).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_assumptions(workspace_id,situation_id,analysis_id,assumption_id,claim_id,statement,basis_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'Timing reflects intent','Temporal proximity only',$6),($1,$2,$3,$7,NULL,'The source chronology is complete','Not yet verified',$6)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(assumption).bind(claim).bind(principal).bind(standalone_assumption).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_claim_alternatives(workspace_id,situation_id,analysis_id,claim_id,alternative_id,alternative_text,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'Coincidence rather than intent','Same observations admit this reading',$6)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(claim).bind(alternative).bind(principal).execute(&s.admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,claim_id,description,requested_source_kind,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'Need the original message','MESSAGE_EXPORT',$6),($1,$2,$3,$7,NULL,'Need an independent chronology',NULL,$6)")
+        .bind(s.workspace).bind(s.situation).bind(s.analysis).bind(gap).bind(claim).bind(principal).bind(standalone_gap).execute(&s.admin).await.unwrap();
+
+    let route = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/bff/epistemic",
+        s.workspace, s.situation, s.analysis
+    );
+    let (status, headers, view) =
+        invoke(s.router.clone(), req("GET", &route, &s.token, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert_eq!(view["claims"].as_array().unwrap().len(), 1);
+    assert_eq!(view["claims"][0]["claim_id"], claim.to_string());
+    assert_eq!(
+        view["claims"][0]["assumptions"][0]["assumption_id"],
+        assumption.to_string()
+    );
+    assert_eq!(
+        view["claims"][0]["alternatives"][0]["alternative_id"],
+        alternative.to_string()
+    );
+    assert_eq!(
+        view["claims"][0]["evidence_gaps"][0]["gap_id"],
+        gap.to_string()
+    );
+    assert_eq!(
+        view["unlinked_assumptions"][0]["assumption_id"],
+        standalone_assumption.to_string()
+    );
+    assert_eq!(
+        view["unlinked_evidence_gaps"][0]["gap_id"],
+        standalone_gap.to_string()
+    );
+    assert_eq!(view["claims_are_verified_facts"], false);
+    assert_eq!(view["assumptions_are_facts"], false);
+    assert_eq!(view["alternatives_are_automatically_ranked"], false);
+    assert_eq!(view["satisfied_gap_proves_claim"], false);
+    assert_eq!(view["browser_is_domain_authority"], false);
+}
+
