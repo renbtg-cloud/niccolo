@@ -1,5 +1,6 @@
 export class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 export function situationPath(c) { return `/v1/workspaces/${c.workspace}/situations/${c.situation}`; }
+export function sourcesPath(c) { return `/v1/workspaces/${c.workspace}/sources`; }
 export function operationPath(c, id) { return `${situationPath(c)}/bff/operations/${id}`; }
 export function intentPath(c, id) { return `${situationPath(c)}/bff/intents/${id}`; }
 export function analysisPath(c, id) { return `${situationPath(c)}/analysis-snapshots/${id}`; }
@@ -15,9 +16,21 @@ export class NiccoloClient {
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag'), pollAfterMs: Number(response.headers.get('x-poll-after-ms')) || value.retry_after_ms || null };
   }
+  async requestRaw(method, path, { body, contentType, locator } = {}) {
+    const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
+    if (contentType) headers['Content-Type'] = contentType;
+    if (locator) headers['X-Source-Locator'] = locator;
+    const response = await this.fetch(path, { method, headers, cache: 'no-store', body });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
+    return { value, etag: response.headers.get('etag') };
+  }
   situation() { return this.request('GET', situationPath(this.config)); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
+  sources(after = 0, limit = 100) { return this.request('GET', `${sourcesPath(this.config)}?after=${after}&limit=${limit}`); }
+  ingestSource(documentId, { locator, contentType, body }) { return this.requestRaw('POST', `${sourcesPath(this.config)}/${documentId}`, { body, contentType, locator }); }
+  addSituationSource(documentId) { return this.request('POST', `${situationPath(this.config)}/sources/${documentId}`); }
   revisions() { return this.request('GET', `${situationPath(this.config)}/revisions?after=0&limit=100`); }
   analysisReview(id) { return this.request('GET', `${analysisPath(this.config,id)}/review`); }
   analysisCoverage(id) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`); }

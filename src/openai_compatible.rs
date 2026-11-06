@@ -15,7 +15,9 @@ use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderConfigError {
-    #[error("incomplete LLM configuration: set NICCOLO_LLM_BASE_URL, NICCOLO_LLM_API_KEY and NICCOLO_LLM_MODEL together")]
+    #[error(
+        "incomplete LLM configuration: set NICCOLO_LLM_BASE_URL, NICCOLO_LLM_API_KEY and NICCOLO_LLM_MODEL together"
+    )]
     Incomplete,
     #[error("invalid LLM configuration")]
     Invalid,
@@ -139,10 +141,15 @@ impl CurlOpenAiCompatibleModel {
         let content = value
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
-            .ok_or_else(|| ModelError::Provider("provider response missing message content".into()))?;
-        let parsed: Value = serde_json::from_str(content)
-            .map_err(|e| ModelError::Provider(format!("provider returned non-JSON content: {e}")))?;
-        let prompt_tokens = value.pointer("/usage/prompt_tokens").and_then(Value::as_i64);
+            .ok_or_else(|| {
+                ModelError::Provider("provider response missing message content".into())
+            })?;
+        let parsed: Value = serde_json::from_str(content).map_err(|e| {
+            ModelError::Provider(format!("provider returned non-JSON content: {e}"))
+        })?;
+        let prompt_tokens = value
+            .pointer("/usage/prompt_tokens")
+            .and_then(Value::as_i64);
         let completion_tokens = value
             .pointer("/usage/completion_tokens")
             .and_then(Value::as_i64);
@@ -247,12 +254,17 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                 return Err(ModelError::Provider(format!(
                     "provider HTTP request failed: {}{}{}",
                     stderr.trim(),
-                    if stderr.is_empty() || stdout.is_empty() { "" } else { " | " },
+                    if stderr.is_empty() || stdout.is_empty() {
+                        ""
+                    } else {
+                        " | "
+                    },
                     stdout.trim()
                 )));
             }
-            let envelope: Value = serde_json::from_slice(&output.stdout)
-                .map_err(|e| ModelError::Provider(format!("invalid provider JSON envelope: {e}")))?;
+            let envelope: Value = serde_json::from_slice(&output.stdout).map_err(|e| {
+                ModelError::Provider(format!("invalid provider JSON envelope: {e}"))
+            })?;
             self.parse_response(envelope)
         })
     }
@@ -299,7 +311,8 @@ mod tests {
 
     #[test]
     fn provider_envelope_parses_structured_json_and_usage() {
-        let model = CurlOpenAiCompatibleModel::new(config("https://example.com/v1".into())).unwrap();
+        let model =
+            CurlOpenAiCompatibleModel::new(config("https://example.com/v1".into())).unwrap();
         let envelope = json!({
             "model":"effective-model",
             "choices":[{"message":{"content":"{\"purpose\":\"SYNTHESIZE\",\"status\":\"ok\",\"niccolo_artifact\":{\"answer_text\":\"A\",\"coverage_note\":\"B\",\"claims\":[]}}"}}],
@@ -352,7 +365,8 @@ mod tests {
                     }
                 }
             }
-            tx.send(String::from_utf8_lossy(&bytes).to_string()).unwrap();
+            tx.send(String::from_utf8_lossy(&bytes).to_string())
+                .unwrap();
             let content = json!({
                 "purpose":"SYNTHESIZE",
                 "status":"ok",
@@ -380,7 +394,10 @@ mod tests {
         assert!(wire.starts_with("POST /v1/chat/completions HTTP/1.1"));
         assert!(wire.contains("Authorization: Bearer secret-test-key"));
         assert!(wire.contains("\"response_format\":{\"type\":\"json_object\"}"));
-        assert_eq!(response.value["niccolo_artifact"]["answer_text"], "Network mock answer");
+        assert_eq!(
+            response.value["niccolo_artifact"]["answer_text"],
+            "Network mock answer"
+        );
         assert_eq!(response.prompt_tokens, Some(9));
         assert_eq!(response.completion_tokens, Some(7));
     }

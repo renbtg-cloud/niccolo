@@ -1,5 +1,6 @@
 export const qk = {
   situation: (c) => ['situation', c.workspace, c.situation],
+  sources: (c) => ['sources', c.workspace],
   revisions: (c) => ['revisions', c.workspace, c.situation],
   operation: (c, id) => ['operation', c.workspace, c.situation, id],
   operationEvents: (c, id) => ['operation-events', c.workspace, c.situation, id],

@@ -218,7 +218,7 @@ async fn v205_v208_pull_etag_poll_hint_events_and_cancel_are_first_class() {
             req("GET", &path(&s, id, ""), &s.token, None, None),
         )
         .await;
-        if now["state"] == "WAITING_FOR_HUMAN" || now["state"] == "QUEUED" {
+        if now["state"] == "WAITING_FOR_HUMAN" {
             break now;
         }
         assert_ne!(
