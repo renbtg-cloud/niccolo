@@ -572,4 +572,3 @@ async fn v471_v480_exact_intent_replay_reuses_operation_and_plan() {
     .unwrap();
     assert_eq!(count, 1);
 }
-
