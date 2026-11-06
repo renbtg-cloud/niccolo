@@ -1189,6 +1189,7 @@ fn analysis_snapshot_json(snapshot: &analysis_snapshot::AnalysisInputSnapshot) -
         "situation_id": snapshot.situation_id,
         "input_revision": snapshot.input_revision,
         "input_fingerprint": snapshot.input_fingerprint,
+        "identity_event_no_max": snapshot.identity_event_no_max,
         "goal": snapshot.goal,
         "requested_by_principal_id": snapshot.requested_by,
         "reanalysis_of": snapshot.reanalysis_of,
@@ -2517,6 +2518,10 @@ async fn get_reasoning_input_summary(
             "source_fragment_count_included": packet.frozen_input.source_fragment_count_included,
             "source_bytes_included": packet.frozen_input.source_bytes_included,
             "source_packet_truncated": packet.frozen_input.source_packet_truncated,
+            "identity_event_no_max": packet.frozen_input.identity_event_no_max,
+            "identity_binding_count": packet.frozen_input.identity_bindings.len(),
+            "identity_bindings_are_human_confirmed": packet.frozen_input.identity_bindings_are_human_confirmed,
+            "matching_speaker_labels_imply_same_person": packet.frozen_input.matching_speaker_labels_imply_same_person,
             "reasoning_packet_sha256": sha256,
             "packet_asserts_truth": packet.packet_asserts_truth,
             "summary_is_provider_input_observability": true
