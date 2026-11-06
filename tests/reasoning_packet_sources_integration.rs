@@ -247,7 +247,7 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
     assert_eq!(status, StatusCode::CREATED);
 
     let digest = authz::credential_digest(&h.token).unwrap();
-    let build = || async {
+    let build = |digest| async {
         authz::with_auth_digest(digest, async {
             reasoning_packet::build(
                 &h.secure,
@@ -262,8 +262,8 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
         })
         .await
     };
-    let first = build().await;
-    let second = build().await;
+    let first = build(digest.clone()).await;
+    let second = build(digest).await;
 
     assert_eq!(first.frozen_input.sources, vec![document]);
     assert_eq!(first.frozen_input.source_fragment_count_total, 300);
