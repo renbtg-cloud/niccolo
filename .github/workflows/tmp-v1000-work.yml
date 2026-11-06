@@ -1,0 +1,29 @@
+name: tmp v1000 work
+on:
+  push:
+    branches: [tmp-v1000-work]
+    paths: ['.sync/v1000.ready']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .sync/v1000.patch.xz.b64 > /tmp/v1000.patch.xz
+          echo "9dbb7485e145cd9b2fc860cc2a236e9edb2901c76f74e74371d80ddd80ab7ada  /tmp/v1000.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v1000.patch.xz > /tmp/v1000.patch
+          echo "2ee1955e4e37e758100a9e137006b6a362603010931a6274355a0d128021c462  /tmp/v1000.patch" | sha256sum -c -
+          patch -p1 --batch --forward < /tmp/v1000.patch
+          rm -rf .sync .github/workflows/tmp-v1000-work.yml
+          git config user.name "Niccolo VM"
+          git config user.email "vm@localhost"
+          git add -A
+          git diff --cached --check
+          git commit -m "wip: checkpoint agentic BFF and reasoning substrate"
+          git push origin HEAD:tmp-v1000-work
