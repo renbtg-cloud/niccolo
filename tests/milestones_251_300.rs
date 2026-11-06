@@ -1,6 +1,6 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::{
-    agentic_controller, agentic_policy, agentic_runtime,
+    agentic_controller, agentic_policy, agentic_runtime, bff_executor,
     analysis_structure::AnalysisScope,
     authz,
     bff_operations::{self, NewOperation, OperationScope},
@@ -1002,4 +1002,77 @@ async fn v1701_v1800_reanalysis_explanation_separates_recorded_delta_lineage_and
         assert!(!e.input_change_proves_causal_reason_for_output_change);
     })
     .await;
+}
+
+#[tokio::test]
+async fn v311_v320_execution_lease_serializes_delivery_surfaces() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        assert!(bff_operations::claim_execution(&app, scope, "sync-request-a", 30_000)
+            .await
+            .unwrap());
+        assert!(!bff_operations::claim_execution(&app, scope, "async-worker-b", 30_000)
+            .await
+            .unwrap());
+        assert!(bff_operations::heartbeat_execution(&app, scope, "sync-request-a", 30_000)
+            .await
+            .unwrap());
+        assert!(bff_operations::release_execution(&app, scope, "sync-request-a")
+            .await
+            .unwrap());
+        assert!(bff_operations::claim_execution(&app, scope, "async-worker-b", 30_000)
+            .await
+            .unwrap());
+        assert!(bff_operations::release_execution(&app, scope, "async-worker-b")
+            .await
+            .unwrap());
+    })
+    .await;
+    let attempts: i32 = sqlx::query_scalar(
+        "SELECT execution_attempts FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(attempts, 2);
+}
+
+#[tokio::test]
+async fn v301_v310_sync_and_async_share_one_executor_without_double_execution() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        let model = std::sync::Arc::new(DeterministicModel::new("test", "shared-executor-v1").unwrap());
+        let a_pool = app.clone();
+        let b_pool = app.clone();
+        let a_model = model.clone();
+        let b_model = model.clone();
+        let a = tokio::spawn(async move {
+            authz::with_auth_digest("test-digest".into(), async move {
+                bff_executor::execute(&a_pool, scope, s.principal, a_model.as_ref()).await
+            }).await
+        });
+        let b = tokio::spawn(async move {
+            authz::with_auth_digest("test-digest".into(), async move {
+                bff_executor::execute(&b_pool, scope, s.principal, b_model.as_ref()).await
+            }).await
+        });
+        let (a, b) = tokio::join!(a, b);
+        assert!(a.unwrap().is_ok());
+        assert!(b.unwrap().is_ok());
+        let final_view = bff_operations::get(&app, scope).await.unwrap();
+        assert_ne!(final_view.state, "QUEUED");
+    }).await;
+    let attempts: i32 = sqlx::query_scalar(
+        "SELECT execution_attempts FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation)
+    .fetch_one(&admin).await.unwrap();
+    assert_eq!(attempts, 1);
 }
