@@ -292,5 +292,23 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
             .iter()
             .all(|fragment| fragment.document_id == document)
     );
+
+    let summary_path =
+        format!("{situation_path}/analysis-snapshots/{analysis}/bff/reasoning-input");
+    let (status, summary) = invoke(
+        h.router.clone(),
+        json_request("GET", &summary_path, &h.token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(summary["source_fragment_count_total"], 300);
+    assert_eq!(summary["source_fragment_count_included"], 256);
+    assert_eq!(summary["source_packet_truncated"], true);
+    assert_eq!(
+        summary["reasoning_packet_sha256"],
+        reasoning_packet::sha256(&first).unwrap()
+    );
+    assert_eq!(summary["packet_asserts_truth"], false);
+    assert_eq!(summary["summary_is_provider_input_observability"], true);
 }
 
