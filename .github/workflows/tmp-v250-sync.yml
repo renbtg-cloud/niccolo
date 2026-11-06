@@ -1,0 +1,32 @@
+name: tmp v250 sync
+
+on:
+  push:
+    branches: [tmp-v250-sync]
+    paths:
+      - '.sync/v250.ready'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Materialize VM-validated v0.250 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .sync/v250.part00 .sync/v250.part01 .sync/v250.part02 .sync/v250.part03 .sync/v250.part04 .sync/v250.part05 .sync/v250.part06 .sync/v250.part07 .sync/v250.part08 .sync/v250.part09 | base64 -d > /tmp/niccolo-v250-overlay.tar.gz
+          echo "cef3233c4ab13fc0431b8e5e1f6312348617a822ef877215cc9d4b33acc85b1c  /tmp/niccolo-v250-overlay.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/niccolo-v250-overlay.tar.gz
+          rm -rf .sync .github/workflows/tmp-v250-sync.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: add human-owned reasoning, durable BFF and React V1 substrate [skip ci]"
+          git push origin HEAD:tmp-v250-sync
