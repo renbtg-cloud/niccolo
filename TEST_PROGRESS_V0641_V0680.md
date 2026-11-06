@@ -26,3 +26,13 @@ Still required before DONE:
 - API startup/configuration validation with provider configured and unconfigured.
 
 This is a progress checkpoint, not a product-readiness claim.
+
+Additional regression findings:
+
+- An existing cancellation test exposed a version race by attempting cancellation while the operation could still be QUEUED. The permanent test now waits for the stable WAITING_FOR_HUMAN boundary before cancelling.
+- Focused cancellation regression: 0/1 failed; 1/1 passed.
+- Frontend dependencies were restored from the offline npm cache in the VM.
+- Frontend tests: 0/16 failed; 16/16 passed.
+- Frontend production build: passed.
+
+The full Rust/PostgreSQL regression is being rerun from the corrected test suite.
