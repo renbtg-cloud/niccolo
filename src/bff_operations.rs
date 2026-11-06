@@ -561,3 +561,89 @@ pub async fn task_input(pool: &PgPool, scope: OperationScope) -> Result<Value, B
     let raw = raw.ok_or(BffOperationError::Invisible)?;
     Ok(serde_json::from_str(&raw)?)
 }
+
+/// v0.311-v0.320: claim an execution lease without changing task semantics.
+pub async fn claim_execution(
+    pool: &PgPool,
+    scope: OperationScope,
+    owner: &str,
+    lease_ms: i64,
+) -> Result<bool, BffOperationError> {
+    if owner.trim().is_empty() || owner.len() > 128 || !(1_000..=300_000).contains(&lease_ms) {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let changed = sqlx::query(
+        "UPDATE niccolo.bff_operations \
+         SET execution_owner=$4, \
+             execution_lease_until=clock_timestamp()+($5::bigint * interval '1 millisecond'), \
+             execution_attempts=execution_attempts+1, updated_at=clock_timestamp() \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND state IN ('QUEUED','RUNNING') \
+           AND (execution_owner IS NULL OR execution_lease_until < clock_timestamp() OR execution_owner=$4)",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(owner)
+    .bind(lease_ms)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+    Ok(changed == 1)
+}
+
+pub async fn heartbeat_execution(
+    pool: &PgPool,
+    scope: OperationScope,
+    owner: &str,
+    lease_ms: i64,
+) -> Result<bool, BffOperationError> {
+    if owner.trim().is_empty() || owner.len() > 128 || !(1_000..=300_000).contains(&lease_ms) {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let changed = sqlx::query(
+        "UPDATE niccolo.bff_operations \
+         SET execution_lease_until=clock_timestamp()+($5::bigint * interval '1 millisecond'), updated_at=clock_timestamp() \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND execution_owner=$4 AND execution_lease_until >= clock_timestamp() \
+           AND state IN ('QUEUED','RUNNING')",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(owner)
+    .bind(lease_ms)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+    Ok(changed == 1)
+}
+
+pub async fn release_execution(
+    pool: &PgPool,
+    scope: OperationScope,
+    owner: &str,
+) -> Result<bool, BffOperationError> {
+    if owner.trim().is_empty() || owner.len() > 128 {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let changed = sqlx::query(
+        "UPDATE niccolo.bff_operations \
+         SET execution_owner=NULL, execution_lease_until=NULL, updated_at=clock_timestamp() \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND execution_owner=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(owner)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+    Ok(changed == 1)
+}
