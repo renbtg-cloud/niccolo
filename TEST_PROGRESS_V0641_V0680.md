@@ -53,3 +53,12 @@ Corrected full regression:
 - Provider-focused TCP transport tests remained green inside the complete run.
 
 Remaining before DONE: API startup/configuration behavior with no provider, incomplete provider configuration, and a configured mock-compatible provider.
+
+FINAL STATUS: DONE
+
+- API without provider configuration starts successfully and remains explicit about unavailable reasoning.
+- Partial provider configuration is rejected at startup.
+- Complete OpenAI-compatible configuration starts successfully.
+- Rust/PostgreSQL: 0/391 failed; 391/391 passed.
+- Frontend: 0/16 failed; 16/16 passed; production build passed.
+- Strict Clippy and rustfmt checks passed.
