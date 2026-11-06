@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .sync/v250.part00 .sync/v250.part01 .sync/v250.part02 .sync/v250.part03 .sync/v250.part04 .sync/v250.part05 .sync/v250.part06 .sync/v250.part07 .sync/v250.part08 .sync/v250.part09 | base64 -d > /tmp/niccolo-v250-overlay.tar.gz
+          cat .sync/v250.part00 .sync/v250.part01 .sync/v250.part02 .sync/v250.part03 .sync/v250.part04 .sync/v250.part05 .sync/v250.part06 .sync/v250.part07 .sync/v250.part08 .sync/v250.part09 .sync/v250.part10 .sync/v250.part11 .sync/v250.part12 .sync/v250.part13 .sync/v250.part14 .sync/v250.part15 .sync/v250.part16 .sync/v250.part17 .sync/v250.part18 .sync/v250.part19 .sync/v250.part20 .sync/v250.part21 .sync/v250.part22 .sync/v250.part23 .sync/v250.part24 .sync/v250.part25 .sync/v250.part26 .sync/v250.part27 .sync/v250.part28 .sync/v250.part29 | base64 -d > /tmp/niccolo-v250-overlay.tar.gz
           echo "cef3233c4ab13fc0431b8e5e1f6312348617a822ef877215cc9d4b33acc85b1c  /tmp/niccolo-v250-overlay.tar.gz" | sha256sum -c -
           tar -xzf /tmp/niccolo-v250-overlay.tar.gz
           rm -rf .sync .github/workflows/tmp-v250-sync.yml
