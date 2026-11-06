@@ -1,0 +1,168 @@
+//! v0.801-v0.850: structured intermediate reasoning updates.
+//! These records feed later reasoning steps but remain explicit assumptions/gaps/questions, not facts.
+use crate::analysis_structure::AnalysisScope;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
+#[derive(Debug, thiserror::Error)]
+pub enum UpdateError {
+    #[error("database unavailable: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("serialization failed: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[error("invalid reasoning update")]
+    Invalid,
+    #[error("reasoning update replay conflict")]
+    Conflict,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateAssumption {
+    pub assumption_id: Uuid,
+    pub statement: String,
+    pub basis_note: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateGap {
+    pub gap_id: Uuid,
+    pub description: String,
+    pub requested_source_kind: Option<String>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateClarification {
+    pub question_id: Uuid,
+    pub text: String,
+    pub reason: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReasoningUpdate {
+    #[serde(default)]
+    pub assumptions: Vec<UpdateAssumption>,
+    #[serde(default)]
+    pub evidence_gaps: Vec<UpdateGap>,
+    #[serde(default)]
+    pub clarifications: Vec<UpdateClarification>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppliedUpdate {
+    pub assumption_count: usize,
+    pub evidence_gap_count: usize,
+    pub clarification_count: usize,
+    pub update_asserts_truth: bool,
+}
+fn valid(s: &str, max: usize) -> bool {
+    !s.trim().is_empty() && s.len() <= max && !s.contains('\0')
+}
+fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
+    if x.assumptions.len() > 64 || x.evidence_gaps.len() > 64 || x.clarifications.len() > 32 {
+        return Err(UpdateError::Invalid);
+    };
+    let mut ids = std::collections::BTreeSet::new();
+    for a in &x.assumptions {
+        if !ids.insert(a.assumption_id) || !valid(&a.statement, 4096) || !valid(&a.basis_note, 4096)
+        {
+            return Err(UpdateError::Invalid);
+        }
+    }
+    ids.clear();
+    for g in &x.evidence_gaps {
+        if !ids.insert(g.gap_id)
+            || !valid(&g.description, 4096)
+            || g.requested_source_kind
+                .as_ref()
+                .is_some_and(|v| v.trim().is_empty() || v.len() > 256)
+        {
+            return Err(UpdateError::Invalid);
+        }
+    }
+    ids.clear();
+    for q in &x.clarifications {
+        if !ids.insert(q.question_id) || !valid(&q.text, 4096) || !valid(&q.reason, 2048) {
+            return Err(UpdateError::Invalid);
+        }
+    }
+    Ok(())
+}
+async fn scoped(pool: &PgPool, w: Uuid) -> Result<Transaction<'_, Postgres>, UpdateError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .execute(&mut *tx)
+        .await?;
+    let p: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if p {
+        return Err(UpdateError::Invalid);
+    };
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(w.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
+    Ok(tx)
+}
+pub fn parse(v: &Value) -> Result<Option<ReasoningUpdate>, UpdateError> {
+    let Some(x) = v.get("niccolo_update") else {
+        return Ok(None);
+    };
+    let x: ReasoningUpdate = serde_json::from_value(x.clone())?;
+    validate(&x)?;
+    Ok(Some(x))
+}
+pub async fn apply(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    actor: Uuid,
+    x: &ReasoningUpdate,
+) -> Result<AppliedUpdate, UpdateError> {
+    validate(x)?;
+    let mut tx = scoped(pool, scope.workspace).await?;
+    for a in &x.assumptions {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_assumptions(workspace_id,situation_id,analysis_id,assumption_id,claim_id,statement,basis_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,NULL,$5,$6,$7) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).bind(a.statement.trim()).bind(a.basis_note.trim()).bind(actor).execute(&mut *tx).await?;
+        let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT statement,basis_note,recorded_by_principal_id FROM niccolo.situation_analysis_assumptions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND assumption_id=$4").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).fetch_optional(&mut *tx).await?;
+        if row != Some((a.statement.trim().into(), a.basis_note.trim().into(), actor)) {
+            return Err(UpdateError::Conflict);
+        }
+    }
+    for g in &x.evidence_gaps {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,claim_id,description,requested_source_kind,recorded_by_principal_id) VALUES($1,$2,$3,$4,NULL,$5,$6,$7) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(g.gap_id).bind(g.description.trim()).bind(g.requested_source_kind.as_deref().map(str::trim)).bind(actor).execute(&mut *tx).await?;
+        let row:Option<(String,Option<String>,Uuid)>=sqlx::query_as("SELECT description,requested_source_kind,recorded_by_principal_id FROM niccolo.situation_analysis_evidence_gaps WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND gap_id=$4").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(g.gap_id).fetch_optional(&mut *tx).await?;
+        if row
+            != Some((
+                g.description.trim().into(),
+                g.requested_source_kind
+                    .as_deref()
+                    .map(str::trim)
+                    .map(str::to_owned),
+                actor,
+            ))
+        {
+            return Err(UpdateError::Conflict);
+        }
+    }
+    for q in &x.clarifications {
+        sqlx::query("INSERT INTO niccolo.investigative_questions(workspace_id,question_id,question) VALUES($1,$2,$3) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(q.question_id).bind(q.text.trim()).execute(&mut *tx).await?;
+        let t:Option<String>=sqlx::query_scalar("SELECT question FROM niccolo.investigative_questions WHERE workspace_id=$1 AND question_id=$2").bind(scope.workspace).bind(q.question_id).fetch_optional(&mut *tx).await?;
+        if t.as_deref() != Some(q.text.trim()) {
+            return Err(UpdateError::Conflict);
+        };
+        sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_questions(workspace_id,situation_id,analysis_id,question_id,reason,proposed_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).bind(q.reason.trim()).bind(actor).execute(&mut *tx).await?;
+        let row:Option<(String,Uuid)>=sqlx::query_as("SELECT reason,proposed_by_principal_id FROM niccolo.situation_analysis_clarification_questions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).fetch_optional(&mut *tx).await?;
+        if row != Some((q.reason.trim().into(), actor)) {
+            return Err(UpdateError::Conflict);
+        }
+    }
+    tx.commit().await?;
+    Ok(AppliedUpdate {
+        assumption_count: x.assumptions.len(),
+        evidence_gap_count: x.evidence_gaps.len(),
+        clarification_count: x.clarifications.len(),
+        update_asserts_truth: false,
+    })
+}

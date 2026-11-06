@@ -25,10 +25,10 @@ struct Seed {
 }
 
 async fn pools() -> (PgPool, PgPool) {
-    let admin_url = std::env::var("NICCOLO_PG_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://oai@127.0.0.1:55432/niccolo_test".to_string());
-    let app_url = std::env::var("NICCOLO_PG_SERVICE_URL").unwrap_or_else(|_| {
-        "postgres://niccolo_service_test@127.0.0.1:55432/niccolo_test".to_string()
+    let admin_url = std::env::var("NICCOLO_NEXT_ADMIN_URL")
+        .unwrap_or_else(|_| "postgres://oai@127.0.0.1:55432/niccolo_next_test".to_string());
+    let app_url = std::env::var("NICCOLO_NEXT_APP_URL").unwrap_or_else(|_| {
+        "postgres://niccolo_next_app@127.0.0.1:55432/niccolo_next_test".to_string()
     });
     let admin = PgPoolOptions::new()
         .max_connections(8)
@@ -59,32 +59,64 @@ async fn seed(admin: &PgPool) -> Seed {
         question: Uuid::new_v4(),
         answer: Uuid::new_v4(),
     };
-    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id,display_name) VALUES($1,'user'),($2,'other')")
-        .bind(s.principal).bind(s.other_principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,name) VALUES($1,'w'),($2,'other')")
+    let document1 = Uuid::new_v4();
+    let document2 = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO niccolo_auth.principals(principal_id) VALUES($1),($2)")
+        .bind(s.principal)
+        .bind(s.other_principal)
+        .execute(admin)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'w'),($2,'other')")
         .bind(s.workspace)
         .bind(s.other_workspace)
         .execute(admin)
         .await
         .unwrap();
     sqlx::query("INSERT INTO niccolo.situations(workspace_id,situation_id,focus,created_by_principal_id,current_revision) VALUES($1,$2,'current focus',$3,2)")
-        .bind(s.workspace).bind(s.situation).bind(s.principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id) VALUES($1,$2,1,'old focus',$3,$5),($1,$2,2,'current focus',$4,$5)")
-        .bind(s.workspace).bind(s.situation).bind("a".repeat(64)).bind("b".repeat(64)).bind(s.principal).execute(admin).await.unwrap();
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(s.principal)
+        .execute(admin)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause) VALUES($1,$2,1,'old focus',$3,$5,'CREATED'),($1,$2,2,'current focus',$4,$5,'FOCUS_CHANGED')")
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind("a".repeat(64))
+        .bind("b".repeat(64))
+        .bind(s.principal)
+        .execute(admin)
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of) VALUES($1,$2,$3,1,$5,'understand',$6,NULL),($1,$2,$4,2,$7,'understand after clarification',$6,$3)")
         .bind(s.workspace).bind(s.situation).bind(s.analysis1).bind(s.analysis2).bind("a".repeat(64)).bind(s.principal).bind("b".repeat(64)).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id) VALUES($1,$2,$3,'answer one','partial coverage',$5),($1,$2,$4,'answer two','expanded coverage',$5)")
         .bind(s.workspace).bind(s.situation).bind(s.analysis1).bind(s.analysis2).bind(s.principal).execute(admin).await.unwrap();
-    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,evidence_id,document_id,source_start,source_end) VALUES($1,$2,$4,0,10),($1,$3,$5,0,10)")
-        .bind(s.workspace).bind(s.evidence1).bind(s.evidence2).bind(Uuid::new_v4()).bind(Uuid::new_v4()).execute(admin).await.unwrap();
+
+    sqlx::query("INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'doc1:0-10','fragment one','DIRECT_OBSERVATION'),($1,$3,'doc2:0-10','fragment two','DIRECT_OBSERVATION')")
+        .bind(s.workspace).bind(s.evidence1).bind(s.evidence2).execute(admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'EML','doc1',$4,100),($1,$3,'EML','doc2',$5,100)")
+        .bind(s.workspace).bind(document1).bind(document2).bind("1".repeat(64)).bind("2".repeat(64)).execute(admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) VALUES($1,$2,0,$4,0,10,'Alice'),($1,$3,0,$5,0,10,'Bob')")
+        .bind(s.workspace).bind(document1).bind(document2).bind(s.evidence1).bind(s.evidence2).execute(admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_sources(workspace_id,situation_id,document_id,added_by_principal_id) VALUES($1,$2,$3,$5),($1,$2,$4,$5)")
+        .bind(s.workspace).bind(s.situation).bind(document1).bind(document2).bind(s.principal).execute(admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_revision_sources(workspace_id,situation_id,revision,document_id) VALUES($1,$2,1,$3),($1,$2,2,$3),($1,$2,2,$4)")
+        .bind(s.workspace).bind(s.situation).bind(document1).bind(document2).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_examined_fragments(workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) VALUES($1,$2,$3,$5,$7),($1,$2,$4,$5,$7),($1,$2,$4,$6,$7)")
         .bind(s.workspace).bind(s.situation).bind(s.analysis1).bind(s.analysis2).bind(s.evidence1).bind(s.evidence2).bind(s.principal).execute(admin).await.unwrap();
+
     sqlx::query("INSERT INTO niccolo.situation_contributions(workspace_id,situation_id,contribution_id,author_principal_id,kind,contribution_text,status) VALUES($1,$2,$3,$5,'USER_REPORTED','context one','ACTIVE'),($1,$2,$4,$5,'USER_REPORTED','clarification answer','ACTIVE')")
         .bind(s.workspace).bind(s.situation).bind(s.context1).bind(s.answer_context).bind(s.principal).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_revision_contributions(workspace_id,situation_id,revision,contribution_id) VALUES($1,$2,1,$3),($1,$2,2,$3),($1,$2,2,$4)")
         .bind(s.workspace).bind(s.situation).bind(s.context1).bind(s.answer_context).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_used_contributions(workspace_id,situation_id,analysis_id,input_revision,contribution_id,recorded_by_principal_id) VALUES($1,$2,$3,1,$5,$7),($1,$2,$4,2,$5,$7),($1,$2,$4,2,$6,$7)")
         .bind(s.workspace).bind(s.situation).bind(s.analysis1).bind(s.analysis2).bind(s.context1).bind(s.answer_context).bind(s.principal).execute(admin).await.unwrap();
+
+    sqlx::query("INSERT INTO niccolo.investigative_questions(workspace_id,question_id,question) VALUES($1,$2,'What changed?')")
+        .bind(s.workspace).bind(s.question).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_questions(workspace_id,situation_id,analysis_id,question_id,reason,proposed_by_principal_id) VALUES($1,$2,$3,$4,'high information gain',$5)")
         .bind(s.workspace).bind(s.situation).bind(s.analysis1).bind(s.question).bind(s.principal).execute(admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_answers(workspace_id,situation_id,analysis_id,question_id,answer_id,contribution_id,answered_by_principal_id,answer_revision) VALUES($1,$2,$3,$4,$5,$6,$7,2)")

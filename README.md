@@ -1,388 +1,231 @@
-# Niccolò / Duhme — experimental Rust core (v0.180)
+# Niccolò
 
-A deliberately narrow, **runnable** Rust + PostgreSQL proof of concept. It is not a release of Duhme and does not claim to implement the full v0180 contracts.
+**A thinking companion for complex human situations.**
 
-## Completed experimental slice
+Niccolò helps people examine situations where the evidence is fragmented, accounts disagree, intentions are uncertain, and a premature answer would be less useful than a better question. It brings conversations, documents, contextual contributions, competing interpretations, and possible next actions into one inspectable line of inquiry.
 
-- Rust 1.99.1 compilation and offline Cargo tests without external crates.
-- Recursively attributed statements: an event, what someone *says*, and what someone *believes* are different expressions.
-- Trace documented transmission/derivation origin of testimonies; three copies of one memo are not three independent observations.
-- Distinct roots are **not** treated as proof of statistical independence.
-- A lost or access-revoked ancestor fails closed; a copied document cannot silently retain authority when its origin was withdrawn.
-- A proposed investigatory question remains explicitly **not evidence**.
-- PostgreSQL 17 schema with workspace-scoped composite FKs, forced row-level security and basic recorded evidence, derivation, propositions, and investigative questions.
+Its purpose is to **strengthen human judgment, not replace it**. The person defines what matters, contributes context at any moment, challenges the system's interpretations, and retains authority over consequential decisions and actions.
 
-## New capability: frontier comparisons and continuous algorithm evolution
+Niccolò is developed by Cambrian Radiation Computing. This repository contains its Rust/PostgreSQL core, local HTTP API, first-party web interface, tests, and design/validation documents.
 
-Read **[COMPETITIVE_EVALUATION.md](COMPETITIVE_EVALUATION.md)** for the mandatory blind frontier-agent benchmark, opportunistic cheap-vs-frontier comparison, quota/permission gate, independent adjudication and reproducible improvement experiments.
+## What Niccolò does
 
-The current implementation enforces parts of the boundary and provides synthetic/offline tests; it **does not call frontier models or establish competitive superiority**.
+A **Situation** is the working space for a human question or project. A Situation can combine multiple records and evolving human context without flattening uncertainty into a single authoritative story.
 
-## Run Rust POC
+| Capability | How it serves the person |
+| --- | --- |
+| **Bring sources together** | Organize email, WhatsApp exports, documents, and additional source types as they become supported. Preserve what each record says and where it came from. |
+| **Separate evidence from interpretation** | Distinguish a source quotation, a person's reported belief, an inference, a hypothetical scenario, and a question worth investigating. |
+| **Reason across relationships** | Compare claims, people, events, timelines, and potentially conflicting accounts without automatically declaring one of them true. |
+| **Discover useful questions** | Propose a small number of promising investigative leads and explain what missing information could change the analysis. |
+| **Consider alternatives** | Surface credible competing explanations, assumptions, gaps, consequences, and reasons to revise a conclusion. |
+| **Work with changing context** | Let the human correct identities, retract a premise, add a source, challenge a hypothesis, or change priorities; keep the analysis history intelligible. |
+| **Plan without commandeering** | Organize bounded investigation steps, note dependencies and stop conditions, and pause at decisions requiring the human. |
+| **Remember the reasoning trail** | Preserve provenance, frozen input revisions, feedback, and the differences between earlier and later analyses. |
+
+These are **product capabilities and directions**, not a promise that every interaction in the table is fully available in the current interface. The implementation and intended coverage are distinguished below.
+
+## A typical Situation
+
+Imagine two people describing the same event differently in private email and a group conversation. The user can bring both records into a Situation, add a personal recollection, and ask: *What can I reasonably conclude, what remains ambiguous, and what should I ask next?*
+
+Niccolò should show which statements have documentary support, distinguish a copied report from an independent observation, identify apparent tensions without inventing motives, and propose a few targeted ways to clarify the picture. A user can reject an interpretation as wrong, say that the evidence is insufficient, or say they do not know; those responses are not treated as interchangeable.
+
+If new context arrives, the previous analysis remains associated with the evidence and assumptions available at the time. A new analysis can explicitly revisit it rather than rewriting history.
+
+The same pattern applies to research, interpersonal communication, decision preparation, and other evidence-rich human situations. Niccolò is **not** a substitute for professional legal, clinical, or other regulated judgment.
+
+## Using the product
+
+The intended experience is organized around a Situation, rather than a single isolated prompt:
+
+1. **Start with an intention.** Describe the situation, a concern, or a decision to explore.
+2. **Add context and records.** Supply source files and explain identities or circumstances that the records cannot establish on their own.
+3. **Explore.** Review attributed claims, disagreements, alternative explanations, open questions, and the system's proposed next investigative steps.
+4. **Steer.** Correct, reject, question, prioritize, and add context whenever useful. A human correction creates a traceable revision rather than silently overwriting the record.
+5. **Decide what happens next.** Choose whether to pursue a lead, request more information, revisit an answer, or stop. Review and approval are not automatic permission to execute external actions.
+
+The local web interface is intentionally functional and visually restrained. Some product workflows described above require further integration; see **[Product coverage](#product-coverage-implemented-and-planned)**.
+
+## Architecture
+
+```text
+                        Human / first-party web UI
+                                    |
+                      React application (frontend/)
+                                    |
+                           HTTP BFF / API
+                                    |
+              Situation, analysis and operation services
+                      /             |              \
+          provenance and       bounded agentic       model integration
+          reasoning models      step controller        (evolving)
+                      \             |              /
+                         PostgreSQL / SQLx
+                                    |
+                      immutable revisions, evidence,
+                      decisions, provenance and events
+```
+
+- **Core:** Rust; explicit domain models for evidence attribution, provenance, Situation revisions, claims, uncertainty, review, and human control.
+- **Persistence:** PostgreSQL with SQLx, workspace-scoped relationships, migrations, and row-level security boundaries.
+- **Backend:** Axum HTTP API with a durable operation model. Synchronous, asynchronous, and pull-oriented observation are different ways to interact with the same underlying operation.
+- **Controller:** A bounded, versioned graph of investigative steps with dependencies, hard budgets, stop conditions, and human pause/resume boundaries.
+- **Frontend:** React, React Router, TanStack Query, Zustand, React Hook Form, and Zod.
+- **Model layer:** provider/model interaction and evaluation are independent concerns; the core must not assume that a generated answer is evidence or that a model may authorize action.
+
+Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
+
+## Run locally
+
+### Prerequisites
+
+- Linux environment with Rust/Cargo compatible with this repository (the offline toolchain bundle targets Rust 1.99.1).
+- PostgreSQL 17 and its client tools.
+- Node.js and npm for the React frontend.
+- A database used **only for development/testing**, plus restricted application credentials for API operations.
+- Dependencies from the configured Cargo vendor/cache and npm lockfile, or a permitted online installation source.
+
+The backend can be exercised independently of the frontend. Do not use live personal records for initial setup or tests.
+
+### 1. Verify the Rust core
+
+From the repository root:
 
 ```bash
 cargo test --offline
 cargo run --offline --bin niccolo-demo
-cargo run --offline --bin niccolo-benchmark-demo
 ```
 
-## Run SQL POC
+If you have not installed the offline Cargo cache, run the equivalent commands without `--offline` after configuring access to dependencies. The exact test selection requiring PostgreSQL is controlled by the `pg-integration` feature.
 
-Apply `sql/0001_init.sql` and `sql/0002_benchmark_evolution.sql` in a disposable PostgreSQL database; then run `scripts/pg-benchmark-smoke.sql`. It tests tenant-isolated benchmark policy, results and improvement tickets, and rolls back all seeded records.
+### 2. Prepare PostgreSQL
 
-## Deliberate non-goals and known limitations
+Create a **disposable database** and separate database accounts for migration/administration and restricted runtime access. Apply SQL files from `sql/` **in ascending filename order**, including migrations added after earlier architecture checkpoints.
 
-- Does not include public-ready network ingress, LLM adapters, production-grade email/WhatsApp parsers, object storage or full temporal/permission contracts. The loopback-only HTTP API and bounded plain-text importers are experimental, not production services.
-- Multi-parent graph traversal is implemented, but neither distinct graph roots nor separate uploaded documents establish independent eyewitnesses or truthfulness.
-- Recursive expression depth is representational only; human beliefs are not proven by serialization.
-- No security model is complete just because RLS exists. PostgreSQL roles, authentication, SQL access, export/erasure workflows and trusted authorization binding are still required.
-- All demo data is synthetic; no user conversations or personal records are involved.
-- Competitive benchmarking against actual frontier models, background model calls, blind process isolation and atomic budget reservations still need separate implementation and authorization.
+The API needs a dedicated non-superuser connection that passes its role and authorization checks. The database owner URL must not be supplied to the HTTP process.
 
-## v0.3 — actual generated Rust candidates + independent-process benchmark
+Environment variables used by the repository's validation and service tooling:
 
-See [EVOLUTION_ENGINE.md](EVOLUTION_ENGINE.md). This adds reproducible code generation from a fixed trusted template, independent compilation, adversarial training/holdout tests, actual subprocess concurrency and a TSV report. No arbitrary code execution, no online model calls and no deployment are included.
+| Variable | Purpose |
+| --- | --- |
+| `NICCOLO_PG_ADMIN_URL` | Owner/admin connection for controlled migrations and test fixtures. |
+| `NICCOLO_PG_SERVICE_URL` | Restricted legacy service connection used by applicable integration tests. |
+| `NICCOLO_PG_SECURE_URL` | Dedicated restricted API connection used by the HTTP service and current validation suites. |
+| `NICCOLO_API_PORT` | Optional loopback API port; default `38080`. |
+
+Provisioning roles, schema migrations, and token issuance are security-sensitive setup tasks. Follow the database and API instructions in [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) and the corresponding newer migration scripts; do not use an administrator URL as the runtime credential.
+
+### 3. Run the API
+
+With the secure runtime database URL configured:
 
 ```bash
-bash scripts/run-evolution.sh 8 31
+cargo run --offline --bin niccolo-api
 ```
 
-## v0.4 — multi-parent provenance DAG and rule exploration
-
-The new [`SourceGraph`](src/provenance_dag.rs) reports roots of evidence across **multiple derivation parents** (including shared origins), fails closed on missing/withdrawn/cyclic ancestry, and avoids recursive stack use.
-
-The [v0.4 rule search](DAG_EVOLUTION_V004.md) enumerates 12 constrained rule variants, generates independent Rust executables, checks 9 training and 24 holdout cases, and performs concurrency and latency measurements only for qualifying candidates. A 256-case seeded cross-check compares the winning strategy with the library implementation.
+The service binds to `127.0.0.1` and defaults to port `38080`.
 
 ```bash
-bash scripts/run-dag-evolution.sh 8 23
+curl -i http://127.0.0.1:38080/healthz
+curl -i http://127.0.0.1:38080/readyz
 ```
 
-**No LLM code generation, live frontier benchmarking, autonomous deployment, arbitrary user code execution, or real-world belief inference has been implemented.**
+`/healthz` checks liveness; `/readyz` also evaluates selected database/runtime prerequisites. An HTTP 200 from either endpoint is not a certification of production security.
 
-## v0.5 — real SQLx + PostgreSQL graph adapter
+Workspace operations require a token and workspace-specific authorization. The operator CLI `niccolo-provision` is intended for trusted local provisioning, not public user registration. See [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) for its command syntax and the documented API authorization boundary.
 
-The [PostgreSQL adapter](src/postgres_repository.rs) binds a workspace to a transaction-local RLS scope and reads nodes and derivation edges in one read-only, repeatable-read snapshot. It explicitly rejects `SUPERUSER`/`BYPASSRLS` logins, maps UUIDs safely into the tested multi-parent graph, and fails closed on withdrawals/cycles/over-budget graphs. See [POSTGRES_SQLX_V005.md](POSTGRES_SQLX_V005.md) for setup, integration test commands, and the remaining authorization risks. PostgreSQL integration tests require an actual disposable database; without the `pg-integration` feature, the original 57 unit tests remain runnable offline.
-
-## v0.6 — source import, revisions and byte-accurate provenance
-
-[Rust parsers](src/source_import.rs) accept bounded UTF-8 plain-text `.eml` and two WhatsApp export header styles, keeping exact source-byte offsets, unverified speaker labels and SHA-256. [SQLx ingestion](src/postgres_ingest.rs) persists metadata + attributed evidence atomically, rejects conflicting retries, and reuses the same records on identical retries. A source document's original bytes must be retained by a separate authorized content store.
-
-[SQL migration 0003](sql/0003_sources_and_revisions.sql) adds source fragments and graph-revision triggers. [SQL migration 0004](sql/0004_source_integrity.sql) enforces document bounds/overlap and protects source metadata. The graph distinguishes *shared original reports* from *shared uploaded source files*. Neither conclusion authenticates identities or testimonies.
-
-**Reproducible PostgreSQL integration, limitations, threat model and test evidence:** [SOURCES_SQLX_V006.md](SOURCES_SQLX_V006.md). All 89 tests pass against a fresh PostgreSQL 17.11 database; additional deterministic parser mutations and concurrent ingestion tests are included.
+### 4. Run the React frontend
 
 ```bash
-bash scripts/run-v006-validation.sh
+cd frontend
+npm ci
+npm run dev
 ```
 
-The command requires an already-migrated disposable database and two explicit environment variables, `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SERVICE_URL`. The restricted login cannot bypass RLS; an upstream trusted identity boundary is still **missing**, so do not expose this experimental backend directly to clients.
-
-## v0.7 — workspace authentication, API and paginated source metadata
-
-The Rust SQLx backend now exposes a **loopback-only** Axum HTTP interface with database-verified bearer-token permissions. No HTTP request may set the RLS workspace scope merely by asserting its workspace UUID: the token must have a live matching membership with the requested read/write permission. Operators can provision, atomically rotate or revoke opaque tokens through a separate trusted CLI. The app DB role has execute-only access to the auth decision, not the private token/membership tables. The source catalog provides bounded UUID-keyset pagination; assessment never promotes provenance to factual truth.
-
-This is **still a POC**, not a production multitenant security implementation. In particular, the existing mutable workspace GUC remains dangerous under SQL injection or stolen DB credentials; revocation can race an in-flight authorized request. See [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) for the API, schema migration `sql/0005_authz.sql`, the operator instructions, exact threat model, and full tests.
+To build and test it:
 
 ```bash
-bash scripts/run-v007-validation.sh   # requires disposable migrated test DB and two env URLs
-cargo run --offline --bin niccolo-api   # 127.0.0.1:38080, NICCOLO_API_PORT to change
+npm test
+npm run build
 ```
 
-## v0.8–v0.9 — explicit human identity, feedback, and source pointers
+The development UI and the loopback API are distinct processes. Configure their local connectivity according to your development environment; the React development server alone does not provision a PostgreSQL database or bypass API authentication.
 
-[HUMAN_STEERING_V009.md](HUMAN_STEERING_V009.md) documents the human-confirmed, document-specific identity correction history (v0.8), distinct user feedback (`rejected` vs `insufficient_evidence` vs `unknown`), actor-specific positions that preserve disagreement, and human-authored investigative questions linked to original evidence via typed references (v0.9). New migrations `0006..0008`, SQLx modules and loopback-only API routes are backed by real PostgreSQL integration tests. No consensus, truth, confidence, identity or testimonial independence is inferred.
+### 5. Validate changes
+
+For Rust formatting, linting, and tests:
 
 ```bash
-bash scripts/run-v009-validation.sh
-PSQL_BIN=psql bash scripts/run-v009-loopback-smoke.sh
+cargo fmt --all -- --check
+cargo clippy --offline --all-targets --features pg-integration -- -D warnings
+cargo test --offline --all-targets --features pg-integration
 ```
 
-**Known authorization gap:** the HTTP token check and the data transaction are separate, and the workspace GUC remains mutable by SQL running as the service. Do not expose this prototype to untrusted users; the controls do not defend against SQL injection or stolen database credentials.
-
-## v0.11 — operational readiness and response privacy
-
-The loopback HTTP API now sets `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: no-referrer`, and `X-Frame-Options: DENY` for **every** response,
-including framework-generated 404/405/413 responses. This is defense in depth,
-not a replacement for TLS, reverse-proxy controls or a full security review.
-
-`/healthz` is a liveness check only; it does not touch the database.
-`/readyz` now reports HTTP 200 only when the database is connected through
-an unprivileged role with `niccolo_api` membership, and the workspace/source
-schema and restrictive bearer-RLS authorization function are installed.
-An administrator connection or legacy unrestricted service role returns 503,
-even if a plain `SELECT 1` would succeed.
-
-The `tests/operational_boundary_integration.rs` integration tests exercise
-these three cases against real PostgreSQL with separate restricted, legacy,
-and privileged connections. Readiness does not prove the entire SQL schema,
-gateway or network edge is secure. Never expose the prototype directly to
-untrusted networks. See the v0.10 migration for restrictive row-level security.
-
-Operational readiness also inspects **every** workspace-scoped table for
-`FORCE ROW LEVEL SECURITY` and all four restrictive API policies for
-SELECT/INSERT/UPDATE/DELETE. Live adversarial HTTP probes verified that
-removing any required policy or disabling forced RLS changes `/readyz`
-from HTTP 200 to HTTP 503, and restoring it changes readiness back to 200.
-The probes use a separate disposable database; no live customer database
-or real user data was touched. A malicious database owner can still modify
-policy functions: this does not claim resistance to privileged SQL injection.
-
-Bearer parsing rejects duplicate `Authorization` headers before a credential
-is propagated to the SQL transaction context. Oversized request bodies and
-framework-generated errors retain the response privacy headers.
-
-Run the entire local migrated-database validation with
-`scripts/run-v011-validation.sh` (requires three explicit test-only DB URLs).
-
-## v0.12 — bounded provenance-based investigative leads
-
-The authenticated, read-only `POST /v1/workspaces/{workspace}/leads`
-accepts the same JSON body as `/assess`, e.g. `{"report_ids":["uuid1","uuid2"]}`,
-and returns up to three deterministic, **unapproved investigative proposals**.
-The engine prioritizes a check of common evidence origins, shared uploaded
-source-document context, and original-record attribution. If no overlap is
-recorded, it asks for separately documented context without claiming that
-source boundaries establish witness independence. A single report prompts
-source attribution and original context checks. Each proposal includes a
-stable kind, the associated report indices, bounded provenance pointers (at
-most eight UUIDs), and `provenance_ids_truncated` when that limit applies.
-
-Every call requires valid read permission for the named workspace before the
-SQLx adapter loads evidence. Cycles, missing parents and withdrawn provenance
-fail closed; invisible evidence IDs never become suggestions. The response
-indicates `human_review_required=true`, `independence_established=false`, and
-`generated_from=deterministic_provenance_heuristics`. No LLM, psychological
-interpretation, independent source verification, autonomous follow-up or
-persistent question creation occurs here. Humans may inspect and decide
-whether to add a proposal through the existing audited question API.
-
-Reproduce with `scripts/run-v012-validation.sh` on an already-migrated,
-**disposable** PostgreSQL database. Provide explicit admin, legacy and
-restricted API DB URLs. The complete tests include live authorization,
-revocation and cross-workspace rejection.
-
-## v0.13 — attributed, immutable, two-source human hypotheses
-
-This release adds **human-authored** review hypotheses without treating
-apparent contradiction as a verified fact. The new SQL migration
-`sql/0010_manual_hypotheses.sql` stores a specific human actor, two different
-workspace-local evidence IDs, the manually selected label
-`apparent_contradiction`, `attribution_question` or `timing_question`,
-and an immutable note. Both evidence foreign keys include `workspace_id`.
-The table is protected by forced RLS, plus all four restrictive API policies
-that bind the transaction to the validated bearer credential.
-
-- `POST /v1/workspaces/{workspace}/hypotheses/{hypothesis}` accepts
-  `{ "kind": "apparent_contradiction", "left_evidence_id": "uuid", "right_evidence_id": "uuid", "human_note": "..." }`
-  and returns HTTP 201 (inserted), 200 (identical replay), 409 (conflicting
-  replay), 403 (no write grant), 404 (unknown/cross-workspace evidence), or
-  400 (invalid inputs). The actor comes from the validated token.
-- `GET /v1/workspaces/{workspace}/hypotheses?limit=25&after=uuid` lists
-  up to 100 records per page using stable UUID keyset ordering.
-- Every record explicitly says `status=HUMAN_HYPOTHESIS` and
-  `is_verified_fact=false`; it does not revise source evidence or constitute
-  a factual finding.
-
-Six dedicated integration tests cover identical/conflicting replay, read-only
-membership, foreign workspace FKs, digest-gated RLS, immutable metadata,
-24 concurrent identical writes, and nine-record pagination. The schema was
-applied from scratch with all ten migrations in a disposable PostgreSQL
-instance. A privileged DB owner can always alter the schema; these tests do
-not claim to defend against a compromised PostgreSQL administrator.
-
-Reproduce with `scripts/run-v013-validation.sh` after applying migrations
-`0001..0010` to a **disposable** database and configuring the admin, legacy,
-and restricted application DB URLs.
-
-## v0.14 — immutable Situation revisions for visible reanalysis
-
-The experimental core now includes a bounded `Situation` state that preserves the current focus,
-user-reported contextual premises, explicit `WHAT IF` premises, source references, corrections and
-retractions as immutable revision snapshots. Each snapshot carries a deterministic SHA-256
-fingerprint of exactly the focus, active premises and source references used by a reasoning step.
-A correction creates a new premise and marks the old one as corrected; a retraction removes a
-premise from the current snapshot without erasing its historical record. Hypothetical premises keep
-an explicit `Hypothetical` kind and are never silently promoted to evidence.
+Integration suites require the configured disposable PostgreSQL database, schema, and appropriate roles. The repository's `scripts/run-v*-validation.sh` scripts reproduce focused historical checkpoints. `scripts/run-v030-validation.sh`, for example, requires the three PostgreSQL URLs listed above. A successful older checkpoint is **not** a substitute for testing all subsequently changed modules and migrations.
 
-This is deliberately narrower than the unresolved `MVP-HYP-001`: it does **not** decide durable
-semantics for remembered rejection/deprioritization of machine hypotheses, probability scores, or
-full dependency repair. Those remain design decisions rather than accidental implementation policy.
+## Building on Niccolò
 
-## v0.15 — dependency-free first-party Situation shell
-
-The loopback Axum process now serves a small first-party web shell at `/`. The page presents the
-three approved entry intentions inside one workflow, catalogues selected `.txt`/`.eml` filenames
-without claiming they were uploaded or analyzed, accepts user-reported context and explicit WHAT-IF
-premises, and shows visible browser-side revisions. It intentionally performs no model call and no
-hidden source analysis yet.
+The backend is organized by responsibility rather than by one undifferentiated reasoning prompt:
 
-The shell is embedded in the Rust binary with `include_str!` and uses browser-native ES modules;
-there is no CDN or runtime filesystem dependency. Its state reducer is tested with Node 24's built-in
-test runner, so this milestone does not depend on the currently inconsistent prefetched npm lockfile.
-All HTTP responses now also receive a restrictive Content-Security-Policy header.
+| Area | Starting points |
+| --- | --- |
+| HTTP endpoints and entrypoint | `src/api.rs`, `src/api_main.rs` |
+| Situation revisions and storage | `src/situation.rs`, `src/situation_store.rs` |
+| Source parsing, ingestion, and provenance | `src/source_import.rs`, `src/postgres_ingest.rs`, `src/provenance_dag.rs` |
+| Analysis, claims, and review | `src/analysis_*.rs`, `src/review_*.rs` |
+| Human feedback, decisions, and authorization | `src/human_*.rs`, `src/action_authorization.rs` |
+| Durable operations and agentic orchestration | `src/bff_*.rs`, `src/agentic_*.rs` |
+| Database schema | `sql/` sequential migrations |
+| First-party web application | `frontend/src/` |
+| Behavioral and integration tests | `tests/`, `frontend/src/**/*.test.js`, validation scripts |
 
+When extending the system, preserve the distinctions between *source*, *attributed statement*, *human contribution*, *machine hypothesis*, and *verified observation*. Preserve historical analysis snapshots, human-originated decisions and workspace boundaries. Tests should assert these invariants, not only happy-path HTTP results.
 
-## v0.16 — persistent Situation revisions
+A useful development sequence is: identify the domain invariant; add a migration/domain contract if required; implement the service/API boundary; add adversarial and authorization tests; exercise the relevant human interaction; update documentation of the public interface.
 
-[SITUATIONS_V016.md](SITUATIONS_V016.md) moves bounded Situation state into PostgreSQL.
-The authenticated API now persists focus, incremental source-document membership, attributed
-user-reported / hypothetical / investigative-preference contributions, corrections and retractions.
-Every material change creates an immutable revision with a stable SHA-256 fingerprint and exact
-active source/contribution membership. Historical snapshots are never rewritten to look as though
-they contained later context. Migration `sql/0011_situations.sql` adds six forced-RLS tables and
-all restrictive `niccolo_api` gates.
+## Product coverage: implemented and planned
 
-## v0.17 — frozen analysis-input snapshots
+The two categories below are intentionally explicit. **A planned capability belongs in a product README when it explains what Niccolò is meant to become; it must not be mistaken for a working feature.**
 
-[ANALYSIS_SNAPSHOTS_V017.md](ANALYSIS_SNAPSHOTS_V017.md) adds an immutable binding between
-an analysis request and the exact Situation revision/fingerprint it may use. If the human adds
-context while an operation is in flight, the original analysis binding remains on its older input.
-An idempotent retry of the same `analysis_id` also returns the original input rather than silently
-rebinding to newer context. This is a persistence/concurrency primitive only: no model is called and
-no unperformed source analysis is claimed.
+### Established engineering foundations in this repository
 
-Apply migrations `0001..0012` to a disposable PostgreSQL 17 database, then reproduce the complete
-validation with `scripts/run-v017-validation.sh`. The script requires the admin, legacy service and
-dedicated secure API URLs and also runs the dependency-free Node state tests.
+- Provenance-aware source and evidence representation, including multi-parent derivations and withdrawal-sensitive traversal.
+- Import and attribution primitives for bounded plain-text email and WhatsApp exports; source revision and fragment tracking.
+- Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
+- Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
+- Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
+- Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.
+- A first-party React interface and associated client-state/test infrastructure.
 
-## v0.18 — exact materialization of frozen analysis input
+These foundations are not equivalent to a complete consumer onboarding, production-ready data security, or end-to-end autonomous analysis service.
 
-[ANALYSIS_INPUT_V018.md](ANALYSIS_INPUT_V018.md) makes the temporal boundary inspectable. A caller
-can retrieve the exact historical Situation revision bound to an analysis snapshot, including the
-focus, active human contributions and source IDs that were present then. The API also reports the
-current Situation revision and whether the frozen input is still current. Later context is never
-retroactively folded into the historical input.
+### Product direction and planned capabilities
 
-## v0.19 — immutable completed answers
+- **Human-centered discovery:** proactive but bounded exploration of a Situation, including two or three promising investigative leads with reasons and evidence gaps.
+- **Broader, reliable source coverage:** richer email and messaging ingestion, original media retention, future modalities, and cross-source identity reconciliation under human control.
+- **Contextual interpretation:** consider motivations, perceptions, misunderstandings, and social dynamics as *competing hypotheses*, never asserted diagnoses or facts about people.
+- **Goal-directed reasoning:** select what to investigate next according to the person's purpose, budget, stop conditions, missing evidence, and available tools.
+- **Human-guided iteration:** learn from distinct kinds of feedback, preserve provenance and disagreement, and perform selective reanalysis when new information actually changes the question.
+- **Model integration and empirical evolution:** evaluate candidate reasoning strategies against reproducible tests, compare model costs and quality, and improve the product without quietly delegating essential authority to a third party.
+- **Usable end-to-end experience:** source upload, identity review, inspectable reasoning, informed decisions, and controlled next actions through the product interface.
+- **Cohort and operational readiness:** robust authorization, privacy, retention/deletion, observability, deployment, and adversarial validation appropriate to real-world use.
 
-[ANALYSIS_OUTPUTS_V019.md](ANALYSIS_OUTPUTS_V019.md) persists one completed answer and explicit
-coverage note against a frozen analysis snapshot. Exact retries are idempotent; changing the answer,
-coverage or publisher under the same analysis ID is a conflict. Later Situation revisions make
-`input_is_current=false` but do not rewrite the old answer. Migration `sql/0013_analysis_outputs.sql`
-adds the forced-RLS output table with the same four restrictive API gates.
+The direction is not a roadmap guarantee or a claim that all these integrations are already active. Engineering checkpoint records and detailed test limitations belong in their respective technical documents, not interleaved with the product introduction.
 
-Apply migrations `0001..0013` to a disposable PostgreSQL 17 database, then reproduce the complete
-validation with `scripts/run-v019-validation.sh`. No model call is made by v0.18 or v0.19.
+## Safety and reasoning principles
 
+- **The human owns the decision.** Suggestions, reviews, and approvals are distinct from permission to perform an external action.
+- **Attribution before assertion.** A statement about someone's beliefs remains attributed; repeated copies are not independent witnesses.
+- **Uncertainty must survive.** The system should say what it does not know, present plausible alternatives, and ask questions when evidence matters.
+- **History is not rewritten.** New context can justify reanalysis without retroactively changing what an earlier answer saw.
+- **Security must be demonstrated.** Workspace scoping and RLS are components of a security architecture, not a substitute for a reviewed deployment boundary.
 
-## v0.20 — explicit reanalysis lineage
+## Further reading
 
-[REANALYSIS_LINEAGE_V020.md](REANALYSIS_LINEAGE_V020.md) links a new immutable analysis to the
-earlier analysis it deliberately revisits through optional `reanalysis_of`. The new analysis freezes
-whatever Situation revision is current when it starts; the parent analysis and any historical output
-remain unchanged. Parent lineage is same-Situation only, immutable on replay and never interpreted as
-a declaration that the older answer was false or rejected.
-
-Apply migrations `0001..0014` to a disposable PostgreSQL 17 database, then reproduce the complete
-validation with `scripts/run-v020-validation.sh`. v0.20 still performs no model call.
-
-## v0.21 — visible analysis / reanalysis history
-
-[ANALYSIS_HISTORY_V021.md](ANALYSIS_HISTORY_V021.md) adds a bounded read model over the immutable
-analysis snapshots, reanalysis lineage and completed outputs already stored by v0.17-v0.20. A reader
-can inspect the newest analyses first, see which frozen Situation revision each one actually used,
-follow `reanalysis_of`, retain earlier answers beside later reanalyses, and see whether each input is
-still the current Situation revision. Cursor pagination is bounded and authorization-scoped.
-
-Apply migrations `0001..0014` to a disposable PostgreSQL 17 database, then reproduce the complete
-validation with `scripts/run-v021-validation.sh`. v0.21 still performs no model call and does not
-label historical analyses correct/incorrect merely because their input is no longer current.
-
-## v0.22 — frozen examined-fragment coverage
-
-[ANALYSIS_COVERAGE_V022.md](ANALYSIS_COVERAGE_V022.md) separates source availability from source
-examination. An analysis may record exact imported fragments it examined, but only when those
-fragments came from documents present in that analysis's frozen Situation revision. A document
-added later therefore cannot be retroactively represented as part of an older analysis's examined
-scope. Coverage rows are attributed, append-only through the API boundary, RLS-protected and
-cursor-paginated; listing a fragment never implies the full source was examined or that its content
-is true.
-
-Apply migrations `0001..0015` to a disposable PostgreSQL 17 database, then reproduce the complete
-validation with `scripts/run-v022-validation.sh`. v0.22 still performs no model call.
-
-
-## v0.23 — truthful per-source coverage summary
-
-[ANALYSIS_COVERAGE_SUMMARY_V023.md](ANALYSIS_COVERAGE_SUMMARY_V023.md) summarizes each document
-that belonged to an analysis's frozen input separately from the exact fragment records introduced in
-v0.22. The API reports catalogued text-fragment count versus examined-fragment count and can say
-when every **catalogued fragment** was examined. It deliberately never promotes that condition to
-"the full source was examined": unsupported media, missing export content and other uncatalogued
-material remain outside the claim. Later Situation sources do not appear in an older analysis's
-coverage summary.
-
-No migration is added by v0.23; apply `0001..0015` to a disposable PostgreSQL 17 database and run
-`scripts/run-v023-validation.sh`. v0.23 still performs no model call.
-
-
-## v0.24 — clarification questions bound to frozen analysis input
-
-[CLARIFICATIONS_V024.md](CLARIFICATIONS_V024.md) lets an authorized caller persist a targeted
-clarification question together with the exact immutable analysis snapshot that motivated it and an
-explicit reason the missing answer could matter. The question reuses the existing investigative
-question/feedback machinery and remains a question, never evidence. Later Situation revisions do not
-rewrite the question's origin; the API exposes when its motivating input is no longer current.
-
-Migration `sql/0016_analysis_clarification_questions.sql` adds the forced-RLS binding table. Apply
-`0001..0016` to a disposable PostgreSQL 17 database and run `scripts/run-v024-validation.sh`. v0.24
-still performs no model call and does not automatically ask or answer a clarification.
-
-
-## v0.25 — clarification answers become later context
-
-Targeted clarification answers are persisted as attributed `USER_REPORTED` Situation contributions. They create later revisions, remain non-evidence, and never rewrite the frozen input that caused the question. See `CLARIFICATION_ANSWERS_V025.md`.
-
-
-## v0.26 — explicit context usage
-
-Analyses can record exactly which frozen human contributions were actually used. Presence is not use; use is not truth. See `ANALYSIS_CONTEXT_USAGE_V026.md`.
-
-
-## v0.27 — frozen human context: present vs actually used
-
-`GET .../analysis-snapshots/{analysis}/context-usage` lists every human contribution that was present in the frozen analysis input and separately reports whether the analysis recorded it as actually used. Presence does not imply use, and use does not make a user report, hypothetical, or investigative preference true or verified evidence. Later contributions never appear in an older frozen input.
-
-
-## v0.28 — deterministic delta since a frozen analysis input
-
-`GET .../analysis-snapshots/{analysis}/delta` compares the exact frozen Situation revision with the current Situation in one repeatable-read transaction. It exposes focus changes, source additions/removals, contribution additions, and old contributions that are now corrected or retracted. The delta is not a truth judgement and does not automatically trigger reanalysis.
-
-
-## v0.29 — compact human review
-
-`GET .../analysis-snapshots/{analysis}/review` assembles one repeatable-read review of frozen input, recorded context use, source-fragment coverage, clarification activity, output presence, and structural delta to the current Situation. Counts describe records, not truth or completeness; the response keeps `human_review_required=true`.
-
-
-## v0.30 — first-party web shell wired to persistent Situation state
-
-The zero-dependency first-party shell can now explicitly connect to the loopback API using a workspace UUID, Situation UUID and bearer token kept only in page memory. Focus changes, user-reported context, explicit WHAT-IF context and retractions then use the real persistent Situation API and immutable PostgreSQL revisions. Intention selection remains browser-session steering, and selecting `.txt`/`.eml` files still only catalogues filenames locally: the UI does not pretend those files were uploaded or analyzed. No LLM call is made. A real TCP loopback integration test exercises HTML/JS serving plus persistent Situation creation and context mutation.
-
-
-## v0.31–v0.56 — inspectable reasoning and human control
-
-The experimental core now records structured claims, explicit source/context use, append-only human review, claim lineage across reanalysis, uncertainty history, and action proposals whose acceptance is explicitly **not** execution. It also provides deterministic human-review read models and portable hashes. See [ANALYSIS_CLAIMS_V031_038.md](ANALYSIS_CLAIMS_V031_038.md) and [HUMAN_CONTROL_V039_056.md](HUMAN_CONTROL_V039_056.md).
-
-This work still does **not** implement the open `MVP-HYP-001` remembered rejection/deprioritization semantics.
-
-
-## v0.57–v0.80 — human control, traceability, and inspectability
-
-This slice adds bounded activity pagination, human-selected attention pins, explicit reanalysis requests, separate action authorization/revocation, deterministic Situation exports, context non-use explanations, claim-to-output spans, exact review-package acknowledgements and a deterministic control ledger. See [HUMAN_CONTROL_V057_080.md](HUMAN_CONTROL_V057_080.md).
-
-Human steering remains steering: pins do not create automatic priority, requests/suggestions do not start analyses, authorization is not execution, and context exclusion is not a truth judgment or remembered rejection policy.
-
-
-## v0.81–v0.100 — explicit human review workflow
-
-Human review is now a first-class, inspectable workflow: sessions, notes/bookmarks, explicit use rationales, claim questions, revision conditions/events, deterministic handoff, human-selected review scope, exact-hash receipts, direct reanalysis comparison, lineage completeness, unranked pending items, session-local dispositions, and deterministic review agendas. See [HUMAN_REVIEW_V081_100.md](HUMAN_REVIEW_V081_100.md).
-
-These controls preserve human ownership. A review choice does not become remembered future policy, a handoff does not delegate authority, and no suggestion, agenda, or disposition starts analysis or executes an action.
-
-
-## v0.101–v0.180 — human-owned decisions and agency gates
-
-This slice adds human-owned review checklists, decision points/options, explicit assumptions and alternatives, decision rationales, evidence gaps, Situation goals, unranked next steps, human-declared priorities and constraints, projected consequences, stop conditions, source requests, purpose-bound claim assessments, explicit conflict sets, and deterministic handback. See HUMAN_AGENCY_V101_180.md.
-
-The boundary is deliberate: no acceptance implies execution, no source request fetches automatically, projected consequences are not facts, claim assessments do not establish truth, conflict sets are not silently resolved, and MVP-HYP-001 remains unimplemented.
+- [MVP_ARCHITECTURE_V250.md](MVP_ARCHITECTURE_V250.md) — domain, BFF, controller and frontend architecture.
+- [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) — local API authorization model and development provisioning.
+- [SITUATIONS_V016.md](SITUATIONS_V016.md) — Situation state and immutable revisions.
+- [COMPETITIVE_EVALUATION.md](COMPETITIVE_EVALUATION.md) — benchmarking and candidate algorithm evolution.
+- `sql/` and `scripts/` — executable schema and validation assets.
+- [README-REVIEW.md](README-REVIEW.md) — editorial decisions and documentation follow-up items; **not** part of the end-user product introduction.
