@@ -458,3 +458,5 @@ pub mod reasoning_packet;
 pub mod reasoning_updates;
 
 pub mod adversarial_challenge;
+
+pub mod model_adapter;
