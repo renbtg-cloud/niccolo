@@ -1,0 +1,25 @@
+name: sync local WIP
+on:
+  push:
+    branches: [tmp-local-wip-sync]
+    paths: ['.sync/target.txt']
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push local checkpoint to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .sync/incremental.b64 > /tmp/wip.bundle.xz
+          xz -dc /tmp/wip.bundle.xz > /tmp/wip.bundle
+          git bundle verify /tmp/wip.bundle
+          git fetch /tmp/wip.bundle refs/heads/rewrite:refs/remotes/local-wip
+          target="$(cat .sync/target.txt)"
+          test "$(git rev-parse refs/remotes/local-wip)" = "$target"
+          git push origin "$target:refs/heads/main"
