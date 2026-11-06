@@ -54,9 +54,19 @@ pub async fn ensure_default_plan(
         Err(agentic_controller::ControllerError::Invisible) => {
             let op = bff_operations::get(pool, scope).await?;
             let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
-            let steps =
-                agentic_policy::default_plan(pool, scope.workspace, scope.situation, analysis)
-                    .await?;
+            let input = bff_operations::input(pool, scope).await?;
+            let intent = input
+                .get("human_intent")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok());
+            let steps = agentic_policy::plan_for_intent(
+                pool,
+                scope.workspace,
+                scope.situation,
+                analysis,
+                intent,
+            )
+            .await?;
             agentic_controller::create_plan(pool, scope, actor, &steps).await?;
             Ok(agentic_controller::view(pool, scope).await?)
         }
