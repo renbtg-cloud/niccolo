@@ -5,6 +5,7 @@ import { useClient } from '../hooks/useClient.js';
 import { useDashboard } from '../hooks/useDashboard.js';
 import { useUiStore } from '../stores/ui.js';
 import { coverageSignals, recordedChanges, proactiveLeads, reanalysisPrompt } from '../state/reviewPresentation.js';
+import { launchApprovedReanalysis } from '../state/reanalysisLaunch.js';
 
 export function ReviewPage(){
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
@@ -14,14 +15,7 @@ export function ReviewPage(){
  if(review.error||dashboard.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {(review.error??dashboard.error).message}</p></section>;
  const r=review.data; const d=dashboard.data;
  const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d);
- const approveReanalysis=useMutation({mutationFn:async()=>{
-   const goal=(reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation').trim();
-   const snapshotOperation=crypto.randomUUID(); const newAnalysis=crypto.randomUUID(); const agenticOperation=crypto.randomUUID();
-   const snapshot=await client.runReanalysisSync(snapshotOperation,analysis,newAnalysis,goal);
-   if(snapshot.value.result?.new_analysis_id!==newAnalysis||snapshot.value.result?.historical_output_preserved!==true)throw new Error('Reanalysis snapshot was not preserved as expected');
-   const launch=await client.runIntentAsync(agenticOperation,{analysis_id:newAnalysis,intent:'UNDERSTAND',goal,reanalysis_of:analysis,idempotency_key:`ui-reanalysis-agentic-${agenticOperation}`,step_budget:32,context:{surface:'review-reanalysis',human_approved:true}});
-   return {newAnalysis,agenticOperation,launch:launch.value};
- },onSuccess:async(result)=>{setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']})]);}});
+ const approveReanalysis=useMutation({mutationFn:async()=>launchApprovedReanalysis({client,priorAnalysis:analysis,goal:reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation'}),onSuccess:async(result)=>{setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']})]);}});
 
  return <section><h2>Human review</h2>
    {!r&&<p>Loading review…</p>}
