@@ -100,7 +100,6 @@ pub async fn list_sources(
     })
 }
 
-
 pub async fn document_speakers(
     pool: &PgPool,
     workspace: Uuid,
