@@ -1,0 +1,22 @@
+name: export git base v180
+on:
+  push:
+    branches: [tmp-export-git-base-v180]
+    paths: ['.export-git-base/ready']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          git bundle create /tmp/niccolo-base-v180.bundle HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-base-v180-git
+          path: /tmp/niccolo-base-v180.bundle
