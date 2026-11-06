@@ -11,10 +11,16 @@ Validated on the exact exported main snapshot:
 - Provider envelope parsing preserved prompt/completion usage and effective model.
 - Niccolò structured synthesis content was parsed from `choices[0].message.content`.
 
+Latest checkpoint:
+
+- provider-focused tests: 0/3 failed, 3/3 passed;
+- rustfmt check: passed;
+- strict Clippy: passed.
+
 Still required before DONE:
 
-- `cargo fmt --all -- --check`;
-- strict Clippy;
+- `cargo fmt --all -- --check` — PASSED;
+- strict Clippy (`--all-targets --features pg-integration -- -D warnings`) — PASSED;
 - full Rust/PostgreSQL regression;
 - frontend regression/build;
 - API startup/configuration validation with provider configured and unconfigured.
