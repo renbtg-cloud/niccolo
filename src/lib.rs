@@ -437,3 +437,7 @@ pub mod human_control;
 
 
 pub mod bff_executor;
+
+pub mod agentic_policy;
+pub mod proactive_briefing;
+pub mod reanalysis_revision;
