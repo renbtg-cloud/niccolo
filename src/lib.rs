@@ -448,3 +448,5 @@ pub mod reanalysis_runtime;
 pub mod analysis_quality;
 pub mod reanalysis_advisor;
 pub mod investigation_policy;
+
+pub mod bff_dashboard;
