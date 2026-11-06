@@ -4,6 +4,18 @@ import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { sourceDescriptor } from '../state/sourceUpload.js';
 
+function ContributionItem({ item, pending, onCorrect, onRetract }) {
+  const [text,setText]=useState(item.text);
+  return <li className="context-item">
+    <div><strong>{item.kind.replaceAll('_',' ')}</strong><div><small>Human context · not verified evidence</small></div></div>
+    <textarea aria-label={`Edit context ${item.contribution_id}`} value={text} onChange={e=>setText(e.target.value)}/>
+    <div className="row">
+      <button disabled={pending||text.trim()===item.text||!text.trim()} onClick={()=>onCorrect(item,text.trim())}>Save correction</button>
+      <button disabled={pending} onClick={()=>onRetract(item)}>Retract</button>
+    </div>
+  </li>;
+}
+
 function FocusForm({ initial = '', label, pending, onSubmit }) {
   const [value, setValue] = useState(initial);
   return <form onSubmit={(event) => {
@@ -20,6 +32,8 @@ export function SituationPage(){
   const client = useClient();
   const qc = useQueryClient();
   const [file, setFile] = useState(null);
+  const [contextKind,setContextKind]=useState('user_reported');
+  const [contextText,setContextText]=useState('');
 
   const situation = useQuery({
     queryKey: client ? qk.situation(client.config) : ['situation','none'],
@@ -47,6 +61,18 @@ export function SituationPage(){
   });
   const attach = useMutation({
     mutationFn: (documentId) => client.addSituationSource(documentId),
+    onSuccess: refresh,
+  });
+  const addContext = useMutation({
+    mutationFn: async () => client.addSituationContribution(crypto.randomUUID(), contextKind, contextText.trim(), null),
+    onSuccess: async () => { setContextText(''); await refresh(); },
+  });
+  const correctContext = useMutation({
+    mutationFn: ({item,text}) => client.correctSituationContribution(item.contribution_id, crypto.randomUUID(), text, item.related_evidence_id ?? null),
+    onSuccess: refresh,
+  });
+  const retractContext = useMutation({
+    mutationFn: (item) => client.retractSituationContribution(item.contribution_id),
     onSuccess: refresh,
   });
   const upload = useMutation({
@@ -133,11 +159,17 @@ export function SituationPage(){
       {attach.error && <p className="error">{attach.error.message}</p>}
     </article>
 
-    {snapshot.contributions?.length > 0 && <article>
+    <article className="human-context">
       <h3>Human context</h3>
-      <ul>{snapshot.contributions.map((item) => <li key={item.contribution_id}><strong>{item.kind}</strong>: {item.text}</li>)}</ul>
-      <small>Human context remains attributed context; it is not silently promoted to evidence.</small>
-    </article>}
+      <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
+      <label>Kind<select value={contextKind} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
+      <label>Context<textarea aria-label="Human context text" value={contextText} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
+      <button disabled={!contextText.trim()||addContext.isPending} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
+      {addContext.error&&<p className="error">{addContext.error.message}</p>}
+      {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
+      {correctContext.error&&<p className="error">{correctContext.error.message}</p>}
+      {retractContext.error&&<p className="error">{retractContext.error.message}</p>}
+    </article>
 
     <details className="desktop-only">
       <summary>Raw Situation snapshot</summary>
