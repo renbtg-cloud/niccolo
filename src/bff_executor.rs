@@ -74,18 +74,13 @@ pub async fn execute(
     };
 
     if let Err(error) = result {
-        let (code, message) = match &error {
-            BffExecutionError::Agentic(message) => ("AGENTIC_EXECUTION_FAILED", message.as_str()),
-            BffExecutionError::Reanalysis(message) => ("REANALYSIS_EXECUTION_FAILED", message.as_str()),
-            BffExecutionError::Operation(error) => ("BFF_EXECUTION_FAILED", error.to_string().as_str()),
+        let code = match &error {
+            BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
+            BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
+            BffExecutionError::Operation(_) => "BFF_EXECUTION_FAILED",
         };
-        // The Operation variant needs owned storage for the formatted message.
-        if matches!(error, BffExecutionError::Operation(_)) {
-            let owned = error.to_string();
-            mark_failed_best_effort(pool, scope, actor, code, &owned).await;
-        } else {
-            mark_failed_best_effort(pool, scope, actor, code, message).await;
-        }
+        let message = error.to_string();
+        mark_failed_best_effort(pool, scope, actor, code, &message).await;
         return Err(error);
     }
 

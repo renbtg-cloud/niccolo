@@ -23,9 +23,7 @@ use crate::question_refs::{self, ReferenceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
-use crate::{
-    agentic_controller, agentic_policy, agentic_runtime, bff_dashboard, reanalysis_runtime,
-};
+use crate::{agentic_controller, agentic_policy, bff_dashboard, bff_executor};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -2470,54 +2468,11 @@ async fn bff_operation_sync(
     Json(request): Json<BffOperationRequest>,
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
-    let submitted = submit_bff(&state, workspace, situation, operation, actor, request).await?;
-    let scope = OperationScope {
-        workspace,
-        situation,
-        operation,
-    };
-    let view = if submitted.kind == "AGENTIC_ANALYSIS" {
-        match agentic_runtime::run_until_boundary(&state.pool, scope, actor, state.model.as_ref())
-            .await
-        {
-            Ok(_) => bff_operations::get(&state.pool, scope)
-                .await
-                .map_err(bff_error)?,
-            Err(e) => {
-                let current = bff_operations::get(&state.pool, scope)
-                    .await
-                    .map_err(bff_error)?;
-                if !current.terminal {
-                    let _ = bff_operations::fail(
-                        &state.pool,
-                        scope,
-                        current.state_version,
-                        actor,
-                        "AGENTIC_EXECUTION_FAILED",
-                        &e.to_string(),
-                    )
-                    .await;
-                }
-                return Err(ApiError(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "agentic operation failed",
-                ));
-            }
-        }
-    } else if submitted.kind == "REANALYZE" {
-        reanalysis_runtime::execute(&state.pool, scope, actor)
-            .await
-            .map_err(|_| {
-                ApiError(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "reanalysis operation failed",
-                )
-            })?
-    } else {
-        bff_operations::execute_deterministic(&state.pool, scope, actor)
-            .await
-            .map_err(bff_error)?
-    };
+    submit_bff(&state, workspace, situation, operation, actor, request).await?;
+    let scope = OperationScope { workspace, situation, operation };
+    let view = bff_executor::execute(&state.pool, scope, actor, state.model.as_ref())
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "operation execution failed"))?;
     Ok(bff_response(view, StatusCode::OK))
 }
 async fn bff_operation_async(
@@ -2531,53 +2486,14 @@ async fn bff_operation_async(
         .and_then(|token| authz::credential_digest(token).ok())
         .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
     let view = submit_bff(&state, workspace, situation, operation, actor, request).await?;
-    if matches!(
-        view.kind.as_str(),
-        "BUILD_BRIEFING" | "BUILD_HANDOFF" | "AGENTIC_ANALYSIS" | "REANALYZE"
-    ) && !view.terminal
-    {
+    if !view.terminal && view.state != "WAITING_FOR_HUMAN" {
         let pool = state.pool.clone();
         let model = state.model.clone();
-        let kind = view.kind.clone();
-        let scope = OperationScope {
-            workspace,
-            situation,
-            operation,
-        };
+        let scope = OperationScope { workspace, situation, operation };
         tokio::spawn(async move {
             authz::with_auth_digest(digest, async move {
-                let result = if kind == "AGENTIC_ANALYSIS" {
-                    agentic_runtime::run_until_boundary(&pool, scope, actor, model.as_ref())
-                        .await
-                        .map(|_| ())
-                        .map_err(|e| e.to_string())
-                } else if kind == "REANALYZE" {
-                    reanalysis_runtime::execute(&pool, scope, actor)
-                        .await
-                        .map(|_| ())
-                        .map_err(|e| e.to_string())
-                } else {
-                    bff_operations::execute_deterministic(&pool, scope, actor)
-                        .await
-                        .map(|_| ())
-                        .map_err(|e| e.to_string())
-                };
-                if let Err(message) = result
-                    && let Ok(current) = bff_operations::get(&pool, scope).await
-                    && !current.terminal
-                {
-                    let _ = bff_operations::fail(
-                        &pool,
-                        scope,
-                        current.state_version,
-                        actor,
-                        "EXECUTION_FAILED",
-                        &message,
-                    )
-                    .await;
-                }
-            })
-            .await;
+                let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
+            }).await;
         });
     }
     Ok(bff_response(view, StatusCode::ACCEPTED))
