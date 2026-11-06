@@ -22,3 +22,10 @@ Validated product boundaries:
 - matching speaker labels are not automatically merged into one person.
 
 Full Rust/PostgreSQL regression is starting now. This is a progress checkpoint, not DONE.
+
+## 12:08 BRT checkpoint
+
+Work resumed from the published identity-review validation checkpoint.
+The next action is the full Rust/PostgreSQL regression on the exact exported main snapshot.
+This checkpoint exists intentionally under the five-minute push protocol; it does not claim DONE.
+
