@@ -1,7 +1,12 @@
 //! Development-only loopback HTTP server. Put behind a trusted TLS gateway
 //! and complete a security review before any multi-user deployment.
-use niccolo_evidence::api;
+use niccolo_evidence::{
+    api,
+    model_adapter::{ReasoningModel, UnavailableModel},
+    openai_compatible::{CurlOpenAiCompatibleModel, OpenAiCompatibleConfig},
+};
 use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = std::env::var("NICCOLO_PG_SECURE_URL")?;
@@ -30,7 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "38080".into())
         .parse::<u16>()?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
-    eprintln!("niccolo v0.30 HTTP API listening on loopback port {port}");
-    axum::serve(listener, api::router(pool)).await?;
+    let model: Arc<dyn ReasoningModel> = match OpenAiCompatibleConfig::from_env()? {
+        Some(config) => Arc::new(CurlOpenAiCompatibleModel::new(config)?),
+        None => Arc::new(UnavailableModel),
+    };
+    eprintln!("niccolo HTTP API listening on loopback port {port}");
+    axum::serve(listener, api::router_with_model(pool, model)).await?;
     Ok(())
 }
