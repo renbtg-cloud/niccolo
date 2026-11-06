@@ -3,7 +3,7 @@
 //! The core stays provider-neutral. This adapter shells out to curl without a
 //! command shell, keeps credentials out of argv, and expects a JSON object
 //! response that satisfies Niccolò's per-step contract.
-use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel};
+use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, ModelResponse, OpenAiCompatibleModel, ReasoningModel};
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -99,6 +99,11 @@ impl OpenAiCompatibleConfig {
 
     fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+
+    pub fn native_model(&self) -> Result<OpenAiCompatibleModel, ProviderConfigError> {
+        OpenAiCompatibleModel::new(&self.provider, &self.model, &self.endpoint(), &self.api_key)
+            .map_err(|_| ProviderConfigError::Invalid)
     }
 }
 
