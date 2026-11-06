@@ -1,0 +1,25 @@
+name: tmp live export v180
+on:
+  push:
+    branches: [tmp-live-export-v180]
+    paths:
+      - '.export-v180/ready'
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .git .export-v180 .github/workflows/tmp-live-export-v180.yml
+          tar -czf /tmp/niccolo-main-v030.tar.gz .
+          sha256sum /tmp/niccolo-main-v030.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-main-v030
+          path: /tmp/niccolo-main-v030.tar.gz
+          if-no-files-found: error
