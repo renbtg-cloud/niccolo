@@ -6,10 +6,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{
-    api, authz,
-    openai_compatible::{CurlOpenAiCompatibleModel, OpenAiCompatibleConfig},
-};
+use niccolo_evidence::{api, authz, model_adapter::OpenAiCompatibleModel};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::{
@@ -26,10 +23,11 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 struct ProviderFixture {
-    model: CurlOpenAiCompatibleModel,
+    model: OpenAiCompatibleModel,
     stop: Arc<AtomicBool>,
     thread: thread::JoinHandle<()>,
     purposes: Arc<Mutex<Vec<String>>>,
+    wires: Arc<Mutex<Vec<String>>>,
 }
 
 struct Harness {
@@ -41,6 +39,7 @@ struct Harness {
     provider_stop: Arc<AtomicBool>,
     provider_thread: Option<thread::JoinHandle<()>>,
     purposes: Arc<Mutex<Vec<String>>>,
+    wires: Arc<Mutex<Vec<String>>>,
 }
 
 impl Drop for Harness {
@@ -142,11 +141,14 @@ fn provider() -> ProviderFixture {
     let stop_thread = stop.clone();
     let purposes = Arc::new(Mutex::new(Vec::new()));
     let purposes_thread = purposes.clone();
+    let wires = Arc::new(Mutex::new(Vec::new()));
+    let wires_thread = wires.clone();
     let handle = thread::spawn(move || {
         while !stop_thread.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((mut socket, _)) => {
                     let wire = read_request(&mut socket);
+                    wires_thread.lock().unwrap().push(wire.clone());
                     let (purpose, content) = response_content(&wire);
                     purposes_thread.lock().unwrap().push(purpose);
                     let envelope = json!({
@@ -169,21 +171,19 @@ fn provider() -> ProviderFixture {
             }
         }
     });
-    let model = CurlOpenAiCompatibleModel::new(OpenAiCompatibleConfig {
-        provider: "mock-compatible".into(),
-        base_url: format!("http://{address}/v1"),
-        api_key: "e2e-secret".into(),
-        model: "mock-e2e-model".into(),
-        curl_bin: "curl".into(),
-        max_time_secs: 5,
-        json_mode: true,
-    })
+    let model = OpenAiCompatibleModel::new(
+        "mock-compatible",
+        "mock-e2e-model",
+        &format!("http://{address}/v1/chat/completions"),
+        "e2e-secret",
+    )
     .unwrap();
     ProviderFixture {
         model,
         stop,
         thread: handle,
         purposes,
+        wires,
     }
 }
 
@@ -221,6 +221,7 @@ async fn setup() -> Harness {
         provider_stop: provider.stop,
         provider_thread: Some(provider.thread),
         purposes: provider.purposes,
+        wires: provider.wires,
     }
 }
 
@@ -268,13 +269,6 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer() {
-    if std::process::Command::new("curl")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        panic!("curl is required for the real-provider tentative MVP path");
-    }
     let h = setup().await;
 
     let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
@@ -444,4 +438,14 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
             .any(|purpose| purpose == "CHALLENGE_SYNTHESIS")
     );
     assert!(purposes.iter().any(|purpose| purpose == "ASSESS_CONTEXT"));
+
+    let wires = h.wires.lock().unwrap().clone();
+    assert!(
+        wires.iter().any(|wire| wire.contains("I will arrive at noon")),
+        "provider requests must include source fragment text from the frozen Situation input"
+    );
+    assert!(
+        wires.iter().any(|wire| wire.contains("I remember Ana sounding unusually certain.")),
+        "human context must remain available to the provider separately from source evidence"
+    );
 }

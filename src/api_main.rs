@@ -3,7 +3,7 @@
 use niccolo_evidence::{
     api,
     model_adapter::{ReasoningModel, UnavailableModel},
-    openai_compatible::{CurlOpenAiCompatibleModel, OpenAiCompatibleConfig},
+    openai_compatible::OpenAiCompatibleConfig,
 };
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<u16>()?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let model: Arc<dyn ReasoningModel> = match OpenAiCompatibleConfig::from_env()? {
-        Some(config) => Arc::new(CurlOpenAiCompatibleModel::new(config)?),
+        Some(config) => Arc::new(config.native_model()?),
         None => Arc::new(UnavailableModel),
     };
     eprintln!("niccolo HTTP API listening on loopback port {port}");

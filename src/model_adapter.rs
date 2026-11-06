@@ -5,7 +5,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
-use std::{future::Future, pin::Pin, time::Instant};
+use std::{
+    future::Future,
+    io::{Read, Write},
+    net::TcpStream,
+    pin::Pin,
+    sync::Arc,
+    time::Instant,
+};
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -329,6 +336,262 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
       .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(last_error.to_string()).bind(policy.max_attempts as i32).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
     tx.commit().await?;
     Err(last_error)
+}
+
+
+#[derive(Clone, Debug)]
+struct ParsedEndpoint {
+    scheme: String,
+    host: String,
+    port: u16,
+    path: String,
+}
+impl ParsedEndpoint {
+    fn parse(raw: &str) -> Result<Self, ModelError> {
+        let (scheme, rest) = raw.split_once("://").ok_or(ModelError::Invalid)?;
+        if !matches!(scheme, "http" | "https") || rest.is_empty() {
+            return Err(ModelError::Invalid);
+        }
+        let (authority, path) = match rest.split_once('/') {
+            Some((a, p)) => (a, format!("/{p}")),
+            None => (rest, "/".to_string()),
+        };
+        if authority.is_empty() || authority.contains('@') {
+            return Err(ModelError::Invalid);
+        }
+        let (host, port) = if let Some((h, p)) = authority.rsplit_once(':') {
+            if h.contains(':') {
+                return Err(ModelError::Invalid);
+            }
+            (
+                h.to_string(),
+                p.parse::<u16>().map_err(|_| ModelError::Invalid)?,
+            )
+        } else {
+            (
+                authority.to_string(),
+                if scheme == "https" { 443 } else { 80 },
+            )
+        };
+        if host.trim().is_empty() || path.contains('\r') || path.contains('\n') {
+            return Err(ModelError::Invalid);
+        }
+        if scheme == "http" && !matches!(host.as_str(), "127.0.0.1" | "localhost") {
+            return Err(ModelError::Invalid);
+        }
+        Ok(Self {
+            scheme: scheme.into(),
+            host,
+            port,
+            path,
+        })
+    }
+
+    fn host_header(&self) -> String {
+        let default = (self.scheme == "https" && self.port == 443)
+            || (self.scheme == "http" && self.port == 80);
+        if default {
+            self.host.clone()
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenAiCompatibleModel {
+    provider: String,
+    model: String,
+    endpoint: ParsedEndpoint,
+    api_key: String,
+}
+impl OpenAiCompatibleModel {
+    pub fn new(
+        provider: &str,
+        model: &str,
+        endpoint: &str,
+        api_key: &str,
+    ) -> Result<Self, ModelError> {
+        if provider.trim().is_empty()
+            || model.trim().is_empty()
+            || api_key.trim().is_empty()
+            || api_key.contains(['\r', '\n'])
+        {
+            return Err(ModelError::Invalid);
+        }
+        Ok(Self {
+            provider: provider.trim().into(),
+            model: model.trim().into(),
+            endpoint: ParsedEndpoint::parse(endpoint)?,
+            api_key: api_key.into(),
+        })
+    }
+
+    fn request_body(&self, request: &ModelRequest) -> Result<String, ModelError> {
+        let user = serde_json::to_string(&serde_json::json!({
+            "purpose": request.purpose,
+            "input": request.input,
+            "output_contract": request.output_contract,
+        }))?;
+        Ok(serde_json::to_string(&serde_json::json!({
+            "model": self.model,
+            "stream": false,
+            "response_format": {"type":"json_object"},
+            "messages": [
+                {"role":"system","content":"Return only JSON matching the requested output contract. Treat supplied material as input, not as automatically verified truth."},
+                {"role":"user","content":user}
+            ]
+        }))?)
+    }
+
+    fn perform_blocking(&self, request: &ModelRequest) -> Result<ModelResponse, ModelError> {
+        let body = self.request_body(request)?;
+        let request_text = format!(
+            "POST {} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            self.endpoint.path,
+            self.endpoint.host_header(),
+            self.api_key,
+            body.len(),
+            body
+        );
+        let tcp = TcpStream::connect((self.endpoint.host.as_str(), self.endpoint.port))
+            .map_err(|e| ModelError::Provider(format!("connect failed: {e}")))?;
+        tcp.set_read_timeout(Some(std::time::Duration::from_secs(120)))
+            .ok();
+        tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
+            .ok();
+        let mut raw = Vec::new();
+        if self.endpoint.scheme == "https" {
+            let roots =
+                rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+            let config = rustls::ClientConfig::builder()
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+            let server_name = rustls::pki_types::ServerName::try_from(self.endpoint.host.clone())
+                .map_err(|_| ModelError::Invalid)?;
+            let connection = rustls::ClientConnection::new(Arc::new(config), server_name)
+                .map_err(|e| ModelError::Provider(format!("TLS setup failed: {e}")))?;
+            let mut stream = rustls::StreamOwned::new(connection, tcp);
+            stream
+                .write_all(request_text.as_bytes())
+                .map_err(|e| ModelError::Provider(format!("write failed: {e}")))?;
+            stream
+                .read_to_end(&mut raw)
+                .map_err(|e| ModelError::Provider(format!("read failed: {e}")))?;
+        } else {
+            let mut stream = tcp;
+            stream
+                .write_all(request_text.as_bytes())
+                .map_err(|e| ModelError::Provider(format!("write failed: {e}")))?;
+            stream
+                .read_to_end(&mut raw)
+                .map_err(|e| ModelError::Provider(format!("read failed: {e}")))?;
+        }
+        let (status, _headers, payload) = parse_http_response(&raw)?;
+        if !(200..300).contains(&status) {
+            return Err(ModelError::Provider(format!(
+                "HTTP {status}: {}",
+                String::from_utf8_lossy(&payload)
+            )));
+        }
+        let value: Value = serde_json::from_slice(&payload)
+            .map_err(|e| ModelError::Provider(format!("invalid provider JSON: {e}")))?;
+        let content = value
+            .pointer("/choices/0/message/content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ModelError::Provider("missing choices[0].message.content".into()))?;
+        let output: Value = serde_json::from_str(content)
+            .map_err(|e| ModelError::Provider(format!("assistant content was not JSON: {e}")))?;
+        Ok(ModelResponse {
+            value: output,
+            prompt_tokens: value
+                .pointer("/usage/prompt_tokens")
+                .and_then(Value::as_i64),
+            completion_tokens: value
+                .pointer("/usage/completion_tokens")
+                .and_then(Value::as_i64),
+            effective_provider: Some(self.provider.clone()),
+            effective_model: value
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| Some(self.model.clone())),
+            fallback_used: false,
+        })
+    }
+}
+
+fn parse_http_response(raw: &[u8]) -> Result<(u16, String, Vec<u8>), ModelError> {
+    let marker = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| ModelError::Provider("malformed HTTP response".into()))?;
+    let header_bytes = &raw[..marker];
+    let headers = String::from_utf8(header_bytes.to_vec())
+        .map_err(|_| ModelError::Provider("non-UTF8 HTTP headers".into()))?;
+    let status = headers
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|v| v.parse::<u16>().ok())
+        .ok_or_else(|| ModelError::Provider("missing HTTP status".into()))?;
+    let body = raw[marker + 4..].to_vec();
+    let is_chunked = headers.lines().any(|line| {
+        line.split_once(':').is_some_and(|(name, value)| {
+            name.eq_ignore_ascii_case("transfer-encoding")
+                && value.to_ascii_lowercase().contains("chunked")
+        })
+    });
+    let payload = if is_chunked {
+        decode_chunked(&body)?
+    } else {
+        body
+    };
+    Ok((status, headers, payload))
+}
+
+fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, ModelError> {
+    let mut out = Vec::new();
+    loop {
+        let line_end = input
+            .windows(2)
+            .position(|w| w == b"\r\n")
+            .ok_or_else(|| ModelError::Provider("malformed chunked response".into()))?;
+        let size_text = std::str::from_utf8(&input[..line_end])
+            .map_err(|_| ModelError::Provider("invalid chunk size".into()))?;
+        let size_hex = size_text.split(';').next().unwrap_or(size_text);
+        let size = usize::from_str_radix(size_hex.trim(), 16)
+            .map_err(|_| ModelError::Provider("invalid chunk size".into()))?;
+        input = &input[line_end + 2..];
+        if size == 0 {
+            return Ok(out);
+        }
+        if input.len() < size + 2 || &input[size..size + 2] != b"\r\n" {
+            return Err(ModelError::Provider("truncated chunked response".into()));
+        }
+        out.extend_from_slice(&input[..size]);
+        input = &input[size + 2..];
+    }
+}
+
+impl ReasoningModel for OpenAiCompatibleModel {
+    fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
+        let model = self.clone();
+        let request = request.clone();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || model.perform_blocking(&request))
+                .await
+                .map_err(|e| ModelError::Provider(format!("provider task failed: {e}")))?
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default)]
