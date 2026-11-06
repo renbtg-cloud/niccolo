@@ -25,6 +25,7 @@ pub struct AnalysisInputSnapshot {
     pub situation_id: Uuid,
     pub input_revision: i64,
     pub input_fingerprint: String,
+    pub identity_event_no_max: i64,
     pub goal: String,
     pub requested_by: Uuid,
     pub reanalysis_of: Option<Uuid>,
@@ -91,8 +92,8 @@ pub async fn begin(
     if reanalysis_of == Some(analysis) {
         return Err(AnalysisSnapshotError::Invalid);
     }
-    let stored: Option<(i64, String, String, Uuid, Option<Uuid>)> = sqlx::query_as(
-        "SELECT input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of \
+    let stored: Option<(i64, String, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+        "SELECT input_revision,input_fingerprint,identity_event_no_max,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
@@ -104,6 +105,7 @@ pub async fn begin(
     if let Some((
         input_revision,
         input_fingerprint,
+        identity_event_no_max,
         stored_goal,
         requested_by,
         stored_reanalysis_of,
@@ -118,6 +120,7 @@ pub async fn begin(
             situation_id: situation,
             input_revision,
             input_fingerprint,
+            identity_event_no_max,
             goal: stored_goal,
             requested_by,
             reanalysis_of: stored_reanalysis_of,
@@ -165,16 +168,23 @@ pub async fn begin(
     let Some(input_fingerprint) = input_fingerprint else {
         return Err(AnalysisSnapshotError::Invisible);
     };
+    let identity_event_no_max: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(max(event_no),0)::bigint FROM niccolo.identity_events WHERE workspace_id=$1",
+    )
+    .bind(workspace)
+    .fetch_one(&mut *tx)
+    .await?;
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_snapshots \
-         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
+         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,goal,requested_by_principal_id,reanalysis_of) \
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
     )
     .bind(workspace)
     .bind(situation)
     .bind(analysis)
     .bind(input_revision)
     .bind(&input_fingerprint)
+    .bind(identity_event_no_max)
     .bind(&goal)
     .bind(actor)
     .bind(reanalysis_of)
@@ -185,8 +195,8 @@ pub async fn begin(
     if !inserted {
         // A concurrent identical request won the race. Re-read and apply the
         // same immutable replay contract instead of binding to a newer revision.
-        let stored: Option<(i64, String, String, Uuid, Option<Uuid>)> = sqlx::query_as(
-            "SELECT input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of \
+        let stored: Option<(i64, String, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+            "SELECT input_revision,input_fingerprint,identity_event_no_max,goal,requested_by_principal_id,reanalysis_of \
              FROM niccolo.situation_analysis_snapshots \
              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
         )
@@ -195,7 +205,14 @@ pub async fn begin(
         .bind(analysis)
         .fetch_optional(&mut *tx)
         .await?;
-        let Some((revision, fingerprint, stored_goal, requested_by, stored_reanalysis_of)) = stored
+        let Some((
+            revision,
+            fingerprint,
+            stored_identity_event_no_max,
+            stored_goal,
+            requested_by,
+            stored_reanalysis_of,
+        )) = stored
         else {
             return Err(AnalysisSnapshotError::Conflict);
         };
@@ -208,6 +225,7 @@ pub async fn begin(
             situation_id: situation,
             input_revision: revision,
             input_fingerprint: fingerprint,
+            identity_event_no_max: stored_identity_event_no_max,
             goal: stored_goal,
             requested_by,
             reanalysis_of: stored_reanalysis_of,
@@ -220,6 +238,7 @@ pub async fn begin(
         situation_id: situation,
         input_revision,
         input_fingerprint,
+        identity_event_no_max,
         goal,
         requested_by: actor,
         reanalysis_of,
@@ -234,8 +253,8 @@ pub async fn get(
     analysis: Uuid,
 ) -> Result<AnalysisInputSnapshot, AnalysisSnapshotError> {
     let mut tx = scoped(pool, workspace, true).await?;
-    let stored: Option<(i64, String, String, Uuid, Option<Uuid>)> = sqlx::query_as(
-        "SELECT input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of \
+    let stored: Option<(i64, String, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+        "SELECT input_revision,input_fingerprint,identity_event_no_max,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
@@ -244,7 +263,14 @@ pub async fn get(
     .bind(analysis)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((input_revision, input_fingerprint, goal, requested_by, reanalysis_of)) = stored
+    let Some((
+        input_revision,
+        input_fingerprint,
+        identity_event_no_max,
+        goal,
+        requested_by,
+        reanalysis_of,
+    )) = stored
     else {
         return Err(AnalysisSnapshotError::Invisible);
     };
@@ -254,6 +280,7 @@ pub async fn get(
         situation_id: situation,
         input_revision,
         input_fingerprint,
+        identity_event_no_max,
         goal,
         requested_by,
         reanalysis_of,
@@ -268,8 +295,8 @@ pub async fn materialize(
     analysis: Uuid,
 ) -> Result<MaterializedAnalysisInput, AnalysisSnapshotError> {
     let mut tx = scoped(pool, workspace, true).await?;
-    let stored: Option<(i64, String, String, Uuid, Option<Uuid>)> = sqlx::query_as(
-        "SELECT input_revision,input_fingerprint,goal,requested_by_principal_id,reanalysis_of \
+    let stored: Option<(i64, String, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+        "SELECT input_revision,input_fingerprint,identity_event_no_max,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
@@ -278,7 +305,14 @@ pub async fn materialize(
     .bind(analysis)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((input_revision, input_fingerprint, goal, requested_by, reanalysis_of)) = stored
+    let Some((
+        input_revision,
+        input_fingerprint,
+        identity_event_no_max,
+        goal,
+        requested_by,
+        reanalysis_of,
+    )) = stored
     else {
         return Err(AnalysisSnapshotError::Invisible);
     };
