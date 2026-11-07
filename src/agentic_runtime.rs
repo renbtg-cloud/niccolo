@@ -3,8 +3,8 @@
 use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
-    bff_operations, model_adapter, model_artifacts, operation_budget, reasoning_packet,
-    reasoning_updates,
+    bff_operations, model_adapter, model_artifacts, operation_budget, reasoning_handoff,
+    reasoning_packet, reasoning_updates,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,8 @@ pub enum RuntimeError {
     Budget(#[from] operation_budget::BudgetError),
     #[error("analysis coverage unavailable: {0}")]
     Coverage(#[from] analysis_coverage::AnalysisCoverageError),
+    #[error("reasoning handoff unavailable: {0}")]
+    Handoff(#[from] reasoning_handoff::HandoffError),
     #[error("agentic operation requires an analysis")]
     MissingAnalysis,
 }
@@ -100,16 +102,44 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     }
     let op = bff_operations::get(pool, scope).await?;
     let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
+    let analysis_scope = crate::analysis_structure::AnalysisScope {
+        workspace: scope.workspace,
+        situation: scope.situation,
+        analysis,
+    };
+    if step.kind == "CHECK_STOP_CONDITIONS" {
+        let signals =
+            agentic_policy::signals(pool, scope.workspace, scope.situation, analysis).await?;
+        agentic_controller::finish_step(
+            pool,
+            scope,
+            step.step_id,
+            actor,
+            "SUCCEEDED",
+            &format!(
+                "deterministic stop-condition check: {} triggered",
+                signals.triggered_stop_conditions
+            ),
+        )
+        .await?;
+        return Ok(());
+    }
+    if step.kind == "PREPARE_HANDOFF" {
+        let handoff = reasoning_handoff::bundle(pool, analysis_scope).await?;
+        let handoff_sha = reasoning_handoff::sha256(&handoff)?;
+        agentic_controller::finish_step(
+            pool,
+            scope,
+            step.step_id,
+            actor,
+            "SUCCEEDED",
+            &format!("deterministic handoff prepared: {handoff_sha}"),
+        )
+        .await?;
+        return Ok(());
+    }
     let _operation_budget = operation_budget::require_available(pool, scope).await?;
-    let packet = reasoning_packet::build(
-        pool,
-        crate::analysis_structure::AnalysisScope {
-            workspace: scope.workspace,
-            situation: scope.situation,
-            analysis,
-        },
-    )
-    .await?;
+    let packet = reasoning_packet::build(pool, analysis_scope).await?;
     let packet_sha = reasoning_packet::sha256(&packet)?;
     let packet_evidence_ids = packet
         .frozen_input
@@ -122,8 +152,11 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
         output_contract: if step.kind == "SYNTHESIZE" {
             json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","context_links","assumptions","alternatives","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
-        } else if matches!(step.kind.as_str(), "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS") {
-            json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","assumptions","evidence_gaps","clarifications"]},"niccolo_rules":{"human_context_is_not_evidence":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
+        } else if matches!(
+            step.kind.as_str(),
+            "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" | "CHECK_ALTERNATIVES"
+        ) {
+            json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","candidate_interpretations","assumptions","evidence_gaps","clarifications"]},"niccolo_rules":{"human_context_is_not_evidence":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
         } else if step.kind == "CHALLENGE_SYNTHESIS" {
             json!({"type":"object","required":["purpose","status","niccolo_challenge"],"niccolo_challenge":{"required":["challenges"]},"niccolo_rules":{"seek_counterevidence":true,"seek_competing_interpretations":true,"challenge_is_not_truth":true,"do_not_execute_human_actions":true}})
         } else {
@@ -173,7 +206,13 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                     &artifact,
                 )
                 .await?;
-            } else if matches!(step.kind.as_str(), "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS") {
+            } else if matches!(
+                step.kind.as_str(),
+                "ASSESS_CONTEXT"
+                    | "CHECK_ASSUMPTIONS"
+                    | "PROPOSE_CLARIFICATION"
+                    | "CHECK_ALTERNATIVES"
+            ) {
                 let update = reasoning_updates::parse(response)?
                     .ok_or(reasoning_updates::UpdateError::Invalid)?;
                 reasoning_updates::apply(
@@ -275,7 +314,17 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
                 agentic_controller::create_plan(pool, scope, actor, &followup).await?;
                 continue;
             }
-            let result = json!({"agentic":true,"plan_revision":view.plan_revision,"plan_sha256":view.plan_sha256,"budget_used":view.budget_used,"steps":view.steps.len(),"quality":quality,"explicit_human_review_occurred":already_had_human_review});
+            let handoff = reasoning_handoff::bundle(
+                pool,
+                crate::analysis_structure::AnalysisScope {
+                    workspace: scope.workspace,
+                    situation: scope.situation,
+                    analysis,
+                },
+            )
+            .await?;
+            let handoff_sha256 = reasoning_handoff::sha256(&handoff)?;
+            let result = json!({"agentic":true,"plan_revision":view.plan_revision,"plan_sha256":view.plan_sha256,"budget_used":view.budget_used,"steps":view.steps.len(),"quality":quality,"explicit_human_review_occurred":already_had_human_review,"handoff":handoff,"handoff_sha256":handoff_sha256});
             let final_view = if op.state == "RUNNING" {
                 bff_operations::succeed(pool, scope, op.state_version, actor, &result).await?
             } else {
