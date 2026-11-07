@@ -3494,7 +3494,6 @@ async fn get_effective_epistemic_policy(
     Ok(no_store(json!({"effective_policy":view}), StatusCode::OK))
 }
 
-
 // EPI-010: one bounded what-if comparison; still not a full reasoning replay.
 // No evidence IDs are verified here, and no historical artifacts are mutated.
 #[derive(Deserialize)]
