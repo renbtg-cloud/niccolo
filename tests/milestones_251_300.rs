@@ -174,6 +174,47 @@ async fn v291_v300_runtime_runs_until_terminal_or_explicit_human_boundary() {
 }
 
 #[tokio::test]
+async fn v1361_v1400_stop_check_and_handoff_are_deterministic_not_model_calls() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        let model = DeterministicModel::new("test", "deterministic-v1").unwrap();
+        let out = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+            .await
+            .unwrap();
+        assert!(out.terminal);
+        let deterministic_model_calls: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM niccolo.model_invocations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND (request_json LIKE '%CHECK_STOP_CONDITIONS%' OR request_json LIKE '%PREPARE_HANDOFF%')",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(deterministic_model_calls, 0);
+        let operation = bff_operations::get(&app, scope).await.unwrap();
+        let result = operation.result.expect("terminal agentic result");
+        assert_eq!(result["handoff"]["handoff_grants_authority"], false);
+        assert_eq!(result["handoff"]["handoff_starts_analysis"], false);
+        assert_eq!(result["handoff"]["handoff_executes_actions"], false);
+        assert_eq!(
+            result["handoff_sha256"].as_str().unwrap().len(),
+            64
+        );
+        let view = agentic_controller::view(&app, scope).await.unwrap();
+        for kind in ["CHECK_STOP_CONDITIONS", "PREPARE_HANDOFF"] {
+            assert_eq!(
+                view.steps.iter().find(|step| step.kind == kind).unwrap().state,
+                "SUCCEEDED"
+            );
+        }
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn v326_v350_policy_escalates_recorded_stop_gaps_conflicts_and_source_requests_to_human() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -294,6 +335,109 @@ impl model_adapter::ReasoningModel for FlakyModel {
             }
         })
     }
+}
+
+#[derive(Clone)]
+struct ClarifyingModel {
+    question: Uuid,
+}
+impl model_adapter::ReasoningModel for ClarifyingModel {
+    fn provider(&self) -> &str {
+        "test-clarifying"
+    }
+    fn model(&self) -> &str {
+        "clarifying-v1"
+    }
+    fn invoke<'a>(&'a self, request: &'a ModelRequest) -> model_adapter::ModelFuture<'a> {
+        Box::pin(async move {
+            let value = match request.purpose.as_str() {
+                "SYNTHESIZE" => json!({
+                    "purpose":"SYNTHESIZE","status":"ok",
+                    "niccolo_artifact":{"answer_text":"Provisional.","coverage_note":"Synthetic clarification test.","claims":[]}
+                }),
+                "CHALLENGE_SYNTHESIS" => json!({
+                    "purpose":"CHALLENGE_SYNTHESIS","status":"ok",
+                    "niccolo_challenge":{"challenges":[]}
+                }),
+                "PROPOSE_CLARIFICATION" => json!({
+                    "purpose":"PROPOSE_CLARIFICATION","status":"ok",
+                    "niccolo_update":{
+                        "used_contribution_ids":[],
+                        "assumptions":[],
+                        "evidence_gaps":[],
+                        "clarifications":[{
+                            "question_id":self.question,
+                            "text":"Was the message sent before the decision?",
+                            "reason":"The ordering could discriminate between interpretations"
+                        }]
+                    }
+                }),
+                "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "CHECK_ALTERNATIVES" => json!({
+                    "purpose":request.purpose,"status":"ok",
+                    "niccolo_update":{"used_contribution_ids":[],"candidate_interpretations":[],"assumptions":[],"evidence_gaps":[],"clarifications":[]}
+                }),
+                _ => json!({"purpose":request.purpose,"status":"ok"}),
+            };
+            Ok(model_adapter::ModelResponse {
+                value,
+                prompt_tokens: Some(4),
+                completion_tokens: Some(2),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn v1321_v1360_runtime_persists_model_proposed_clarification_before_human_handoff() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,description,requested_source_kind,recorded_by_principal_id) VALUES($1,$2,$3,$4,'Ordering remains unclear','message',$5)")
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(s.analysis)
+        .bind(Uuid::new_v4())
+        .bind(s.principal)
+        .execute(&admin)
+        .await
+        .unwrap();
+    let scope = op(&app, s).await;
+    let question = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        let model = ClarifyingModel { question };
+        let out = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+            .await
+            .unwrap();
+        assert!(out.waiting_for_human);
+        let row: (String, String) = sqlx::query_as(
+            "SELECT q.question,c.reason FROM niccolo.investigative_questions q JOIN niccolo.situation_analysis_clarification_questions c USING(workspace_id,question_id) WHERE c.workspace_id=$1 AND c.situation_id=$2 AND c.analysis_id=$3 AND c.question_id=$4",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(s.analysis)
+        .bind(question)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(row.0, "Was the message sent before the decision?");
+        assert_eq!(
+            row.1,
+            "The ordering could discriminate between interpretations"
+        );
+        let propose_invocations: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM niccolo.model_invocations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED' AND request_json LIKE '%PROPOSE_CLARIFICATION%'",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(propose_invocations, 1);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -738,6 +882,7 @@ async fn v801_v900_intermediate_updates_feed_later_reasoning_and_quality_without
     let question = Uuid::new_v4();
     let update = niccolo_evidence::reasoning_updates::ReasoningUpdate {
         used_contribution_ids: vec![],
+        candidate_interpretations: vec![],
         assumptions: vec![niccolo_evidence::reasoning_updates::UpdateAssumption {
             assumption_id: assumption,
             statement: "The timeline may be incomplete".into(),
@@ -800,6 +945,7 @@ async fn v1281_v1320_model_reported_context_usage_rejects_non_frozen_contributio
     let assumption = Uuid::new_v4();
     let invalid = niccolo_evidence::reasoning_updates::ReasoningUpdate {
         used_contribution_ids: vec![Uuid::new_v4()],
+        candidate_interpretations: vec![],
         assumptions: vec![niccolo_evidence::reasoning_updates::UpdateAssumption {
             assumption_id: assumption,
             statement: "Must roll back with invalid human context provenance".into(),
@@ -834,6 +980,89 @@ async fn v1281_v1320_model_reported_context_usage_rejects_non_frozen_contributio
     .unwrap();
     assert_eq!(assumption_count, 0);
     assert_eq!(used_context_count, 0);
+}
+
+#[tokio::test]
+async fn candidate_interpretation_replay_conflict_preserves_original_non_fact_state() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let interpretation_id = Uuid::new_v4();
+    let original = niccolo_evidence::reasoning_updates::ReasoningUpdate {
+        used_contribution_ids: vec![],
+        candidate_interpretations: vec![
+            niccolo_evidence::reasoning_updates::UpdateInterpretation {
+                interpretation_id,
+                text: "A benign coordination failure remains plausible".into(),
+                rationale: "The available record does not establish intent".into(),
+            },
+        ],
+        assumptions: vec![],
+        evidence_gaps: vec![],
+        clarifications: vec![],
+    };
+    authz::with_auth_digest("test-digest".into(), async {
+        let applied =
+            niccolo_evidence::reasoning_updates::apply(&app, scope, s.principal, &original)
+                .await
+                .unwrap();
+        assert_eq!(applied.candidate_interpretation_count, 1);
+        assert!(!applied.update_asserts_truth);
+
+        let conflicting = niccolo_evidence::reasoning_updates::ReasoningUpdate {
+            used_contribution_ids: vec![],
+            candidate_interpretations: vec![
+                niccolo_evidence::reasoning_updates::UpdateInterpretation {
+                    interpretation_id,
+                    text: "A different interpretation with the same identifier".into(),
+                    rationale: "This replay must not overwrite history".into(),
+                },
+            ],
+            assumptions: vec![],
+            evidence_gaps: vec![],
+            clarifications: vec![],
+        };
+        assert!(
+            niccolo_evidence::reasoning_updates::apply(&app, scope, s.principal, &conflicting,)
+                .await
+                .is_err()
+        );
+        let rows = niccolo_evidence::analysis_assumptions::candidate_interpretations(&app, scope)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].interpretation_id, interpretation_id);
+        assert_eq!(
+            rows[0].text,
+            "A benign coordination failure remains plausible"
+        );
+        assert!(!rows[0].is_fact);
+        assert!(!rows[0].automatically_ranked);
+    })
+    .await;
+
+    let persisted: (String, String) = sqlx::query_as(
+        "SELECT interpretation_text,rationale FROM niccolo.situation_analysis_candidate_interpretations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND interpretation_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(interpretation_id)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(
+        persisted.0,
+        "A benign coordination failure remains plausible"
+    );
+    assert_eq!(
+        persisted.1,
+        "The available record does not establish intent"
+    );
 }
 
 #[tokio::test]
