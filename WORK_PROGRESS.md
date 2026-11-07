@@ -16,9 +16,10 @@ Closed/validated in this resumed block:
 - v1.401-v1.440 competing interpretations are durable pre-synthesis reasoning state, feed later packets, and remain explicitly non-factual/unranked;
 - v1.441-v1.480 persisted clarification questions now feed later reasoning packets with a bounded, explicit truncation contract;
 - v1.481-v1.520 deterministic handoff v2 now carries clarification state and pre-synthesis candidate interpretations, so the human handback preserves the reasoning trail rather than only final claims;
+- v1.521-v1.560 the deterministic handoff is now a stable analysis-scoped BFF read model and is visible in the first-party human review UI after operation state is gone;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
-- 408/408 Rust/PostgreSQL tests pass in bounded suites;
-- 32/32 frontend tests and the production build pass;
+- 409/409 Rust/PostgreSQL tests pass in bounded suites;
+- 35/35 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
 Next work should continue from the evidence produced by the running product rather than add post-MVP provider-routing complexity. Capability-aware LLM routing/BYOK ideas are deliberately parked in `POST_MVP_TO_SPECIFY.md`.
