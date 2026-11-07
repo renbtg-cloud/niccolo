@@ -3590,6 +3590,39 @@ fn grounded_weight_error(error: GroundedWeightError) -> ApiError {
         GroundedWeightError::AmbiguousLink => {
             ApiError(StatusCode::CONFLICT, "conflicting claim-to-evidence use")
         }
+        GroundedWeightError::Lineage(
+            crate::grounded_lineage_store::StoredLineageError::Cluster(
+                crate::provenance_clusters::ClusterError::Cycle,
+            ),
+        ) => ApiError(StatusCode::CONFLICT, "cyclic recorded provenance"),
+        GroundedWeightError::Lineage(
+            crate::grounded_lineage_store::StoredLineageError::Cluster(
+                crate::provenance_clusters::ClusterError::Withdrawn,
+            ),
+        ) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "withdrawn recorded provenance",
+        ),
+        GroundedWeightError::Lineage(
+            crate::grounded_lineage_store::StoredLineageError::Cluster(
+                crate::provenance_clusters::ClusterError::Missing,
+            ),
+        ) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "missing recorded ancestor",
+        ),
+        GroundedWeightError::Lineage(
+            crate::grounded_lineage_store::StoredLineageError::Invalid,
+        )
+        | GroundedWeightError::Lineage(
+            crate::grounded_lineage_store::StoredLineageError::Cluster(
+                crate::provenance_clusters::ClusterError::Invalid,
+            ),
+        ) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "recorded provenance exceeds validation limits",
+        ),
+
         _ => ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
             "grounded weighting unavailable",

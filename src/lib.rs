@@ -488,3 +488,5 @@ pub mod epistemic_policy_store;
 pub mod grounded_claim_weights;
 
 pub mod provenance_clusters;
+
+pub mod grounded_lineage_store;

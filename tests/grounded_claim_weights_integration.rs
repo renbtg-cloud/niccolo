@@ -134,6 +134,39 @@ async fn seed(h: &Harness) -> Seed {
         .0,
         StatusCode::CREATED
     );
+    // A distinct source document must be attached BEFORE the analysis freezes
+    // its input; this third fragment allows cross-document dependence tests.
+    let second_document = Uuid::new_v4();
+    let second_source_path = format!("/v1/workspaces/{}/sources/{second_document}", h.workspace);
+    let (other_status, other_source) = call(
+        h.router.clone(),
+        source_req(
+            &second_source_path,
+            &h.writer,
+            "01/02/2026, 09:00 - Carol: Another report about the same meeting\n",
+        ),
+    )
+    .await;
+    assert_eq!(other_status, StatusCode::CREATED);
+    let other_evidence = other_source["fragment_ids"].as_array().unwrap();
+    assert_eq!(other_evidence.len(), 1);
+    let other_id = other_evidence[0].as_str().unwrap().parse::<Uuid>().unwrap();
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req(
+                "POST",
+                &format!("{sp}/sources/{second_document}"),
+                &h.writer,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let mut evidence = evidence;
+    evidence.push(other_id);
     let analysis = Uuid::new_v4();
     let analysis_path = format!("{sp}/analysis-snapshots/{analysis}");
     assert_eq!(
@@ -209,8 +242,24 @@ async fn weighting_uses_only_real_claim_links_and_stored_relation() {
     assert_eq!(v["assessment"]["claim_id"], s.claim.to_string());
     assert_eq!(v["assessment"]["inputs_checked_against_database"], true);
     assert_eq!(v["assessment"]["stance_derived_from_analysis_links"], true);
-    assert_eq!(v["assessment"]["origins_grouped_by_document_id"], true);
-    assert_eq!(v["assessment"]["derivation_graph_traversed"], false);
+    assert_eq!(v["assessment"]["origins_grouped_by_document_id"], false);
+    assert_eq!(v["assessment"]["derivation_graph_traversed"], true);
+    assert_eq!(
+        v["assessment"]["grouping_mode"],
+        "RECORDED_DEPENDENCE_COMPONENT"
+    );
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["different_clusters_establish_independence"],
+        false
+    );
+    assert!(v["assessment"]["source_graph_revision"].as_i64().unwrap() > 0);
     assert_eq!(v["assessment"]["independent_witnesses_established"], false);
     assert_eq!(v["assessment"]["establishes_claim_truth"], false);
     assert_eq!(v["assessment"]["report"]["support_points"], 80);
@@ -314,4 +363,217 @@ async fn ambiguous_claim_evidence_links_fail_closed() {
     )
     .await;
     assert_eq!(v["error"], "conflicting claim-to-evidence use");
+}
+
+#[tokio::test]
+async fn recorded_multi_parent_lineage_is_used_and_revocation_fails_closed() {
+    let h = setup().await;
+    let s = seed(&h).await;
+    let common_ancestor = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) \
+         VALUES($1,$2,'shared-parent','Recorded source antecedent','DIRECT_OBSERVATION')"
+    ).bind(h.workspace).bind(common_ancestor).execute(&h.admin).await.unwrap();
+    for selected in s.evidence.iter().take(2) {
+        sqlx::query(
+            "INSERT INTO niccolo.evidence_derivation(workspace_id,child_id,parent_id,relation) \
+             VALUES($1,$2,$3,'DERIVED_FROM')",
+        )
+        .bind(h.workspace)
+        .bind(selected)
+        .bind(common_ancestor)
+        .execute(&h.admin)
+        .await
+        .unwrap();
+    }
+    let (status, v) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &s.path,
+            &h.reader,
+            Some(body(s.evidence[0], s.evidence[1])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["clusters"][0]["documented_roots"][0],
+        common_ancestor.to_string()
+    );
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["known_lineage_node_count"],
+        3
+    );
+    assert_eq!(
+        v["assessment"]["report"]["origins"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(v["assessment"]["derivation_graph_traversed"], true);
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["establishes_truth"],
+        false
+    );
+    // This transaction's graph revision is visible for the future evaluation audit.
+    assert!(v["assessment"]["source_graph_revision"].as_i64().unwrap() > 0);
+
+    sqlx::query(
+        "UPDATE niccolo.evidence SET admissible=false WHERE workspace_id=$1 AND evidence_id=$2",
+    )
+    .bind(h.workspace)
+    .bind(common_ancestor)
+    .execute(&h.admin)
+    .await
+    .unwrap();
+    let (status, rejected) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &s.path,
+            &h.reader,
+            Some(body(s.evidence[0], s.evidence[1])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(rejected["error"], "withdrawn recorded provenance");
+}
+
+#[tokio::test]
+async fn cycles_in_recorded_provenance_are_rejected() {
+    let h = setup().await;
+    let s = seed(&h).await;
+    sqlx::query(
+        "INSERT INTO niccolo.evidence_derivation(workspace_id,child_id,parent_id,relation) \
+         VALUES($1,$2,$3,'DERIVED_FROM'),($1,$3,$2,'DERIVED_FROM')",
+    )
+    .bind(h.workspace)
+    .bind(s.evidence[0])
+    .bind(s.evidence[1])
+    .execute(&h.admin)
+    .await
+    .unwrap();
+    let (status, v) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &s.path,
+            &h.reader,
+            Some(body(s.evidence[0], s.evidence[1])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(v["error"], "cyclic recorded provenance");
+}
+
+#[tokio::test]
+async fn cross_document_common_ancestor_prevents_double_counting() {
+    let h = setup().await;
+    let s = seed(&h).await;
+    assert!(s.evidence.len() >= 3);
+    let other = s.evidence[2];
+
+    // This second document's examined fragment supports the claim as used.
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_claim_fragments \
+         (workspace_id,situation_id,analysis_id,claim_id,evidence_id,relation,recorded_by_principal_id) \
+         VALUES($1,$2,$3,$4,$5,'SUPPORTS_AS_USED',$6)"
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(s.analysis)
+    .bind(s.claim)
+    .bind(other)
+    .bind(h.principal)
+    .execute(&h.admin)
+    .await
+    .unwrap();
+
+    let two_sources = body(s.evidence[0], other);
+    let (status, separate) = call(
+        h.router.clone(),
+        req("POST", &s.path, &h.reader, Some(two_sources.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        separate["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(separate["assessment"]["report"]["support_points"], 140);
+    assert_eq!(separate["assessment"]["report"]["net_points"], 140);
+    assert_eq!(
+        separate["assessment"]["recorded_dependence"]["different_clusters_establish_independence"],
+        false
+    );
+
+    // Even though the report came through another document, its recorded
+    // derivation reveals a common ancestor and requires ONE support group.
+    let parent = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) \
+         VALUES($1,$2,'common-report','Recorded common ancestor','REPORTED_SPEECH')",
+    )
+    .bind(h.workspace)
+    .bind(parent)
+    .execute(&h.admin)
+    .await
+    .unwrap();
+    for evidence in [s.evidence[0], other] {
+        sqlx::query(
+            "INSERT INTO niccolo.evidence_derivation(workspace_id,child_id,parent_id,relation) \
+             VALUES($1,$2,$3,'DERIVED_FROM')",
+        )
+        .bind(h.workspace)
+        .bind(evidence)
+        .bind(parent)
+        .execute(&h.admin)
+        .await
+        .unwrap();
+    }
+    let (status, merged) = call(
+        h.router.clone(),
+        req("POST", &s.path, &h.reader, Some(two_sources)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        merged["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(merged["assessment"]["report"]["support_points"], 80);
+    assert_eq!(merged["assessment"]["report"]["net_points"], 80);
+    assert_eq!(
+        merged["assessment"]["recorded_dependence"]["clusters"][0]["documented_roots"][0],
+        parent.to_string()
+    );
+    assert_eq!(
+        merged["assessment"]["recorded_dependence"]["different_clusters_establish_independence"],
+        false
+    );
+    assert!(
+        merged["assessment"]["source_graph_revision"]
+            .as_i64()
+            .unwrap()
+            > separate["assessment"]["source_graph_revision"]
+                .as_i64()
+                .unwrap()
+    );
 }

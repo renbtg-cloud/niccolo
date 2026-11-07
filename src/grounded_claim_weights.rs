@@ -10,6 +10,8 @@ use crate::{
     epistemic_weights::{
         self, BalanceReport, Stance, WeightError, WeightPolicy, WeightedObservation,
     },
+    grounded_lineage_store,
+    provenance_clusters::ClusterReport,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -30,6 +32,8 @@ pub enum GroundedWeightError {
     AmbiguousLink,
     #[error("invalid score: {0}")]
     Weight(#[from] WeightError),
+    #[error("recorded multi-parent lineage failed: {0}")]
+    Lineage(#[from] grounded_lineage_store::StoredLineageError),
     #[error("privileged runtime database role prohibited")]
     Privileged,
 }
@@ -47,12 +51,18 @@ pub struct ResolvedClaimEvidence {
     pub recorded_relation: String,
     pub derived_stance: Stance,
     pub declared_strength: u16,
+    /// Structural dependence group representative, not a certified source root.
+    pub dependence_component_id: Option<Uuid>,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GroundedBalance {
     pub claim_id: Uuid,
     pub report: BalanceReport,
     pub resolved_evidence: Vec<ResolvedClaimEvidence>,
+    /// All recorded ancestors of selected evidence inside one PG snapshot.
+    pub recorded_dependence: ClusterReport,
+    pub grouping_mode: String,
+    pub source_graph_revision: i64,
     pub inputs_checked_against_database: bool,
     pub stance_derived_from_analysis_links: bool,
     pub origins_grouped_by_document_id: bool,
@@ -87,6 +97,7 @@ pub fn convert(
             recorded_relation: relation.into(),
             derived_stance: stance,
             declared_strength: evidence.declared_strength,
+            dependence_component_id: None,
         },
     ))
 }
@@ -186,18 +197,52 @@ pub async fn evaluate_claim(
             _ => return Err(GroundedWeightError::AmbiguousLink),
         }
     }
+    // Retrieve every *recorded* ancestor in this same repeatable-read
+    // transaction. Never accept a client-provided root or grouping key.
+    let selected = declared
+        .iter()
+        .map(|item| item.evidence_id)
+        .collect::<Vec<_>>();
+    let dependence =
+        grounded_lineage_store::from_database(&mut tx, scope.workspace, &selected).await?;
+    let source_graph_revision: i64 = sqlx::query_scalar(
+        "SELECT COALESCE((
+            SELECT revision FROM niccolo.graph_revisions WHERE workspace_id=$1
+        ),0)::bigint",
+    )
+    .bind(scope.workspace)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
+    let mut component_by_evidence = std::collections::BTreeMap::new();
+    for cluster in &dependence.clusters {
+        for id in &cluster.selected_evidence_ids {
+            component_by_evidence.insert(*id, cluster.component_key);
+        }
+    }
+    for (observation, proof) in converted.iter_mut().zip(resolved.iter_mut()) {
+        let key = *component_by_evidence.get(&observation.evidence_id).ok_or(
+            GroundedWeightError::Lineage(grounded_lineage_store::StoredLineageError::Invalid),
+        )?;
+        // This legacy field is the computational grouping key, not a literal
+        // provenance root. Explicit typed metadata below makes that distinction.
+        observation.documented_origin_id = Some(key);
+        proof.dependence_component_id = Some(key);
+    }
     let report =
         epistemic_weights::evaluate(policy, human_declared_confidence_percent, &converted)?;
     Ok(GroundedBalance {
         claim_id,
         report,
         resolved_evidence: resolved,
+        recorded_dependence: dependence,
+        grouping_mode: "RECORDED_DEPENDENCE_COMPONENT".into(),
+        source_graph_revision,
         inputs_checked_against_database: true,
         stance_derived_from_analysis_links: true,
-        origins_grouped_by_document_id: true,
-        derivation_graph_traversed: false,
+        origins_grouped_by_document_id: false,
+        derivation_graph_traversed: true,
         independent_witnesses_established: false,
         establishes_claim_truth: false,
         modifies_historical_analysis: false,
