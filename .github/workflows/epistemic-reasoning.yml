@@ -1,0 +1,114 @@
+name: Epistemic reasoning checks
+on:
+  push:
+    branches:
+      - feature/epistemic-weights-v1
+    paths:
+      - "src/**"
+      - "sql/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/epistemic-reasoning.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "sql/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/epistemic-reasoning.yml"
+
+concurrency:
+  group: epistemic-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+          rustup default 1.99.1
+      - name: Formatting
+        run: rustfmt --edition 2024 --check src/api.rs src/epistemic_weights.rs src/human_credence.rs src/epistemic_policy_store.rs src/reasoning_packet.rs tests/human_credence_integration.rs
+      - name: Unit tests
+        run: cargo test --locked --lib
+      - name: Strict Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+
+  database:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: niccolo
+          POSTGRES_PASSWORD: ephemeral_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d niccolo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      NICCOLO_PG_ADMIN_URL: postgres://postgres:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_PG_SECURE_URL: postgres://niccolo_secure:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_PG_SERVICE_URL: postgres://niccolo_service:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_NEXT_ADMIN_URL: postgres://postgres:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_NEXT_APP_URL: postgres://niccolo_service:ephemeral_ci_password@localhost:5432/niccolo
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Apply every SQL migration from scratch
+        run: |
+          set -euo pipefail
+          for migration in sql/[0-9][0-9][0-9][0-9]_*.sql; do
+            psql -X -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -f "$migration" >/dev/null
+          done
+          psql -X -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+          CREATE ROLE niccolo_secure LOGIN PASSWORD 'ephemeral_ci_password';
+          GRANT niccolo_api TO niccolo_secure WITH INHERIT TRUE, SET FALSE;
+          CREATE ROLE niccolo_service LOGIN PASSWORD 'ephemeral_ci_password';
+          GRANT niccolo_app TO niccolo_service WITH INHERIT TRUE, SET FALSE;
+          SQL
+      - name: Run authenticated PostgreSQL endpoint integration
+        run: cargo test --locked --features pg-integration --test human_credence_integration -- --nocapture
+      - name: Run full PostgreSQL integration regression with bounded concurrency
+        run: cargo test --locked --features pg-integration --tests -- --test-threads=2
+
+
+  frontend:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

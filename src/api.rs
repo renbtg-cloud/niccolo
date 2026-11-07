@@ -14,6 +14,9 @@ use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScop
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
+use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
+use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
@@ -228,6 +231,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/graph", get(graph))
         .route("/v1/workspaces/{workspace}/assess", post(assess))
+        .route("/v1/workspaces/{workspace}/epistemic/preview", post(preview_epistemic_balance))
+        .route("/v1/workspaces/{workspace}/epistemic/compare", post(compare_epistemic_policies))
+        .route("/v1/workspaces/{workspace}/epistemic/policy", get(get_effective_epistemic_policy))
+        .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
@@ -330,6 +337,15 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/epistemic",
             get(get_bff_epistemic),
         )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/claims/{claim}/credence",
+            get(list_human_credence),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/claims/{claim}/credence/{credence}",
+            post(record_human_credence),
+        )
+
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/reasoning-input",
             get(get_reasoning_input_summary),
@@ -3258,4 +3274,291 @@ async fn cancel_bff_operation(
     .await
     .map_err(bff_error)?;
     Ok(bff_response(view, StatusCode::OK))
+}
+
+// EPI-004: a human may state a subjective percentage about a specific claim.
+// Authentication determines the actor; callers cannot impersonate a principal.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HumanCredenceRequest {
+    confidence_percent: i16,
+    usage_policy: String,
+    rationale: String,
+}
+fn credence_api_error(error: CredenceError) -> ApiError {
+    match error {
+        CredenceError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid subjective confidence")
+        }
+        CredenceError::Invisible => ApiError(StatusCode::NOT_FOUND, "claim unavailable"),
+        CredenceError::Conflict => ApiError(StatusCode::CONFLICT, "credence ID conflict"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "human confidence unavailable",
+        ),
+    }
+}
+async fn record_human_credence(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, claim, credence)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(body): Json<HumanCredenceRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let submitted = NewHumanCredence {
+        credence_id: credence,
+        claim_id: claim,
+        confidence_percent: body.confidence_percent,
+        usage_policy: body.usage_policy,
+        rationale: body.rationale,
+        recorded_by: actor,
+    };
+    let inserted = human_credence::record(&state.pool, scope, &submitted)
+        .await
+        .map_err(credence_api_error)?;
+    Ok(no_store(
+        json!({
+            "credence_id": credence,
+            "claim_id": claim,
+            "confidence_percent": submitted.confidence_percent,
+            "usage_policy": submitted.usage_policy,
+            "recorded_by": actor,
+            "replayed": !inserted,
+            "is_human_declaration": true,
+            "is_calibrated_probability": false,
+            "is_documentary_evidence": false,
+            "makes_claim_a_fact": false
+        }),
+        if inserted {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+    ))
+}
+async fn list_human_credence(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, claim)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let entries = human_credence::list_for_claim(&state.pool, scope, claim)
+        .await
+        .map_err(credence_api_error)?;
+    Ok(no_store(
+        json!({
+            "claim_id": claim,
+            "human_credence": entries,
+            "confidence_establishes_truth": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+// EPI-007: deterministic, read-only preview for hypothetical weighting settings.
+// Inputs are NOT checked against the evidence database; no persisted judgment,
+// source-validation or fact claim is created by this endpoint.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WeightPreviewRequest {
+    /// Explicit trial override; omission picks the effective persisted policy.
+    policy: Option<WeightPolicy>,
+    situation_id: Option<Uuid>,
+    human_declared_confidence_percent: Option<u8>,
+    observations: Vec<WeightedObservation>,
+}
+async fn preview_epistemic_balance(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Json(request): Json<WeightPreviewRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    // A supplied Situation must be real and visible even for an explicit trial.
+    let stored = if request.policy.is_none() || request.situation_id.is_some() {
+        Some(
+            epistemic_policy_store::effective(&state.pool, workspace, request.situation_id)
+                .await
+                .map_err(epistemic_policy_error)?,
+        )
+    } else {
+        None
+    };
+    let (policy, policy_source) = if let Some(override_policy) = request.policy {
+        (override_policy, "EXPLICIT_PREVIEW_OVERRIDE".to_string())
+    } else {
+        let stored = stored.ok_or(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic policy unavailable",
+        ))?;
+        (stored.policy, stored.scope)
+    };
+    let report = epistemic_weights::evaluate(
+        policy,
+        request.human_declared_confidence_percent,
+        &request.observations,
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid preview weights"))?;
+    Ok(no_store(
+        json!({
+            "report": report,
+            "policy_used": policy,
+            "policy_source": policy_source,
+            "mode": "UNVERIFIED_PREVIEW",
+            "inputs_checked_against_database": false,
+            "changes_any_persisted_state": false,
+            "authorizes_real_world_action": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+// EPI-008: a narrow human-configurable policy API.
+// All actor identity and workspace permissions come from the bearer token.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PolicyQuery {
+    situation_id: Option<Uuid>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewEpistemicPolicyRequest {
+    situation_id: Option<Uuid>,
+    policy: WeightPolicy,
+    rationale: String,
+}
+fn epistemic_policy_error(error: PolicyStoreError) -> ApiError {
+    match error {
+        PolicyStoreError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid epistemic policy"),
+        PolicyStoreError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "epistemic policy ID conflict")
+        }
+        PolicyStoreError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic policy unavailable",
+        ),
+    }
+}
+async fn record_epistemic_policy(
+    State(state): State<AppState>,
+    Path((workspace, policy_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(body): Json<NewEpistemicPolicyRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let policy = NewPolicy {
+        policy_id,
+        workspace_id: workspace,
+        situation_id: body.situation_id,
+        policy: body.policy,
+        rationale: body.rationale,
+        recorded_by: actor,
+    };
+    let inserted = epistemic_policy_store::record(&state.pool, &policy)
+        .await
+        .map_err(epistemic_policy_error)?;
+    Ok(no_store(
+        json!({
+            "policy_id":policy_id,"situation_id":policy.situation_id,"policy":policy.policy,
+            "rationale":policy.rationale,"recorded_by":actor,"replayed":!inserted,
+            "is_probability_model":false,"retroactively_changes_frozen_analysis":false
+        }),
+        if inserted {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+    ))
+}
+async fn get_effective_epistemic_policy(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    Query(query): Query<PolicyQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = epistemic_policy_store::effective(&state.pool, workspace, query.situation_id)
+        .await
+        .map_err(epistemic_policy_error)?;
+    Ok(no_store(json!({"effective_policy":view}), StatusCode::OK))
+}
+
+// EPI-010: one bounded what-if comparison; still not a full reasoning replay.
+// No evidence IDs are verified here, and no historical artifacts are mutated.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EpistemicComparisonRequest {
+    situation_id: Option<Uuid>,
+    baseline_policy: Option<WeightPolicy>,
+    trial_policy: WeightPolicy,
+    human_declared_confidence_percent: Option<u8>,
+    observations: Vec<WeightedObservation>,
+}
+async fn compare_epistemic_policies(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Json(request): Json<EpistemicComparisonRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let inherited = if request.baseline_policy.is_none() || request.situation_id.is_some() {
+        Some(
+            epistemic_policy_store::effective(&state.pool, workspace, request.situation_id)
+                .await
+                .map_err(epistemic_policy_error)?,
+        )
+    } else {
+        None
+    };
+    let (baseline_policy, baseline_source) = if let Some(baseline) = request.baseline_policy {
+        (baseline, "EXPLICIT_BASELINE".to_string())
+    } else {
+        let inherited = inherited.ok_or(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic policy unavailable",
+        ))?;
+        (inherited.policy, inherited.scope)
+    };
+    let baseline = epistemic_weights::evaluate(
+        baseline_policy,
+        request.human_declared_confidence_percent,
+        &request.observations,
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid baseline weights"))?;
+    let trial = epistemic_weights::evaluate(
+        request.trial_policy,
+        request.human_declared_confidence_percent,
+        &request.observations,
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid trial weights"))?;
+    Ok(no_store(
+        json!({
+            "mode": "HEURISTIC_ONLY_COMPARISON",
+            "baseline_policy_source": baseline_source,
+            "baseline_policy": baseline_policy,
+            "trial_policy": request.trial_policy,
+            "baseline": baseline,
+            "trial": trial,
+            "net_points_delta": trial.net_points - baseline.net_points,
+            "support_points_delta": trial.support_points - baseline.support_points,
+            "counter_points_delta": trial.counter_points - baseline.counter_points,
+            "is_full_reasoning_replay": false,
+            "inputs_checked_against_database": false,
+            "changes_any_persisted_state": false,
+            "proves_claim_truth": false,
+            "authorizes_real_world_action": false
+        }),
+        StatusCode::OK,
+    ))
 }

@@ -4,7 +4,7 @@
 use crate::analysis_structure::AnalysisScope;
 use crate::{
     agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
-    human_agency, human_control, proactive_briefing,
+    epistemic_policy_store, human_agency, human_control, human_credence, proactive_briefing,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -83,6 +83,10 @@ pub struct CurrentHumanControl {
     pub priorities: Vec<human_control::PriorityView>,
     pub constraints: Vec<human_control::ConstraintView>,
     pub proposed_next_steps: Vec<human_agency::NextStepView>,
+    /// Current human judgments, not part of the frozen analysis input.
+    pub claim_credence: Vec<human_credence::HumanCredenceView>,
+    /// Current user-configured heuristics; not retroactive documentary evidence.
+    pub epistemic_policy: epistemic_policy_store::PolicyView,
     pub current_control_was_part_of_frozen_input: bool,
     pub system_owns_project: bool,
     pub system_may_execute_proposed_steps_without_human: bool,
@@ -352,6 +356,13 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         .await
         .map_err(dep)?
         .steps;
+    let claim_credence = human_credence::list_for_analysis(pool, scope)
+        .await
+        .map_err(dep)?;
+    let epistemic_policy =
+        epistemic_policy_store::effective(pool, scope.workspace, Some(scope.situation))
+            .await
+            .map_err(dep)?;
     let priorities = human_control::priorities(pool, scope.workspace, scope.situation)
         .await
         .map_err(dep)?;
@@ -426,6 +437,8 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             priorities,
             constraints,
             proposed_next_steps,
+            claim_credence,
+            epistemic_policy,
             current_control_was_part_of_frozen_input: false,
             system_owns_project: false,
             system_may_execute_proposed_steps_without_human: false,
