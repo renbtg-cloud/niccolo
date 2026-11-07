@@ -1,0 +1,30 @@
+name: validate v2160 frontend
+on:
+  push:
+    branches: [tmp-v2160-validate]
+    paths: ['.validate-v2160/ready']
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - shell: bash
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          npm test 2>&1 | tee /tmp/frontend-test.txt
+          npm run build 2>&1 | tee /tmp/frontend-build.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2160-frontend-validation
+          path: |
+            /tmp/frontend-test.txt
+            /tmp/frontend-build.txt
