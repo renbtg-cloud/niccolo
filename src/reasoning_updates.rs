@@ -18,6 +18,13 @@ pub enum UpdateError {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct UpdateInterpretation {
+    pub interpretation_id: Uuid,
+    pub text: String,
+    pub rationale: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateAssumption {
     pub assumption_id: Uuid,
     pub statement: String,
@@ -43,6 +50,8 @@ pub struct ReasoningUpdate {
     #[serde(default)]
     pub used_contribution_ids: Vec<Uuid>,
     #[serde(default)]
+    pub candidate_interpretations: Vec<UpdateInterpretation>,
+    #[serde(default)]
     pub assumptions: Vec<UpdateAssumption>,
     #[serde(default)]
     pub evidence_gaps: Vec<UpdateGap>,
@@ -52,6 +61,7 @@ pub struct ReasoningUpdate {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedUpdate {
     pub used_contribution_count: usize,
+    pub candidate_interpretation_count: usize,
     pub assumption_count: usize,
     pub evidence_gap_count: usize,
     pub clarification_count: usize,
@@ -62,6 +72,7 @@ fn valid(s: &str, max: usize) -> bool {
 }
 fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
     if x.used_contribution_ids.len() > 256
+        || x.candidate_interpretations.len() > 64
         || x.assumptions.len() > 64
         || x.evidence_gaps.len() > 64
         || x.clarifications.len() > 32
@@ -75,6 +86,15 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         return Err(UpdateError::Invalid);
     };
     let mut ids = std::collections::BTreeSet::new();
+    for interpretation in &x.candidate_interpretations {
+        if !ids.insert(interpretation.interpretation_id)
+            || !valid(&interpretation.text, 4096)
+            || !valid(&interpretation.rationale, 4096)
+        {
+            return Err(UpdateError::Invalid);
+        }
+    }
+    ids.clear();
     for a in &x.assumptions {
         if !ids.insert(a.assumption_id) || !valid(&a.statement, 4096) || !valid(&a.basis_note, 4096)
         {
@@ -171,6 +191,36 @@ pub async fn apply(
             None => return Err(UpdateError::Invalid),
         }
     }
+    for interpretation in &x.candidate_interpretations {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_candidate_interpretations(workspace_id,situation_id,analysis_id,interpretation_id,interpretation_text,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.analysis)
+            .bind(interpretation.interpretation_id)
+            .bind(interpretation.text.trim())
+            .bind(interpretation.rationale.trim())
+            .bind(actor)
+            .execute(&mut *tx)
+            .await?;
+        let row: Option<(String, String, Uuid)> = sqlx::query_as(
+            "SELECT interpretation_text,rationale,recorded_by_principal_id FROM niccolo.situation_analysis_candidate_interpretations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND interpretation_id=$4",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(interpretation.interpretation_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if row
+            != Some((
+                interpretation.text.trim().into(),
+                interpretation.rationale.trim().into(),
+                actor,
+            ))
+        {
+            return Err(UpdateError::Conflict);
+        }
+    }
     for a in &x.assumptions {
         sqlx::query("INSERT INTO niccolo.situation_analysis_assumptions(workspace_id,situation_id,analysis_id,assumption_id,claim_id,statement,basis_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,NULL,$5,$6,$7) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).bind(a.statement.trim()).bind(a.basis_note.trim()).bind(actor).execute(&mut *tx).await?;
         let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT statement,basis_note,recorded_by_principal_id FROM niccolo.situation_analysis_assumptions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND assumption_id=$4").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).fetch_optional(&mut *tx).await?;
@@ -209,6 +259,7 @@ pub async fn apply(
     tx.commit().await?;
     Ok(AppliedUpdate {
         used_contribution_count: x.used_contribution_ids.len(),
+        candidate_interpretation_count: x.candidate_interpretations.len(),
         assumption_count: x.assumptions.len(),
         evidence_gap_count: x.evidence_gaps.len(),
         clarification_count: x.clarifications.len(),
