@@ -3,6 +3,13 @@ on:
   push:
     branches:
       - feature/epistemic-weights-v1
+    paths:
+      - "src/**"
+      - "sql/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/epistemic-reasoning.yml"
   pull_request:
     paths:
       - "src/**"
