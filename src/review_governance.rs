@@ -38,7 +38,9 @@ pub struct ReceiptView {
     pub receipt_id: Uuid,
     pub handoff_sha256: String,
     pub kind: String,
+    pub note: Option<String>,
     pub recipient: Uuid,
+    pub created_at: String,
     pub receipt_means_agreement: bool,
     pub receipt_grants_authority: bool,
 }
@@ -217,8 +219,8 @@ pub async fn handoff_receipts(
     analysis: Uuid,
 ) -> Result<Vec<ReceiptView>, ReviewGovernanceError> {
     let mut tx = scoped(pool, workspace, true).await?;
-    let rows: Vec<(Uuid, String, String, Uuid)> = sqlx::query_as(
-        "SELECT receipt_id,handoff_sha256,receipt_kind,recipient_principal_id \
+    let rows: Vec<(Uuid, String, String, Option<String>, Uuid, String)> = sqlx::query_as(
+        "SELECT receipt_id,handoff_sha256,receipt_kind,note,recipient_principal_id,created_at::text \
          FROM niccolo.situation_reasoning_handoff_receipts \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
          ORDER BY created_at,receipt_id",
@@ -232,11 +234,13 @@ pub async fn handoff_receipts(
     Ok(rows
         .into_iter()
         .map(
-            |(receipt_id, handoff_sha256, kind, recipient)| ReceiptView {
+            |(receipt_id, handoff_sha256, kind, note, recipient, created_at)| ReceiptView {
                 receipt_id,
                 handoff_sha256,
                 kind,
+                note,
                 recipient,
+                created_at,
                 receipt_means_agreement: false,
                 receipt_grants_authority: false,
             },
