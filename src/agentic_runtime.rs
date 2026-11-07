@@ -121,7 +121,9 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         purpose: step.kind.clone(),
         input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
         output_contract: if step.kind == "SYNTHESIZE" {
-            json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","assumptions","alternatives","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
+            json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","context_links","assumptions","alternatives","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
+        } else if matches!(step.kind.as_str(), "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS") {
+            json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","assumptions","evidence_gaps","clarifications"]},"niccolo_rules":{"human_context_is_not_evidence":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
         } else if step.kind == "CHALLENGE_SYNTHESIS" {
             json!({"type":"object","required":["purpose","status","niccolo_challenge"],"niccolo_challenge":{"required":["challenges"]},"niccolo_rules":{"seek_counterevidence":true,"seek_competing_interpretations":true,"challenge_is_not_truth":true,"do_not_execute_human_actions":true}})
         } else {
