@@ -32,12 +32,30 @@ describe('epistemic Playground — real API contract without state mutation', ()
     });
     await client.epistemicPolicy();
     await client.compareEpistemic({ trial_policy: { support_multiplier_pct: 100 } });
+    await client.recordEpistemicPolicy('33333333-3333-4333-8333-333333333333', {
+      situation_id: config.situation,
+      policy: { support_multiplier_pct: 150, counter_multiplier_pct: 100, per_origin_cap: 100 },
+      rationale: 'Human reviewed the hypothetical changes',
+    });
     expect(calls[0].options.method).toBe('GET');
     expect(calls[0].url).toContain('/epistemic/policy?situation_id=' + config.situation);
     expect(calls[1].options.method).toBe('POST');
     expect(calls[1].url).toContain('/epistemic/compare');
     expect(calls[1].options.cache).toBe('no-store');
     expect(calls[1].options.body).toContain('trial_policy');
-    expect(calls[0].url + calls[1].url).not.toContain(config.token);
+    expect(calls[2].options.method).toBe('POST');
+    expect(calls[2].url).toContain('/epistemic/policies/33333333-3333-4333-8333-333333333333');
+    expect(JSON.parse(calls[2].options.body).rationale).toContain('Human reviewed');
+    expect(calls[2].options.headers.Authorization).toContain(config.token);
+    expect(calls.map((call) => call.url).join(' ')).not.toContain(config.token);
+  });
+  it('never saves on a preview and requires an explicit rationale and scope choice', () => {
+    expect(page).toContain('Record a new policy version');
+    expect(page).toContain('policyScope ===');
+    expect(page).toContain('rationale,');
+    expect(page).toContain('onClick={saveTrial}');
+    expect(page).toContain('it does not rewrite frozen analyses');
+    expect(page).toContain('Policy recorded successfully.');
+    expect(page).toContain('save.isSuccess');
   });
 });
