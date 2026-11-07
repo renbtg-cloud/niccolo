@@ -1,5 +1,27 @@
 # Active test progress
 
+## v1.761-v1.800 — safe analysis recovery across connection boundaries
+
+FINAL STATUS: DONE
+
+Frontend-focused validation:
+
+- frontend: 0/42 failed; 42/42 passed across 13 test files;
+- production frontend build: passed;
+- 5/5 changed frontend files were synchronized to GitHub with blob SHAs identical to the tested local files.
+
+The backend is unchanged in this block. The current Rust/PostgreSQL baseline remains 410/410 green.
+
+Validated behavior:
+
+- when connected with no explicit analysis selection, the UI recovers the newest analysis from server-side history for the current workspace + Situation;
+- analysis-history cache keys are workspace- and Situation-scoped, so recovery cannot collide across different Situations;
+- disconnect clears selected analysis and active operation before another connection can be established;
+- bearer token, workspace and Situation credentials remain session-only and are not persisted to browser storage;
+- no analysis UUID is invented client-side during recovery; empty history leaves selection empty.
+
+---
+
 ## v1.721-v1.760 — primary Situation → Analyze → Review journey
 
 FINAL STATUS: DONE
