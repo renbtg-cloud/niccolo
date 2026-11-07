@@ -87,7 +87,7 @@ fn csv(header: &[&str], rows: Vec<Vec<String>>) -> String {
 /// Produce a presentation only from a recorded, immutable analysis bundle.
 /// No caller-controlled evidence roots, invented model steps or inferred truth.
 pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, PresentationError> {
-    let mut files = BTreeMap::new();
+    let mut files: BTreeMap<String, String> = BTreeMap::new();
 
     files.insert(
         "data/analysis.json".into(),
