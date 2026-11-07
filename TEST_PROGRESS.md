@@ -1,5 +1,23 @@
 # Active test progress
 
+## v1.681-v1.720 — ReviewPage hook-order stability
+
+FINAL STATUS: DONE
+
+Frontend-focused validation:
+
+- frontend: 0/38 failed; 38/38 passed across 10 test files;
+- production frontend build: passed;
+- a structural guard test now fails if ReviewPage declares React/TanStack hooks after its first conditional return.
+
+Validated behavior:
+
+- ReviewPage now declares all state/query/mutation hooks before connect/analysis/error conditional returns;
+- changing from disconnected to connected, or from no selected analysis to a selected analysis, no longer changes the component's hook call order;
+- receipt, clarification and reanalysis behavior is unchanged; this block is demo/runtime stability only.
+
+---
+
 ## v1.641-v1.680 — current vs historical handoff receipt semantics
 
 FINAL STATUS: DONE
