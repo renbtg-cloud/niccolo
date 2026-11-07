@@ -283,20 +283,38 @@ async fn heuristic_preview_is_unverified_read_only_and_deduplicates_roots() {
     );
 }
 
-
 #[tokio::test]
 async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_history() {
     let h = setup().await;
     let situation = Uuid::new_v4();
     let base = format!("/v1/workspaces/{}/epistemic", h.workspace);
-    let (status, defaults) = call(h.router.clone(), req("GET", &format!("{base}/policy"), &h.reader, None)).await;
+    let (status, defaults) = call(
+        h.router.clone(),
+        req("GET", &format!("{base}/policy"), &h.reader, None),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(defaults["effective_policy"]["scope"], "BUILTIN_DEFAULT");
-    assert_eq!(defaults["effective_policy"]["policy"]["support_multiplier_pct"], 100);
+    assert_eq!(
+        defaults["effective_policy"]["policy"]["support_multiplier_pct"],
+        100
+    );
 
     let situation_url = format!("/v1/workspaces/{}/situations/{situation}", h.workspace);
-    assert_eq!(call(h.router.clone(), req("POST", &situation_url, &h.writer,
-        Some(json!({"focus":"Why did the meeting happen?"})))).await.0, StatusCode::CREATED);
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req(
+                "POST",
+                &situation_url,
+                &h.writer,
+                Some(json!({"focus":"Why did the meeting happen?"}))
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
 
     let workspace_policy_id = Uuid::new_v4();
     let path = format!("{base}/policies/{workspace_policy_id}");
@@ -305,19 +323,38 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
         "policy":{"support_multiplier_pct":90,"counter_multiplier_pct":110,"per_origin_cap":95},
         "rationale":"Workspace conservative baseline"
     });
-    let (status, created) = call(h.router.clone(), req("POST", &path, &h.writer, Some(policy.clone()))).await;
+    let (status, created) = call(
+        h.router.clone(),
+        req("POST", &path, &h.writer, Some(policy.clone())),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(created["is_probability_model"], false);
     assert_eq!(created["retroactively_changes_frozen_analysis"], false);
-    let (status, replay) = call(h.router.clone(), req("POST", &path, &h.writer, Some(policy.clone()))).await;
+    let (status, replay) = call(
+        h.router.clone(),
+        req("POST", &path, &h.writer, Some(policy.clone())),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(replay["replayed"], true);
 
-    let (status, inherited) = call(h.router.clone(),
-        req("GET", &format!("{base}/policy?situation_id={situation}"), &h.reader, None)).await;
+    let (status, inherited) = call(
+        h.router.clone(),
+        req(
+            "GET",
+            &format!("{base}/policy?situation_id={situation}"),
+            &h.reader,
+            None,
+        ),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(inherited["effective_policy"]["scope"], "WORKSPACE");
-    assert_eq!(inherited["effective_policy"]["policy"]["support_multiplier_pct"], 90);
+    assert_eq!(
+        inherited["effective_policy"]["policy"]["support_multiplier_pct"],
+        90
+    );
 
     let situation_policy_id = Uuid::new_v4();
     let override_path = format!("{base}/policies/{situation_policy_id}");
@@ -326,15 +363,40 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
         "policy":{"support_multiplier_pct":35,"counter_multiplier_pct":160,"per_origin_cap":75},
         "rationale":"Investigate contrary evidence more heavily"
     });
-    assert_eq!(call(h.router.clone(), req("POST", &override_path, &h.writer, Some(override_policy.clone()))).await.0,
-        StatusCode::CREATED);
-    let (status, overridden) = call(h.router.clone(),
-        req("GET", &format!("{base}/policy?situation_id={situation}"), &h.reader, None)).await;
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req(
+                "POST",
+                &override_path,
+                &h.writer,
+                Some(override_policy.clone())
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (status, overridden) = call(
+        h.router.clone(),
+        req(
+            "GET",
+            &format!("{base}/policy?situation_id={situation}"),
+            &h.reader,
+            None,
+        ),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(overridden["effective_policy"]["scope"], "SITUATION");
-    assert_eq!(overridden["effective_policy"]["policy"]["counter_multiplier_pct"], 160);
-    assert_eq!(overridden["effective_policy"]["retroactively_changes_frozen_analysis"], false);
-
+    assert_eq!(
+        overridden["effective_policy"]["policy"]["counter_multiplier_pct"],
+        160
+    );
+    assert_eq!(
+        overridden["effective_policy"]["retroactively_changes_frozen_analysis"],
+        false
+    );
 
     // EPI-009: omit trial policy to inherit the persisted Situation override.
     let preview_path = format!("{base}/preview");
@@ -349,13 +411,27 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
             "rationale":"hypothetical report for preview"
         }]
     });
-    let (status, inherited_preview) = call(h.router.clone(),
-        req("POST", &preview_path, &h.reader, Some(preview_input.clone()))).await;
+    let (status, inherited_preview) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &preview_path,
+            &h.reader,
+            Some(preview_input.clone()),
+        ),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(inherited_preview["policy_source"], "SITUATION");
     assert_eq!(inherited_preview["report"]["support_points"], 28);
-    assert_eq!(inherited_preview["report"]["human_declared_confidence_percent"], 90);
-    assert_eq!(inherited_preview["report"]["score_is_probability_of_truth"], false);
+    assert_eq!(
+        inherited_preview["report"]["human_declared_confidence_percent"],
+        90
+    );
+    assert_eq!(
+        inherited_preview["report"]["score_is_probability_of_truth"],
+        false
+    );
 
     // An explicitly trialled policy can differ without changing storage.
     let mut trial_input = preview_input;
@@ -364,31 +440,73 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
         "counter_multiplier_pct":100,
         "per_origin_cap":100
     });
-    let (status, trial) = call(h.router.clone(),
-        req("POST", &preview_path, &h.reader, Some(trial_input))).await;
+    let (status, trial) = call(
+        h.router.clone(),
+        req("POST", &preview_path, &h.reader, Some(trial_input)),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(trial["policy_source"], "EXPLICIT_PREVIEW_OVERRIDE");
     assert_eq!(trial["report"]["support_points"], 80);
     assert_eq!(trial["changes_any_persisted_state"], false);
 
-
-    let (status, unchanged) = call(h.router.clone(), req("GET", &format!("{base}/policy"), &h.reader, None)).await;
+    let (status, unchanged) = call(
+        h.router.clone(),
+        req("GET", &format!("{base}/policy"), &h.reader, None),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(unchanged["effective_policy"]["scope"], "WORKSPACE");
 
     let mut different = override_policy.clone();
     different["policy"]["counter_multiplier_pct"] = json!(40);
-    assert_eq!(call(h.router.clone(), req("POST", &override_path, &h.writer, Some(different))).await.0,
-        StatusCode::CONFLICT);
-    assert_eq!(call(h.router.clone(), req("POST", &override_path, &h.reader, Some(override_policy))).await.0,
-        StatusCode::FORBIDDEN);
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req("POST", &override_path, &h.writer, Some(different))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req("POST", &override_path, &h.reader, Some(override_policy))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
     let mut bad = policy;
     bad["policy"]["support_multiplier_pct"] = json!(201);
-    assert_eq!(call(h.router.clone(),
-        req("POST", &format!("{base}/policies/{}", Uuid::new_v4()), &h.writer, Some(bad))).await.0,
-        StatusCode::BAD_REQUEST);
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req(
+                "POST",
+                &format!("{base}/policies/{}", Uuid::new_v4()),
+                &h.writer,
+                Some(bad)
+            )
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
     let unknown = Uuid::new_v4();
-    assert_eq!(call(h.router.clone(),
-        req("GET", &format!("{base}/policy?situation_id={unknown}"), &h.reader, None)).await.0,
-        StatusCode::NOT_FOUND);
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req(
+                "GET",
+                &format!("{base}/policy?situation_id={unknown}"),
+                &h.reader,
+                None
+            )
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
 }
