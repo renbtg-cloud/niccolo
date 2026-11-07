@@ -75,7 +75,7 @@ Both observations share one documented origin: their supportive strength is coun
 - The arithmetic is a configurable **heuristic evidence balance**, not Bayesian or calibrated probability.
 - No score is evidence of motive, proof of guilt, or authorization for a consequential decision.
 - The endpoint is read-only with respect to application state, but authentication and normal request processing remain in force.
-- No complete graphical Playground exists yet.
+- A **heuristic** graphical Playground is available under **Technical → Playground**. Full LLM-replay simulation is **not** available.
 
 ## Workspace and Situation heuristic policies
 
@@ -113,12 +113,47 @@ The preview endpoint allows the policy object to be omitted; when omitted it use
 
 This is **not** an automatic statistical fitting process. No weighting result is permitted to convert subjective belief into documentary truth. Policy records must not rewrite frozen historical analyses.
 
-### Next integration boundary
+## Source-grounded claim scoring (EPI-013 and EPI-014)
 
-A real document-backed, claim-level weight evaluation will require every numerical contribution to refer to an existing authorized evidence ID, and its derivation root to be resolved from the actual provenance graph. The current preview deliberately does **not** claim source validation or independent witnesses.
+This route is different from the unverified synthetic preview:
 
-A whole-investigation replay UI belongs after this verified boundary and must isolate its trial runs from historical facts and live decisions.
+\`\`\`http
+POST /v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/claims/{claim}/epistemic/evaluate
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "human_declared_confidence_percent": 90,
+  "evidence": [
+    {
+      "evidence_id": "00000000-0000-4000-8000-000000000001",
+      "declared_strength": 80,
+      "rationale": "The user considers this a strong indication"
+    }
+  ]
+}
+\`\`\`
+
+The UUID above is just a shape example; real use requires an actual *examined and claim-linked* evidence UUID. An unknown, unrelated, or invented evidence link is rejected, not silently accepted.
+
+The backend obtains stance from stored claim/evidence relations. It retrieves source-document membership, follows **recorded** multi-parent derivation ancestry in PostgreSQL under the same repeatable-read transaction, and conservatively groups selected fragments sharing a documented ancestor or source document.
+
+The response exposes:
+- per-evidence recorded relation, declared strength and structural dependence group;
+- known lineage component membership and recorded roots, never a guarantee of witness independence;
+- \`source_graph_revision\` from the database snapshot;
+- support, contradiction, net *heuristic* points, and explicit non-probability/non-fact flags.
+
+A source group key is a **computational component representative**. It must never be displayed as if it were a verified original source. Unknown unrecorded dependencies are still possible. Recorded withdrawn ancestors and cycles fail closed.
+
+## User-configurable policy in the Playground
+
+The Technical Playground uses fictional IDs against the read-only \`/epistemic/compare\` route. It does **not** read or write documentary evidence or call an LLM.
+
+After comparing, a human can optionally invoke a separate, authenticated **write** operation to create an append-only policy record for the active Situation or the workspace default. The human supplies a rationale. This changes future effective weighting, not frozen historical analyses.
+
+This is not an automatic statistical fitting process and not a full model-reasoning replay. A future isolated replay feature needs frozen input snapshots, reproducible provider settings and transparent stochastic variability.
 
 ## Validation gate before merge
 
-Run \`rustfmt --edition 2024 --check\` on the changed Rust sources, \`cargo test --locked --lib\`, strict Clippy, all migrations on a fresh PostgreSQL 17, and authenticated HTTP integration tests. The draft PR deliberately stays separate from main until compatibility is checked.
+Run \`rustfmt --edition 2024 --check\` on the changed Rust sources, \`cargo test --locked --lib\`, strict Clippy, all migrations on a fresh PostgreSQL 17, and authenticated HTTP integration tests. The implemented EPI-001–011, EPI-013/014 and initial EPI-017 slices passed Linux CI and were merged into main. Future changes still require their own verification.
