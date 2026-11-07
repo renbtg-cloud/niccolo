@@ -1,5 +1,34 @@
 # Active test progress
 
+## v1.561-v1.600 — SHA-bound authenticated reasoning handoff receipts
+
+FINAL STATUS: DONE
+
+Validated on Debian 13 / PostgreSQL 17.11 with the 81-migration schema:
+
+- focused adversarial handoff-receipt API test: passed;
+- full BFF HTTP integration suite: 0/17 failed; 17/17 passed;
+- existing review-governance handoff receipt milestone remained green;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/410 failed; 410/410 passed;
+- frontend: 0/37 failed; 37/37 passed across 9 test files;
+- production frontend build: passed;
+- changed Rust files pass rustfmt check;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+Validated behavior:
+
+- a receipt binds to the exact current deterministic handoff SHA-256;
+- stale handoff hashes fail closed with HTTP 409 and require the human to refresh before recording a receipt;
+- the receipt recipient is derived from the authenticated principal, never accepted from browser JSON;
+- read-only credentials cannot record receipts;
+- exact replay of the same receipt identifier and payload is idempotent and returns replay state;
+- reusing a receipt identifier with changed hash/kind/note/recipient fails closed as a replay conflict;
+- `RECEIVED`, `REVIEWED` and `DECLINED` remain distinct append-only human events;
+- receipt means neither agreement nor authority;
+- the first-party Review UI can record and summarize receipts without changing the handoff or executing any action.
+
+---
+
 ## v1.521-v1.560 — analysis-scoped reasoning handoff read model
 
 FINAL STATUS: DONE
