@@ -16,8 +16,8 @@ use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
-use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
+use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
@@ -3568,7 +3568,6 @@ async fn compare_epistemic_policies(
     ))
 }
 
-
 // EPI-013: source-checked human-declared weights on an existing analysis claim.
 // Never infer stance or provenance from the request body.
 #[derive(Deserialize)]
@@ -3584,13 +3583,17 @@ fn grounded_weight_error(error: GroundedWeightError) -> ApiError {
             ApiError(StatusCode::BAD_REQUEST, "invalid claim evidence weights")
         }
         GroundedWeightError::MissingClaim => ApiError(StatusCode::NOT_FOUND, "claim unavailable"),
-        GroundedWeightError::UnlinkedEvidence => {
-            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "evidence not linked to this claim")
-        }
+        GroundedWeightError::UnlinkedEvidence => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "evidence not linked to this claim",
+        ),
         GroundedWeightError::AmbiguousLink => {
             ApiError(StatusCode::CONFLICT, "conflicting claim-to-evidence use")
         }
-        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "grounded weighting unavailable"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "grounded weighting unavailable",
+        ),
     }
 }
 async fn evaluate_grounded_claim_weights(
