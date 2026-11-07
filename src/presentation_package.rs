@@ -73,7 +73,12 @@ fn csv(header: &[&str], rows: Vec<Vec<String>>) -> String {
     );
     out.push('\n');
     for row in rows {
-        out.push_str(&row.iter().map(|x| csv_cell(x)).collect::<Vec<_>>().join(","));
+        out.push_str(
+            &row.iter()
+                .map(|x| csv_cell(x))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
         out.push('\n');
     }
     out
@@ -98,7 +103,14 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
     files.insert(
         "data/claims.csv".into(),
         csv(
-            &["claim_id", "ordinal", "kind", "text", "qualification", "created_by"],
+            &[
+                "claim_id",
+                "ordinal",
+                "kind",
+                "text",
+                "qualification",
+                "created_by",
+            ],
             bundle
                 .claims
                 .iter()
@@ -322,7 +334,9 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
         ),
     );
 
-    if files.values().any(|contents| contents.len() > MAX_PACKAGE_BYTES)
+    if files
+        .values()
+        .any(|contents| contents.len() > MAX_PACKAGE_BYTES)
         || files.values().map(String::len).sum::<usize>() > MAX_PACKAGE_BYTES
     {
         return Err(PresentationError::TooLarge);
@@ -337,7 +351,10 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
             )
         })
         .collect();
-    files.insert("SHA256SUMS.json".into(), serde_json::to_string_pretty(&sums)?);
+    files.insert(
+        "SHA256SUMS.json".into(),
+        serde_json::to_string_pretty(&sums)?,
+    );
 
     Ok(PresentationPackage {
         format: "niccolo.presentation-package".into(),
