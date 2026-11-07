@@ -961,3 +961,133 @@ async fn reasoning_handoff_read_model_survives_operation_and_preserves_non_autho
     assert_eq!(view["read_model_is_authority"], false);
     assert_eq!(view["read_model_executes_actions"], false);
 }
+
+
+#[tokio::test]
+async fn handoff_receipt_is_sha_bound_idempotent_and_never_implies_agreement_or_authority() {
+    let s = setup().await;
+    let principal: Uuid = sqlx::query_scalar(
+        "SELECT requested_by_principal_id FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    let handoff_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/bff/handoff",
+        s.workspace, s.situation, s.analysis
+    );
+    let (status, _, handoff) = invoke(
+        s.router.clone(),
+        req("GET", &handoff_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let sha = handoff["handoff_sha256"].as_str().unwrap().to_owned();
+
+    let receipt = Uuid::new_v4();
+    let receipt_path = format!("{handoff_path}/receipts/{receipt}");
+    let payload = json!({
+        "handoff_sha256": sha,
+        "kind": "REVIEWED",
+        "note": "Reviewed by the authenticated recipient"
+    });
+    let (status, _, created) = invoke(
+        s.router.clone(),
+        req("POST", &receipt_path, &s.token, Some(payload.clone()), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["recipient_principal_id"], principal.to_string());
+    assert_eq!(created["replayed"], false);
+    assert_eq!(created["receipt_means_agreement"], false);
+    assert_eq!(created["receipt_grants_authority"], false);
+
+    let (status, _, replay) = invoke(
+        s.router.clone(),
+        req("POST", &receipt_path, &s.token, Some(payload.clone()), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["replayed"], true);
+
+    let mut conflicting = payload.clone();
+    conflicting["kind"] = json!("DECLINED");
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req("POST", &receipt_path, &s.token, Some(conflicting), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let stale_receipt = Uuid::new_v4();
+    let stale_path = format!("{handoff_path}/receipts/{stale_receipt}");
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &stale_path,
+            &s.token,
+            Some(json!({
+                "handoff_sha256": "b".repeat(64),
+                "kind": "RECEIVED",
+                "note": null
+            })),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let read_only = authz::provision_token(&s.admin, Uuid::new_v4(), s.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let read_only_receipt = Uuid::new_v4();
+    let read_only_path = format!("{handoff_path}/receipts/{read_only_receipt}");
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &read_only_path,
+            &read_only,
+            Some(json!({
+                "handoff_sha256": handoff["handoff_sha256"],
+                "kind": "RECEIVED",
+                "note": null
+            })),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let receipts_path = format!("{handoff_path}/receipts");
+    let (status, _, list) = invoke(
+        s.router.clone(),
+        req("GET", &receipts_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["receipts"].as_array().unwrap().len(), 1);
+    assert_eq!(list["receipts"][0]["receipt_id"], receipt.to_string());
+    assert_eq!(list["receipts"][0]["kind"], "REVIEWED");
+    assert_eq!(
+        list["receipts"][0]["recipient_principal_id"],
+        principal.to_string()
+    );
+    assert_eq!(list["receipt_means_agreement"], false);
+    assert_eq!(list["receipt_grants_authority"], false);
+
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_reasoning_handoff_receipts WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    assert_eq!(stored, 1);
+}
