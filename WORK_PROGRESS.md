@@ -19,6 +19,7 @@ Closed/validated in this resumed block:
 - v1.521-v1.560 the deterministic handoff is now a stable analysis-scoped BFF read model and is visible in the first-party human review UI after operation state is gone;
 - v1.561-v1.600 authenticated humans can now record SHA-bound handoff receipts (received/reviewed/declined); exact replay is idempotent, conflicting replay fails closed, and receipt never means agreement or authority;
 - v1.601-v1.640 receipt history is now fully inspectable in the read model and Review UI with note, timestamp, recipient, kind and exact handoff hash while preserving non-agreement/non-authority semantics;
+- v1.641-v1.680 receipt currentness is backend-owned: receipts for prior handoff hashes remain historical and can never imply that the current deterministic handoff was reviewed;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
 - 410/410 Rust/PostgreSQL tests pass in bounded suites;
 - 37/37 frontend tests and the production build pass;
