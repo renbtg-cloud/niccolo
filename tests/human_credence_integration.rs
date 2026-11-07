@@ -209,19 +209,29 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
     );
     assert_eq!(listed["confidence_establishes_truth"], false);
 
-
     // The reasoning packet carries this as PRESENT human control, never frozen evidence.
     let digest = authz::credential_digest(&h.reader).unwrap();
-    let packet = authz::with_auth_digest(digest, reasoning_packet::build(
-        &h.secure,
-        AnalysisScope { workspace: h.workspace, situation, analysis },
-    )).await.unwrap();
+    let packet = authz::with_auth_digest(
+        digest,
+        reasoning_packet::build(
+            &h.secure,
+            AnalysisScope {
+                workspace: h.workspace,
+                situation,
+                analysis,
+            },
+        ),
+    )
+    .await
+    .unwrap();
     assert_eq!(packet.current_human_control.claim_credence.len(), 1);
-    assert_eq!(packet.current_human_control.claim_credence[0].confidence_percent, 90);
+    assert_eq!(
+        packet.current_human_control.claim_credence[0].confidence_percent,
+        90
+    );
     assert!(!packet.current_human_control.claim_credence[0].part_of_frozen_analysis_input);
     assert!(packet.frozen_input.contributions.is_empty());
     assert!(!packet.packet_asserts_truth);
-
 
     let mut invalid = body;
     invalid["confidence_percent"] = json!(101);
