@@ -48,7 +48,10 @@ pub struct HumanCredenceView {
 
 pub fn valid(input: &NewHumanCredence) -> bool {
     (0..=100).contains(&input.confidence_percent)
-        && matches!(input.usage_policy.as_str(), "SUBJECTIVE_BELIEF" | "OPERATIONAL_PREMISE")
+        && matches!(
+            input.usage_policy.as_str(),
+            "SUBJECTIVE_BELIEF" | "OPERATIONAL_PREMISE"
+        )
         && !input.rationale.trim().is_empty()
         && input.rationale.len() <= 4096
         && !input.rationale.contains('\0')
@@ -152,12 +155,14 @@ pub async fn record(
     .bind(input.credence_id)
     .fetch_optional(&mut *tx)
     .await?;
-    if existing != Some((
-        input.confidence_percent,
-        input.usage_policy.clone(),
-        input.rationale.trim().into(),
-        input.recorded_by,
-    )) {
+    if existing
+        != Some((
+            input.confidence_percent,
+            input.usage_policy.clone(),
+            input.rationale.trim().into(),
+            input.recorded_by,
+        ))
+    {
         return Err(CredenceError::Conflict);
     }
     tx.commit().await?;
@@ -252,8 +257,12 @@ mod tests {
     #[test]
     fn human_record_cannot_be_transmuted_into_evidence() {
         let v = view((
-            Uuid::nil(), Uuid::from_u128(1), 90,
-            "SUBJECTIVE_BELIEF".into(), "my context".into(), Uuid::from_u128(2)
+            Uuid::nil(),
+            Uuid::from_u128(1),
+            90,
+            "SUBJECTIVE_BELIEF".into(),
+            "my context".into(),
+            Uuid::from_u128(2),
         ));
         assert!(v.is_human_declaration);
         assert!(!v.is_documentary_evidence);
