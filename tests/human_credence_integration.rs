@@ -476,7 +476,6 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
     assert_eq!(trial["report"]["support_points"], 80);
     assert_eq!(trial["changes_any_persisted_state"], false);
 
-
     let comparison_input = json!({
         "situation_id": situation,
         "trial_policy": {
@@ -516,13 +515,17 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
     assert_eq!(
         call(
             h.router.clone(),
-            req("POST", &format!("{base}/compare"), &h.reader, Some(invalid_trial)),
+            req(
+                "POST",
+                &format!("{base}/compare"),
+                &h.reader,
+                Some(invalid_trial)
+            ),
         )
         .await
         .0,
         StatusCode::BAD_REQUEST
     );
-
 
     let (status, unchanged) = call(
         h.router.clone(),
