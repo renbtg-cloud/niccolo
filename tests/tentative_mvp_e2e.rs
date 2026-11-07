@@ -508,11 +508,15 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
 
     let wires = h.wires.lock().unwrap().clone();
     assert!(
-        wires.iter().any(|wire| wire.contains("I will arrive at noon")),
+        wires
+            .iter()
+            .any(|wire| wire.contains("I will arrive at noon")),
         "provider requests must include source fragment text from the frozen Situation input"
     );
     assert!(
-        wires.iter().any(|wire| wire.contains("I remember Ana sounding unusually certain.")),
+        wires
+            .iter()
+            .any(|wire| wire.contains("I remember Ana sounding unusually certain.")),
         "human context must remain available to the provider separately from source evidence"
     );
 }
