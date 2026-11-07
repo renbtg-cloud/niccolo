@@ -1,5 +1,21 @@
 # Active work progress
 
+## Epistemic reasoning weights — verified baseline
+
+Milestones EPI-001 through EPI-011 have been merged into main through PR #16:
+- Explicit, typed distinction between human subjective confidence, evidence balance, claim status and investigation priority.
+- Append-only human confidence records on analysis claims, with actor attribution, RLS, replay conflict semantics and HTTP read/write APIs.
+- Deterministic conservative evidence-weight grouping, without auto-promoting opinions or duplicate sources into verified facts.
+- Append-only workspace defaults and Situation-specific heuristic weight policies with effective-policy resolution.
+- Read-only preview and baseline/trial comparison endpoints; neither is a complete replay of model reasoning or a calibrated truth probability.
+- Current human confidence and current effective heuristic policy are supplied to reasoning without rewriting frozen historical input.
+- PostgreSQL migrations 0082 and 0083 added.
+
+Acceptance in GitHub Actions: **0/427 Rust tests failed (427/427 passed)** in the full PostgreSQL-feature regression; **0/3 focused API/PostgreSQL tests failed (3/3 passed)**; **0/58 frontend tests failed (58/58 passed)**; all 83 SQL migrations, strict Clippy, formatting and production frontend build succeeded. The CI workflow is stored in `.github/workflows/epistemic-reasoning.yml`.
+
+Still outside this completed slice: pre-analysis document-level subjective confidence, provenance-grounded automatic numerical claim weighting, multi-parent root resolution, and full isolated Replay Playground. See `EPISTEMIC_WEIGHTING_MVP.md` for bounded follow-ons EPI-012…017. The Linux-first MVP should not be delayed by post-MVP model routing or OS-specific installer work.
+
+
 This file is an intentionally frequent checkpoint for long or uncertain development/test runs.
 
 ## 2026-11-07
