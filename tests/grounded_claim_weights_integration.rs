@@ -211,9 +211,21 @@ async fn weighting_uses_only_real_claim_links_and_stored_relation() {
     assert_eq!(v["assessment"]["stance_derived_from_analysis_links"], true);
     assert_eq!(v["assessment"]["origins_grouped_by_document_id"], false);
     assert_eq!(v["assessment"]["derivation_graph_traversed"], true);
-    assert_eq!(v["assessment"]["grouping_mode"], "RECORDED_DEPENDENCE_COMPONENT");
-    assert_eq!(v["assessment"]["recorded_dependence"]["clusters"].as_array().unwrap().len(), 1);
-    assert_eq!(v["assessment"]["recorded_dependence"]["different_clusters_establish_independence"], false);
+    assert_eq!(
+        v["assessment"]["grouping_mode"],
+        "RECORDED_DEPENDENCE_COMPONENT"
+    );
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["different_clusters_establish_independence"],
+        false
+    );
     assert!(v["assessment"]["source_graph_revision"].as_i64().unwrap() > 0);
     assert_eq!(v["assessment"]["independent_witnesses_established"], false);
     assert_eq!(v["assessment"]["establishes_claim_truth"], false);
@@ -320,7 +332,6 @@ async fn ambiguous_claim_evidence_links_fail_closed() {
     assert_eq!(v["error"], "conflicting claim-to-evidence use");
 }
 
-
 #[tokio::test]
 async fn recorded_multi_parent_lineage_is_used_and_revocation_fails_closed() {
     let h = setup().await;
@@ -333,46 +344,102 @@ async fn recorded_multi_parent_lineage_is_used_and_revocation_fails_closed() {
     for selected in s.evidence.iter().take(2) {
         sqlx::query(
             "INSERT INTO niccolo.evidence_derivation(workspace_id,child_id,parent_id,relation) \
-             VALUES($1,$2,$3,'DERIVED_FROM')"
-        ).bind(h.workspace).bind(selected).bind(common_ancestor).execute(&h.admin).await.unwrap();
+             VALUES($1,$2,$3,'DERIVED_FROM')",
+        )
+        .bind(h.workspace)
+        .bind(selected)
+        .bind(common_ancestor)
+        .execute(&h.admin)
+        .await
+        .unwrap();
     }
-    let (status, v) = call(h.router.clone(),req(
-        "POST",&s.path,&h.reader,Some(body(s.evidence[0],s.evidence[1]))
-    )).await;
+    let (status, v) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &s.path,
+            &h.reader,
+            Some(body(s.evidence[0], s.evidence[1])),
+        ),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(v["assessment"]["recorded_dependence"]["clusters"].as_array().unwrap().len(),1);
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(
         v["assessment"]["recorded_dependence"]["clusters"][0]["documented_roots"][0],
         common_ancestor.to_string()
     );
-    assert_eq!(v["assessment"]["recorded_dependence"]["known_lineage_node_count"],3);
-    assert_eq!(v["assessment"]["report"]["origins"].as_array().unwrap().len(),1);
-    assert_eq!(v["assessment"]["derivation_graph_traversed"],true);
-    assert_eq!(v["assessment"]["recorded_dependence"]["establishes_truth"],false);
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["known_lineage_node_count"],
+        3
+    );
+    assert_eq!(
+        v["assessment"]["report"]["origins"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(v["assessment"]["derivation_graph_traversed"], true);
+    assert_eq!(
+        v["assessment"]["recorded_dependence"]["establishes_truth"],
+        false
+    );
     // This transaction's graph revision is visible for the future evaluation audit.
     assert!(v["assessment"]["source_graph_revision"].as_i64().unwrap() > 0);
 
-    sqlx::query("UPDATE niccolo.evidence SET admissible=false WHERE workspace_id=$1 AND evidence_id=$2")
-        .bind(h.workspace).bind(common_ancestor).execute(&h.admin).await.unwrap();
-    let (status, rejected)=call(h.router.clone(),req(
-        "POST",&s.path,&h.reader,Some(body(s.evidence[0],s.evidence[1]))
-    )).await;
-    assert_eq!(status,StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(rejected["error"],"withdrawn recorded provenance");
+    sqlx::query(
+        "UPDATE niccolo.evidence SET admissible=false WHERE workspace_id=$1 AND evidence_id=$2",
+    )
+    .bind(h.workspace)
+    .bind(common_ancestor)
+    .execute(&h.admin)
+    .await
+    .unwrap();
+    let (status, rejected) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &s.path,
+            &h.reader,
+            Some(body(s.evidence[0], s.evidence[1])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(rejected["error"], "withdrawn recorded provenance");
 }
 
 #[tokio::test]
 async fn cycles_in_recorded_provenance_are_rejected() {
-    let h=setup().await;
-    let s=seed(&h).await;
+    let h = setup().await;
+    let s = seed(&h).await;
     sqlx::query(
         "INSERT INTO niccolo.evidence_derivation(workspace_id,child_id,parent_id,relation) \
-         VALUES($1,$2,$3,'DERIVED_FROM'),($1,$3,$2,'DERIVED_FROM')"
-    ).bind(h.workspace).bind(s.evidence[0]).bind(s.evidence[1])
-    .execute(&h.admin).await.unwrap();
-    let (status,v)=call(h.router.clone(),req(
-        "POST",&s.path,&h.reader,Some(body(s.evidence[0],s.evidence[1]))
-    )).await;
-    assert_eq!(status,StatusCode::CONFLICT);
-    assert_eq!(v["error"],"cyclic recorded provenance");
+         VALUES($1,$2,$3,'DERIVED_FROM'),($1,$3,$2,'DERIVED_FROM')",
+    )
+    .bind(h.workspace)
+    .bind(s.evidence[0])
+    .bind(s.evidence[1])
+    .execute(&h.admin)
+    .await
+    .unwrap();
+    let (status, v) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &s.path,
+            &h.reader,
+            Some(body(s.evidence[0], s.evidence[1])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(v["error"], "cyclic recorded provenance");
 }
