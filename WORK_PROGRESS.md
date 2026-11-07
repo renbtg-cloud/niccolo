@@ -1,5 +1,15 @@
 # Active work progress
 
+## Multi-parent provenance dependence — EPI-014 foundation (verified)
+
+PR #18 merged to main at `fd3cb44`:
+- New `src/provenance_clusters.rs` pure Rust helper computes conservative transitive dependence components for selected evidence linked by the same source document or any **documented common ancestor**.
+- Multi-parent ancestry, diamonds and chains are handled; missing declared ancestors, cycles and withdrawn ancestors fail closed. It does not certify truth, witness independence or completeness of unknown provenance relationships.
+- This is **an isolated deterministic building block**, NOT yet wired to the live claim scoring DB endpoint from EPI-013. That endpoint still groups by source document and explicitly reports `derivation_graph_traversed=false`.
+- CI run `42418745135`: **0/440 Rust tests failed (440/440 passed)**, including **122/122 library tests**; **0/58 frontend tests failed (58/58 passed)**; the focused API integration suites, all 83 SQL migrations, strict Clippy, formatting and frontend build passed.
+- Next: bind multi-parent graph closure to actual PostgreSQL evidence_derivation rows and use the derived conservative component groups in EPI-013; prove safe failure on incomplete/ambiguous lineage before declaring operational integration.
+
+
 ## Source-grounded claim weighting — EPI-013 (verified)
 
 PR #17 is merged into main at `1ab6a57`.
