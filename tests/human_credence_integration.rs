@@ -16,6 +16,7 @@ struct Harness {
     router: Router,
     admin: PgPool,
     workspace: Uuid,
+    writer_principal: Uuid,
     writer: String,
     other_writer: String,
     reader: String,
@@ -33,13 +34,14 @@ async fn setup() -> Harness {
     let workspace = Uuid::new_v4();
     sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'human credence test')")
         .bind(workspace).execute(&admin).await.unwrap();
-    let writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1)
+    let writer_principal = Uuid::new_v4();
+    let writer = authz::provision_token(&admin, writer_principal, workspace, true, true, 1)
         .await.unwrap();
     let other_writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1)
         .await.unwrap();
     let reader = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, false, 1)
         .await.unwrap();
-    Harness { router: api::router(secure), admin, workspace, writer, other_writer, reader }
+    Harness { router: api::router(secure), admin, workspace, writer_principal, writer, other_writer, reader }
 }
 
 fn req(method: &str, url: &str, token: &str, body: Option<Value>) -> Request<Body> {
@@ -75,15 +77,8 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
     )).await;
     assert_eq!(status, StatusCode::CREATED);
 
-    // Admin-only test fixture, never a runtime privileged connection.
-    // Obtain an actual principal of the writer from the credential store via the
-    // workspace membership relation, rather than inventing a foreign key.
-    let principal: Uuid = sqlx::query_scalar(
-        "SELECT p.principal_id FROM niccolo_auth.principals p \
-         JOIN niccolo_auth.credentials c ON c.principal_id=p.principal_id \
-         WHERE c.workspace_id=$1 ORDER BY c.created_at LIMIT 1"
-    )
-    .bind(h.workspace).fetch_one(&h.admin).await.unwrap();
+    // Admin-only fixture: use the actual writer principal, never an invented FK.
+    let principal = h.writer_principal;
 
     sqlx::query(
         "INSERT INTO niccolo.situation_analysis_claims \
