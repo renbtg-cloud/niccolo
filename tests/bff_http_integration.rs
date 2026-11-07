@@ -871,7 +871,6 @@ async fn v921_v940_reanalysis_revision_endpoint_reports_recorded_change_without_
     );
 }
 
-
 #[tokio::test]
 async fn reasoning_handoff_read_model_survives_operation_and_preserves_non_authority_boundaries() {
     let s = setup().await;
