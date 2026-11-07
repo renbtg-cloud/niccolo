@@ -18,6 +18,11 @@ This document separates the following concepts by **type**, origin and semantics
 - EPI-005 — Expose current claim confidence explicitly to reasoning, *not* as part of frozen historical evidence; preserve the original analysis horizon.
 - EPI-006 — Add integration/regression tests, including forged evidence references and replay conflicts.
 - EPI-007 — Enable configurable weights and a read-only preview/playground only after the basic mechanism is proven end-to-end.
+- EPI-008 — Persist workspace-default and Situation-specific weight policies with append-only author attribution, RLS and effective-policy selection.
+- EPI-009 — Make previews inherit configured policies, with explicit, non-persisting trial overrides.
+- EPI-010 — Compare baseline and trial evidence-balance scores side by side; clearly state this is NOT a full reasoning replay.
+- EPI-011 — Include effective heuristics beside human credence in *current human control* of the model packet; never in frozen evidence.
+
 
 ## Guardrails
 
@@ -38,3 +43,14 @@ Store: **human-declared confidence 90**, scoped to the precise claim, with the u
 ## Validation
 
 A successfully written GitHub commit is not a passing Rust/SQL test. The acceptance gate is cargo fmt, strict clippy, PostgreSQL migration clean-install, Rust integration suite and an end-to-end API exercise. If a toolchain is unavailable, report that explicitly and keep experimental changes out of main until validated.
+
+## Next bounded milestones (not implemented by EPI-001…011)
+
+- EPI-012 — At document import / Situation contribution time, support a human's explicitly scoped numerical judgment before any model-generated claim exists. Keep that judgment separate from document contents and snapshot it at analysis start.
+- EPI-013 — Ground every scored evidence contribution in an authorized, examined evidence record and an actual claim-support link; eliminate caller-supplied hypothetical origin IDs from production scoring.
+- EPI-014 — Resolve multi-parent provenance roots and overlapping derivation components conservatively; do not confuse distinct roots with statistically independent witnesses.
+- EPI-015 — Record per-evaluation policy IDs, source graph revision, weight arithmetic and algorithm version to make a decision trace auditable.
+- EPI-016 — Read-only, isolated Reasoning Playground: replay from frozen historical inputs and compare results of full model runs, clearly distinguishing stochastic variability from configuration effects.
+- EPI-017 — Provide graphical controls and documentation for workspace vs Situation policy, confidence provenance and preview comparisons, without making advanced controls compulsory for novice users.
+
+**Status boundary:** EPI-001…011 supply a typed and explainable foundation, not a full probabilistic belief-revision engine. In particular, a human's 90% belief must not be silently treated as a model-calibrated posterior.
