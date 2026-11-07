@@ -17,6 +17,7 @@ use crate::discovery;
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
+use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::postgres_ingest::{self, ImportError};
@@ -229,6 +230,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/graph", get(graph))
         .route("/v1/workspaces/{workspace}/assess", post(assess))
+        .route("/v1/workspaces/{workspace}/epistemic/preview", post(preview_epistemic_balance))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
@@ -3332,5 +3334,37 @@ async fn list_human_credence(
         "claim_id": claim,
         "human_credence": entries,
         "confidence_establishes_truth": false
+    }), StatusCode::OK))
+}
+
+
+// EPI-007: deterministic, read-only preview for hypothetical weighting settings.
+// Inputs are NOT checked against the evidence database; no persisted judgment,
+// source-validation or fact claim is created by this endpoint.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WeightPreviewRequest {
+    policy: WeightPolicy,
+    human_declared_confidence_percent: Option<u8>,
+    observations: Vec<WeightedObservation>,
+}
+async fn preview_epistemic_balance(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Json(request): Json<WeightPreviewRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let report = epistemic_weights::evaluate(
+        request.policy,
+        request.human_declared_confidence_percent,
+        &request.observations,
+    ).map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid preview weights"))?;
+    Ok(no_store(json!({
+        "report": report,
+        "mode": "UNVERIFIED_PREVIEW",
+        "inputs_checked_against_database": false,
+        "changes_any_persisted_state": false,
+        "authorizes_real_world_action": false
     }), StatusCode::OK))
 }
