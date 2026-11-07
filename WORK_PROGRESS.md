@@ -15,6 +15,7 @@ Closed/validated in this resumed block:
 - v1.361-v1.400 stop-condition checking and handoff preparation are deterministic steps, eliminating unnecessary LLM calls while preserving auditable controller state;
 - v1.401-v1.440 competing interpretations are durable pre-synthesis reasoning state, feed later packets, and remain explicitly non-factual/unranked;
 - v1.441-v1.480 persisted clarification questions now feed later reasoning packets with a bounded, explicit truncation contract;
+- v1.481-v1.520 deterministic handoff v2 now carries clarification state and pre-synthesis candidate interpretations, so the human handback preserves the reasoning trail rather than only final claims;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
 - 408/408 Rust/PostgreSQL tests pass in bounded suites;
 - 32/32 frontend tests and the production build pass;
