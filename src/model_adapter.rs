@@ -341,7 +341,6 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     Err(last_error)
 }
 
-
 #[derive(Clone, Debug)]
 struct ParsedEndpoint {
     scheme: String,
