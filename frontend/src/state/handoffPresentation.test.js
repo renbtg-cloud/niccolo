@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { handoffSummary } from './handoffPresentation.js';
+import { handoffSummary, receiptSummary } from './handoffPresentation.js';
 
 describe('handoffSummary',()=>{
  it('summarizes durable handoff without inventing authority',()=>{
@@ -32,4 +32,7 @@ describe('handoffSummary',()=>{
    });
  });
  it('returns null when no handoff exists',()=>expect(handoffSummary(null)).toBeNull());
+ it('summarizes receipts without equating them with agreement or authority',()=>{
+   expect(receiptSummary({receipts:[{kind:'RECEIVED'},{kind:'REVIEWED'},{kind:'REVIEWED'}],receipt_means_agreement:false,receipt_grants_authority:false})).toEqual({total:3,received:1,reviewed:2,declined:0,receiptMeansAgreement:false,receiptGrantsAuthority:false});
+ });
 });
