@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
+import { identityMappingSummary } from '../state/identityMappingSummary.js';
 
 function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }) {
   const [choice, setChoice] = useState(binding?.person_id ?? '');
@@ -103,6 +105,8 @@ export function IdentitiesPage() {
     () => new Map((bindings.data?.bindings ?? []).map((binding) => [binding.speaker_label, binding])),
     [bindings.data],
   );
+  const speakerRows = speakers.data?.speakers ?? [];
+  const mappingSummary = identityMappingSummary(speakerRows, bindings.data?.bindings ?? []);
 
   const refresh = async () => Promise.all([
     qc.invalidateQueries({ queryKey: qk.identities(client.config) }),
@@ -154,8 +158,10 @@ export function IdentitiesPage() {
     {(sources.error || situation.error || identities.error || speakers.error || bindings.error || history.error) &&
       <p className="error">{(sources.error || situation.error || identities.error || speakers.error || bindings.error || history.error).message}</p>}
 
+    {documentId&&!speakers.isLoading&&<article className="identity-summary"><strong>{mappingSummary.mappedCount}/{mappingSummary.speakerCount}</strong> source label(s) mapped by a human.{mappingSummary.unmappedCount>0?<p>{mappingSummary.unmappedCount} label(s) remain unmapped. That is allowed; Niccolò will not infer identity merely because labels match.</p>:mappingSummary.speakerCount>0?<p>Every extracted label in this record has an explicit mapping. Coverage does not prove that the mappings are correct.</p>:null}<small>Identity mappings are human assertions with history, not verified facts.</small></article>}
+
     <div className="speaker-list">
-      {(speakers.data?.speakers ?? []).map((speaker) => <SpeakerRow
+      {speakerRows.map((speaker) => <SpeakerRow
         key={speaker.speaker_label}
         speaker={speaker}
         binding={bindingBySpeaker.get(speaker.speaker_label)}
@@ -165,7 +171,8 @@ export function IdentitiesPage() {
         pending={assign.isPending || clear.isPending}
       />)}
     </div>
-    {documentId && !speakers.isLoading && (speakers.data?.speakers ?? []).length === 0 && <p>No speaker labels were extracted from this source.</p>}
+    {documentId && !speakers.isLoading && speakerRows.length === 0 && <p>No speaker labels were extracted from this source.</p>}
+    {documentId&&!speakers.isLoading&&speakerRows.length>0&&<p><Link to="/operations">Continue to Analyze →</Link></p>}
     {(assign.error || clear.error) && <p className="error">{(assign.error || clear.error).message}</p>}
 
     {documentId && <details>
