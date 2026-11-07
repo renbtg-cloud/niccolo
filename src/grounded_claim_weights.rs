@@ -6,11 +6,12 @@
 //! witness independence or a calibrated statistical probability.
 use crate::{
     analysis_structure::AnalysisScope,
-    authz, grounded_lineage_store,
-    provenance_clusters::ClusterReport,
+    authz,
     epistemic_weights::{
         self, BalanceReport, Stance, WeightError, WeightPolicy, WeightedObservation,
     },
+    grounded_lineage_store,
+    provenance_clusters::ClusterReport,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -198,9 +199,12 @@ pub async fn evaluate_claim(
     }
     // Retrieve every *recorded* ancestor in this same repeatable-read
     // transaction. Never accept a client-provided root or grouping key.
-    let selected = declared.iter().map(|item| item.evidence_id).collect::<Vec<_>>();
-    let dependence = grounded_lineage_store::from_database(&mut tx, scope.workspace, &selected)
-        .await?;
+    let selected = declared
+        .iter()
+        .map(|item| item.evidence_id)
+        .collect::<Vec<_>>();
+    let dependence =
+        grounded_lineage_store::from_database(&mut tx, scope.workspace, &selected).await?;
     let source_graph_revision: i64 = sqlx::query_scalar(
         "SELECT COALESCE((
             SELECT revision FROM niccolo.graph_revisions WHERE workspace_id=$1
@@ -218,11 +222,9 @@ pub async fn evaluate_claim(
         }
     }
     for (observation, proof) in converted.iter_mut().zip(resolved.iter_mut()) {
-        let key = *component_by_evidence
-            .get(&observation.evidence_id)
-            .ok_or(GroundedWeightError::Lineage(
-                grounded_lineage_store::StoredLineageError::Invalid,
-            ))?;
+        let key = *component_by_evidence.get(&observation.evidence_id).ok_or(
+            GroundedWeightError::Lineage(grounded_lineage_store::StoredLineageError::Invalid),
+        )?;
         // This legacy field is the computational grouping key, not a literal
         // provenance root. Explicit typed metadata below makes that distinction.
         observation.documented_origin_id = Some(key);
