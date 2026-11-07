@@ -548,7 +548,6 @@ async fn v601_v700_synthesis_artifact_is_atomic_typed_and_feeds_epistemic_state(
     assert_eq!(output_count, 0);
 }
 
-
 #[tokio::test]
 async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evidence() {
     let (admin, app) = pools().await;
