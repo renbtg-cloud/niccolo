@@ -476,6 +476,54 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
     assert_eq!(trial["report"]["support_points"], 80);
     assert_eq!(trial["changes_any_persisted_state"], false);
 
+
+    let comparison_input = json!({
+        "situation_id": situation,
+        "trial_policy": {
+            "support_multiplier_pct": 100,
+            "counter_multiplier_pct": 100,
+            "per_origin_cap": 100
+        },
+        "human_declared_confidence_percent": 90,
+        "observations": [{
+            "evidence_id": Uuid::new_v4(),
+            "documented_origin_id": Uuid::new_v4(),
+            "stance": "SUPPORTS",
+            "declared_strength": 80,
+            "rationale": "hypothetical statement for comparison"
+        }]
+    });
+    let (status, comparison) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &format!("{base}/compare"),
+            &h.reader,
+            Some(comparison_input.clone()),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(comparison["baseline_policy_source"], "SITUATION");
+    assert_eq!(comparison["baseline"]["net_points"], 28);
+    assert_eq!(comparison["trial"]["net_points"], 80);
+    assert_eq!(comparison["net_points_delta"], 52);
+    assert_eq!(comparison["is_full_reasoning_replay"], false);
+    assert_eq!(comparison["proves_claim_truth"], false);
+    assert_eq!(comparison["changes_any_persisted_state"], false);
+    let mut invalid_trial = comparison_input;
+    invalid_trial["trial_policy"]["per_origin_cap"] = json!(101);
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req("POST", &format!("{base}/compare"), &h.reader, Some(invalid_trial)),
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+
+
     let (status, unchanged) = call(
         h.router.clone(),
         req("GET", &format!("{base}/policy"), &h.reader, None),
