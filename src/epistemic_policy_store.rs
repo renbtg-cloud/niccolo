@@ -55,10 +55,7 @@ pub fn valid(input: &NewPolicy) -> bool {
         && !input.rationale.contains('\0')
 }
 
-fn view(
-    workspace: Uuid,
-    row: (Uuid, Option<Uuid>, i16, i16, i16, String, Uuid),
-) -> PolicyView {
+fn view(workspace: Uuid, row: (Uuid, Option<Uuid>, i16, i16, i16, String, Uuid)) -> PolicyView {
     let (id, situation_id, support, counter, cap, rationale, recorded_by) = row;
     PolicyView {
         policy_id: Some(id),
@@ -68,7 +65,8 @@ fn view(
             "SITUATION"
         } else {
             "WORKSPACE"
-        }.into(),
+        }
+        .into(),
         policy: WeightPolicy {
             support_multiplier_pct: support as u16,
             counter_multiplier_pct: counter as u16,
@@ -92,25 +90,37 @@ async fn scoped(
         "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
     } else {
         "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
-    }).execute(&mut *tx).await?;
+    })
+    .execute(&mut *tx)
+    .await?;
     let privileged: bool = sqlx::query_scalar(
         "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
-    ).fetch_one(&mut *tx).await?;
-    if privileged { return Err(PolicyStoreError::Privileged); }
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(PolicyStoreError::Privileged);
+    }
     let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
-        .bind(workspace.to_string()).fetch_one(&mut *tx).await?;
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
     authz::bind_auth_digest(&mut tx).await?;
     Ok(tx)
 }
 
 pub async fn record(pool: &PgPool, input: &NewPolicy) -> Result<bool, PolicyStoreError> {
-    if !valid(input) { return Err(PolicyStoreError::Invalid); }
+    if !valid(input) {
+        return Err(PolicyStoreError::Invalid);
+    }
     let mut tx = scoped(pool, input.workspace_id, false).await?;
     if let Some(situation) = input.situation_id {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM niccolo.situations WHERE workspace_id=$1 AND situation_id=$2)"
         ).bind(input.workspace_id).bind(situation).fetch_one(&mut *tx).await?;
-        if !exists { return Err(PolicyStoreError::Invisible); }
+        if !exists {
+            return Err(PolicyStoreError::Invisible);
+        }
     }
     let inserted = sqlx::query(
         "INSERT INTO niccolo.epistemic_weight_policies \
@@ -131,14 +141,16 @@ pub async fn record(pool: &PgPool, input: &NewPolicy) -> Result<bool, PolicyStor
         "SELECT situation_id,support_multiplier_pct,counter_multiplier_pct,per_origin_cap,rationale,recorded_by_principal_id \
          FROM niccolo.epistemic_weight_policies WHERE workspace_id=$1 AND policy_id=$2"
     ).bind(input.workspace_id).bind(input.policy_id).fetch_optional(&mut *tx).await?;
-    if actual != Some((
-        input.situation_id,
-        input.policy.support_multiplier_pct as i16,
-        input.policy.counter_multiplier_pct as i16,
-        input.policy.per_origin_cap as i16,
-        input.rationale.trim().into(),
-        input.recorded_by,
-    )) {
+    if actual
+        != Some((
+            input.situation_id,
+            input.policy.support_multiplier_pct as i16,
+            input.policy.counter_multiplier_pct as i16,
+            input.policy.per_origin_cap as i16,
+            input.rationale.trim().into(),
+            input.recorded_by,
+        ))
+    {
         return Err(PolicyStoreError::Conflict);
     }
     tx.commit().await?;
@@ -155,7 +167,9 @@ pub async fn effective(
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM niccolo.situations WHERE workspace_id=$1 AND situation_id=$2)"
         ).bind(workspace).bind(id).fetch_one(&mut *tx).await?;
-        if !exists { return Err(PolicyStoreError::Invisible); }
+        if !exists {
+            return Err(PolicyStoreError::Invisible);
+        }
     }
     let row: Option<(Uuid,Option<Uuid>,i16,i16,i16,String,Uuid)> = sqlx::query_as(
         "SELECT policy_id,situation_id,support_multiplier_pct,counter_multiplier_pct,per_origin_cap,rationale,recorded_by_principal_id \
@@ -177,7 +191,7 @@ pub async fn effective(
             is_default: true,
             is_probability_model: false,
             retroactively_changes_frozen_analysis: false,
-        }
+        },
     })
 }
 
@@ -187,9 +201,12 @@ mod tests {
     #[test]
     fn validates_explicit_policy_bounds_and_rationale() {
         let mut v = NewPolicy {
-            policy_id: Uuid::nil(), workspace_id: Uuid::nil(),
-            situation_id: None, policy: WeightPolicy::default(),
-            rationale: "User-directed attention balance".into(), recorded_by: Uuid::nil(),
+            policy_id: Uuid::nil(),
+            workspace_id: Uuid::nil(),
+            situation_id: None,
+            policy: WeightPolicy::default(),
+            rationale: "User-directed attention balance".into(),
+            recorded_by: Uuid::nil(),
         };
         assert!(valid(&v));
         v.policy.counter_multiplier_pct = 201;
@@ -200,7 +217,18 @@ mod tests {
     }
     #[test]
     fn no_policy_view_can_claim_probability() {
-        let x = view(Uuid::nil(), (Uuid::nil(), None, 100, 100, 100, "example".into(), Uuid::nil()));
+        let x = view(
+            Uuid::nil(),
+            (
+                Uuid::nil(),
+                None,
+                100,
+                100,
+                100,
+                "example".into(),
+                Uuid::nil(),
+            ),
+        );
         assert!(!x.is_probability_model);
         assert!(!x.retroactively_changes_frozen_analysis);
     }
