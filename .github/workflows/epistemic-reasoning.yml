@@ -64,6 +64,9 @@ jobs:
     env:
       NICCOLO_PG_ADMIN_URL: postgres://postgres:ephemeral_ci_password@localhost:5432/niccolo
       NICCOLO_PG_SECURE_URL: postgres://niccolo_secure:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_PG_SERVICE_URL: postgres://niccolo_service:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_NEXT_ADMIN_URL: postgres://postgres:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_NEXT_APP_URL: postgres://niccolo_service:ephemeral_ci_password@localhost:5432/niccolo
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned Rust toolchain
@@ -79,6 +82,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" <<'SQL'
           CREATE ROLE niccolo_secure LOGIN PASSWORD 'ephemeral_ci_password';
           GRANT niccolo_api TO niccolo_secure WITH INHERIT TRUE, SET FALSE;
+          CREATE ROLE niccolo_service LOGIN PASSWORD 'ephemeral_ci_password';
+          GRANT niccolo_app TO niccolo_service WITH INHERIT TRUE, SET FALSE;
           SQL
       - name: Run authenticated PostgreSQL endpoint integration
         run: cargo test --locked --features pg-integration --test human_credence_integration -- --nocapture
