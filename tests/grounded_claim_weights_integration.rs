@@ -477,7 +477,6 @@ async fn cycles_in_recorded_provenance_are_rejected() {
     assert_eq!(v["error"], "cyclic recorded provenance");
 }
 
-
 #[tokio::test]
 async fn cross_document_common_ancestor_prevents_double_counting() {
     let h = setup().await;
@@ -509,7 +508,11 @@ async fn cross_document_common_ancestor_prevents_double_counting() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        separate["assessment"]["recorded_dependence"]["clusters"].as_array().unwrap().len(), 2
+        separate["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
     );
     assert_eq!(separate["assessment"]["report"]["support_points"], 140);
     assert_eq!(separate["assessment"]["report"]["net_points"], 140);
@@ -549,7 +552,11 @@ async fn cross_document_common_ancestor_prevents_double_counting() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        merged["assessment"]["recorded_dependence"]["clusters"].as_array().unwrap().len(), 1
+        merged["assessment"]["recorded_dependence"]["clusters"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
     );
     assert_eq!(merged["assessment"]["report"]["support_points"], 80);
     assert_eq!(merged["assessment"]["report"]["net_points"], 80);
@@ -557,7 +564,16 @@ async fn cross_document_common_ancestor_prevents_double_counting() {
         merged["assessment"]["recorded_dependence"]["clusters"][0]["documented_roots"][0],
         parent.to_string()
     );
-    assert_eq!(merged["assessment"]["recorded_dependence"]["different_clusters_establish_independence"], false);
-    assert!(merged["assessment"]["source_graph_revision"].as_i64().unwrap()
-        > separate["assessment"]["source_graph_revision"].as_i64().unwrap());
+    assert_eq!(
+        merged["assessment"]["recorded_dependence"]["different_clusters_establish_independence"],
+        false
+    );
+    assert!(
+        merged["assessment"]["source_graph_revision"]
+            .as_i64()
+            .unwrap()
+            > separate["assessment"]["source_graph_revision"]
+                .as_i64()
+                .unwrap()
+    );
 }
