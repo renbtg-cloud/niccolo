@@ -6,3 +6,7 @@ export function connectionHints(search) {
     token: '',
   };
 }
+
+export function hasPreparedConnectionHints(hints) {
+  return Boolean(hints?.workspace && hints?.situation);
+}
