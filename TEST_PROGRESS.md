@@ -1,5 +1,28 @@
 # Active test progress
 
+## v1.721-v1.760 — primary Situation → Analyze → Review journey
+
+FINAL STATUS: DONE
+
+Frontend-focused validation:
+
+- frontend: 0/39 failed; 39/39 passed across 11 test files;
+- production frontend build: passed;
+- 4/4 changed frontend files were synchronized to GitHub with blob SHAs identical to the tested local files.
+
+The backend is unchanged in this block. The immediately preceding Rust/PostgreSQL baseline remains 410/410 green.
+
+Validated behavior:
+
+- the primary navigation now leads with Situation → Analyze → Review before technical inspection surfaces;
+- an existing Situation offers a direct “Analyze this Situation” continuation;
+- the analysis page presents the ordinary synchronous path as the default human-facing action;
+- sync/async transport choice and reasoning step budget remain available, but are moved under Advanced execution;
+- a completed answer links directly to human Review for reasoning, clarifications and next steps;
+- transport/budget controls remain engineering controls over the same durable intent semantics; hiding them from the primary path does not alter backend meaning.
+
+---
+
 ## v1.681-v1.720 — ReviewPage hook-order stability
 
 FINAL STATUS: DONE
