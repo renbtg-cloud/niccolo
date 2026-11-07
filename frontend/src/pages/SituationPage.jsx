@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { sourceDescriptor } from '../state/sourceUpload.js';
+import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
   const [text,setText]=useState(item.text);
@@ -110,6 +111,7 @@ export function SituationPage(){
   const snapshot = situation.data;
   const attached = new Set(snapshot?.source_document_ids ?? []);
   const documents = sources.data?.documents ?? [];
+  const guide = situationGuide(snapshot);
 
   return <section>
     <h2>Situation</h2>
@@ -172,7 +174,8 @@ export function SituationPage(){
       {retractContext.error&&<p className="error">{retractContext.error.message}</p>}
     </article>
 
-    <article className="next-action"><h3>Ready to reason?</h3><p>When the Situation has enough context for a useful pass, start an analysis. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></article>
+    <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.sourceCount}</strong> attached record(s)</li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add records or human context when they would make the reasoning better grounded.</p>}<small>This is a preparation summary, not a completeness score and not a gate.</small></article>
+    <article className="next-action"><h3>Ready to reason?</h3><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></article>
 
     <details className="desktop-only">
       <summary>Raw Situation snapshot</summary>
