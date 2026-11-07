@@ -11,8 +11,11 @@ Closed/validated in this resumed block:
 - v1.201-v1.240 model-produced claim provenance is accepted only for frozen/examined evidence and fails atomically for invented evidence IDs;
 - v1.241-v1.280 successful model source inspection now persists exactly the frozen fragments actually presented to the model as examined coverage;
 - v1.281-v1.320 model-reported human-context usage is constrained to frozen contributions; claim-to-context provenance remains explicitly distinct from evidence;
-- 80/80 SQL migrations apply from scratch on PostgreSQL 17.11;
-- 404/404 Rust/PostgreSQL tests pass in bounded suites;
+- v1.321-v1.360 model-proposed clarifications now persist as typed reasoning updates before human handoff;
+- v1.361-v1.400 stop-condition checking and handoff preparation are deterministic steps, eliminating unnecessary LLM calls while preserving auditable controller state;
+- v1.401-v1.440 competing interpretations are durable pre-synthesis reasoning state, feed later packets, and remain explicitly non-factual/unranked;
+- 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
+- 407/407 Rust/PostgreSQL tests pass in bounded suites;
 - 32/32 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
