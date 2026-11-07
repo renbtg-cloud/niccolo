@@ -962,7 +962,6 @@ async fn reasoning_handoff_read_model_survives_operation_and_preserves_non_autho
     assert_eq!(view["read_model_executes_actions"], false);
 }
 
-
 #[tokio::test]
 async fn handoff_receipt_is_sha_bound_idempotent_and_never_implies_agreement_or_authority() {
     let s = setup().await;
