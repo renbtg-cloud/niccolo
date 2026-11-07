@@ -9,8 +9,10 @@ Recovered the current repository into a fresh Debian 13 environment and rebuilt 
 Closed/validated in this resumed block:
 - v1.161-v1.200 frozen human identity bindings remain attached to the historical analysis horizon;
 - v1.201-v1.240 model-produced claim provenance is accepted only for frozen/examined evidence and fails atomically for invented evidence IDs;
+- v1.241-v1.280 successful model source inspection now persists exactly the frozen fragments actually presented to the model as examined coverage;
+- v1.281-v1.320 model-reported human-context usage is constrained to frozen contributions; claim-to-context provenance remains explicitly distinct from evidence;
 - 80/80 SQL migrations apply from scratch on PostgreSQL 17.11;
-- 403/403 Rust/PostgreSQL tests pass in bounded suites;
+- 404/404 Rust/PostgreSQL tests pass in bounded suites;
 - 32/32 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
