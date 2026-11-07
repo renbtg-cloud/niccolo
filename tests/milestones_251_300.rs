@@ -458,6 +458,7 @@ async fn v601_v700_synthesis_artifact_is_atomic_typed_and_feeds_epistemic_state(
             qualification: Some("not established".into()),
         }],
         source_links: vec![],
+        context_links: vec![],
         assumptions: vec![niccolo_evidence::model_artifacts::ArtifactAssumption {
             assumption_id: assumption,
             claim_id: Some(claim),
@@ -522,6 +523,7 @@ async fn v601_v700_synthesis_artifact_is_atomic_typed_and_feeds_epistemic_state(
             },
         ],
         source_links: vec![],
+        context_links: vec![],
         assumptions: vec![],
         alternatives: vec![],
         evidence_gaps: vec![],
@@ -622,6 +624,7 @@ async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evid
             evidence_id: evidence,
             relation: "SUPPORTS_AS_USED".into(),
         }],
+        context_links: vec![],
         assumptions: vec![],
         alternatives: vec![],
         evidence_gaps: vec![],
@@ -667,6 +670,7 @@ async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evid
             evidence_id: Uuid::new_v4(),
             relation: "SUPPORTS_AS_USED".into(),
         }],
+        context_links: vec![],
         assumptions: vec![],
         alternatives: vec![],
         evidence_gaps: vec![],
@@ -733,6 +737,7 @@ async fn v801_v900_intermediate_updates_feed_later_reasoning_and_quality_without
     let gap = Uuid::new_v4();
     let question = Uuid::new_v4();
     let update = niccolo_evidence::reasoning_updates::ReasoningUpdate {
+        used_contribution_ids: vec![],
         assumptions: vec![niccolo_evidence::reasoning_updates::UpdateAssumption {
             assumption_id: assumption,
             statement: "The timeline may be incomplete".into(),
@@ -781,6 +786,54 @@ async fn v801_v900_intermediate_updates_feed_later_reasoning_and_quality_without
         assert!(!q.completeness_is_truth_score);
     })
     .await;
+}
+
+#[tokio::test]
+async fn v1281_v1320_model_reported_context_usage_rejects_non_frozen_contribution_atomically() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let assumption = Uuid::new_v4();
+    let invalid = niccolo_evidence::reasoning_updates::ReasoningUpdate {
+        used_contribution_ids: vec![Uuid::new_v4()],
+        assumptions: vec![niccolo_evidence::reasoning_updates::UpdateAssumption {
+            assumption_id: assumption,
+            statement: "Must roll back with invalid human context provenance".into(),
+            basis_note: "The provider invented a contribution identifier".into(),
+        }],
+        evidence_gaps: vec![],
+        clarifications: vec![],
+    };
+    let result = authz::with_auth_digest("test-digest".into(), async {
+        niccolo_evidence::reasoning_updates::apply(&app, scope, s.principal, &invalid).await
+    })
+    .await;
+    assert!(result.is_err());
+    let assumption_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_assumptions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND assumption_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(assumption)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    let used_context_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_used_contributions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(assumption_count, 0);
+    assert_eq!(used_context_count, 0);
 }
 
 #[tokio::test]
