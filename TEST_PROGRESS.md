@@ -1,5 +1,27 @@
 # Active test progress
 
+## v1.801-v1.840 — prepared demo connection hints without secret leakage
+
+FINAL STATUS: DONE
+
+Frontend-focused validation:
+
+- frontend: 0/45 failed; 45/45 passed across 14 test files;
+- production frontend build: passed;
+- 4/4 changed frontend files were synchronized to GitHub with blob SHAs identical to the tested local files.
+
+The backend is unchanged in this block. The current Rust/PostgreSQL baseline remains 410/410 green.
+
+Validated behavior:
+
+- prepared demo links may prefill only workspace and Situation identifiers;
+- bearer tokens are never read from URL parameters;
+- bearer tokens remain memory-only and are not persisted;
+- absent URL hints leave connection fields empty rather than inventing defaults;
+- the connection UI explicitly communicates the non-secret/secret boundary.
+
+---
+
 ## v1.761-v1.800 — safe analysis recovery across connection boundaries
 
 FINAL STATUS: DONE
