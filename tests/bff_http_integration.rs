@@ -1086,8 +1086,41 @@ async fn handoff_receipt_is_sha_bound_idempotent_and_never_implies_agreement_or_
         list["receipts"][0]["recipient_principal_id"],
         principal.to_string()
     );
+    assert_eq!(list["current_handoff_sha256"], handoff["handoff_sha256"]);
+    assert_eq!(list["receipts"][0]["matches_current_handoff"], true);
     assert_eq!(list["receipt_means_agreement"], false);
     assert_eq!(list["receipt_grants_authority"], false);
+
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_candidate_interpretations(workspace_id,situation_id,analysis_id,interpretation_id,interpretation_text,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'A later competing interpretation','This changes the deterministic handoff hash',$5)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(Uuid::new_v4())
+    .bind(principal)
+    .execute(&s.admin)
+    .await
+    .unwrap();
+    let (_, _, changed_handoff) = invoke(
+        s.router.clone(),
+        req("GET", &handoff_path, &s.token, None, None),
+    )
+    .await;
+    assert_ne!(changed_handoff["handoff_sha256"], handoff["handoff_sha256"]);
+    let (_, _, historical_list) = invoke(
+        s.router.clone(),
+        req("GET", &receipts_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(
+        historical_list["current_handoff_sha256"],
+        changed_handoff["handoff_sha256"]
+    );
+    assert_eq!(
+        historical_list["receipts"][0]["matches_current_handoff"],
+        false
+    );
 
     let stored: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.situation_reasoning_handoff_receipts WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
