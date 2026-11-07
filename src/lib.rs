@@ -486,3 +486,5 @@ pub mod human_credence;
 pub mod epistemic_policy_store;
 
 pub mod grounded_claim_weights;
+
+pub mod provenance_clusters;
