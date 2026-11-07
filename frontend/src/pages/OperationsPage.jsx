@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,6 +24,7 @@ function AnswerPanel({ output, operation, error }) {
    <div className="answer-text">{output.answer_text}</div>
    <h4>Coverage</h4><div className="coverage-note">{output.coverage_note}</div>
    {!output.input_is_current&&<p className="historical-note">The Situation changed after this analysis input was frozen. The original answer is preserved.</p>}
+   <p><Link to="/review">Review reasoning, clarifications and next steps →</Link></p>
  </article>;
  if(!operation)return <p>Start an analysis to get a provisional answer.</p>;
  if(operation.state==='WAITING_FOR_HUMAN')return <p>Niccolò needs your decision before it can continue the current reasoning plan.</p>;
@@ -45,15 +47,14 @@ export function OperationsPage(){
  const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
  const respond=useMutation({mutationFn:async(v)=>{if(!active||!waitingStep)throw new Error('No waiting human step');return (await client.respondAgentic(active,waitingStep.step_id,{response_id:crypto.randomUUID(),decision:v.decision,response_text:v.responseText})).value;},onSuccess:async()=>{humanForm.reset({decision:'CONTINUE',responseText:''});await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
  if(!client)return <p>Connect first.</p>;
- return <section><h2>Niccolò</h2><form onSubmit={handleSubmit(v=>run.mutate(v))}>
+ return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p><form onSubmit={handleSubmit(v=>run.mutate(v))}>
    <label>What are you trying to do?<select {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
    <label>Goal / question (optional)<textarea {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
-   <label>Delivery<select {...register('mode')}><option value="sync">Wait for the server response</option><option value="async">Return immediately and observe by PULL</option></select></label>
-   <label>Reasoning budget<input aria-label="Step budget" type="number" {...register('stepBudget')}/></label>
-   <button disabled={run.isPending}>Start</button>
+   <details><summary>Advanced execution</summary><label>Delivery<select {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Return immediately and observe by PULL</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" {...register('stepBudget')}/></label><small>The default settings are appropriate for ordinary use. Change these only when testing execution behavior.</small></details>
+   <button disabled={run.isPending}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
  </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error">{run.error.message}</p>}
  <AnswerPanel output={output.data} operation={observed.operation??run.data?.operation??null} error={output.error}/>
  {waitingStep&&<form className="human-boundary" onSubmit={humanForm.handleSubmit(v=>respond.mutate(v))}><h3>Human boundary</h3><p>{waitingStep.label}</p><select {...humanForm.register('decision')}><option value="CONTINUE">Continue provisionally</option><option value="REPLAN">Replan from current state</option><option value="STOP">Stop</option></select><textarea aria-label="Human response" {...humanForm.register('responseText')} placeholder="Your decision / correction / context"/><button disabled={respond.isPending}>Submit human decision</button>{humanForm.formState.errors.responseText&&<p className="error">Response is required.</p>}{respond.error&&<p className="error">{respond.error.message}</p>}</form>}
  <div className="desktop-only inspector-grid"><article><h3>Operation</h3><p><small>Transport: {observed.phase}{observed.stale?' · stale':''}</small></p><pre>{JSON.stringify(observed.operation??run.data?.operation??null,null,2)}</pre></article><article><h3>Agentic plan</h3><pre>{JSON.stringify(plan.data??null,null,2)}</pre></article><article><h3>Operation events</h3><pre>{JSON.stringify(observed.events??[],null,2)}</pre></article></div>
- <small>V1 uses ordinary HTTP request/response and PULL. Sync and async are delivery choices over the same server-side intent semantics.</small></section>;
+ <small>Advanced delivery choices use the same durable server-side intent semantics. They do not change the meaning of the analysis.</small></section>;
 }
