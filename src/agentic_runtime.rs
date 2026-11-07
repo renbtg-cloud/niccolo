@@ -2,8 +2,9 @@
 //! The runtime may execute reasoning steps, but human-required steps always hand control back.
 use crate::bff_operations::OperationScope;
 use crate::{
-    adversarial_challenge, agentic_controller, agentic_policy, analysis_quality, bff_operations,
-    model_adapter, model_artifacts, operation_budget, reasoning_packet, reasoning_updates,
+    adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
+    bff_operations, model_adapter, model_artifacts, operation_budget, reasoning_packet,
+    reasoning_updates,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,8 @@ pub enum RuntimeError {
     Challenge(#[from] adversarial_challenge::ChallengeError),
     #[error("operation budget unavailable: {0}")]
     Budget(#[from] operation_budget::BudgetError),
+    #[error("analysis coverage unavailable: {0}")]
+    Coverage(#[from] analysis_coverage::AnalysisCoverageError),
     #[error("agentic operation requires an analysis")]
     MissingAnalysis,
 }
@@ -108,6 +111,12 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     )
     .await?;
     let packet_sha = reasoning_packet::sha256(&packet)?;
+    let packet_evidence_ids = packet
+        .frozen_input
+        .source_fragments
+        .iter()
+        .map(|fragment| fragment.evidence_id)
+        .collect::<Vec<_>>();
     let request = ModelRequest {
         purpose: step.kind.clone(),
         input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
@@ -137,6 +146,17 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                 .response
                 .as_ref()
                 .expect("successful invocation has response");
+            if step.kind == "INSPECT_SOURCES" {
+                analysis_coverage::record_many(
+                    pool,
+                    scope.workspace,
+                    actor,
+                    scope.situation,
+                    analysis,
+                    &packet_evidence_ids,
+                )
+                .await?;
+            }
             if step.kind == "SYNTHESIZE" {
                 let artifact = model_artifacts::parse(response)?
                     .ok_or(model_artifacts::ArtifactError::Invalid)?;
