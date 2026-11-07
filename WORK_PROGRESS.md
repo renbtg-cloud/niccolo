@@ -14,8 +14,9 @@ Closed/validated in this resumed block:
 - v1.321-v1.360 model-proposed clarifications now persist as typed reasoning updates before human handoff;
 - v1.361-v1.400 stop-condition checking and handoff preparation are deterministic steps, eliminating unnecessary LLM calls while preserving auditable controller state;
 - v1.401-v1.440 competing interpretations are durable pre-synthesis reasoning state, feed later packets, and remain explicitly non-factual/unranked;
+- v1.441-v1.480 persisted clarification questions now feed later reasoning packets with a bounded, explicit truncation contract;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
-- 407/407 Rust/PostgreSQL tests pass in bounded suites;
+- 408/408 Rust/PostgreSQL tests pass in bounded suites;
 - 32/32 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
