@@ -1,5 +1,29 @@
 # Active test progress
 
+## v1.601-v1.640 — inspectable handoff receipt audit trail
+
+FINAL STATUS: DONE
+
+Focused validation on Debian 13 / PostgreSQL 17.11 with the 81-migration schema:
+
+- handoff receipt domain test: passed;
+- adversarial handoff receipt HTTP test: passed;
+- frontend: 0/37 failed; 37/37 passed across 9 test files;
+- production frontend build: passed;
+- changed Rust files pass rustfmt check;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+The immediately preceding v1.561-v1.600 checkpoint ran the full Rust/PostgreSQL regression at 410/410. This block changes only receipt read-model/audit presentation fields and corresponding assertions; it does not change schema or receipt mutation semantics.
+
+Validated behavior:
+
+- listed handoff receipts now expose their human note and database-recorded timestamp in addition to hash, kind and authenticated recipient;
+- the historical receipt event remains append-only and tied to the exact handoff SHA;
+- the Review UI shows each receipt event rather than only aggregate counts;
+- `REVIEWED` remains an audit statement about reviewing a bundle, not agreement with its claims and not authority to act.
+
+---
+
 ## v1.561-v1.600 — SHA-bound authenticated reasoning handoff receipts
 
 FINAL STATUS: DONE
