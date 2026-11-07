@@ -335,6 +335,43 @@ async fn epistemic_policy_falls_back_then_situation_overrides_without_mutating_h
     assert_eq!(overridden["effective_policy"]["policy"]["counter_multiplier_pct"], 160);
     assert_eq!(overridden["effective_policy"]["retroactively_changes_frozen_analysis"], false);
 
+
+    // EPI-009: omit trial policy to inherit the persisted Situation override.
+    let preview_path = format!("{base}/preview");
+    let preview_input = json!({
+        "situation_id":situation,
+        "human_declared_confidence_percent":90,
+        "observations":[{
+            "evidence_id":Uuid::new_v4(),
+            "documented_origin_id":Uuid::new_v4(),
+            "stance":"SUPPORTS",
+            "declared_strength":80,
+            "rationale":"hypothetical report for preview"
+        }]
+    });
+    let (status, inherited_preview) = call(h.router.clone(),
+        req("POST", &preview_path, &h.reader, Some(preview_input.clone()))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(inherited_preview["policy_source"], "SITUATION");
+    assert_eq!(inherited_preview["report"]["support_points"], 28);
+    assert_eq!(inherited_preview["report"]["human_declared_confidence_percent"], 90);
+    assert_eq!(inherited_preview["report"]["score_is_probability_of_truth"], false);
+
+    // An explicitly trialled policy can differ without changing storage.
+    let mut trial_input = preview_input;
+    trial_input["policy"] = json!({
+        "support_multiplier_pct":100,
+        "counter_multiplier_pct":100,
+        "per_origin_cap":100
+    });
+    let (status, trial) = call(h.router.clone(),
+        req("POST", &preview_path, &h.reader, Some(trial_input))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(trial["policy_source"], "EXPLICIT_PREVIEW_OVERRIDE");
+    assert_eq!(trial["report"]["support_points"], 80);
+    assert_eq!(trial["changes_any_persisted_state"], false);
+
+
     let (status, unchanged) = call(h.router.clone(), req("GET", &format!("{base}/policy"), &h.reader, None)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(unchanged["effective_policy"]["scope"], "WORKSPACE");
