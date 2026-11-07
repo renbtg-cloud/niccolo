@@ -1,5 +1,26 @@
 # Active test progress
 
+## v2.001-v2.160 — primary navigation and prepared demo sharing
+
+FINAL STATUS: DONE
+
+Frontend validation executed on a clean GitHub Actions runner:
+
+- frontend: 0/52 failed; 52/52 passed across 17 test files;
+- production frontend build: passed.
+
+The backend is unchanged in this block. The current Rust/PostgreSQL baseline remains 410/410 green.
+
+Validated behavior:
+
+- primary navigation exposes Situation → Analyze → Review while Analysis/Reasoning/Feedback/Identities/Inspector remain available under Technical;
+- a connected session exposes a prepared demo URL containing only workspace and Situation identifiers; bearer token is never included and must be shared separately;
+- Analyze no longer leaves raw operation/agentic/event JSON permanently visible; execution internals are behind Technical execution details;
+- primary Situation copy no longer asks users to “connect to the BFF” or exposes an imported document UUID after success;
+- technical surfaces remain accessible rather than deleted, preserving inspectability for engineers and buyers.
+
+---
+
 ## v1.841-v2.000 — prepared demo and buyer-facing review surfaces
 
 FINAL STATUS: DONE
