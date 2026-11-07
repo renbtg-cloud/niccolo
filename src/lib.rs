@@ -478,3 +478,5 @@ pub mod reanalysis_revision;
 pub mod bff_executor;
 
 pub mod bff_intent;
+
+pub mod epistemic_weights;
