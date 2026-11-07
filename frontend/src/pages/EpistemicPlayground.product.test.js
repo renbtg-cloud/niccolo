@@ -20,7 +20,7 @@ describe('epistemic Playground — real API contract without state mutation', ()
   });
   it('labels fictional, nonpersistent arithmetic and never claims a full LLM replay', () => {
     expect(page).toContain('Compare without saving');
-    expect(page).toContain('not a full reasoning replay');
+    expect(page).toContain('Not a full reasoning replay');
     expect(page).toContain('not probabilities of truth');
     expect(page).toContain('same fictional source');
     expect(page).toContain('not checked against documents');
