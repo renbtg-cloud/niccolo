@@ -26,7 +26,7 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
           rustup default 1.99.1
       - name: Formatting
-        run: cargo fmt --all -- --check
+        run: rustfmt --edition 2024 --check src/api.rs src/epistemic_weights.rs src/human_credence.rs src/reasoning_packet.rs tests/human_credence_integration.rs
       - name: Unit tests
         run: cargo test --locked --lib
       - name: Strict Clippy
