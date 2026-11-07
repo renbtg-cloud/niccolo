@@ -1,5 +1,30 @@
 # Active test progress
 
+## v1.521-v1.560 — analysis-scoped reasoning handoff read model
+
+FINAL STATUS: DONE
+
+Validated on Debian 13 / PostgreSQL 17.11 with the 81-migration schema:
+
+- focused handoff HTTP read-model test: passed;
+- full BFF HTTP integration suite: 0/16 failed; 16/16 passed;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/409 failed; 409/409 passed;
+- frontend: 0/35 failed; 35/35 passed across 9 test files;
+- production frontend build: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed;
+- changed Rust files pass rustfmt check.
+
+Validated behavior:
+
+- the deterministic reasoning handoff is readable directly from the analysis surface, independent of active operation state;
+- the read model returns the exact v2 handoff plus its SHA-256;
+- candidate interpretations and clarification state survive into this read surface;
+- the HTTP surface remains explicitly non-authoritative and non-executing;
+- the first-party React review page exposes handoff version, SHA, claim count, candidate count and unanswered clarification count;
+- browser presentation derives counts only from the backend-owned handoff and never invents authority or action semantics.
+
+---
+
 ## v1.481-v1.520 — deterministic handoff v2 preserves reasoning trail
 
 FINAL STATUS: DONE
