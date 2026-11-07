@@ -17,6 +17,7 @@ use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
+use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
@@ -233,6 +234,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/assess", post(assess))
         .route("/v1/workspaces/{workspace}/epistemic/preview", post(preview_epistemic_balance))
         .route("/v1/workspaces/{workspace}/epistemic/compare", post(compare_epistemic_policies))
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/claims/{claim}/epistemic/evaluate",
+            post(evaluate_grounded_claim_weights),
+        )
         .route("/v1/workspaces/{workspace}/epistemic/policy", get(get_effective_epistemic_policy))
         .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
@@ -3558,6 +3563,75 @@ async fn compare_epistemic_policies(
             "changes_any_persisted_state": false,
             "proves_claim_truth": false,
             "authorizes_real_world_action": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+
+// EPI-013: source-checked human-declared weights on an existing analysis claim.
+// Never infer stance or provenance from the request body.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroundedClaimWeightRequest {
+    policy: Option<WeightPolicy>,
+    human_declared_confidence_percent: Option<u8>,
+    evidence: Vec<DeclaredEvidenceStrength>,
+}
+fn grounded_weight_error(error: GroundedWeightError) -> ApiError {
+    match error {
+        GroundedWeightError::Invalid | GroundedWeightError::Weight(_) => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid claim evidence weights")
+        }
+        GroundedWeightError::MissingClaim => ApiError(StatusCode::NOT_FOUND, "claim unavailable"),
+        GroundedWeightError::UnlinkedEvidence => {
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "evidence not linked to this claim")
+        }
+        GroundedWeightError::AmbiguousLink => {
+            ApiError(StatusCode::CONFLICT, "conflicting claim-to-evidence use")
+        }
+        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "grounded weighting unavailable"),
+    }
+}
+async fn evaluate_grounded_claim_weights(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, claim)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<GroundedClaimWeightRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (policy, policy_source) = if let Some(policy) = request.policy {
+        (policy, "EXPLICIT_TRIAL".to_owned())
+    } else {
+        let selected = epistemic_policy_store::effective(&state.pool, workspace, Some(situation))
+            .await
+            .map_err(epistemic_policy_error)?;
+        (selected.policy, selected.scope)
+    };
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let result = grounded_claim_weights::evaluate_claim(
+        &state.pool,
+        scope,
+        claim,
+        policy,
+        request.human_declared_confidence_percent,
+        &request.evidence,
+    )
+    .await
+    .map_err(grounded_weight_error)?;
+    Ok(no_store(
+        json!({
+            "mode": "GROUNDED_CLAIM_HEURISTIC",
+            "policy_source": policy_source,
+            "policy_used": policy,
+            "assessment": result,
+            "is_calibrated_probability": false,
+            "changes_any_persisted_state": false,
+            "needs_human_interpretation": true
         }),
         StatusCode::OK,
     ))
