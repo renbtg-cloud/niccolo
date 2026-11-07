@@ -36,9 +36,10 @@ export function EpistemicPlaygroundPage() {
   const client = useClient();
   const [settings, setSettings] = useState({ ...initialPlaygroundSettings });
   const [localError, setLocalError] = useState('');
-  const [comparisonSession, setComparisonSession] = useState(null);
+  const [comparisonSignature, setComparisonSignature] = useState(null);
 
   const sessionKey = client ? client.config.workspace + ':' + client.config.situation : '';
+  const currentSignature = JSON.stringify(settings) + '|' + sessionKey;
   const policyQuery = useQuery({
     queryKey: ['epistemic-playground-policy', client?.config.workspace, client?.config.situation],
     enabled: !!client,
@@ -51,7 +52,7 @@ export function EpistemicPlaygroundPage() {
     setSettings((current) => ({ ...current, [field]: value }));
     compare.reset();
     setLocalError('');
-    setComparisonSession(null);
+    setComparisonSignature(null);
   };
   const submit = (event) => {
     event.preventDefault();
@@ -60,17 +61,17 @@ export function EpistemicPlaygroundPage() {
       const body = comparisonRequest(settings, client.config.situation);
       setLocalError('');
       compare.mutate(body, {
-        onSuccess: () => setComparisonSession(sessionKey),
+        onSuccess: () => setComparisonSignature(currentSignature),
         onError: () => setComparisonSession(null),
       });
     } catch (error) {
       setLocalError(error.message);
-      setComparisonSession(null);
+      setComparisonSignature(null);
       compare.reset();
     }
   };
   const current = policyQuery.data?.effective_policy;
-  const comparison = comparisonSession === sessionKey ? compare.data : null;
+  const comparison = comparisonSignature === currentSignature ? compare.data : null;
 
   return <section className="epistemic-playground">
     <h2>Reasoning weights — Playground</h2>
