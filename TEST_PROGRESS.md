@@ -1,5 +1,32 @@
 # Active test progress
 
+## v1.241-v1.320 — model-observed source coverage and human-context provenance
+
+FINAL STATUS: DONE
+
+Validated on Debian 13 / PostgreSQL 17.11 with the current 80-migration schema:
+
+- tentative-MVP OpenAI-compatible provider E2E: 0/1 failed; 1/1 passed;
+- model-reported invalid human-context usage rollback: 0/1 failed; 1/1 passed;
+- analysis coverage focused suite: 0/8 failed; 8/8 passed;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/404 failed; 404/404 passed;
+- frontend: 0/32 failed; 32/32 passed across 8 test files;
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+Validated boundaries:
+
+- a successful `INSPECT_SOURCES` step records only frozen fragments actually included in that model-facing reasoning packet as examined;
+- claim source provenance can then reference those examined fragments and remains an analysis-use relation rather than proof;
+- `ASSESS_CONTEXT` may explicitly report which frozen human contributions it used;
+- model-reported contribution IDs must belong to the analysis's frozen Situation revision;
+- an invented/non-frozen contribution ID rejects the whole reasoning update atomically;
+- synthesis may link a claim to human context only through the pre-existing closed context relation set (`INFORMS`, `QUALIFIES`, `CONFLICTS_WITH_REPORTED_CONTEXT`);
+- BFF epistemic readback preserves source provenance and human-context provenance separately and explicitly reports `human_context_is_evidence=false`.
+
+---
+
 ## v1.201-v1.240 — model-produced claim provenance
 
 FINAL STATUS: DONE
