@@ -17,7 +17,6 @@ export function handoffSummary(payload){
  };
 }
 
-
 export function receiptSummary(payload){
  const rows=payload?.receipts??[];
  const counts={RECEIVED:0,REVIEWED:0,DECLINED:0};
