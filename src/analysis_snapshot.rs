@@ -346,6 +346,7 @@ pub async fn materialize(
             situation_id: situation,
             input_revision,
             input_fingerprint,
+            identity_event_no_max,
             goal,
             requested_by,
             reanalysis_of,
