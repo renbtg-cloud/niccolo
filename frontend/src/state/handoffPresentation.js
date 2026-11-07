@@ -22,6 +22,7 @@ export function receiptSummary(payload){
  const counts={RECEIVED:0,REVIEWED:0,DECLINED:0};
  for(const row of rows)if(Object.hasOwn(counts,row.kind))counts[row.kind]+=1;
  return {
+   events:rows.map(row=>({receiptId:row.receipt_id,kind:row.kind,note:row.note??null,recipient:row.recipient_principal_id,createdAt:row.created_at,handoffSha256:row.handoff_sha256})),
    total:rows.length,
    received:counts.RECEIVED,
    reviewed:counts.REVIEWED,
