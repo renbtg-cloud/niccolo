@@ -41,6 +41,8 @@ pub struct UpdateClarification {
 #[serde(deny_unknown_fields)]
 pub struct ReasoningUpdate {
     #[serde(default)]
+    pub used_contribution_ids: Vec<Uuid>,
+    #[serde(default)]
     pub assumptions: Vec<UpdateAssumption>,
     #[serde(default)]
     pub evidence_gaps: Vec<UpdateGap>,
@@ -49,6 +51,7 @@ pub struct ReasoningUpdate {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedUpdate {
+    pub used_contribution_count: usize,
     pub assumption_count: usize,
     pub evidence_gap_count: usize,
     pub clarification_count: usize,
@@ -58,7 +61,17 @@ fn valid(s: &str, max: usize) -> bool {
     !s.trim().is_empty() && s.len() <= max && !s.contains('\0')
 }
 fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
-    if x.assumptions.len() > 64 || x.evidence_gaps.len() > 64 || x.clarifications.len() > 32 {
+    if x.used_contribution_ids.len() > 256
+        || x.assumptions.len() > 64
+        || x.evidence_gaps.len() > 64
+        || x.clarifications.len() > 32
+        || x.used_contribution_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != x.used_contribution_ids.len()
+    {
         return Err(UpdateError::Invalid);
     };
     let mut ids = std::collections::BTreeSet::new();
@@ -123,6 +136,41 @@ pub async fn apply(
 ) -> Result<AppliedUpdate, UpdateError> {
     validate(x)?;
     let mut tx = scoped(pool, scope.workspace).await?;
+    for contribution_id in &x.used_contribution_ids {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_analysis_used_contributions \
+             (workspace_id,situation_id,analysis_id,input_revision,contribution_id,recorded_by_principal_id) \
+             SELECT s.workspace_id,s.situation_id,s.analysis_id,s.input_revision,$4,$5 \
+             FROM niccolo.situation_analysis_snapshots s \
+             JOIN niccolo.situation_revision_contributions rc \
+               ON rc.workspace_id=s.workspace_id AND rc.situation_id=s.situation_id \
+              AND rc.revision=s.input_revision AND rc.contribution_id=$4 \
+             WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(*contribution_id)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?;
+        let recorded_by: Option<Uuid> = sqlx::query_scalar(
+            "SELECT recorded_by_principal_id FROM niccolo.situation_analysis_used_contributions \
+             WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND contribution_id=$4",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(*contribution_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        match recorded_by {
+            Some(id) if id == actor => {}
+            Some(_) => return Err(UpdateError::Conflict),
+            None => return Err(UpdateError::Invalid),
+        }
+    }
     for a in &x.assumptions {
         sqlx::query("INSERT INTO niccolo.situation_analysis_assumptions(workspace_id,situation_id,analysis_id,assumption_id,claim_id,statement,basis_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,NULL,$5,$6,$7) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).bind(a.statement.trim()).bind(a.basis_note.trim()).bind(actor).execute(&mut *tx).await?;
         let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT statement,basis_note,recorded_by_principal_id FROM niccolo.situation_analysis_assumptions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND assumption_id=$4").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).fetch_optional(&mut *tx).await?;
@@ -160,6 +208,7 @@ pub async fn apply(
     }
     tx.commit().await?;
     Ok(AppliedUpdate {
+        used_contribution_count: x.used_contribution_ids.len(),
         assumption_count: x.assumptions.len(),
         evidence_gap_count: x.evidence_gaps.len(),
         clarification_count: x.clarifications.len(),
