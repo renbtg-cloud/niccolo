@@ -71,11 +71,14 @@ pub struct EpistemicClaim {
 pub struct EpistemicView {
     pub analysis_id: Uuid,
     pub claims: Vec<EpistemicClaim>,
+    pub candidate_interpretations: Vec<analysis_assumptions::CandidateInterpretationView>,
     pub unlinked_assumptions: Vec<analysis_assumptions::AssumptionView>,
     pub unlinked_evidence_gaps: Vec<human_agency::EvidenceGapView>,
     pub claims_are_verified_facts: bool,
     pub assumptions_are_facts: bool,
     pub alternatives_are_automatically_ranked: bool,
+    pub candidate_interpretations_are_facts: bool,
+    pub candidate_interpretations_are_automatically_ranked: bool,
     pub satisfied_gap_proves_claim: bool,
     pub browser_is_domain_authority: bool,
     pub claim_fragment_relations_establish_truth: bool,
@@ -210,6 +213,9 @@ pub async fn get(pool: &PgPool, scope: AnalysisScope) -> Result<EpistemicView, E
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
             .await
             .map_err(dep)?;
+    let candidate_interpretations = analysis_assumptions::candidate_interpretations(pool, scope)
+        .await
+        .map_err(dep)?;
     let lens = analysis_assumptions::lens(pool, scope).await.map_err(dep)?;
     let gaps = human_agency::evidence_gaps(pool, scope)
         .await
@@ -257,6 +263,7 @@ pub async fn get(pool: &PgPool, scope: AnalysisScope) -> Result<EpistemicView, E
     Ok(EpistemicView {
         analysis_id: scope.analysis,
         claims: grouped,
+        candidate_interpretations,
         unlinked_assumptions: lens
             .assumptions
             .into_iter()
@@ -269,6 +276,8 @@ pub async fn get(pool: &PgPool, scope: AnalysisScope) -> Result<EpistemicView, E
         claims_are_verified_facts: false,
         assumptions_are_facts: lens.assumptions_are_facts,
         alternatives_are_automatically_ranked: lens.alternatives_are_automatically_ranked,
+        candidate_interpretations_are_facts: false,
+        candidate_interpretations_are_automatically_ranked: false,
         satisfied_gap_proves_claim: false,
         browser_is_domain_authority: false,
         claim_fragment_relations_establish_truth: false,
