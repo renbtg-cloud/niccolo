@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { sourceDescriptor } from '../state/sourceUpload.js';
@@ -170,6 +171,8 @@ export function SituationPage(){
       {correctContext.error&&<p className="error">{correctContext.error.message}</p>}
       {retractContext.error&&<p className="error">{retractContext.error.message}</p>}
     </article>
+
+    <article className="next-action"><h3>Ready to reason?</h3><p>When the Situation has enough context for a useful pass, start an analysis. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></article>
 
     <details className="desktop-only">
       <summary>Raw Situation snapshot</summary>
