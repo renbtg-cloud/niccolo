@@ -14,8 +14,8 @@ use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScop
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
-use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
+use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
@@ -3385,8 +3385,11 @@ async fn preview_epistemic_balance(
     guard(&state, &headers, workspace, Capability::Read).await?;
     // A supplied Situation must be real and visible even for an explicit trial.
     let stored = if request.policy.is_none() || request.situation_id.is_some() {
-        Some(epistemic_policy_store::effective(&state.pool, workspace, request.situation_id)
-            .await.map_err(epistemic_policy_error)?)
+        Some(
+            epistemic_policy_store::effective(&state.pool, workspace, request.situation_id)
+                .await
+                .map_err(epistemic_policy_error)?,
+        )
     } else {
         None
     };
@@ -3394,7 +3397,8 @@ async fn preview_epistemic_balance(
         (override_policy, "EXPLICIT_PREVIEW_OVERRIDE".to_string())
     } else {
         let stored = stored.ok_or(ApiError(
-            StatusCode::INTERNAL_SERVER_ERROR, "epistemic policy unavailable"
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic policy unavailable",
         ))?;
         (stored.policy, stored.scope)
     };
@@ -3418,7 +3422,6 @@ async fn preview_epistemic_balance(
     ))
 }
 
-
 // EPI-008: a narrow human-configurable policy API.
 // All actor identity and workspace permissions come from the bearer token.
 #[derive(Deserialize)]
@@ -3436,9 +3439,14 @@ struct NewEpistemicPolicyRequest {
 fn epistemic_policy_error(error: PolicyStoreError) -> ApiError {
     match error {
         PolicyStoreError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid epistemic policy"),
-        PolicyStoreError::Conflict => ApiError(StatusCode::CONFLICT, "epistemic policy ID conflict"),
+        PolicyStoreError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "epistemic policy ID conflict")
+        }
         PolicyStoreError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
-        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "epistemic policy unavailable"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic policy unavailable",
+        ),
     }
 }
 async fn record_epistemic_policy(
@@ -3457,12 +3465,20 @@ async fn record_epistemic_policy(
         recorded_by: actor,
     };
     let inserted = epistemic_policy_store::record(&state.pool, &policy)
-        .await.map_err(epistemic_policy_error)?;
-    Ok(no_store(json!({
-        "policy_id":policy_id,"situation_id":policy.situation_id,"policy":policy.policy,
-        "rationale":policy.rationale,"recorded_by":actor,"replayed":!inserted,
-        "is_probability_model":false,"retroactively_changes_frozen_analysis":false
-    }),if inserted {StatusCode::CREATED} else {StatusCode::OK}))
+        .await
+        .map_err(epistemic_policy_error)?;
+    Ok(no_store(
+        json!({
+            "policy_id":policy_id,"situation_id":policy.situation_id,"policy":policy.policy,
+            "rationale":policy.rationale,"recorded_by":actor,"replayed":!inserted,
+            "is_probability_model":false,"retroactively_changes_frozen_analysis":false
+        }),
+        if inserted {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+    ))
 }
 async fn get_effective_epistemic_policy(
     State(state): State<AppState>,
@@ -3472,6 +3488,7 @@ async fn get_effective_epistemic_policy(
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
     let view = epistemic_policy_store::effective(&state.pool, workspace, query.situation_id)
-        .await.map_err(epistemic_policy_error)?;
-    Ok(no_store(json!({"effective_policy":view}),StatusCode::OK))
+        .await
+        .map_err(epistemic_policy_error)?;
+    Ok(no_store(json!({"effective_policy":view}), StatusCode::OK))
 }
