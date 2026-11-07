@@ -257,12 +257,24 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
         90
     );
     assert!(!packet.current_human_control.claim_credence[0].part_of_frozen_analysis_input);
-    assert_eq!(packet.current_human_control.epistemic_policy.scope, "SITUATION");
     assert_eq!(
-        packet.current_human_control.epistemic_policy.policy.counter_multiplier_pct,
+        packet.current_human_control.epistemic_policy.scope,
+        "SITUATION"
+    );
+    assert_eq!(
+        packet
+            .current_human_control
+            .epistemic_policy
+            .policy
+            .counter_multiplier_pct,
         160
     );
-    assert!(!packet.current_human_control.epistemic_policy.retroactively_changes_frozen_analysis);
+    assert!(
+        !packet
+            .current_human_control
+            .epistemic_policy
+            .retroactively_changes_frozen_analysis
+    );
     assert!(packet.frozen_input.contributions.is_empty());
     assert!(!packet.packet_asserts_truth);
 
