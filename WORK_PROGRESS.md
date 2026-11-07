@@ -21,9 +21,10 @@ Closed/validated in this resumed block:
 - v1.601-v1.640 receipt history is now fully inspectable in the read model and Review UI with note, timestamp, recipient, kind and exact handoff hash while preserving non-agreement/non-authority semantics;
 - v1.641-v1.680 receipt currentness is backend-owned: receipts for prior handoff hashes remain historical and can never imply that the current deterministic handoff was reviewed;
 - v1.681-v1.720 ReviewPage hook ordering is stable across connect/analysis transitions and protected by a structural regression test;
+- v1.721-v1.760 the first-party product now presents Situation → Analyze → Review as the primary journey; transport mode and step budget remain available only as advanced execution controls;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
 - 410/410 Rust/PostgreSQL tests pass in bounded suites;
-- 38/38 frontend tests and the production build pass;
+- 39/39 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
 Next work should continue from the evidence produced by the running product rather than add post-MVP provider-routing complexity. Capability-aware LLM routing/BYOK ideas are deliberately parked in `POST_MVP_TO_SPECIFY.md`.
