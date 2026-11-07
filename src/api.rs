@@ -14,10 +14,10 @@ use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScop
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
+use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
-use crate::human_credence::{self, CredenceError, NewHumanCredence};
-use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::postgres_ingest::{self, ImportError};
@@ -3272,7 +3272,6 @@ async fn cancel_bff_operation(
     Ok(bff_response(view, StatusCode::OK))
 }
 
-
 // EPI-004: a human may state a subjective percentage about a specific claim.
 // Authentication determines the actor; callers cannot impersonate a principal.
 #[derive(Deserialize)]
@@ -3284,10 +3283,15 @@ struct HumanCredenceRequest {
 }
 fn credence_api_error(error: CredenceError) -> ApiError {
     match error {
-        CredenceError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid subjective confidence"),
+        CredenceError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid subjective confidence")
+        }
         CredenceError::Invisible => ApiError(StatusCode::NOT_FOUND, "claim unavailable"),
         CredenceError::Conflict => ApiError(StatusCode::CONFLICT, "credence ID conflict"),
-        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "human confidence unavailable"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "human confidence unavailable",
+        ),
     }
 }
 async fn record_human_credence(
@@ -3297,7 +3301,11 @@ async fn record_human_credence(
     Json(body): Json<HumanCredenceRequest>,
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
-    let scope = crate::analysis_structure::AnalysisScope { workspace, situation, analysis };
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
     let submitted = NewHumanCredence {
         credence_id: credence,
         claim_id: claim,
@@ -3307,19 +3315,27 @@ async fn record_human_credence(
         recorded_by: actor,
     };
     let inserted = human_credence::record(&state.pool, scope, &submitted)
-        .await.map_err(credence_api_error)?;
-    Ok(no_store(json!({
-        "credence_id": credence,
-        "claim_id": claim,
-        "confidence_percent": submitted.confidence_percent,
-        "usage_policy": submitted.usage_policy,
-        "recorded_by": actor,
-        "replayed": !inserted,
-        "is_human_declaration": true,
-        "is_calibrated_probability": false,
-        "is_documentary_evidence": false,
-        "makes_claim_a_fact": false
-    }), if inserted { StatusCode::CREATED } else { StatusCode::OK }))
+        .await
+        .map_err(credence_api_error)?;
+    Ok(no_store(
+        json!({
+            "credence_id": credence,
+            "claim_id": claim,
+            "confidence_percent": submitted.confidence_percent,
+            "usage_policy": submitted.usage_policy,
+            "recorded_by": actor,
+            "replayed": !inserted,
+            "is_human_declaration": true,
+            "is_calibrated_probability": false,
+            "is_documentary_evidence": false,
+            "makes_claim_a_fact": false
+        }),
+        if inserted {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+    ))
 }
 async fn list_human_credence(
     State(state): State<AppState>,
@@ -3327,16 +3343,23 @@ async fn list_human_credence(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let scope = crate::analysis_structure::AnalysisScope { workspace, situation, analysis };
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
     let entries = human_credence::list_for_claim(&state.pool, scope, claim)
-        .await.map_err(credence_api_error)?;
-    Ok(no_store(json!({
-        "claim_id": claim,
-        "human_credence": entries,
-        "confidence_establishes_truth": false
-    }), StatusCode::OK))
+        .await
+        .map_err(credence_api_error)?;
+    Ok(no_store(
+        json!({
+            "claim_id": claim,
+            "human_credence": entries,
+            "confidence_establishes_truth": false
+        }),
+        StatusCode::OK,
+    ))
 }
-
 
 // EPI-007: deterministic, read-only preview for hypothetical weighting settings.
 // Inputs are NOT checked against the evidence database; no persisted judgment,
@@ -3359,12 +3382,16 @@ async fn preview_epistemic_balance(
         request.policy,
         request.human_declared_confidence_percent,
         &request.observations,
-    ).map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid preview weights"))?;
-    Ok(no_store(json!({
-        "report": report,
-        "mode": "UNVERIFIED_PREVIEW",
-        "inputs_checked_against_database": false,
-        "changes_any_persisted_state": false,
-        "authorizes_real_world_action": false
-    }), StatusCode::OK))
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid preview weights"))?;
+    Ok(no_store(
+        json!({
+            "report": report,
+            "mode": "UNVERIFIED_PREVIEW",
+            "inputs_checked_against_database": false,
+            "changes_any_persisted_state": false,
+            "authorizes_real_world_action": false
+        }),
+        StatusCode::OK,
+    ))
 }
