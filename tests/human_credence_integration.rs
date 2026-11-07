@@ -134,3 +134,42 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
     assert_eq!(call(h.router.clone(), req("GET", &missing_claim_path, &h.reader, None)).await.0,
         StatusCode::NOT_FOUND);
 }
+
+
+#[tokio::test]
+async fn heuristic_preview_is_unverified_read_only_and_deduplicates_roots() {
+    let h = setup().await;
+    let root = Uuid::new_v4();
+    let e1 = Uuid::new_v4();
+    let e2 = Uuid::new_v4();
+    let path = format!("/v1/workspaces/{}/epistemic/preview", h.workspace);
+    let preview = json!({
+        "policy": {
+            "support_multiplier_pct": 100,
+            "counter_multiplier_pct": 100,
+            "per_origin_cap": 100
+        },
+        "human_declared_confidence_percent": 90,
+        "observations": [
+            {"evidence_id":e1,"documented_origin_id":root,"stance":"SUPPORTS",
+             "declared_strength":80,"rationale":"same first-hand report"},
+            {"evidence_id":e2,"documented_origin_id":root,"stance":"SUPPORTS",
+             "declared_strength":80,"rationale":"copy of the report"}
+        ]
+    });
+    let (status, result) = call(h.router.clone(), req("POST", &path, &h.reader, Some(preview.clone()))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["report"]["net_points"], 80);
+    assert_eq!(result["report"]["human_declared_confidence_percent"], 90);
+    assert_eq!(result["report"]["independence_established"], false);
+    assert_eq!(result["report"]["score_is_probability_of_truth"], false);
+    assert_eq!(result["report"]["human_confidence_is_documentary_evidence"], false);
+    assert_eq!(result["changes_any_persisted_state"], false);
+    assert_eq!(result["inputs_checked_against_database"], false);
+    assert_eq!(result["mode"], "UNVERIFIED_PREVIEW");
+
+    let mut invalid = preview;
+    invalid["observations"][0]["declared_strength"] = json!(101);
+    assert_eq!(call(h.router.clone(), req("POST", &path, &h.reader, Some(invalid))).await.0,
+        StatusCode::BAD_REQUEST);
+}
