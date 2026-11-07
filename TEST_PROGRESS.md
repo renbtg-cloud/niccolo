@@ -1,5 +1,29 @@
 # Active test progress
 
+## v2.161-v2.320 — human steering and identity-review product flow
+
+FINAL STATUS: DONE
+
+Frontend validation executed on a clean GitHub Actions runner from the exact work branch:
+
+- frontend: 0/58 failed; 58/58 passed across 20 test files;
+- production frontend build: passed;
+- validation branch differed from the work branch only by the temporary validation workflow and trigger sentinel.
+
+The backend is unchanged in this block. The current Rust/PostgreSQL baseline remains 410/410 green.
+
+Validated behavior:
+
+- Situation makes source-identity review discoverable whenever source records are attached;
+- Identity Review shows explicit human mapping coverage (mapped/unmapped labels) without treating mapping coverage as truth or requiring all labels to be mapped;
+- the page explicitly permits unmapped labels and reiterates that matching labels do not establish identity;
+- after identity review, the primary continuation is back to Analyze;
+- controller `WAITING_FOR_HUMAN` is presented as “Niccolò needs your input” with human-language Continue/Reconsider/Stop choices while preserving the same durable decision values;
+- UI copy states that a response is not inferred consent for external action;
+- agentic-plan polling stops when the controller is complete, blocked or waiting for human input, and resumes through explicit query invalidation after human action.
+
+---
+
 ## v2.001-v2.160 — primary navigation and prepared demo sharing
 
 FINAL STATUS: DONE
