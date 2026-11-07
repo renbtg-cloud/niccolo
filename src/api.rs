@@ -2565,7 +2565,9 @@ async fn list_reasoning_handoff_receipts(
                 "receipt_id": r.receipt_id,
                 "handoff_sha256": r.handoff_sha256,
                 "kind": r.kind,
+                "note": r.note,
                 "recipient_principal_id": r.recipient,
+                "created_at": r.created_at,
                 "receipt_means_agreement": r.receipt_means_agreement,
                 "receipt_grants_authority": r.receipt_grants_authority
             })).collect::<Vec<_>>(),
