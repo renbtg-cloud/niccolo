@@ -51,6 +51,18 @@ impl Drop for Harness {
     }
 }
 
+fn model_request_from_wire(wire: &str) -> Value {
+    let body = wire
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body)
+        .expect("provider request has an HTTP body");
+    let envelope: Value = serde_json::from_str(body).expect("provider request body is JSON");
+    let user = envelope["messages"][1]["content"]
+        .as_str()
+        .expect("provider request has a user message");
+    serde_json::from_str(user).expect("provider user message is a structured Niccolò request")
+}
+
 fn response_content(wire: &str) -> (String, String) {
     let purpose = if wire.contains("CHALLENGE_SYNTHESIS") {
         "CHALLENGE_SYNTHESIS"
@@ -72,15 +84,34 @@ fn response_content(wire: &str) -> (String, String) {
         "OTHER"
     };
     let value = match purpose {
-        "SYNTHESIZE" => json!({
-            "purpose": purpose,
-            "status": "ok",
-            "niccolo_artifact": {
-                "answer_text": "Tentative MVP answer from the OpenAI-compatible transport.",
-                "coverage_note": "E2E fixture: one WhatsApp export plus attributed human context.",
-                "claims": []
-            }
-        }),
+        "SYNTHESIZE" => {
+            let request = model_request_from_wire(wire);
+            let evidence_id = request
+                .pointer("/input/reasoning_packet/frozen_input/source_fragments/0/evidence_id")
+                .and_then(Value::as_str)
+                .expect("synthesis receives frozen source evidence");
+            let claim_id = Uuid::new_v4();
+            json!({
+                "purpose": purpose,
+                "status": "ok",
+                "niccolo_artifact": {
+                    "answer_text": "Tentative MVP answer from the OpenAI-compatible transport.",
+                    "coverage_note": "E2E fixture: one WhatsApp export plus attributed human context.",
+                    "claims": [{
+                        "claim_id": claim_id,
+                        "ordinal": 1,
+                        "kind": "INFERENCE",
+                        "text": "Ana stated that she would arrive at noon.",
+                        "qualification": "Attributed statement; not independent proof of arrival."
+                    }],
+                    "source_links": [{
+                        "claim_id": claim_id,
+                        "evidence_id": evidence_id,
+                        "relation": "SUPPORTS_AS_USED"
+                    }]
+                }
+            })
+        }
         "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" => json!({
             "purpose": purpose,
             "status": "ok",
@@ -418,6 +449,42 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
         "Tentative MVP answer from the OpenAI-compatible transport."
     );
     assert_eq!(output["historical_output_preserved"], true);
+
+    let epistemic_path = format!("{situation_path}/analysis-snapshots/{analysis}/bff/epistemic");
+    let (status, epistemic) = invoke(
+        h.router.clone(),
+        json_request("GET", &epistemic_path, &h.token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(epistemic["claims"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        epistemic["claims"][0]["source_provenance"][0]["relation"],
+        "SUPPORTS_AS_USED"
+    );
+    assert!(
+        epistemic["claims"][0]["source_provenance"][0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("I will arrive at noon")
+    );
+    assert_eq!(
+        epistemic["claims"][0]["source_provenance"][0]["speaker_label"],
+        "Ana"
+    );
+    assert_eq!(epistemic["claims_are_verified_facts"], false);
+    assert_eq!(epistemic["claim_fragment_relations_establish_truth"], false);
+
+    let examined: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_examined_fragments WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(analysis)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(examined, 2);
 
     let invocations: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.model_invocations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED' AND effective_provider='mock-compatible'",
