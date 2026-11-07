@@ -2,6 +2,20 @@
 
 This file is an intentionally frequent checkpoint for long or uncertain development/test runs.
 
+## 2026-11-07
+
+Recovered the current repository into a fresh Debian 13 environment and rebuilt the offline Rust/Node/PostgreSQL toolchain. The resumed `main` checkpoint exposed a small incomplete identity-freeze integration; it has been repaired locally and the whole current test surface is green.
+
+Closed/validated in this resumed block:
+- v1.161-v1.200 frozen human identity bindings remain attached to the historical analysis horizon;
+- v1.201-v1.240 model-produced claim provenance is accepted only for frozen/examined evidence and fails atomically for invented evidence IDs;
+- 80/80 SQL migrations apply from scratch on PostgreSQL 17.11;
+- 403/403 Rust/PostgreSQL tests pass in bounded suites;
+- 32/32 frontend tests and the production build pass;
+- rustfmt and strict Clippy pass.
+
+Next work should continue from the evidence produced by the running product rather than add post-MVP provider-routing complexity. Capability-aware LLM routing/BYOK ideas are deliberately parked in `POST_MVP_TO_SPECIFY.md`.
+
 ## 2026-11-06
 
 Current resumed target:
