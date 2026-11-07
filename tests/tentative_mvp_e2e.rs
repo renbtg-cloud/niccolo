@@ -501,7 +501,10 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     );
     assert_eq!(epistemic["claims_are_verified_facts"], false);
     assert_eq!(epistemic["claim_fragment_relations_establish_truth"], false);
-    assert_eq!(epistemic["claims"][0]["human_context"][0]["relation"], "QUALIFIES");
+    assert_eq!(
+        epistemic["claims"][0]["human_context"][0]["relation"],
+        "QUALIFIES"
+    );
     assert_eq!(
         epistemic["claims"][0]["human_context"][0]["contribution_id"],
         contribution.to_string()
