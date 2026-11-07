@@ -209,6 +209,33 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
     );
     assert_eq!(listed["confidence_establishes_truth"], false);
 
+    // Changing Situation heuristics AFTER the historical snapshot does not
+    // turn them into frozen documentary evidence.
+    let policy_path = format!(
+        "/v1/workspaces/{}/epistemic/policies/{}",
+        h.workspace,
+        Uuid::new_v4()
+    );
+    let (status, _) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &policy_path,
+            &h.writer,
+            Some(json!({
+                "situation_id": situation,
+                "policy": {
+                    "support_multiplier_pct": 75,
+                    "counter_multiplier_pct": 160,
+                    "per_origin_cap": 90
+                },
+                "rationale": "Weight counterevidence more heavily for this case"
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
     // The reasoning packet carries this as PRESENT human control, never frozen evidence.
     let digest = authz::credential_digest(&h.reader).unwrap();
     let packet = authz::with_auth_digest(
@@ -230,6 +257,12 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
         90
     );
     assert!(!packet.current_human_control.claim_credence[0].part_of_frozen_analysis_input);
+    assert_eq!(packet.current_human_control.epistemic_policy.scope, "SITUATION");
+    assert_eq!(
+        packet.current_human_control.epistemic_policy.policy.counter_multiplier_pct,
+        160
+    );
+    assert!(!packet.current_human_control.epistemic_policy.retroactively_changes_frozen_analysis);
     assert!(packet.frozen_input.contributions.is_empty());
     assert!(!packet.packet_asserts_truth);
 
