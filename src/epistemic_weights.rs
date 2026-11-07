@@ -105,6 +105,7 @@ pub fn evaluate(
     if policy.support_multiplier_pct > 200
         || policy.counter_multiplier_pct > 200
         || policy.per_origin_cap > 100
+        || human_declared_confidence_percent.is_some_and(|value| value > 100)
     {
         return Err(WeightError::InvalidWeight);
     }
@@ -239,6 +240,14 @@ mod tests {
         let result = evaluate(WeightPolicy::default(), None, &rows).unwrap();
         assert_eq!(result.net_points, -10);
         assert!(result.origins[0].contains_conflicting_signals);
+    }
+    #[test]
+    fn invalid_human_confidence_cannot_exceed_one_hundred() {
+        let rows = vec![obs(1, Some(5), Stance::Supports, 80)];
+        assert_eq!(
+            evaluate(WeightPolicy::default(), Some(101), &rows),
+            Err(WeightError::InvalidWeight)
+        );
     }
     #[test]
     fn human_ninety_percent_is_not_a_score_boost() {
