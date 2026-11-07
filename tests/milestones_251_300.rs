@@ -558,12 +558,40 @@ async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evid
         situation: s.situation,
         analysis: s.analysis,
     };
+    let document = Uuid::new_v4();
     let evidence = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'WHATSAPP_EXPORT','provider://frozen/1',$3,24)",
+    )
+    .bind(s.workspace)
+    .bind(document)
+    .bind("b".repeat(64))
+    .execute(&admin)
+    .await
+    .unwrap();
     sqlx::query(
         "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) VALUES($1,$2,'provider://frozen/1','Frozen provider evidence','DIRECT_OBSERVATION')",
     )
     .bind(s.workspace)
     .bind(evidence)
+    .execute(&admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) VALUES($1,$2,0,$3,0,24,'Fixture')",
+    )
+    .bind(s.workspace)
+    .bind(document)
+    .bind(evidence)
+    .execute(&admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_revision_sources(workspace_id,situation_id,revision,document_id) VALUES($1,$2,1,$3)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(document)
     .execute(&admin)
     .await
     .unwrap();
