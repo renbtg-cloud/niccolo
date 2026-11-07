@@ -3,8 +3,8 @@
 //! can govern present execution without being misrepresented as historical analysis input.
 use crate::analysis_structure::AnalysisScope;
 use crate::{
-    agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, human_agency,
-    human_control, proactive_briefing,
+    agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
+    human_agency, human_control, proactive_briefing,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -88,6 +88,13 @@ pub struct CurrentHumanControl {
     pub system_may_execute_proposed_steps_without_human: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PacketClarification {
+    pub question_id: Uuid,
+    pub text: String,
+    pub reason: String,
+    pub input_revision: i64,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReasoningPacket {
     pub format: String,
     pub version: u32,
@@ -99,6 +106,8 @@ pub struct ReasoningPacket {
     pub candidate_interpretations: Vec<analysis_assumptions::CandidateInterpretationView>,
     pub lens: analysis_assumptions::AnalysisLens,
     pub evidence_gaps: Vec<human_agency::EvidenceGapView>,
+    pub clarifications: Vec<PacketClarification>,
+    pub clarifications_truncated: bool,
     pub policy_signals: PolicySignalPacket,
     pub proactive_leads: proactive_briefing::ProactiveBriefing,
     pub current_human_control: CurrentHumanControl,
@@ -317,6 +326,25 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
     let evidence_gaps = human_agency::evidence_gaps(pool, scope)
         .await
         .map_err(dep)?;
+    let (clarifications, next_clarification) = clarification::list(
+        pool,
+        scope.workspace,
+        scope.situation,
+        scope.analysis,
+        None,
+        100,
+    )
+    .await
+    .map_err(dep)?;
+    let clarifications = clarifications
+        .into_iter()
+        .map(|q| PacketClarification {
+            question_id: q.question_id,
+            text: q.text,
+            reason: q.reason,
+            input_revision: q.input_revision,
+        })
+        .collect();
     let goals = human_agency::goals(pool, scope.workspace, scope.situation)
         .await
         .map_err(dep)?;
@@ -384,6 +412,8 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         candidate_interpretations,
         lens,
         evidence_gaps,
+        clarifications,
+        clarifications_truncated: next_clarification.is_some(),
         policy_signals: PolicySignalPacket {
             open_evidence_gaps: signals.open_evidence_gaps,
             conflict_sets: signals.conflict_sets,
