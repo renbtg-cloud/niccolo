@@ -62,6 +62,8 @@ export class NiccoloClient {
   epistemic(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/epistemic`); }
   reasoningInput(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/reasoning-input`); }
   reasoningHandoff(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/handoff`); }
+  handoffReceipts(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/handoff/receipts`); }
+  recordHandoffReceipt(id, receiptId, handoffSha256, kind, note = null) { return this.request('POST', `${analysisPath(this.config,id)}/bff/handoff/receipts/${receiptId}`, { body: { handoff_sha256: handoffSha256, kind, note } }); }
   runIntentSync(operationId, task) { return this.request('POST', `${intentPath(this.config,operationId)}/sync`, { body: task }); }
   runIntentAsync(operationId, task) { return this.request('POST', `${intentPath(this.config,operationId)}/async`, { body: task }); }
   runSync(operationId, task) { return this.request('POST', `${operationPath(this.config,operationId)}/sync`, { body: task }); }
