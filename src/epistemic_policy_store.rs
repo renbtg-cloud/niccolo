@@ -55,7 +55,8 @@ pub fn valid(input: &NewPolicy) -> bool {
         && !input.rationale.contains('\0')
 }
 
-fn view(workspace: Uuid, row: (Uuid, Option<Uuid>, i16, i16, i16, String, Uuid)) -> PolicyView {
+type PolicyRow = (Uuid, Option<Uuid>, i16, i16, i16, String, Uuid);
+fn view(workspace: Uuid, row: PolicyRow) -> PolicyView {
     let (id, situation_id, support, counter, cap, rationale, recorded_by) = row;
     PolicyView {
         policy_id: Some(id),
@@ -171,7 +172,7 @@ pub async fn effective(
             return Err(PolicyStoreError::Invisible);
         }
     }
-    let row: Option<(Uuid,Option<Uuid>,i16,i16,i16,String,Uuid)> = sqlx::query_as(
+    let row: Option<PolicyRow> = sqlx::query_as(
         "SELECT policy_id,situation_id,support_multiplier_pct,counter_multiplier_pct,per_origin_cap,rationale,recorded_by_principal_id \
          FROM niccolo.epistemic_weight_policies \
          WHERE workspace_id=$1 AND (situation_id IS NULL OR situation_id=$2) \
