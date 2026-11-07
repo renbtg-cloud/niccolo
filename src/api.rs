@@ -3678,7 +3678,6 @@ async fn evaluate_grounded_claim_weights(
     ))
 }
 
-
 async fn get_presentation_package(
     State(state): State<AppState>,
     Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
@@ -3691,9 +3690,10 @@ async fn get_presentation_package(
             PresentationError::Manifest(crate::analysis_manifest::ManifestError::Invisible) => {
                 ApiError(StatusCode::NOT_FOUND, "published analysis unavailable")
             }
-            PresentationError::TooLarge => {
-                ApiError(StatusCode::PAYLOAD_TOO_LARGE, "presentation package too large")
-            }
+            PresentationError::TooLarge => ApiError(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "presentation package too large",
+            ),
             _ => ApiError(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "presentation package unavailable",
