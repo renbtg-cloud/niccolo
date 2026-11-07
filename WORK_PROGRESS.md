@@ -32,9 +32,13 @@ Closed/validated in this resumed block:
 - v2.041-v2.080 connected sessions expose a token-free prepared demo link for sharing; bearer credentials remain separate;
 - v2.081-v2.120 Analyze keeps operation/agentic/event JSON behind Technical execution details instead of permanent primary-page clutter;
 - v2.121-v2.160 primary Situation/connection copy removes BFF/backend jargon while keeping technical surfaces available;
+- v2.161-v2.200 Situation now makes explicit source-identity review discoverable when records are attached;
+- v2.201-v2.240 Identity Review reports human mapping coverage without converting coverage into truth or making full mapping a gate;
+- v2.241-v2.280 controller pauses are presented as explicit human input with product-language Continue/Reconsider/Stop choices and no inferred action consent;
+- v2.281-v2.320 agentic-plan polling stops at complete, blocked and waiting-for-human boundaries until an explicit action can change state;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
 - 410/410 Rust/PostgreSQL tests pass in bounded suites;
-- 52/52 frontend tests and the production build pass;
+- 58/58 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
 Next work should continue from the evidence produced by the running product rather than add post-MVP provider-routing complexity. Capability-aware LLM routing/BYOK ideas are deliberately parked in `POST_MVP_TO_SPECIFY.md`.
