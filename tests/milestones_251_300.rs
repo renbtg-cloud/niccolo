@@ -629,10 +629,9 @@ async fn v1201_v1240_synthesis_artifact_claim_links_require_examined_frozen_evid
     };
 
     authz::with_auth_digest("test-digest".into(), async {
-        let applied =
-            niccolo_evidence::model_artifacts::apply(&app, scope, s.principal, &artifact)
-                .await
-                .unwrap();
+        let applied = niccolo_evidence::model_artifacts::apply(&app, scope, s.principal, &artifact)
+            .await
+            .unwrap();
         assert_eq!(applied.source_link_count, 1);
         assert!(!applied.recorded_output_is_truth);
     })
