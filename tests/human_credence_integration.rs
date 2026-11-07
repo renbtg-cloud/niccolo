@@ -1,0 +1,141 @@
+#![cfg(feature = "pg-integration")]
+//! EPI-006: human confidence is not documentary evidence or a calibrated probability.
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use http_body_util::BodyExt;
+use niccolo_evidence::{api, authz};
+use serde_json::{Value, json};
+use sqlx::{PgPool, postgres::PgPoolOptions};
+use tower::ServiceExt;
+use uuid::Uuid;
+
+struct Harness {
+    router: Router,
+    admin: PgPool,
+    workspace: Uuid,
+    writer: String,
+    other_writer: String,
+    reader: String,
+}
+
+async fn setup() -> Harness {
+    let admin = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await.unwrap();
+    let secure = PgPoolOptions::new()
+        .max_connections(16)
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await.unwrap();
+    let workspace = Uuid::new_v4();
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'human credence test')")
+        .bind(workspace).execute(&admin).await.unwrap();
+    let writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1)
+        .await.unwrap();
+    let other_writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1)
+        .await.unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, false, 1)
+        .await.unwrap();
+    Harness { router: api::router(secure), admin, workspace, writer, other_writer, reader }
+}
+
+fn req(method: &str, url: &str, token: &str, body: Option<Value>) -> Request<Body> {
+    Request::builder().method(method).uri(url)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(body.map_or_else(Body::empty, |v| Body::from(v.to_string()))).unwrap()
+}
+
+async fn call(router: Router, request: Request<Body>) -> (StatusCode, Value) {
+    let response = router.oneshot(request).await.unwrap();
+    let status = response.status();
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({})))
+}
+
+#[tokio::test]
+async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
+    let h = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let claim = Uuid::new_v4();
+    let judgement = Uuid::new_v4();
+    let situation_path = format!("/v1/workspaces/{}/situations/{situation}", h.workspace);
+    let (status, _) = call(h.router.clone(), req(
+        "POST", &situation_path, &h.writer, Some(json!({"focus":"Why might André leave?"})),
+    )).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let analysis_path = format!("{situation_path}/analysis-snapshots/{analysis}");
+    let (status, _) = call(h.router.clone(), req(
+        "POST", &analysis_path, &h.writer, Some(json!({"goal":"Evaluate competing explanations"})),
+    )).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Admin-only test fixture, never a runtime privileged connection.
+    // Obtain an actual principal of the writer from the credential store via the
+    // workspace membership relation, rather than inventing a foreign key.
+    let principal: Uuid = sqlx::query_scalar(
+        "SELECT p.principal_id FROM niccolo_auth.principals p \
+         JOIN niccolo_auth.credentials c ON c.principal_id=p.principal_id \
+         WHERE c.workspace_id=$1 ORDER BY c.created_at LIMIT 1"
+    )
+    .bind(h.workspace).fetch_one(&h.admin).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_claims \
+         (workspace_id,situation_id,analysis_id,claim_id,ordinal,claim_kind,claim_text,created_by_principal_id) \
+         VALUES ($1,$2,$3,$4,1,'INFERENCE','André may join a competitor',$5)"
+    )
+    .bind(h.workspace).bind(situation).bind(analysis).bind(claim).bind(principal)
+    .execute(&h.admin).await.unwrap();
+
+    let base = format!("{analysis_path}/claims/{claim}/credence");
+    let path = format!("{base}/{judgement}");
+    let body = json!({
+        "confidence_percent":90,
+        "usage_policy":"SUBJECTIVE_BELIEF",
+        "rationale":"I know context outside this document"
+    });
+    let (status, created) = call(h.router.clone(), req(
+        "POST", &path, &h.writer, Some(body.clone()),
+    )).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["confidence_percent"], 90);
+    assert_eq!(created["is_calibrated_probability"], false);
+    assert_eq!(created["is_documentary_evidence"], false);
+    assert_eq!(created["makes_claim_a_fact"], false);
+
+    let (status, replayed) = call(h.router.clone(), req(
+        "POST", &path, &h.writer, Some(body.clone()),
+    )).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed["replayed"], true);
+
+    let mut altered = body.clone();
+    altered["confidence_percent"] = json!(95);
+    assert_eq!(call(h.router.clone(), req("POST", &path, &h.writer, Some(altered))).await.0,
+        StatusCode::CONFLICT);
+    assert_eq!(call(h.router.clone(), req("POST", &path, &h.other_writer, Some(body.clone()))).await.0,
+        StatusCode::CONFLICT);
+    assert_eq!(call(h.router.clone(), req("POST", &path, &h.reader, Some(body.clone()))).await.0,
+        StatusCode::FORBIDDEN);
+
+    let (status, listed) = call(h.router.clone(), req("GET", &base, &h.reader, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["human_credence"][0]["confidence_percent"], 90);
+    assert_eq!(listed["human_credence"][0]["part_of_frozen_analysis_input"], false);
+    assert_eq!(listed["confidence_establishes_truth"], false);
+
+    let mut invalid = body;
+    invalid["confidence_percent"] = json!(101);
+    let invalid_path = format!("{base}/{}", Uuid::new_v4());
+    assert_eq!(call(h.router.clone(), req("POST", &invalid_path, &h.writer, Some(invalid))).await.0,
+        StatusCode::BAD_REQUEST);
+    let missing_claim_path = format!("{analysis_path}/claims/{}/credence", Uuid::new_v4());
+    assert_eq!(call(h.router.clone(), req("GET", &missing_claim_path, &h.reader, None)).await.0,
+        StatusCode::NOT_FOUND);
+}
