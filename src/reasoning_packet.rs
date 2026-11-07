@@ -359,9 +359,10 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
     let claim_credence = human_credence::list_for_analysis(pool, scope)
         .await
         .map_err(dep)?;
-    let epistemic_policy = epistemic_policy_store::effective(pool, scope.workspace, Some(scope.situation))
-        .await
-        .map_err(dep)?;
+    let epistemic_policy =
+        epistemic_policy_store::effective(pool, scope.workspace, Some(scope.situation))
+            .await
+            .map_err(dep)?;
     let priorities = human_control::priorities(pool, scope.workspace, scope.situation)
         .await
         .map_err(dep)?;
