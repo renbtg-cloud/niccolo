@@ -1,5 +1,28 @@
 # Active test progress
 
+## v1.641-v1.680 — current vs historical handoff receipt semantics
+
+FINAL STATUS: DONE
+
+Focused validation on Debian 13 / PostgreSQL 17.11 with the 81-migration schema:
+
+- adversarial handoff receipt HTTP test, including post-receipt handoff mutation: passed;
+- frontend: 0/37 failed; 37/37 passed across 9 test files;
+- production frontend build: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+The full Rust/PostgreSQL baseline remains the immediately preceding 410/410 v1.561-v1.600 regression. This block changes only receipt read-model currentness and corresponding presentation/tests.
+
+Validated behavior:
+
+- receipt list responses expose the current deterministic handoff SHA;
+- each receipt is classified by the backend as matching or not matching the current handoff;
+- a receipt recorded as `REVIEWED` for an older hash remains historical after reasoning state changes the handoff;
+- historical review never silently becomes review of the current handoff;
+- the Review UI reports current-handoff receipt counts separately from historical receipt counts.
+
+---
+
 ## v1.601-v1.640 — inspectable handoff receipt audit trail
 
 FINAL STATUS: DONE
