@@ -95,7 +95,7 @@ export function SituationPage(){
     },
   });
 
-  if (!client) return <p>Connect to the BFF first.</p>;
+  if (!client) return <p>Connect this session first.</p>;
   if (situation.isLoading) return <p>Loading Situation…</p>;
 
   if (situation.error?.status === 404) {
@@ -140,7 +140,7 @@ export function SituationPage(){
       </button>
       {file && <small>Selected: {file.name} · {file.size} bytes</small>}
       {upload.error && <p className="error">{upload.error.message}</p>}
-      {upload.data && <p>Imported document <code>{upload.data.documentId}</code>.</p>}
+      {upload.data && <p>Record imported and attached to this Situation.</p>}
     </article>
 
     <article>
