@@ -7,12 +7,14 @@ const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 
 describe('primary analysis path', () => {
   it('presents analysis as the primary action while keeping execution plumbing advanced', () => {
-    expect(app).toContain("['/','Situation'],['/operations','Analyze'],['/review','Review']");
+    expect(app).toContain('<NavLink to="/">Situation</NavLink><NavLink to="/operations">Analyze</NavLink><NavLink to="/review">Review</NavLink>');
+    expect(app).toContain('<summary>Technical</summary>');
     expect(situation).toContain('Analyze this Situation →');
     expect(operations).toContain('<h2>Analyze this Situation</h2>');
     expect(operations).toContain('<summary>Advanced execution</summary>');
     expect(operations.indexOf('<summary>Advanced execution</summary>')).toBeLessThan(operations.indexOf('Reasoning step budget'));
     expect(operations).toContain("run.isPending?'Analyzing…':'Analyze this Situation'");
     expect(operations).toContain('Review reasoning, clarifications and next steps →');
+    expect(operations).toContain('<summary>Technical execution details</summary>');
   });
 });
