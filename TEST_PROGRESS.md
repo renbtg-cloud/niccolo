@@ -1,5 +1,32 @@
 # Active test progress
 
+## v1.201-v1.240 — model-produced claim provenance
+
+FINAL STATUS: DONE
+
+Validated from a fresh Debian 13 / PostgreSQL 17.11 environment using all 80 migrations:
+
+- provider-created claim-to-source link focused regression: 0/1 failed; 1/1 passed;
+- frozen source/identity reasoning packet: 0/3 failed; 3/3 passed;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/403 failed; 403/403 passed;
+- frontend: 0/32 failed; 32/32 passed across 8 test files;
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+Validated boundaries:
+
+- a model-produced source link can reference only a claim in the same synthesis artifact;
+- source-link relation is a closed set (`SUPPORTS_AS_USED`, `CONTRADICTS_AS_USED`, `CONTEXT_ONLY`);
+- the referenced evidence must already be an examined fragment of the frozen analysis;
+- an invented/non-examined evidence UUID fails closed and the synthesis artifact is rolled back atomically;
+- recording a support relation remains analysis-use provenance, not proof or a truth claim;
+- identity bindings remain frozen at the analysis identity-event horizon and later corrections do not rewrite earlier reasoning input.
+
+Environment recovery also exposed and repaired incomplete identity-freeze integration in the remote checkpoint (missing snapshot/packet field initialization and an unavailable SQLx derive/helper path). The repaired implementation compiles offline before the regression suite is run.
+
+---
+
 ## v1.041-v1.080 — frozen-source reasoning
 
 FINAL STATUS: DONE
