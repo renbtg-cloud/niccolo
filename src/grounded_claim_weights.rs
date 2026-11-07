@@ -7,7 +7,9 @@
 use crate::{
     analysis_structure::AnalysisScope,
     authz,
-    epistemic_weights::{self, BalanceReport, Stance, WeightError, WeightPolicy, WeightedObservation},
+    epistemic_weights::{
+        self, BalanceReport, Stance, WeightError, WeightPolicy, WeightedObservation,
+    },
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -131,8 +133,10 @@ pub async fn evaluate_claim(
     }
     let mut seen = BTreeSet::new();
     for e in declared {
-        if !seen.insert(e.evidence_id) || e.declared_strength > 100
-            || e.rationale.trim().is_empty() || e.rationale.len() > 4096
+        if !seen.insert(e.evidence_id)
+            || e.declared_strength > 100
+            || e.rationale.trim().is_empty()
+            || e.rationale.len() > 4096
             || e.rationale.contains('\0')
         {
             return Err(GroundedWeightError::Invalid);
@@ -178,17 +182,14 @@ pub async fn evaluate_claim(
                 let (item, proof) = convert(e, relation, *document_id)?;
                 converted.push(item);
                 resolved.push(proof);
-            },
+            }
             _ => return Err(GroundedWeightError::AmbiguousLink),
         }
     }
     tx.commit().await?;
 
-    let report = epistemic_weights::evaluate(
-        policy,
-        human_declared_confidence_percent,
-        &converted,
-    )?;
+    let report =
+        epistemic_weights::evaluate(policy, human_declared_confidence_percent, &converted)?;
     Ok(GroundedBalance {
         claim_id,
         report,
