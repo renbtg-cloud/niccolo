@@ -112,57 +112,86 @@ pub async fn record(
     analysis: Uuid,
     evidence: Uuid,
 ) -> Result<ExaminedFragment, AnalysisCoverageError> {
+    let mut recorded =
+        record_many(pool, workspace, actor, situation, analysis, &[evidence]).await?;
+    Ok(recorded
+        .pop()
+        .expect("single evidence input returns one row"))
+}
+
+pub(crate) async fn record_many(
+    pool: &PgPool,
+    workspace: Uuid,
+    actor: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    evidence_ids: &[Uuid],
+) -> Result<Vec<ExaminedFragment>, AnalysisCoverageError> {
+    if evidence_ids.len() > 256
+        || evidence_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != evidence_ids.len()
+    {
+        return Err(AnalysisCoverageError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, false).await?;
-    if let Some(row) = load(&mut tx, workspace, situation, analysis, evidence).await? {
-        if row.5 != actor {
+    let mut recorded = Vec::with_capacity(evidence_ids.len());
+    for evidence in evidence_ids {
+        if let Some(row) = load(&mut tx, workspace, situation, analysis, *evidence).await? {
+            if row.5 != actor {
+                return Err(AnalysisCoverageError::Conflict);
+            }
+            recorded.push(from_row(*evidence, row, true));
+            continue;
+        }
+
+        let eligible: Option<(Uuid, i32, i32, i32, String)> = sqlx::query_as(
+            "SELECT f.document_id,f.ordinal,f.byte_start,f.byte_end,f.speaker_label \
+             FROM niccolo.situation_analysis_snapshots s \
+             JOIN niccolo.situation_revision_sources rs \
+               ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id AND rs.revision=s.input_revision \
+             JOIN niccolo.source_fragments f \
+               ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id \
+             WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 AND f.evidence_id=$4",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(analysis)
+        .bind(*evidence)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if eligible.is_none() {
+            return Err(AnalysisCoverageError::Invisible);
+        }
+
+        let inserted = sqlx::query(
+            "INSERT INTO niccolo.situation_analysis_examined_fragments \
+             (workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) \
+             VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(analysis)
+        .bind(*evidence)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
+
+        let Some(row) = load(&mut tx, workspace, situation, analysis, *evidence).await? else {
+            return Err(AnalysisCoverageError::Invisible);
+        };
+        if !inserted && row.5 != actor {
             return Err(AnalysisCoverageError::Conflict);
         }
-        tx.commit().await?;
-        return Ok(from_row(evidence, row, true));
-    }
-
-    let eligible: Option<(Uuid, i32, i32, i32, String)> = sqlx::query_as(
-        "SELECT f.document_id,f.ordinal,f.byte_start,f.byte_end,f.speaker_label \
-         FROM niccolo.situation_analysis_snapshots s \
-         JOIN niccolo.situation_revision_sources rs \
-           ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id AND rs.revision=s.input_revision \
-         JOIN niccolo.source_fragments f \
-           ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id \
-         WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 AND f.evidence_id=$4",
-    )
-    .bind(workspace)
-    .bind(situation)
-    .bind(analysis)
-    .bind(evidence)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if eligible.is_none() {
-        return Err(AnalysisCoverageError::Invisible);
-    }
-
-    let inserted = sqlx::query(
-        "INSERT INTO niccolo.situation_analysis_examined_fragments \
-         (workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) \
-         VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-    )
-    .bind(workspace)
-    .bind(situation)
-    .bind(analysis)
-    .bind(evidence)
-    .bind(actor)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected()
-        == 1;
-
-    let Some(row) = load(&mut tx, workspace, situation, analysis, evidence).await? else {
-        return Err(AnalysisCoverageError::Invisible);
-    };
-    if !inserted && row.5 != actor {
-        return Err(AnalysisCoverageError::Conflict);
+        recorded.push(from_row(*evidence, row, !inserted));
     }
     tx.commit().await?;
-    Ok(from_row(evidence, row, !inserted))
+    Ok(recorded)
 }
 
 pub async fn list(
