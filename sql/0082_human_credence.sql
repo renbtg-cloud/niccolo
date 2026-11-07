@@ -9,7 +9,7 @@ CREATE TABLE niccolo.situation_analysis_human_credence (
   credence_id UUID NOT NULL,
   confidence_percent SMALLINT NOT NULL CHECK(confidence_percent BETWEEN 0 AND 100),
   usage_policy TEXT NOT NULL CHECK(usage_policy IN ('SUBJECTIVE_BELIEF','OPERATIONAL_PREMISE')),
-  rationale TEXT NOT NULL CHECK(length(rationale) BETWEEN 1 AND 4096 AND btrim(rationale) <> '' AND position(chr(0) in rationale) = 0),
+  rationale TEXT NOT NULL CHECK(length(rationale) BETWEEN 1 AND 4096 AND btrim(rationale) <> ''),
   recorded_by_principal_id UUID NOT NULL REFERENCES niccolo_auth.principals(principal_id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   PRIMARY KEY (workspace_id,situation_id,analysis_id,claim_id,credence_id),
