@@ -127,7 +127,8 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
                 "coverage_note":"Synthetic integration fixture; no documentary evidence."
             })),
         ),
-    ).await;
+    )
+    .await;
     assert_eq!(output_status, StatusCode::CREATED);
 
     // Admin-only fixture: use the actual writer principal, never an invented FK.
