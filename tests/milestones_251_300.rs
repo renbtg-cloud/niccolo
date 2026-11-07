@@ -293,6 +293,53 @@ async fn v351_v375_reasoning_packet_separates_frozen_input_from_current_human_co
 }
 
 #[tokio::test]
+async fn reasoning_packet_clarification_budget_is_explicit_and_deterministic() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    for i in 0..101 {
+        let question = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO niccolo.investigative_questions(workspace_id,question_id,question) VALUES($1,$2,$3)",
+        )
+        .bind(s.workspace)
+        .bind(question)
+        .bind(format!("Clarification {i:03}"))
+        .execute(&admin)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO niccolo.situation_analysis_clarification_questions(workspace_id,situation_id,analysis_id,question_id,reason,proposed_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(s.analysis)
+        .bind(question)
+        .bind(format!("Reason {i:03}"))
+        .bind(s.principal)
+        .execute(&admin)
+        .await
+        .unwrap();
+    }
+    authz::with_auth_digest("test-digest".into(), async {
+        let scope = AnalysisScope {
+            workspace: s.workspace,
+            situation: s.situation,
+            analysis: s.analysis,
+        };
+        let first = reasoning_packet::build(&app, scope).await.unwrap();
+        let second = reasoning_packet::build(&app, scope).await.unwrap();
+        assert_eq!(first.clarifications.len(), 100);
+        assert!(first.clarifications_truncated);
+        assert_eq!(first.clarifications, second.clarifications);
+        assert_eq!(
+            reasoning_packet::sha256(&first).unwrap(),
+            reasoning_packet::sha256(&second).unwrap()
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn v376_v400_runtime_model_request_contains_canonical_reasoning_packet() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -351,10 +398,27 @@ impl model_adapter::ReasoningModel for ClarifyingModel {
     fn invoke<'a>(&'a self, request: &'a ModelRequest) -> model_adapter::ModelFuture<'a> {
         Box::pin(async move {
             let value = match request.purpose.as_str() {
-                "SYNTHESIZE" => json!({
-                    "purpose":"SYNTHESIZE","status":"ok",
-                    "niccolo_artifact":{"answer_text":"Provisional.","coverage_note":"Synthetic clarification test.","claims":[]}
-                }),
+                "SYNTHESIZE" => {
+                    let questions = request
+                        .input
+                        .pointer("/reasoning_packet/clarifications")
+                        .and_then(serde_json::Value::as_array)
+                        .expect("synthesis receives persisted clarification questions");
+                    assert_eq!(questions.len(), 1);
+                    assert_eq!(questions[0]["question_id"], self.question.to_string());
+                    assert_eq!(
+                        questions[0]["text"],
+                        "Was the message sent before the decision?"
+                    );
+                    assert_eq!(
+                        request.input["reasoning_packet"]["clarifications_truncated"],
+                        false
+                    );
+                    json!({
+                        "purpose":"SYNTHESIZE","status":"ok",
+                        "niccolo_artifact":{"answer_text":"Provisional.","coverage_note":"Synthetic clarification test.","claims":[]}
+                    })
+                }
                 "CHALLENGE_SYNTHESIS" => json!({
                     "purpose":"CHALLENGE_SYNTHESIS","status":"ok",
                     "niccolo_challenge":{"challenges":[]}
