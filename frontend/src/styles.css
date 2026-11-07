@@ -9,3 +9,5 @@
 .analysis-history{margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:6px}.analysis-history ul{list-style:none;padding:0;display:grid;gap:8px}.analysis-history li{border-left:2px solid #ddd;padding-left:8px}.analysis-history button{max-width:100%;text-align:left}.analysis-history .history-selected{font-weight:700;text-decoration:underline}
 .question-create,.feedback-question{border:1px solid #ddd;border-radius:6px;padding:14px;margin:12px 0}.question-create label,.feedback-question label{display:grid;gap:6px;margin:9px 0}.question-create textarea,.feedback-question textarea{width:100%;min-height:72px}.feedback-list{display:grid;gap:12px}.feedback-history{margin-top:12px;padding-top:10px;border-top:1px solid #ddd}
 .input-warning{border-left:4px solid #777;background:#f4f1e8}
+
+.prepared-session{display:grid;gap:4px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;background:#fafaf8}.prepared-session details{margin-top:2px}.situation-guide,.next-action{margin:14px 0;padding:14px;border:1px solid #ddd;border-radius:6px}.situation-guide ul{margin:8px 0;padding-left:20px}.next-action{background:#fafaf8}.next-action a{font-weight:700}
