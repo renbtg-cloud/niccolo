@@ -1,13 +1,33 @@
 # Active work progress
 
+## Human-configurable reasoning Playground — EPI-017 first slice (verified)
+
+PR #21 merged to main at `dc05aad` (replaces closed, unmerged PR #20).
+- First-party React Playground is discoverable under **Technical**, without disturbing the main Situation → Analyze → Review journey.
+- Trial parameters: support and contradiction multipliers, origin-group cap, subjective human confidence and fictional report-source overlap. Uses the real authenticated baseline-vs-trial comparison API.
+- Trial comparisons never persist state, verify evidence, invoke an LLM, certify probability or rewrite historical analysis.
+- A **separate explicit action** can record a new append-only weighting policy version for the Situation or as the workspace default; human rationale is mandatory. Existing backend authorization determines write access.
+- Stale async previews from an earlier configuration/session are not shown as current.
+- Linux CI run `42421075754` passed: **444/444 Rust tests**, **66/66 frontend tests**, 83 PostgreSQL migrations, formatting, strict Clippy and production build.
+- This is **not** a model-level replay; EPI-016 remains separate.
+
+## PostgreSQL-grounded multi-parent scoring — EPI-014 operational integration (verified)
+
+PR #19 merged to main at `b8ee3c6`.
+- Selected, examined, claim-linked evidences are walked through their **recorded** parent derivations in a bounded repeatable-read PostgreSQL snapshot.
+- Source clustering counts reports from different documents with the same recorded ancestor as dependent, not independent. The score exposes a structural dependence component key, not a certified original source ID.
+- Revoked ancestry and cycles fail closed; source graph revision is returned with each calculation. Unknown unrecorded relationships may still exist.
+- Linux CI run `42420338447` passed **444/444 Rust tests** and 58/58 frontend tests (before the later Playground), all 83 migrations and strict Clippy. The five focused provenance integrations include a cross-document common-ancestor test.
+- A previously flaky async HTTP CI test now uses a bounded wall-clock timeout instead of 30 immediate scheduler yields.
+
 ## Multi-parent provenance dependence — EPI-014 foundation (verified)
 
 PR #18 merged to main at `fd3cb44`:
 - New `src/provenance_clusters.rs` pure Rust helper computes conservative transitive dependence components for selected evidence linked by the same source document or any **documented common ancestor**.
 - Multi-parent ancestry, diamonds and chains are handled; missing declared ancestors, cycles and withdrawn ancestors fail closed. It does not certify truth, witness independence or completeness of unknown provenance relationships.
-- This is **an isolated deterministic building block**, NOT yet wired to the live claim scoring DB endpoint from EPI-013. That endpoint still groups by source document and explicitly reports `derivation_graph_traversed=false`.
+- This is the pure helper now **also has an operational PostgreSQL integration** via PR #19; the earlier PR #18 remains the independently validated algorithmic foundation.
 - CI run `42418745135`: **0/440 Rust tests failed (440/440 passed)**, including **122/122 library tests**; **0/58 frontend tests failed (58/58 passed)**; the focused API integration suites, all 83 SQL migrations, strict Clippy, formatting and frontend build passed.
-- Next: bind multi-parent graph closure to actual PostgreSQL evidence_derivation rows and use the derived conservative component groups in EPI-013; prove safe failure on incomplete/ambiguous lineage before declaring operational integration.
+- Completed later in PR #19: closure over recorded PostgreSQL derivation edges, conservative component grouping and safe failure for cyclic/withdrawn ancestry. Distinct clusters still do not prove witness independence.
 
 
 ## Source-grounded claim weighting — EPI-013 (verified)
@@ -19,7 +39,7 @@ PR #17 is merged into main at `1ab6a57`.
 - Conservative grouping by **source document** is explicit, but this is NOT multi-parent derivation-graph traversal, and separate documents are NOT established independent witnesses.
 - It does not change historical analysis, silently promote subjective opinion into fact, compute calibrated truth probabilities, or authorize consequential action.
 - The newly verified CI run `42418046760` passed **431/431 Rust tests** in the full PostgreSQL-feature suite, **2/2 grounded API integration tests**, **3/3 human credence integration tests**, **58/58 frontend tests**, all 83 migrations, strict Clippy, Rust formatting and frontend production build.
-- Further bounded work: EPI-012 (human confidence annotations BEFORE an analysis claim exists); EPI-014 (multi-parent derivation-root-aware grouping); EPI-015 (persist evaluation trace including the applied policy and graph revision); EPI-016 (full isolated, non-destructive reasoning replay).
+- Further bounded work: EPI-012 (human confidence annotations BEFORE an analysis claim exists), EPI-015 (durable evaluation trace including applied policy and graph revision), EPI-016 (full isolated, non-destructive model replay). EPI-014 has since been completed in PR #19.
 
 
 ## Epistemic reasoning weights — verified baseline
