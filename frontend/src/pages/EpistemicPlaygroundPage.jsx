@@ -36,6 +36,8 @@ export function EpistemicPlaygroundPage() {
   const client = useClient();
   const [settings, setSettings] = useState({ ...initialPlaygroundSettings });
   const [localError, setLocalError] = useState('');
+  const [policyScope, setPolicyScope] = useState('situation');
+  const [saveRationale, setSaveRationale] = useState('');
   const [comparisonSignature, setComparisonSignature] = useState(null);
 
   const sessionKey = client ? client.config.workspace + ':' + client.config.situation : '';
@@ -48,9 +50,18 @@ export function EpistemicPlaygroundPage() {
   const compare = useMutation({
     mutationFn: async (payload) => (await client.compareEpistemic(payload)).value,
   });
+  const save = useMutation({
+    mutationFn: async ({ id, body }) => (await client.recordEpistemicPolicy(id, body)).value,
+    onSuccess: async () => {
+      await policyQuery.refetch();
+      compare.reset();
+      setComparisonSignature(null);
+    },
+  });
   const update = (field, value) => {
     setSettings((current) => ({ ...current, [field]: value }));
     compare.reset();
+    save.reset();
     setLocalError('');
     setComparisonSignature(null);
   };
@@ -72,6 +83,27 @@ export function EpistemicPlaygroundPage() {
   };
   const current = policyQuery.data?.effective_policy;
   const comparison = comparisonSignature === currentSignature ? compare.data : null;
+  const saveTrial = () => {
+    if (!client || !comparison) return;
+    const rationale = saveRationale.trim();
+    if (!rationale || rationale.length > 4096) {
+      setLocalError('Explain why these weights should apply (1–4096 characters).');
+      return;
+    }
+    try {
+      const trial = comparisonRequest(settings, client.config.situation).trial_policy;
+      save.mutate({
+        id: crypto.randomUUID(),
+        body: {
+          situation_id: policyScope === 'situation' ? client.config.situation : null,
+          policy: trial,
+          rationale,
+        },
+      });
+    } catch (error) {
+      setLocalError(error.message);
+    }
+  };
 
   return <section className="epistemic-playground">
     <h2>Reasoning weights — Playground</h2>
@@ -109,6 +141,26 @@ export function EpistemicPlaygroundPage() {
         <button type="submit" disabled={compare.isPending}>{compare.isPending ? 'Comparing…' : 'Compare without saving'}</button>
       </form>
       {comparison && <ComparisonResult comparison={comparison} />}
+      {comparison && <article className="epistemic-playground-policy-save">
+        <h3>Record this policy only if you choose</h3>
+        <p>This is a separate, explicit write operation. The record is append-only and affects future effective weighting; it does not rewrite frozen analyses or prove anything about the fictional reports.</p>
+        <label>Policy scope
+          <select value={policyScope} onChange={(event) => { setPolicyScope(event.target.value); save.reset(); }}>
+            <option value="situation">Only this Situation</option>
+            <option value="workspace">Workspace default</option>
+          </select>
+        </label>
+        {policyScope === 'workspace' && <p>The workspace default may influence other Situations without their own override. The comparison above used the current Situation's baseline.</p>}
+        <label>Reason for this policy choice
+          <textarea required maxLength={4096} value={saveRationale}
+            onChange={(event) => { setSaveRationale(event.target.value); save.reset(); }}
+            placeholder="Your rationale remains your own, not a model justification." />
+        </label>
+        <button type="button" disabled={!saveRationale.trim() || save.isPending}
+          onClick={saveTrial}>{save.isPending ? 'Recording…' : 'Record a new policy version'}</button>
+        {save.error && <p className="error" role="alert">Policy could not be recorded: {save.error.message}</p>}
+      </article>}
+      {save.isSuccess && <p role="status">Policy recorded successfully. Earlier analyses are unchanged.</p>}
       <details className="technical-details"><summary>What this preview cannot do</summary>
         <p>This is a deterministic score comparison, not a stochastic LLM re-run. The synthetic evidence IDs are not checked against documents. It cannot certify an event, motive, probability or independence, and cannot authorize real-world action.</p>
       </details>
