@@ -28,9 +28,13 @@ Closed/validated in this resumed block:
 - v1.881-v1.920 Situation shows transparent focus/source/context preparation signals without a readiness score or gate;
 - v1.921-v1.960 Human Review now shows the concrete competing interpretations and rationale carried by deterministic handoff;
 - v1.961-v2.000 Human Review is self-contained with the published answer and coverage note while preserving historical-input semantics;
+- v2.001-v2.040 technical inspection pages are demoted behind a Technical navigation group while Situation → Analyze → Review remains primary;
+- v2.041-v2.080 connected sessions expose a token-free prepared demo link for sharing; bearer credentials remain separate;
+- v2.081-v2.120 Analyze keeps operation/agentic/event JSON behind Technical execution details instead of permanent primary-page clutter;
+- v2.121-v2.160 primary Situation/connection copy removes BFF/backend jargon while keeping technical surfaces available;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
 - 410/410 Rust/PostgreSQL tests pass in bounded suites;
-- 51/51 frontend tests and the production build pass;
+- 52/52 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
 Next work should continue from the evidence produced by the running product rather than add post-MVP provider-routing complexity. Capability-aware LLM routing/BYOK ideas are deliberately parked in `POST_MVP_TO_SPECIFY.md`.
