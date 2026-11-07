@@ -74,8 +74,8 @@ fn response_content(wire: &str) -> (String, String) {
         "ASSESS_CONTEXT"
     } else if wire.contains("INSPECT_SOURCES") {
         "INSPECT_SOURCES"
-    } else if wire.contains("COMPARE_ALTERNATIVES") {
-        "COMPARE_ALTERNATIVES"
+    } else if wire.contains("CHECK_ALTERNATIVES") {
+        "CHECK_ALTERNATIVES"
     } else if wire.contains("CHECK_STOP_CONDITIONS") {
         "CHECK_STOP_CONDITIONS"
     } else if wire.contains("PREPARE_HANDOFF") {
@@ -94,6 +94,14 @@ fn response_content(wire: &str) -> (String, String) {
                 .pointer("/input/reasoning_packet/frozen_input/contributions/0/id")
                 .and_then(Value::as_str)
                 .expect("synthesis receives frozen human context");
+            let candidate_text = request
+                .pointer("/input/reasoning_packet/candidate_interpretations/0/text")
+                .and_then(Value::as_str)
+                .expect("synthesis receives persisted competing interpretation");
+            assert_eq!(
+                candidate_text,
+                "The message may reflect coordination rather than a completed action."
+            );
             let claim_id = Uuid::new_v4();
             json!({
                 "purpose": purpose,
@@ -143,6 +151,21 @@ fn response_content(wire: &str) -> (String, String) {
             "status": "ok",
             "niccolo_update": {
                 "used_contribution_ids": [],
+                "assumptions": [],
+                "evidence_gaps": [],
+                "clarifications": []
+            }
+        }),
+        "CHECK_ALTERNATIVES" => json!({
+            "purpose": purpose,
+            "status": "ok",
+            "niccolo_update": {
+                "used_contribution_ids": [],
+                "candidate_interpretations": [{
+                    "interpretation_id": Uuid::new_v4(),
+                    "text": "The message may reflect coordination rather than a completed action.",
+                    "rationale": "The source states an intention to arrive, not independent confirmation of arrival."
+                }],
                 "assumptions": [],
                 "evidence_gaps": [],
                 "clarifications": []
@@ -510,6 +533,27 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
         contribution.to_string()
     );
     assert_eq!(epistemic["human_context_is_evidence"], false);
+    assert_eq!(
+        epistemic["candidate_interpretations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        epistemic["candidate_interpretations"][0]["text"],
+        "The message may reflect coordination rather than a completed action."
+    );
+    assert_eq!(epistemic["candidate_interpretations"][0]["is_fact"], false);
+    assert_eq!(
+        epistemic["candidate_interpretations"][0]["automatically_ranked"],
+        false
+    );
+    assert_eq!(epistemic["candidate_interpretations_are_facts"], false);
+    assert_eq!(
+        epistemic["candidate_interpretations_are_automatically_ranked"],
+        false
+    );
 
     let used_context: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.situation_analysis_used_contributions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
@@ -552,6 +596,11 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
             .any(|purpose| purpose == "CHALLENGE_SYNTHESIS")
     );
     assert!(purposes.iter().any(|purpose| purpose == "ASSESS_CONTEXT"));
+    assert!(
+        purposes
+            .iter()
+            .any(|purpose| purpose == "CHECK_ALTERNATIVES")
+    );
 
     let wires = h.wires.lock().unwrap().clone();
     assert!(
@@ -565,5 +614,14 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
             .iter()
             .any(|wire| wire.contains("I remember Ana sounding unusually certain.")),
         "human context must remain available to the provider separately from source evidence"
+    );
+    assert!(
+        wires.iter().any(|wire| {
+            wire.contains("SYNTHESIZE")
+                && wire.contains(
+                    "The message may reflect coordination rather than a completed action.",
+                )
+        }),
+        "persisted competing interpretations must feed later reasoning steps"
     );
 }
