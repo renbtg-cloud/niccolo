@@ -24,6 +24,7 @@ use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
+use crate::presentation_package::{self, PresentationError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
@@ -333,6 +334,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}",
             get(get_analysis_snapshot).post(begin_analysis_snapshot),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package",
+            get(get_presentation_package),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/dashboard",
@@ -3671,4 +3676,28 @@ async fn evaluate_grounded_claim_weights(
         }),
         StatusCode::OK,
     ))
+}
+
+async fn get_presentation_package(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let package = presentation_package::build(&state.pool, workspace, situation, analysis)
+        .await
+        .map_err(|err| match err {
+            PresentationError::Manifest(crate::analysis_manifest::ManifestError::Invisible) => {
+                ApiError(StatusCode::NOT_FOUND, "published analysis unavailable")
+            }
+            PresentationError::TooLarge => ApiError(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "presentation package too large",
+            ),
+            _ => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "presentation package unavailable",
+            ),
+        })?;
+    Ok(no_store(json!(package), StatusCode::OK))
 }

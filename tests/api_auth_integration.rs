@@ -743,3 +743,40 @@ async fn identity_catalog_is_paginated_and_human_curated() {
     assert_eq!(page2["identities"][0]["display_label"], "Roberto");
     assert!(page2["next_after"].is_null());
 }
+
+#[tokio::test]
+async fn presentation_package_requires_authorization_and_published_analysis() {
+    let (admin, _app, workspace, _, token, router) = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let path = format!(
+        "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package"
+    );
+    let (anonymous, _) = invoke(
+        router.clone(),
+        request("GET", &path, None, None, None, b""),
+    )
+    .await;
+    assert_eq!(anonymous, StatusCode::UNAUTHORIZED);
+    let (not_published, _) = invoke(
+        router.clone(),
+        request("GET", &path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(not_published, StatusCode::NOT_FOUND);
+    let foreign = Uuid::new_v4();
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'foreign-export')")
+        .bind(foreign)
+        .execute(&admin)
+        .await
+        .unwrap();
+    let foreign_path = format!(
+        "/v1/workspaces/{foreign}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package"
+    );
+    let (forbidden, _) = invoke(
+        router,
+        request("GET", &foreign_path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(forbidden, StatusCode::FORBIDDEN);
+}

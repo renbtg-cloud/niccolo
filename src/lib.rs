@@ -490,3 +490,5 @@ pub mod grounded_claim_weights;
 pub mod provenance_clusters;
 
 pub mod grounded_lineage_store;
+
+pub mod presentation_package;
