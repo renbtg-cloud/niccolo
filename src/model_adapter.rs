@@ -117,7 +117,10 @@ impl ReasoningModel for DeterministicModel {
                 })
             } else if matches!(
                 request.purpose.as_str(),
-                "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS"
+                "ASSESS_CONTEXT"
+                    | "CHECK_ASSUMPTIONS"
+                    | "PROPOSE_CLARIFICATION"
+                    | "CHECK_ALTERNATIVES"
             ) {
                 serde_json::json!({"purpose":request.purpose,"status":"deterministic-test-adapter","niccolo_update":{"assumptions":[],"evidence_gaps":[],"clarifications":[]}})
             } else if request.purpose == "CHALLENGE_SYNTHESIS" {
