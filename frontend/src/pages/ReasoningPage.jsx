@@ -6,6 +6,7 @@ function kindLabel(kind){return kind.toLowerCase().replaceAll('_',' ');}
 function Assumption({item}){return <li><strong>{item.statement}</strong><div><small>Basis: {item.basis_note} · Status: {kindLabel(item.latest_status)}</small></div></li>}
 function Gap({item}){return <li><strong>{item.description}</strong><div><small>Status: {kindLabel(item.state)}{item.requested_source_kind?` · Useful source: ${kindLabel(item.requested_source_kind)}`:''}</small></div></li>}
 function Alternative({item}){return <li><strong>{item.text}</strong><div><small>{item.rationale}</small></div></li>}
+function CandidateInterpretation({item}){return <li><strong>{item.text}</strong><div><small>{item.rationale}</small></div></li>}
 function SourceLink({item}){return <li className="provenance-link"><div><strong>{kindLabel(item.relation)}</strong> · {item.speaker_label||'Unknown speaker'}</div><blockquote>{item.content}</blockquote><small>{item.format} · {item.locator} · fragment #{item.ordinal} · {kindLabel(item.source_class)}</small></li>}
 function ContextLink({item}){return <li className="context-link"><div><strong>{kindLabel(item.relation)}</strong> · {kindLabel(item.kind)}</div><blockquote>{item.text}</blockquote><small>Status: {kindLabel(item.status)} · human context, not evidence</small></li>}
 function ClaimCard({claim}){return <article className="claim-card" id={`claim-${claim.claim_id}`}>
@@ -29,6 +30,7 @@ export function ReasoningPage(){
   {!data&&<p>Loading recorded reasoning…</p>}
   {data&&<>
    <p>This view separates what the analysis said from assumptions, competing interpretations and missing evidence. Recording a claim here does not make it true.</p>
+   {data.candidate_interpretations?.length>0&&<article className="standalone-reasoning"><h3>Competing interpretations considered</h3><ul>{data.candidate_interpretations.map(x=><CandidateInterpretation key={x.interpretation_id} item={x}/>)}</ul><small>These are model-generated candidates for consideration, not facts, claims, decisions, or an automatic ranking.</small></article>}
    {data.claims.length>0&&<nav className="claim-index" aria-label="Claims">{data.claims.map(c=><a key={c.claim_id} href={`#claim-${c.claim_id}`}>#{c.ordinal} {kindLabel(c.kind)}</a>)}</nav>}
    <div className="claim-list">{data.claims.map(c=><ClaimCard key={c.claim_id} claim={c}/>)}</div>
    {data.claims.length===0&&<p>No structured claims have been recorded for this analysis.</p>}
@@ -36,7 +38,7 @@ export function ReasoningPage(){
      {data.unlinked_assumptions.length>0&&<><h4>Assumptions not tied to one claim</h4><ul>{data.unlinked_assumptions.map(x=><Assumption key={x.assumption_id} item={x}/>)}</ul></>}
      {data.unlinked_evidence_gaps.length>0&&<><h4>Evidence gaps not tied to one claim</h4><ul>{data.unlinked_evidence_gaps.map(x=><Gap key={x.gap_id} item={x}/>)}</ul></>}
    </article>}
-   <p className="epistemic-boundary"><small>Claims are not verified facts. Assumptions are not facts. Source-link counts are not counts of independent evidence. Human context is not evidence. Closing an evidence gap does not by itself prove a claim. The browser renders this backend-owned read model; it does not infer or rank the reasoning.</small></p>
+   <p className="epistemic-boundary"><small>Claims are not verified facts. Candidate interpretations are not facts and are not automatically ranked. Assumptions are not facts. Source-link counts are not counts of independent evidence. Human context is not evidence. Closing an evidence gap does not by itself prove a claim. The browser renders this backend-owned read model; it does not infer or rank the reasoning.</small></p>
   </>}
  </section>;
 }
