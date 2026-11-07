@@ -52,20 +52,18 @@ def explain():
     claims = read_csv("data/claims.csv")
     fragments = read_csv("data/claim_fragments.csv")
     contexts = read_csv("data/claim_contributions.csv")
-    support_links = Counter(
-        row["claim_id"] for row in fragments if row["relation"] == "SUPPORTS"
-    )
-    contradiction_links = Counter(
-        row["claim_id"] for row in fragments if row["relation"] == "CONTRADICTS"
-    )
+    evidence_relations = Counter((row["claim_id"], row["relation"]) for row in fragments)
     context_links = Counter(row["claim_id"] for row in contexts)
     print("\nRecorded claims and explicitly linked material:")
     for row in claims:
         claim_id = row["claim_id"]
         print("- [", row["kind"], "]", row["text"])
         print(
-            "  support links:", support_links[claim_id],
-            "contradiction links:", contradiction_links[claim_id],
+            "  evidence relations:", {
+                relation: count
+                for (id_, relation), count in evidence_relations.items()
+                if id_ == claim_id
+            },
             "human-context links:", context_links[claim_id],
         )
         if row["qualification"]:
