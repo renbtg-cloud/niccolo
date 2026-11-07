@@ -3370,7 +3370,9 @@ async fn list_human_credence(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WeightPreviewRequest {
-    policy: WeightPolicy,
+    /// Explicit trial override; omission picks the effective persisted policy.
+    policy: Option<WeightPolicy>,
+    situation_id: Option<Uuid>,
     human_declared_confidence_percent: Option<u8>,
     observations: Vec<WeightedObservation>,
 }
@@ -3381,8 +3383,23 @@ async fn preview_epistemic_balance(
     Json(request): Json<WeightPreviewRequest>,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
+    // A supplied Situation must be real and visible even for an explicit trial.
+    let stored = if request.policy.is_none() || request.situation_id.is_some() {
+        Some(epistemic_policy_store::effective(&state.pool, workspace, request.situation_id)
+            .await.map_err(epistemic_policy_error)?)
+    } else {
+        None
+    };
+    let (policy, policy_source) = if let Some(override_policy) = request.policy {
+        (override_policy, "EXPLICIT_PREVIEW_OVERRIDE".to_string())
+    } else {
+        let stored = stored.ok_or(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR, "epistemic policy unavailable"
+        ))?;
+        (stored.policy, stored.scope)
+    };
     let report = epistemic_weights::evaluate(
-        request.policy,
+        policy,
         request.human_declared_confidence_percent,
         &request.observations,
     )
@@ -3390,6 +3407,8 @@ async fn preview_epistemic_balance(
     Ok(no_store(
         json!({
             "report": report,
+            "policy_used": policy,
+            "policy_source": policy_source,
             "mode": "UNVERIFIED_PREVIEW",
             "inputs_checked_against_database": false,
             "changes_any_persisted_state": false,
