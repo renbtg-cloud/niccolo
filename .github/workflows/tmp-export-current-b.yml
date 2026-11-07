@@ -1,0 +1,21 @@
+name: tmp export current b
+on:
+  push:
+    branches: [tmp-export-20261107b]
+    paths: ['.export-current-b/ready']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .git .export-current-b .github/workflows/tmp-export-current-b.yml
+          tar -czf /tmp/niccolo-current-b.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-current-b-20261107
+          path: /tmp/niccolo-current-b.tar.gz
