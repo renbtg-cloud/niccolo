@@ -1,5 +1,31 @@
 # Active test progress
 
+## v1.481-v1.520 — deterministic handoff v2 preserves reasoning trail
+
+FINAL STATUS: DONE
+
+Validated on Debian 13 / PostgreSQL 17.11 with the 81-migration schema:
+
+- focused handoff v2 review suite: 0/8 failed; 8/8 passed;
+- deterministic runtime handoff regression: passed;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/408 failed; 408/408 passed;
+- frontend: 0/32 failed; 32/32 passed across 8 test files;
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+Validated behavior:
+
+- the deterministic handoff format is now version 2;
+- candidate interpretations survive into handoff as explicit non-facts and remain explicitly unranked;
+- analysis clarification questions survive into handoff with question text, reason, frozen input revision, answer count and answered state;
+- clarification records remain explicitly non-evidence;
+- answering a clarification changes the handoff SHA-256 without rewriting or removing the original question;
+- existing claims, claim-linked open questions, revision conditions and non-authority/non-execution boundaries remain intact;
+- repeated handoff construction over unchanged state remains byte-deterministic and hash-stable.
+
+---
+
 ## v1.441-v1.480 — clarification lineage in later reasoning
 
 FINAL STATUS: DONE
