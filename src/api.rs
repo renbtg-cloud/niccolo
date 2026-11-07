@@ -2551,6 +2551,27 @@ async fn list_reasoning_handoff_receipts(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
+    let current = reasoning_handoff::bundle(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await
+    .map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "reasoning handoff unavailable",
+        )
+    })?;
+    let current_sha = reasoning_handoff::sha256(&current).map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "reasoning handoff unavailable",
+        )
+    })?;
     let rows = review_governance::handoff_receipts(&state.pool, workspace, situation, analysis)
         .await
         .map_err(|_| {
@@ -2561,16 +2582,21 @@ async fn list_reasoning_handoff_receipts(
         })?;
     Ok(no_store(
         json!({
-            "receipts": rows.into_iter().map(|r| json!({
-                "receipt_id": r.receipt_id,
-                "handoff_sha256": r.handoff_sha256,
-                "kind": r.kind,
-                "note": r.note,
-                "recipient_principal_id": r.recipient,
-                "created_at": r.created_at,
-                "receipt_means_agreement": r.receipt_means_agreement,
-                "receipt_grants_authority": r.receipt_grants_authority
-            })).collect::<Vec<_>>(),
+            "receipts": rows.into_iter().map(|r| {
+                let matches_current_handoff = r.handoff_sha256 == current_sha;
+                json!({
+                    "receipt_id": r.receipt_id,
+                    "handoff_sha256": r.handoff_sha256,
+                    "kind": r.kind,
+                    "note": r.note,
+                    "recipient_principal_id": r.recipient,
+                    "created_at": r.created_at,
+                    "matches_current_handoff": matches_current_handoff,
+                    "receipt_means_agreement": r.receipt_means_agreement,
+                    "receipt_grants_authority": r.receipt_grants_authority
+                })
+            }).collect::<Vec<_>>(),
+            "current_handoff_sha256": current_sha,
             "receipt_means_agreement": false,
             "receipt_grants_authority": false
         }),
