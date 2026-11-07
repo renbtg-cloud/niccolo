@@ -1,5 +1,36 @@
 # Active test progress
 
+## v1.321-v1.440 — durable reasoning trail and deterministic boundaries
+
+FINAL STATUS: DONE
+
+Validated on Debian 13 / PostgreSQL 17.11:
+
+- fresh schema reconstruction: 81/81 migrations applied from scratch;
+- fresh-schema readiness boundary: 0/3 failed; 3/3 passed;
+- fresh-schema secure RLS audit: 0/10 failed; 10/10 passed;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/407 failed; 407/407 passed;
+- tentative-MVP provider E2E: 0/1 failed; 1/1 passed;
+- modern milestone suite: 0/32 failed; 32/32 passed;
+- frontend: 0/32 failed; 32/32 passed across 8 test files;
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+Validated behavior:
+
+- `PROPOSE_CLARIFICATION` is now a real reasoning-update step: model-discovered questions survive the invocation and are persisted before human handoff;
+- `CHECK_STOP_CONDITIONS` is deterministic and reads recorded stop state instead of spending an LLM call;
+- `PREPARE_HANDOFF` is deterministic and produces a versioned, SHA-256-bound handoff whose contract explicitly grants no authority and executes no action;
+- `CHECK_ALTERNATIVES` now persists pre-synthesis candidate interpretations instead of discarding them;
+- candidate interpretations are model-generated possibilities, not facts, claims, decisions, or automatic rankings;
+- persisted candidates enter later reasoning packets and are therefore available to synthesis/challenge;
+- candidate replay with the same identifier but changed content fails closed without rewriting the original;
+- the BFF epistemic view and React reasoning surface expose candidates with explicit non-fact/non-ranking boundaries;
+- the new workspace-scoped candidate table satisfies the same four restrictive API RLS gates required by readiness.
+
+---
+
 ## v1.241-v1.320 — model-observed source coverage and human-context provenance
 
 FINAL STATUS: DONE
