@@ -16,3 +16,18 @@ export function handoffSummary(payload){
    readModelExecutesActions:payload.read_model_executes_actions===true,
  };
 }
+
+
+export function receiptSummary(payload){
+ const rows=payload?.receipts??[];
+ const counts={RECEIVED:0,REVIEWED:0,DECLINED:0};
+ for(const row of rows)if(Object.hasOwn(counts,row.kind))counts[row.kind]+=1;
+ return {
+   total:rows.length,
+   received:counts.RECEIVED,
+   reviewed:counts.REVIEWED,
+   declined:counts.DECLINED,
+   receiptMeansAgreement:payload?.receipt_means_agreement===true,
+   receiptGrantsAuthority:payload?.receipt_grants_authority===true,
+ };
+}
