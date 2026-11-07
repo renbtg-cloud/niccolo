@@ -23,9 +23,10 @@ Closed/validated in this resumed block:
 - v1.681-v1.720 ReviewPage hook ordering is stable across connect/analysis transitions and protected by a structural regression test;
 - v1.721-v1.760 the first-party product now presents Situation → Analyze → Review as the primary journey; transport mode and step budget remain available only as advanced execution controls;
 - v1.761-v1.800 reconnect with no explicit selection now recovers the newest analysis for the current Situation, while disconnect clears stale analysis/operation UI state and credentials remain memory-only;
+- v1.801-v1.840 prepared demo links may prefill non-secret workspace/Situation identifiers while bearer tokens remain excluded from URLs and memory-only;
 - 81/81 SQL migrations apply from scratch on PostgreSQL 17.11;
 - 410/410 Rust/PostgreSQL tests pass in bounded suites;
-- 42/42 frontend tests and the production build pass;
+- 45/45 frontend tests and the production build pass;
 - rustfmt and strict Clippy pass.
 
 Next work should continue from the evidence produced by the running product rather than add post-MVP provider-routing complexity. Capability-aware LLM routing/BYOK ideas are deliberately parked in `POST_MVP_TO_SPECIFY.md`.
