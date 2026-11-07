@@ -86,8 +86,7 @@ pub enum WeightError {
 }
 
 fn weighted(strength: u16, factor: u16, cap: u16) -> u16 {
-    ((u32::from(strength) * u32::from(factor)) / 100)
-        .min(u32::from(cap)) as u16
+    ((u32::from(strength) * u32::from(factor)) / 100).min(u32::from(cap)) as u16
 }
 
 /// A transparent *heuristic balance*, not a scientific estimate of truth.
@@ -118,10 +117,7 @@ pub fn evaluate(
         if o.declared_strength > 100 {
             return Err(WeightError::InvalidWeight);
         }
-        if o.rationale.trim().is_empty()
-            || o.rationale.len() > 4096
-            || o.rationale.contains('\0')
-        {
+        if o.rationale.trim().is_empty() || o.rationale.len() > 4096 || o.rationale.contains('\0') {
             return Err(WeightError::InvalidRationale);
         }
         if !seen.insert(o.evidence_id) {
@@ -140,10 +136,16 @@ pub fn evaluate(
     let mut support_points = 0i32;
     let mut counter_points = 0i32;
     for (origin, (item_count, support, counter)) in by_origin {
-        let weighted_support =
-            weighted(support, policy.support_multiplier_pct, policy.per_origin_cap);
-        let weighted_counter =
-            weighted(counter, policy.counter_multiplier_pct, policy.per_origin_cap);
+        let weighted_support = weighted(
+            support,
+            policy.support_multiplier_pct,
+            policy.per_origin_cap,
+        );
+        let weighted_counter = weighted(
+            counter,
+            policy.counter_multiplier_pct,
+            policy.per_origin_cap,
+        );
         support_points += i32::from(weighted_support);
         counter_points += i32::from(weighted_counter);
         origins.push(OriginContribution {
@@ -173,7 +175,12 @@ pub fn evaluate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn obs(evidence: u128, origin: Option<u128>, stance: Stance, strength: u16) -> WeightedObservation {
+    fn obs(
+        evidence: u128,
+        origin: Option<u128>,
+        stance: Stance,
+        strength: u16,
+    ) -> WeightedObservation {
         WeightedObservation {
             evidence_id: Uuid::from_u128(evidence),
             documented_origin_id: origin.map(Uuid::from_u128),
@@ -184,7 +191,9 @@ mod tests {
     }
     #[test]
     fn three_copies_do_not_triple_support() {
-        let rows = (1..=3).map(|i| obs(i, Some(10), Stance::Supports, 80)).collect::<Vec<_>>();
+        let rows = (1..=3)
+            .map(|i| obs(i, Some(10), Stance::Supports, 80))
+            .collect::<Vec<_>>();
         let result = evaluate(WeightPolicy::default(), None, &rows).unwrap();
         assert_eq!(result.support_points, 80);
         assert_eq!(result.origins.len(), 1);
@@ -193,19 +202,40 @@ mod tests {
     }
     #[test]
     fn missing_origins_are_not_assumed_independent() {
-        let rows = vec![obs(1, None, Stance::Supports, 70), obs(2, None, Stance::Supports, 70)];
-        assert_eq!(evaluate(WeightPolicy::default(), None, &rows).unwrap().support_points, 70);
+        let rows = vec![
+            obs(1, None, Stance::Supports, 70),
+            obs(2, None, Stance::Supports, 70),
+        ];
+        assert_eq!(
+            evaluate(WeightPolicy::default(), None, &rows)
+                .unwrap()
+                .support_points,
+            70
+        );
     }
     #[test]
     fn opposing_evidence_remains_visible() {
-        let rows = vec![obs(1, Some(5), Stance::Supports, 80), obs(2, Some(6), Stance::Contradicts, 60)];
+        let rows = vec![
+            obs(1, Some(5), Stance::Supports, 80),
+            obs(2, Some(6), Stance::Contradicts, 60),
+        ];
         let result = evaluate(WeightPolicy::default(), None, &rows).unwrap();
-        assert_eq!((result.support_points, result.counter_points, result.net_points), (80, 60, 20));
+        assert_eq!(
+            (
+                result.support_points,
+                result.counter_points,
+                result.net_points
+            ),
+            (80, 60, 20)
+        );
         assert!(!result.establishes_fact);
     }
     #[test]
     fn conflicting_signals_from_same_origin_stay_disclosed() {
-        let rows = vec![obs(1, Some(5), Stance::Supports, 75), obs(2, Some(5), Stance::Contradicts, 85)];
+        let rows = vec![
+            obs(1, Some(5), Stance::Supports, 75),
+            obs(2, Some(5), Stance::Contradicts, 85),
+        ];
         let result = evaluate(WeightPolicy::default(), None, &rows).unwrap();
         assert_eq!(result.net_points, -10);
         assert!(result.origins[0].contains_conflicting_signals);
@@ -222,19 +252,41 @@ mod tests {
     }
     #[test]
     fn configurable_multiplier_is_deterministic() {
-        let rows = vec![obs(1, Some(5), Stance::Supports, 80), obs(2, Some(6), Stance::Contradicts, 40)];
-        let p = WeightPolicy { support_multiplier_pct: 50, counter_multiplier_pct: 200, per_origin_cap: 100 };
+        let rows = vec![
+            obs(1, Some(5), Stance::Supports, 80),
+            obs(2, Some(6), Stance::Contradicts, 40),
+        ];
+        let p = WeightPolicy {
+            support_multiplier_pct: 50,
+            counter_multiplier_pct: 200,
+            per_origin_cap: 100,
+        };
         assert_eq!(evaluate(p, None, &rows).unwrap().net_points, -40);
     }
     #[test]
     fn context_is_not_evidence() {
         let rows = vec![obs(1, Some(5), Stance::ContextOnly, 100)];
-        assert_eq!(evaluate(WeightPolicy::default(), None, &rows).unwrap().net_points, 0);
+        assert_eq!(
+            evaluate(WeightPolicy::default(), None, &rows)
+                .unwrap()
+                .net_points,
+            0
+        );
     }
     #[test]
     fn invalid_and_duplicate_inputs_fail_closed() {
-        assert_eq!(evaluate(WeightPolicy::default(), None, &[obs(1, Some(5), Stance::Supports, 101)]), Err(WeightError::InvalidWeight));
+        assert_eq!(
+            evaluate(
+                WeightPolicy::default(),
+                None,
+                &[obs(1, Some(5), Stance::Supports, 101)]
+            ),
+            Err(WeightError::InvalidWeight)
+        );
         let row = obs(1, Some(5), Stance::Supports, 10);
-        assert_eq!(evaluate(WeightPolicy::default(), None, &[row.clone(), row]), Err(WeightError::DuplicateEvidence));
+        assert_eq!(
+            evaluate(WeightPolicy::default(), None, &[row.clone(), row]),
+            Err(WeightError::DuplicateEvidence)
+        );
     }
 }
