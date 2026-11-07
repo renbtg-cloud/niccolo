@@ -232,6 +232,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/graph", get(graph))
         .route("/v1/workspaces/{workspace}/assess", post(assess))
         .route("/v1/workspaces/{workspace}/epistemic/preview", post(preview_epistemic_balance))
+        .route("/v1/workspaces/{workspace}/epistemic/compare", post(compare_epistemic_policies))
         .route("/v1/workspaces/{workspace}/epistemic/policy", get(get_effective_epistemic_policy))
         .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
@@ -3491,4 +3492,74 @@ async fn get_effective_epistemic_policy(
         .await
         .map_err(epistemic_policy_error)?;
     Ok(no_store(json!({"effective_policy":view}), StatusCode::OK))
+}
+
+
+// EPI-010: one bounded what-if comparison; still not a full reasoning replay.
+// No evidence IDs are verified here, and no historical artifacts are mutated.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EpistemicComparisonRequest {
+    situation_id: Option<Uuid>,
+    baseline_policy: Option<WeightPolicy>,
+    trial_policy: WeightPolicy,
+    human_declared_confidence_percent: Option<u8>,
+    observations: Vec<WeightedObservation>,
+}
+async fn compare_epistemic_policies(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Json(request): Json<EpistemicComparisonRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let inherited = if request.baseline_policy.is_none() || request.situation_id.is_some() {
+        Some(
+            epistemic_policy_store::effective(&state.pool, workspace, request.situation_id)
+                .await
+                .map_err(epistemic_policy_error)?,
+        )
+    } else {
+        None
+    };
+    let (baseline_policy, baseline_source) = if let Some(baseline) = request.baseline_policy {
+        (baseline, "EXPLICIT_BASELINE".to_string())
+    } else {
+        let inherited = inherited.ok_or(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "epistemic policy unavailable",
+        ))?;
+        (inherited.policy, inherited.scope)
+    };
+    let baseline = epistemic_weights::evaluate(
+        baseline_policy,
+        request.human_declared_confidence_percent,
+        &request.observations,
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid baseline weights"))?;
+    let trial = epistemic_weights::evaluate(
+        request.trial_policy,
+        request.human_declared_confidence_percent,
+        &request.observations,
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid trial weights"))?;
+    Ok(no_store(
+        json!({
+            "mode": "HEURISTIC_ONLY_COMPARISON",
+            "baseline_policy_source": baseline_source,
+            "baseline_policy": baseline_policy,
+            "trial_policy": request.trial_policy,
+            "baseline": baseline,
+            "trial": trial,
+            "net_points_delta": trial.net_points - baseline.net_points,
+            "support_points_delta": trial.support_points - baseline.support_points,
+            "counter_points_delta": trial.counter_points - baseline.counter_points,
+            "is_full_reasoning_replay": false,
+            "inputs_checked_against_database": false,
+            "changes_any_persisted_state": false,
+            "proves_claim_truth": false,
+            "authorizes_real_world_action": false
+        }),
+        StatusCode::OK,
+    ))
 }
