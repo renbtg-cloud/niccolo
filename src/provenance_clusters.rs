@@ -108,8 +108,10 @@ pub fn cluster(
     input_nodes: &[LineageNode],
     selected_ids: &[Uuid],
 ) -> Result<ClusterReport, ClusterError> {
-    if input_nodes.is_empty() || input_nodes.len() > 4096
-        || selected_ids.is_empty() || selected_ids.len() > 64
+    if input_nodes.is_empty()
+        || input_nodes.len() > 4096
+        || selected_ids.is_empty()
+        || selected_ids.len() > 64
     {
         return Err(ClusterError::Invalid);
     }
@@ -143,7 +145,7 @@ pub fn cluster(
 
     let mut groups = (0..selected.len()).collect::<Vec<_>>();
     for i in 0..selected.len() {
-        for j in i+1..selected.len() {
+        for j in i + 1..selected.len() {
             let doc_i = nodes[&selected[i]].source_document_id;
             let doc_j = nodes[&selected[j]].source_document_id;
             let same_document = doc_i.is_some() && doc_i == doc_j;
@@ -156,16 +158,20 @@ pub fn cluster(
     let mut clusters_by_group: BTreeMap<usize, DependenceCluster> = BTreeMap::new();
     for i in 0..selected.len() {
         let group = find(&mut groups, i);
-        let record = clusters_by_group.entry(group).or_insert_with(|| DependenceCluster {
-            component_key: selected[i],
-            selected_evidence_ids: Vec::new(),
-            documented_roots: Vec::new(),
-            shared_document_ids: Vec::new(),
-            represents_statistical_independence: false,
-        });
+        let record = clusters_by_group
+            .entry(group)
+            .or_insert_with(|| DependenceCluster {
+                component_key: selected[i],
+                selected_evidence_ids: Vec::new(),
+                documented_roots: Vec::new(),
+                shared_document_ids: Vec::new(),
+                represents_statistical_independence: false,
+            });
         record.component_key = record.component_key.min(selected[i]);
         record.selected_evidence_ids.push(selected[i]);
-        record.documented_roots.extend(by_selected[i].iter().copied());
+        record
+            .documented_roots
+            .extend(by_selected[i].iter().copied());
         if let Some(doc) = nodes[&selected[i]].source_document_id {
             record.shared_document_ids.push(doc);
         }
@@ -191,68 +197,105 @@ pub fn cluster(
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn id(n: u128) -> Uuid { Uuid::from_u128(n) }
-    fn node(n:u128,parents:&[u128],doc:Option<u128>)->LineageNode{
-        LineageNode{
-            evidence_id:id(n),
-            parents:parents.iter().map(|x|id(*x)).collect(),
-            admissible:true,
-            source_document_id:doc.map(id),
+    fn id(n: u128) -> Uuid {
+        Uuid::from_u128(n)
+    }
+    fn node(n: u128, parents: &[u128], doc: Option<u128>) -> LineageNode {
+        LineageNode {
+            evidence_id: id(n),
+            parents: parents.iter().map(|x| id(*x)).collect(),
+            admissible: true,
+            source_document_id: doc.map(id),
         }
     }
     #[test]
     fn two_documents_derived_from_same_root_are_one_cluster() {
-        let nodes=vec![node(1,&[],None),node(2,&[1],Some(20)),node(3,&[1],Some(30))];
-        let r=cluster(&nodes,&[id(2),id(3)]).unwrap();
-        assert_eq!(r.clusters.len(),1);
-        assert_eq!(r.clusters[0].documented_roots,vec![id(1)]);
-        assert_eq!(r.clusters[0].shared_document_ids,vec![id(20),id(30)]);
+        let nodes = vec![
+            node(1, &[], None),
+            node(2, &[1], Some(20)),
+            node(3, &[1], Some(30)),
+        ];
+        let r = cluster(&nodes, &[id(2), id(3)]).unwrap();
+        assert_eq!(r.clusters.len(), 1);
+        assert_eq!(r.clusters[0].documented_roots, vec![id(1)]);
+        assert_eq!(r.clusters[0].shared_document_ids, vec![id(20), id(30)]);
         assert!(!r.different_clusters_establish_independence);
     }
     #[test]
     fn different_roots_on_same_document_are_one_cluster() {
-        let r=cluster(&[node(1,&[],Some(20)),node(2,&[],Some(20))],&[id(1),id(2)]).unwrap();
-        assert_eq!(r.clusters.len(),1);
-        assert_eq!(r.clusters[0].documented_roots,vec![id(1),id(2)]);
+        let r = cluster(
+            &[node(1, &[], Some(20)), node(2, &[], Some(20))],
+            &[id(1), id(2)],
+        )
+        .unwrap();
+        assert_eq!(r.clusters.len(), 1);
+        assert_eq!(r.clusters[0].documented_roots, vec![id(1), id(2)]);
     }
     #[test]
     fn transitive_overlap_is_conservatively_merged() {
-        let nodes=vec![node(1,&[],None),node(2,&[],None),node(3,&[],None),
-            node(10,&[1,2],Some(40)),node(11,&[2,3],Some(50)),node(12,&[3],Some(60))];
-        let r=cluster(&nodes,&[id(10),id(11),id(12)]).unwrap();
-        assert_eq!(r.clusters.len(),1);
-        assert_eq!(r.clusters[0].documented_roots,vec![id(1),id(2),id(3)]);
+        let nodes = vec![
+            node(1, &[], None),
+            node(2, &[], None),
+            node(3, &[], None),
+            node(10, &[1, 2], Some(40)),
+            node(11, &[2, 3], Some(50)),
+            node(12, &[3], Some(60)),
+        ];
+        let r = cluster(&nodes, &[id(10), id(11), id(12)]).unwrap();
+        assert_eq!(r.clusters.len(), 1);
+        assert_eq!(r.clusters[0].documented_roots, vec![id(1), id(2), id(3)]);
     }
     #[test]
     fn distinct_roots_do_not_certify_independence() {
-        let r=cluster(&[node(1,&[],Some(10)),node(2,&[],Some(20))],&[id(1),id(2)]).unwrap();
-        assert_eq!(r.clusters.len(),2);
+        let r = cluster(
+            &[node(1, &[], Some(10)), node(2, &[], Some(20))],
+            &[id(1), id(2)],
+        )
+        .unwrap();
+        assert_eq!(r.clusters.len(), 2);
         assert!(!r.different_clusters_establish_independence);
     }
     #[test]
     fn missing_ancestor_fails_closed() {
-        assert_eq!(cluster(&[node(2,&[1],Some(20))],&[id(2)]),Err(ClusterError::Missing));
+        assert_eq!(
+            cluster(&[node(2, &[1], Some(20))], &[id(2)]),
+            Err(ClusterError::Missing)
+        );
     }
     #[test]
     fn cycles_fail_closed() {
-        assert_eq!(cluster(&[node(1,&[2],None),node(2,&[1],Some(20))],&[id(2)]),
-            Err(ClusterError::Cycle));
+        assert_eq!(
+            cluster(&[node(1, &[2], None), node(2, &[1], Some(20))], &[id(2)]),
+            Err(ClusterError::Cycle)
+        );
     }
     #[test]
     fn inadmissible_ancestor_fails_closed() {
-        let mut n=node(1,&[],None);n.admissible=false;
-        assert_eq!(cluster(&[n,node(2,&[1],Some(20))],&[id(2)]),Err(ClusterError::Withdrawn));
+        let mut n = node(1, &[], None);
+        n.admissible = false;
+        assert_eq!(
+            cluster(&[n, node(2, &[1], Some(20))], &[id(2)]),
+            Err(ClusterError::Withdrawn)
+        );
     }
     #[test]
     fn duplicate_selection_or_nodes_are_invalid() {
-        let a=node(1,&[],None);
-        assert_eq!(cluster(&[a.clone(),a.clone()],&[id(1)]),Err(ClusterError::Invalid));
-        assert_eq!(cluster(&[a],&[id(1),id(1)]),Err(ClusterError::Invalid));
+        let a = node(1, &[], None);
+        assert_eq!(
+            cluster(&[a.clone(), a.clone()], &[id(1)]),
+            Err(ClusterError::Invalid)
+        );
+        assert_eq!(cluster(&[a], &[id(1), id(1)]), Err(ClusterError::Invalid));
     }
     #[test]
     fn diamond_is_not_a_cycle() {
-        let nodes=vec![node(1,&[],None),node(2,&[1],None),node(3,&[1],None),node(4,&[2,3],Some(20))];
-        let r=cluster(&nodes,&[id(4)]).unwrap();
-        assert_eq!(r.clusters[0].documented_roots,vec![id(1)]);
+        let nodes = vec![
+            node(1, &[], None),
+            node(2, &[1], None),
+            node(3, &[1], None),
+            node(4, &[2, 3], Some(20)),
+        ];
+        let r = cluster(&nodes, &[id(4)]).unwrap();
+        assert_eq!(r.clusters[0].documented_roots, vec![id(1)]);
     }
 }
