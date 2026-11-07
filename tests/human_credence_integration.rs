@@ -341,6 +341,18 @@ async fn heuristic_preview_is_unverified_read_only_and_deduplicates_roots() {
     assert_eq!(result["inputs_checked_against_database"], false);
     assert_eq!(result["mode"], "UNVERIFIED_PREVIEW");
 
+    let mut invalid_confidence = preview.clone();
+    invalid_confidence["human_declared_confidence_percent"] = json!(101);
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req("POST", &path, &h.reader, Some(invalid_confidence)),
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+
     let mut invalid = preview;
     invalid["observations"][0]["declared_strength"] = json!(101);
     assert_eq!(
