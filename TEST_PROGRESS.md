@@ -1,5 +1,32 @@
 # Active test progress
 
+## v1.441-v1.480 — clarification lineage in later reasoning
+
+FINAL STATUS: DONE
+
+Validated on Debian 13 / PostgreSQL 17.11 with the 81-migration schema:
+
+- focused clarification persistence-to-synthesis runtime path: passed;
+- explicit clarification packet budget/determinism test: passed;
+- modern milestone suite: 0/33 failed; 33/33 passed;
+- tentative-MVP provider E2E: 0/1 failed; 1/1 passed;
+- full Rust/PostgreSQL regression, executed in bounded suites: 0/408 failed; 408/408 passed;
+- frontend: 0/32 failed; 32/32 passed across 8 test files;
+- production frontend build: passed;
+- rustfmt check: passed;
+- strict Clippy with `pg-integration` and `-D warnings`: passed.
+
+Validated behavior:
+
+- clarification questions discovered by `PROPOSE_CLARIFICATION` no longer evaporate before later model steps;
+- later reasoning packets carry the exact persisted question ID, text, reason and originating input revision;
+- `SYNTHESIZE` therefore sees the concrete unresolved question rather than only an aggregate clarification count;
+- at most 100 clarification records enter one reasoning packet;
+- additional records are disclosed through `clarifications_truncated=true` rather than silently omitted;
+- repeated packet construction over unchanged state preserves clarification ordering/content and produces the same SHA-256.
+
+---
+
 ## v1.321-v1.440 — durable reasoning trail and deterministic boundaries
 
 FINAL STATUS: DONE
