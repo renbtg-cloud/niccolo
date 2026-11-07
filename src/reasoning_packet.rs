@@ -148,16 +148,15 @@ async fn packet_tx(
     Ok(tx)
 }
 
-#[derive(sqlx::FromRow)]
-struct FrozenIdentityRow {
-    document_id: Uuid,
-    speaker_label: String,
-    action: String,
-    person_id: Option<Uuid>,
-    display_label: Option<String>,
-    event_id: Uuid,
-    event_no: i64,
-}
+type FrozenIdentityRow = (
+    Uuid,
+    String,
+    String,
+    Option<Uuid>,
+    Option<String>,
+    Uuid,
+    i64,
+);
 
 async fn frozen_identity_bindings(
     pool: &PgPool,
@@ -166,7 +165,7 @@ async fn frozen_identity_bindings(
     revision: i64,
     identity_event_no_max: i64,
 ) -> Result<Vec<FrozenIdentityBinding>, PacketError> {
-    let mut tx = scoped(pool, workspace).await?;
+    let mut tx = packet_tx(pool, workspace).await?;
     let rows: Vec<FrozenIdentityRow> = sqlx::query_as(
         "SELECT DISTINCT ON (e.document_id,e.speaker_label) \
          e.document_id,e.speaker_label,e.operation AS action,e.person_id,s.display_label,e.event_id,e.event_no \
@@ -181,19 +180,24 @@ async fn frozen_identity_bindings(
     .bind(revision)
     .bind(identity_event_no_max)
     .fetch_all(&mut *tx)
-    .await?;
-    tx.commit().await?;
+    .await
+    .map_err(dep)?;
+    tx.commit().await.map_err(dep)?;
     Ok(rows
         .into_iter()
-        .map(|row| FrozenIdentityBinding {
-            document_id: row.document_id,
-            speaker_label: row.speaker_label,
-            action: row.action,
-            person_id: row.person_id,
-            display_label: row.display_label,
-            event_id: row.event_id,
-            event_no: row.event_no,
-        })
+        .map(
+            |(document_id, speaker_label, action, person_id, display_label, event_id, event_no)| {
+                FrozenIdentityBinding {
+                    document_id,
+                    speaker_label,
+                    action,
+                    person_id,
+                    display_label,
+                    event_id,
+                    event_no,
+                }
+            },
+        )
         .collect())
 }
 
@@ -292,6 +296,15 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         frozen.input.revision,
     )
     .await?;
+    let identity_event_no_max = frozen.analysis.identity_event_no_max;
+    let identity_bindings = frozen_identity_bindings(
+        pool,
+        scope.workspace,
+        scope.situation,
+        frozen.input.revision,
+        identity_event_no_max,
+    )
+    .await?;
     let claims =
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
             .await
@@ -329,6 +342,10 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             focus: frozen.input.focus,
             goal: frozen.analysis.goal,
             sources: frozen.input.sources,
+            identity_event_no_max,
+            identity_bindings,
+            identity_bindings_are_human_confirmed: true,
+            matching_speaker_labels_imply_same_person: false,
             source_fragment_count_included: source_fragments.len(),
             source_fragments,
             source_fragment_count_total,
