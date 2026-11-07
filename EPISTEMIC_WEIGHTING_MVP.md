@@ -1,5 +1,16 @@
 # Epistemic weights — late-MVP incremental plan
 
+## Verified implementation status (Linux CI)
+
+- **EPI-001–EPI-011:** merged via PR #16 (typed human confidence, explainable weights, scoped policies, deterministic preview and comparison).
+- **EPI-013:** merged via PR #17 (source-checked, analyzed and claim-linked evidence; caller cannot manufacture provenance or stance).
+- **EPI-014:** pure multi-parent dependence algorithm merged via PR #18, then linked to the real PostgreSQL derivation graph in PR #19. Recorded common ancestors across documents now prevent double-counting; cycles/revocations fail closed.
+- **EPI-017, first UI slice:** merged via PR #21. Technical Playground exposes weighting controls and a synthetic comparison; a **separate explicit** action records a policy for Situation or workspace with the human's rationale.
+- **Acceptance:** GitHub Actions on Linux passed 444/444 Rust tests and 66/66 frontend tests, strict Clippy, all 83 migrations and production frontend build on the PR #21 head.
+
+**Still required:** EPI-012 (human belief entered *before* an analysis claim, frozen at the input horizon), EPI-015 (durable provenance/policy-linked evaluation receipt), EPI-016 (isolated full model-reasoning replay, with stochastic variability made explicit). Existing previews are neither calibrated posteriors nor full replay.
+
+
 This document separates the following concepts by **type**, origin and semantics. None is an automatic probability of truth.
 
 1. **Evidence provenance:** which immutable source fragment says something, and its documented derivation root. Different roots do NOT establish independent witnesses.
