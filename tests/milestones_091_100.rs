@@ -209,6 +209,8 @@ async fn v094_handoff_receipt_binds_exact_hash_but_never_grants_agreement_or_aut
         .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].handoff_sha256, hash);
+    assert_eq!(rows[0].note.as_deref(), Some("received exact bundle"));
+    assert!(!rows[0].created_at.is_empty());
     assert!(!rows[0].receipt_means_agreement);
     assert!(!rows[0].receipt_grants_authority);
     let bad = HandoffReceipt {
