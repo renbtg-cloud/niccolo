@@ -139,7 +139,10 @@ async fn v201_v204_sync_and_async_http_surfaces_share_operation_shape() {
     assert_eq!(status, StatusCode::ACCEPTED);
     assert_eq!(v["operation_id"], async_id.to_string());
     assert!(h.get(header::RETRY_AFTER).is_some());
-    for _ in 0..30 {
+    // A worker can be delayed by database scheduling on shared CI runners.
+    // Yielding 30 times is not a meaningful asynchronous completion deadline.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
         let (_, _, now) = invoke(
             s.router.clone(),
             req("GET", &path(&s, async_id, ""), &s.token, None, None),
@@ -148,9 +151,15 @@ async fn v201_v204_sync_and_async_http_surfaces_share_operation_shape() {
         if now["state"] == "SUCCEEDED" {
             return;
         }
-        tokio::task::yield_now().await;
+        if matches!(now["state"].as_str(), Some("FAILED" | "CANCELLED")) {
+            panic!("async deterministic operation entered terminal failure: {now}");
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "async deterministic operation did not finish by deadline: {now}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
-    panic!("async deterministic operation did not finish");
 }
 
 #[tokio::test]
