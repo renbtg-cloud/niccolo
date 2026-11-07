@@ -10,12 +10,16 @@ describe('buyer-facing primary surfaces', () => {
     expect(connect).toContain('Prepared Situation');
     expect(connect).toContain('<summary>Connection identifiers</summary>');
     expect(connect).toContain('Bearer tokens are never read from the URL or persisted.');
+    expect(connect).toContain('Share prepared demo link');
+    expect(connect).toContain('Send the bearer token separately.');
   });
 
   it('describes Situation preparation without blocking a first pass', () => {
     expect(situation).toContain('What Niccolò has to work with');
     expect(situation).toContain('not a completeness score and not a gate');
     expect(situation).toContain('Analyze this Situation →');
+    expect(situation).toContain('Connect this session first.');
+    expect(situation).not.toContain('Connect to the BFF first.');
   });
 
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
