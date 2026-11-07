@@ -33,7 +33,8 @@ pub struct ClusterReport {
     pub clusters: Vec<DependenceCluster>,
     pub selected_count: usize,
     pub known_lineage_node_count: usize,
-    pub graph_coverage_is_complete: bool,
+    /// Only all parents NAMED by this input are present; unknown omitted links remain possible.
+    pub all_declared_ancestors_present: bool,
     pub different_clusters_establish_independence: bool,
     pub establishes_truth: bool,
 }
@@ -181,7 +182,7 @@ pub fn cluster(
         clusters,
         selected_count: selected.len(),
         known_lineage_node_count: nodes.len(),
-        graph_coverage_is_complete: true, // all referenced known parents supplied
+        all_declared_ancestors_present: true, // declared ancestors supplied; no global completeness claim
         different_clusters_establish_independence: false,
         establishes_truth: false,
     })
