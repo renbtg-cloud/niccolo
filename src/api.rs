@@ -22,6 +22,7 @@ use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
+use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
@@ -336,6 +337,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/handoff",
             get(get_reasoning_handoff),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/handoff/receipts",
+            get(list_reasoning_handoff_receipts),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/handoff/receipts/{receipt}",
+            post(record_reasoning_handoff_receipt),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/input",
@@ -2533,6 +2542,124 @@ async fn get_reasoning_handoff(
             "read_model_executes_actions": false
         }),
         StatusCode::OK,
+    ))
+}
+
+async fn list_reasoning_handoff_receipts(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let rows = review_governance::handoff_receipts(&state.pool, workspace, situation, analysis)
+        .await
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "handoff receipts unavailable",
+            )
+        })?;
+    Ok(no_store(
+        json!({
+            "receipts": rows.into_iter().map(|r| json!({
+                "receipt_id": r.receipt_id,
+                "handoff_sha256": r.handoff_sha256,
+                "kind": r.kind,
+                "recipient_principal_id": r.recipient,
+                "receipt_means_agreement": r.receipt_means_agreement,
+                "receipt_grants_authority": r.receipt_grants_authority
+            })).collect::<Vec<_>>(),
+            "receipt_means_agreement": false,
+            "receipt_grants_authority": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HandoffReceiptRequest {
+    handoff_sha256: String,
+    kind: String,
+    note: Option<String>,
+}
+
+async fn record_reasoning_handoff_receipt(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, receipt)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(body): Json<HandoffReceiptRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let current = reasoning_handoff::bundle(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await
+    .map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "reasoning handoff unavailable",
+        )
+    })?;
+    let current_sha = reasoning_handoff::sha256(&current).map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "reasoning handoff unavailable",
+        )
+    })?;
+    if body.handoff_sha256 != current_sha {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "handoff changed; refresh before recording receipt",
+        ));
+    }
+    let receipt_kind = body.kind.clone();
+    let replayed = review_governance::record_handoff_receipt(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        &HandoffReceipt {
+            receipt_id: receipt,
+            handoff_sha256: body.handoff_sha256,
+            kind: body.kind,
+            note: body.note,
+            recipient: actor,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        ReviewGovernanceError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid handoff receipt")
+        }
+        ReviewGovernanceError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "handoff receipt replay conflict")
+        }
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "handoff receipt unavailable",
+        ),
+    })?;
+    Ok(no_store(
+        json!({
+            "receipt_id": receipt,
+            "handoff_sha256": current_sha,
+            "kind": receipt_kind,
+            "recipient_principal_id": actor,
+            "replayed": replayed,
+            "receipt_means_agreement": false,
+            "receipt_grants_authority": false
+        }),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
