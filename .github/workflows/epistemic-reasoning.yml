@@ -5,12 +5,14 @@ on:
       - feature/epistemic-weights-v1
       - feature/grounded-claim-weights
       - feature/provenance-clusters-v1
+      - feature/epistemic-playground-ui
     paths:
       - "src/**"
       - "sql/**"
       - "tests/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "frontend/**"
       - ".github/workflows/epistemic-reasoning.yml"
   pull_request:
     paths:
@@ -19,6 +21,7 @@ on:
       - "tests/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "frontend/**"
       - ".github/workflows/epistemic-reasoning.yml"
 
 concurrency:
