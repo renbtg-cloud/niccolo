@@ -1,5 +1,28 @@
 # Active test progress
 
+## v1.841-v2.000 — prepared demo and buyer-facing review surfaces
+
+FINAL STATUS: DONE
+
+Frontend validation executed on a clean GitHub Actions runner from the exact code branch:
+
+- frontend: 0/51 failed; 51/51 passed across 16 test files;
+- production frontend build: passed;
+- validation branch differed from the work branch only by the temporary validation workflow and trigger sentinel.
+
+The backend is unchanged in this block. The current Rust/PostgreSQL baseline remains 410/410 green.
+
+Validated behavior:
+
+- prepared demo links now render as a named Prepared Situation instead of exposing workspace/Situation UUIDs as primary UI; identifiers remain inspectable under details;
+- bearer token remains separate, required, excluded from URL hints and memory-only;
+- Situation shows transparent focus/source/context counts without inventing a completeness/readiness score or blocking a focus-only first pass;
+- Review renders the concrete competing interpretations carried by deterministic handoff, including rationale and explicit non-fact/non-ranking semantics;
+- Review is self-contained with the published Niccolò answer and coverage note at the top while preserving historical-input labeling;
+- buyer-facing structural guard tests protect Prepared Situation, non-gating Situation guidance and concrete Review interpretation surfaces.
+
+---
+
 ## v1.801-v1.840 — prepared demo connection hints without secret leakage
 
 FINAL STATUS: DONE
