@@ -870,3 +870,95 @@ async fn v921_v940_reanalysis_revision_endpoint_reports_recorded_change_without_
         false
     );
 }
+
+
+#[tokio::test]
+async fn reasoning_handoff_read_model_survives_operation_and_preserves_non_authority_boundaries() {
+    let s = setup().await;
+    let principal: Uuid = sqlx::query_scalar(
+        "SELECT requested_by_principal_id FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    let candidate = Uuid::new_v4();
+    let question = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_candidate_interpretations(workspace_id,situation_id,analysis_id,interpretation_id,interpretation_text,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'A competing reading remains possible','The current evidence does not discriminate it',$5)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(candidate)
+    .bind(principal)
+    .execute(&s.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.investigative_questions(workspace_id,question_id,question) VALUES($1,$2,'What happened immediately afterward?')",
+    )
+    .bind(s.workspace)
+    .bind(question)
+    .execute(&s.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_clarification_questions(workspace_id,situation_id,analysis_id,question_id,reason,proposed_by_principal_id) VALUES($1,$2,$3,$4,'The answer could distinguish the candidate interpretations',$5)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(question)
+    .bind(principal)
+    .execute(&s.admin)
+    .await
+    .unwrap();
+
+    let route = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/bff/handoff",
+        s.workspace, s.situation, s.analysis
+    );
+    let (status, headers, view) =
+        invoke(s.router.clone(), req("GET", &route, &s.token, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert_eq!(view["handoff"]["version"], 2);
+    assert_eq!(view["handoff_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(
+        view["handoff"]["candidate_interpretations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        view["handoff"]["candidate_interpretations"][0]["interpretation_id"],
+        candidate.to_string()
+    );
+    assert_eq!(
+        view["handoff"]["clarifications"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        view["handoff"]["clarifications"][0]["question_id"],
+        question.to_string()
+    );
+    assert_eq!(view["handoff"]["clarifications"][0]["answered"], false);
+    assert_eq!(view["handoff"]["clarifications_are_evidence"], false);
+    assert_eq!(
+        view["handoff"]["candidate_interpretations_are_facts"],
+        false
+    );
+    assert_eq!(
+        view["handoff"]["candidate_interpretations_are_automatically_ranked"],
+        false
+    );
+    assert_eq!(view["handoff"]["handoff_grants_authority"], false);
+    assert_eq!(view["handoff"]["handoff_starts_analysis"], false);
+    assert_eq!(view["handoff"]["handoff_executes_actions"], false);
+    assert_eq!(view["read_model_is_authority"], false);
+    assert_eq!(view["read_model_executes_actions"], false);
+}
