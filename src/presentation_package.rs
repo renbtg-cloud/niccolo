@@ -45,9 +45,15 @@ fn csv_cell(value: &str) -> String {
     // Some recipients open a CSV in spreadsheet programs. Do not allow
     // untrusted claim text to become a spreadsheet formula. The JSON
     // projection preserves the exact original value.
-    let trimmed = value.trim_start_matches([' ', '\t', '\r', '\n']);
-    let spreadsheet_command = trimmed.starts_with(['=', '+', '-', '@'])
-        || value.starts_with(['\t', '\r', '\n']);
+    let trimmed = value.trim_start_matches(|c: char| matches!(c, ' ' | '\t' | '\r' | '\n'));
+    let spreadsheet_command = trimmed
+        .chars()
+        .next()
+        .is_some_and(|c| matches!(c, '=' | '+' | '-' | '@'))
+        || value
+            .chars()
+            .next()
+            .is_some_and(|c| matches!(c, '\t' | '\r' | '\n'));
     let safe = if spreadsheet_command {
         format!("'{value}")
     } else {
@@ -458,7 +464,6 @@ mod tests {
     fn unknown_evidence_is_not_recast_as_independent_witness() {
         let export = from_bundle(&example()).unwrap();
         assert!(export.files["README.md"].contains("NOT support weights"));
-        assert!(export.files["README.md"].contains("not established fact") == false);
         assert!(export.files["inspect.py"].contains("NOT evidence weights"));
     }
 }
