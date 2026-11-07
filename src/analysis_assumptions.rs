@@ -53,6 +53,14 @@ pub struct AlternativeView {
     pub automatically_ranked: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateInterpretationView {
+    pub interpretation_id: Uuid,
+    pub text: String,
+    pub rationale: String,
+    pub is_fact: bool,
+    pub automatically_ranked: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisLens {
     pub assumptions: Vec<AssumptionView>,
     pub alternatives: Vec<AlternativeView>,
@@ -137,6 +145,34 @@ pub async fn add_alternative(
     tx.commit().await?;
     Ok(())
 }
+pub async fn candidate_interpretations(
+    pool: &PgPool,
+    scope: AnalysisScope,
+) -> Result<Vec<CandidateInterpretationView>, AssumptionError> {
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let rows: Vec<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT interpretation_id,interpretation_text,rationale FROM niccolo.situation_analysis_candidate_interpretations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 ORDER BY created_at,interpretation_id",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(interpretation_id, text, rationale)| CandidateInterpretationView {
+                interpretation_id,
+                text,
+                rationale,
+                is_fact: false,
+                automatically_ranked: false,
+            },
+        )
+        .collect())
+}
+
 pub async fn lens(pool: &PgPool, scope: AnalysisScope) -> Result<AnalysisLens, AssumptionError> {
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let arows: Vec<AssumptionRow> = sqlx::query_as("SELECT a.assumption_id,a.claim_id,a.statement,a.basis_note,(SELECT e.event_kind FROM niccolo.situation_analysis_assumption_events e WHERE e.workspace_id=a.workspace_id AND e.situation_id=a.situation_id AND e.analysis_id=a.analysis_id AND e.assumption_id=a.assumption_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_assumptions a WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3 ORDER BY a.assumption_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
