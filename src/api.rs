@@ -15,6 +15,7 @@ use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::discovery;
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
@@ -231,6 +232,8 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/graph", get(graph))
         .route("/v1/workspaces/{workspace}/assess", post(assess))
         .route("/v1/workspaces/{workspace}/epistemic/preview", post(preview_epistemic_balance))
+        .route("/v1/workspaces/{workspace}/epistemic/policy", get(get_effective_epistemic_policy))
+        .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
@@ -3394,4 +3397,62 @@ async fn preview_epistemic_balance(
         }),
         StatusCode::OK,
     ))
+}
+
+
+// EPI-008: a narrow human-configurable policy API.
+// All actor identity and workspace permissions come from the bearer token.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PolicyQuery {
+    situation_id: Option<Uuid>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewEpistemicPolicyRequest {
+    situation_id: Option<Uuid>,
+    policy: WeightPolicy,
+    rationale: String,
+}
+fn epistemic_policy_error(error: PolicyStoreError) -> ApiError {
+    match error {
+        PolicyStoreError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid epistemic policy"),
+        PolicyStoreError::Conflict => ApiError(StatusCode::CONFLICT, "epistemic policy ID conflict"),
+        PolicyStoreError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
+        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "epistemic policy unavailable"),
+    }
+}
+async fn record_epistemic_policy(
+    State(state): State<AppState>,
+    Path((workspace, policy_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(body): Json<NewEpistemicPolicyRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let policy = NewPolicy {
+        policy_id,
+        workspace_id: workspace,
+        situation_id: body.situation_id,
+        policy: body.policy,
+        rationale: body.rationale,
+        recorded_by: actor,
+    };
+    let inserted = epistemic_policy_store::record(&state.pool, &policy)
+        .await.map_err(epistemic_policy_error)?;
+    Ok(no_store(json!({
+        "policy_id":policy_id,"situation_id":policy.situation_id,"policy":policy.policy,
+        "rationale":policy.rationale,"recorded_by":actor,"replayed":!inserted,
+        "is_probability_model":false,"retroactively_changes_frozen_analysis":false
+    }),if inserted {StatusCode::CREATED} else {StatusCode::OK}))
+}
+async fn get_effective_epistemic_policy(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    Query(query): Query<PolicyQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = epistemic_policy_store::effective(&state.pool, workspace, query.situation_id)
+        .await.map_err(epistemic_policy_error)?;
+    Ok(no_store(json!({"effective_policy":view}),StatusCode::OK))
 }
