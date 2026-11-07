@@ -11,6 +11,8 @@ pub enum ReviewGovernanceError {
     Privileged,
     #[error("invalid review governance input")]
     Invalid,
+    #[error("review governance replay conflicts with stored content")]
+    Conflict,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -154,7 +156,7 @@ pub async fn record_handoff_receipt(
     situation: Uuid,
     analysis: Uuid,
     receipt: &HandoffReceipt,
-) -> Result<(), ReviewGovernanceError> {
+) -> Result<bool, ReviewGovernanceError> {
     if receipt.handoff_sha256.len() != 64
         || !receipt
             .handoff_sha256
@@ -166,7 +168,7 @@ pub async fn record_handoff_receipt(
         return Err(ReviewGovernanceError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_reasoning_handoff_receipts \
          (workspace_id,situation_id,analysis_id,receipt_id,handoff_sha256,receipt_kind,note,recipient_principal_id) \
          VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING",
@@ -180,9 +182,32 @@ pub async fn record_handoff_receipt(
     .bind(&receipt.note)
     .bind(receipt.recipient)
     .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    let stored: Option<(String, String, Option<String>, Uuid)> = sqlx::query_as(
+        "SELECT handoff_sha256,receipt_kind,note,recipient_principal_id \
+         FROM niccolo.situation_reasoning_handoff_receipts \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND receipt_id=$4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(receipt.receipt_id)
+    .fetch_optional(&mut *tx)
     .await?;
+    if stored
+        != Some((
+            receipt.handoff_sha256.clone(),
+            receipt.kind.clone(),
+            receipt.note.clone(),
+            receipt.recipient,
+        ))
+    {
+        return Err(ReviewGovernanceError::Conflict);
+    }
     tx.commit().await?;
-    Ok(())
+    Ok(!inserted)
 }
 
 pub async fn handoff_receipts(
