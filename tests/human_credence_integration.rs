@@ -115,6 +115,21 @@ async fn human_credence_is_bounded_idempotent_authz_scoped_and_not_truth() {
     .await;
     assert_eq!(status, StatusCode::CREATED);
 
+    // Claims are children of a published analysis output, not just a snapshot.
+    let (output_status, _) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &format!("{analysis_path}/output"),
+            &h.writer,
+            Some(json!({
+                "answer_text":"Several explanations are possible, pending review.",
+                "coverage_note":"Synthetic integration fixture; no documentary evidence."
+            })),
+        ),
+    ).await;
+    assert_eq!(output_status, StatusCode::CREATED);
+
     // Admin-only fixture: use the actual writer principal, never an invented FK.
     let principal = h.writer_principal;
 
