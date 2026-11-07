@@ -90,6 +90,10 @@ fn response_content(wire: &str) -> (String, String) {
                 .pointer("/input/reasoning_packet/frozen_input/source_fragments/0/evidence_id")
                 .and_then(Value::as_str)
                 .expect("synthesis receives frozen source evidence");
+            let contribution_id = request
+                .pointer("/input/reasoning_packet/frozen_input/contributions/0/id")
+                .and_then(Value::as_str)
+                .expect("synthesis receives frozen human context");
             let claim_id = Uuid::new_v4();
             json!({
                 "purpose": purpose,
@@ -108,14 +112,37 @@ fn response_content(wire: &str) -> (String, String) {
                         "claim_id": claim_id,
                         "evidence_id": evidence_id,
                         "relation": "SUPPORTS_AS_USED"
+                    }],
+                    "context_links": [{
+                        "claim_id": claim_id,
+                        "contribution_id": contribution_id,
+                        "relation": "QUALIFIES"
                     }]
                 }
             })
         }
-        "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" => json!({
+        "ASSESS_CONTEXT" => {
+            let request = model_request_from_wire(wire);
+            let contribution_id = request
+                .pointer("/input/reasoning_packet/frozen_input/contributions/0/id")
+                .and_then(Value::as_str)
+                .expect("context assessment receives frozen human context");
+            json!({
+                "purpose": purpose,
+                "status": "ok",
+                "niccolo_update": {
+                    "used_contribution_ids": [contribution_id],
+                    "assumptions": [],
+                    "evidence_gaps": [],
+                    "clarifications": []
+                }
+            })
+        }
+        "CHECK_ASSUMPTIONS" => json!({
             "purpose": purpose,
             "status": "ok",
             "niccolo_update": {
+                "used_contribution_ids": [],
                 "assumptions": [],
                 "evidence_gaps": [],
                 "clarifications": []
@@ -474,6 +501,23 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     );
     assert_eq!(epistemic["claims_are_verified_facts"], false);
     assert_eq!(epistemic["claim_fragment_relations_establish_truth"], false);
+    assert_eq!(epistemic["claims"][0]["human_context"][0]["relation"], "QUALIFIES");
+    assert_eq!(
+        epistemic["claims"][0]["human_context"][0]["contribution_id"],
+        contribution.to_string()
+    );
+    assert_eq!(epistemic["human_context_is_evidence"], false);
+
+    let used_context: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_used_contributions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(analysis)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(used_context, 1);
 
     let examined: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.situation_analysis_examined_fragments WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
