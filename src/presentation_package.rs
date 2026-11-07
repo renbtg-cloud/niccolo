@@ -45,7 +45,7 @@ fn csv_cell(value: &str) -> String {
     // Some recipients open a CSV in spreadsheet programs. Do not allow
     // untrusted claim text to become a spreadsheet formula. The JSON
     // projection preserves the exact original value.
-    let trimmed = value.trim_start_matches(|c: char| matches!(c, ' ' | '\t' | '\r' | '\n'));
+    let trimmed = value.trim_start_matches([' ', '\t', '\r', '\n']);
     let spreadsheet_command = trimmed
         .chars()
         .next()
