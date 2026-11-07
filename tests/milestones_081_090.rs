@@ -1,5 +1,6 @@
 use niccolo_evidence::analysis_claims::{self, NewClaim};
 use niccolo_evidence::analysis_structure::AnalysisScope;
+use niccolo_evidence::clarification_answer;
 use niccolo_evidence::reasoning_handoff;
 use niccolo_evidence::review_workflow::{self, ReviewSessionScope, SessionNote, UseRationale};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -434,6 +435,18 @@ async fn v090_handoff_is_deterministic_and_grants_no_authority() {
     )
     .await
     .unwrap();
+    let candidate = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_candidate_interpretations(workspace_id,situation_id,analysis_id,interpretation_id,interpretation_text,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'A second interpretation remains plausible','The available material does not discriminate it',$5)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(candidate)
+    .bind(s.principal)
+    .execute(&admin)
+    .await
+    .unwrap();
     let condition = Uuid::new_v4();
     review_workflow::record_revision_condition(
         &app,
@@ -460,9 +473,46 @@ async fn v090_handoff_is_deterministic_and_grants_no_authority() {
         reasoning_handoff::sha256(&a).unwrap(),
         reasoning_handoff::sha256(&b).unwrap()
     );
+    assert_eq!(a.version, 2);
     assert!(!a.handoff_grants_authority);
     assert!(!a.handoff_starts_analysis);
     assert!(!a.handoff_executes_actions);
+    assert!(!a.clarifications_are_evidence);
+    assert!(!a.candidate_interpretations_are_facts);
+    assert!(!a.candidate_interpretations_are_automatically_ranked);
     assert_eq!(a.open_questions.len(), 1);
+    assert_eq!(a.clarifications.len(), 1);
+    assert_eq!(a.clarifications[0].question_id, s.question);
+    assert_eq!(a.clarifications[0].answer_count, 0);
+    assert!(!a.clarifications[0].answered);
+    assert_eq!(a.candidate_interpretations.len(), 1);
+    assert_eq!(a.candidate_interpretations[0].interpretation_id, candidate);
+    assert!(!a.candidate_interpretations[0].is_fact);
+    assert!(!a.candidate_interpretations[0].automatically_ranked);
     assert_eq!(a.revision_conditions.len(), 1);
+
+    let answer = Uuid::new_v4();
+    clarification_answer::answer(
+        &app,
+        s.workspace,
+        s.principal,
+        s.situation,
+        s.analysis,
+        s.question,
+        answer,
+        "A later human answer adds context without rewriting the question.",
+    )
+    .await
+    .unwrap();
+    let after_answer = reasoning_handoff::bundle(&app, analysis_scope(s))
+        .await
+        .unwrap();
+    assert_eq!(after_answer.clarifications.len(), 1);
+    assert_eq!(after_answer.clarifications[0].question_id, s.question);
+    assert_eq!(after_answer.clarifications[0].answer_count, 1);
+    assert!(after_answer.clarifications[0].answered);
+    assert_ne!(
+        reasoning_handoff::sha256(&a).unwrap(),
+        reasoning_handoff::sha256(&after_answer).unwrap()
+    );
 }
