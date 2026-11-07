@@ -1,5 +1,17 @@
 # Active work progress
 
+## User-owned Git archival and Python/CSV explanation — MVP first slice (verified)
+
+PR #22 merged into main at `e20fcfea`; implementation/plan are documented in `MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md`.
+- Product commitments: PostgreSQL remains the **sole authoritative operational state**; the user owns the intended GitHub destination; `intake`, `work` and published milestones are historical publication concepts, **not** the epistemic dependence DAG.
+- MVP 1.0 presentation scope is Python plus CSV and/or simple JSON data, to explain real recorded results to other people. No Excel/VBA, local simulations, reingestion, GitLab, automatic dump of PostgreSQL or general-purpose adapter platform.
+- Explicit investigation time, computing and monetary budgets; future anytime results and **honestly disclosed epistemic degradation**; self-managed/delegated resource modes and Linux-first effective-limit observation. These are requirements, **not yet implemented resource-control behavior**.
+- Real implementation: authorized **GET** `/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package` returns a bounded deterministic collection of files: analysis JSON, CSV for recorded claim/context/evidence relationships, offline Python inspection, README with known omissions and SHA-256 file digests. No publication to Git is attempted by this endpoint.
+- A first packet contains the **published analysis bundle**, not source fragment bodies, complete intermediate model reasoning, numeric scoring receipts or a complete input history; it explicitly discloses those omissions. It does not recreate LLM reasoning or assert independent witness certainty.
+- Linux Actions run `42427377902`: **450/450 full PostgreSQL-feature Rust tests**, **66/66 frontend tests**, **3/3 offline Python inspector tests**, all **83 SQL migrations**, strict Clippy and rustfmt passed; new negative security test confirms unauthenticated and cross-workspace export denial.
+- Remaining before user-owned historical preservation exists end-to-end: explicit input export consent/scope, Python-visible actual heuristic receipts and source material when authorized, artifact packaging/download UI, GitHub connection and verified remote publishing with retries, provisional and milestone checkpoint persistence. Do not mark those as complete.
+
+
 ## Human-configurable reasoning Playground — EPI-017 first slice (verified)
 
 PR #21 merged to main at `dc05aad` (replaces closed, unmerged PR #20).
