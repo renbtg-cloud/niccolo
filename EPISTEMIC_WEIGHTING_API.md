@@ -77,6 +77,48 @@ Both observations share one documented origin: their supportive strength is coun
 - The endpoint is read-only with respect to application state, but authentication and normal request processing remain in force.
 - No complete graphical Playground exists yet.
 
+## Workspace and Situation heuristic policies
+
+Policies are append-only, authored by the authenticated user and explicitly **heuristic**.
+If there is no user policy, Niccolò returns a neutral built-in default.
+A Situation override wins over a workspace default. New policies replace the *effective future selection*, not the immutable historical record.
+
+\`\`\`http
+POST /v1/workspaces/{workspace}/epistemic/policies/{new_policy_id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "situation_id": null,
+  "policy": {
+    "support_multiplier_pct": 100,
+    "counter_multiplier_pct": 150,
+    "per_origin_cap": 100
+  },
+  "rationale": "Workspace default; examine counterevidence more closely"
+}
+\`\`\`
+
+For investigation-only control, use an existing Situation UUID in \`situation_id\`.
+The same policy ID cannot be repurposed with different values or a different actor.
+
+\`\`\`http
+GET /v1/workspaces/{workspace}/epistemic/policy?situation_id={situation}
+Authorization: Bearer <token>
+\`\`\`
+
+Omit \`situation_id\` to inspect the workspace default. The response identifies the effective scope: \`SITUATION\`, \`WORKSPACE\` or \`BUILTIN_DEFAULT\`.
+
+The preview endpoint allows the policy object to be omitted; when omitted it uses the effective stored policy. With a \`situation_id\` it chooses the Situation override if present. If a policy object is supplied, it trials those weights, without changing the stored policy; \`policy_source\` describes which rule was used.
+
+This is **not** an automatic statistical fitting process. No weighting result is permitted to convert subjective belief into documentary truth. Policy records must not rewrite frozen historical analyses.
+
+### Next integration boundary
+
+A real document-backed, claim-level weight evaluation will require every numerical contribution to refer to an existing authorized evidence ID, and its derivation root to be resolved from the actual provenance graph. The current preview deliberately does **not** claim source validation or independent witnesses.
+
+A whole-investigation replay UI belongs after this verified boundary and must isolate its trial runs from historical facts and live decisions.
+
 ## Validation gate before merge
 
 Run \`rustfmt --edition 2024 --check\` on the changed Rust sources, \`cargo test --locked --lib\`, strict Clippy, all migrations on a fresh PostgreSQL 17, and authenticated HTTP integration tests. The draft PR deliberately stays separate from main until compatibility is checked.
