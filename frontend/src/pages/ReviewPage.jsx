@@ -18,15 +18,16 @@ export function ReviewPage(){
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const clarifications=useClarifications(); const reasoningInput=useReasoningInput(); const handoff=useReasoningHandoff(); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
- if(!client)return <p>Connect first.</p>;
- if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
- if(review.error||dashboard.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {(review.error??dashboard.error).message}</p></section>;
- const r=review.data; const d=dashboard.data;
- const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data); const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
+ const r=review.data; const d=dashboard.data; const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
  const [clarificationDrafts,setClarificationDrafts]=useState({});
+ // Keep every hook above conditional returns so connect/selection transitions never change hook order.
  const answerClarification=useMutation({mutationFn:async({questionId,text})=> (await client.answerClarification(analysis,questionId,crypto.randomUUID(),text)).value,onSuccess:async(_,variables)=>{setClarificationDrafts(current=>({...current,[variables.questionId]:''}));await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);}});
  const recordReceipt=useMutation({mutationFn:async(kind)=>{if(!handoffView?.sha256)throw new Error('No current handoff');return (await client.recordHandoffReceipt(analysis,crypto.randomUUID(),handoffView.sha256,kind,handoffNote.trim()||null)).value;},onSuccess:async()=>{setHandoffNote('');await qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'handoff-receipts')});}});
  const approveReanalysis=useMutation({mutationFn:async()=>launchApprovedReanalysis({client,priorAnalysis:analysis,goal:reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation'}),onSuccess:async(result)=>{setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']})]);}});
+ if(!client)return <p>Connect first.</p>;
+ if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
+ if(review.error||dashboard.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {(review.error??dashboard.error).message}</p></section>;
+ const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data);
 
  return <section><h2>Human review</h2>
    {!r&&<p>Loading review…</p>}
