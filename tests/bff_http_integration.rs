@@ -1076,7 +1076,12 @@ async fn handoff_receipt_is_sha_bound_idempotent_and_never_implies_agreement_or_
         list["receipts"][0]["note"],
         "Reviewed by the authenticated recipient"
     );
-    assert!(!list["receipts"][0]["created_at"].as_str().unwrap().is_empty());
+    assert!(
+        !list["receipts"][0]["created_at"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         list["receipts"][0]["recipient_principal_id"],
         principal.to_string()
