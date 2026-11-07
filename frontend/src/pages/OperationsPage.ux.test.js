@@ -1,0 +1,18 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+const operations = readFileSync(new URL('./OperationsPage.jsx', import.meta.url), 'utf8');
+const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+
+describe('primary analysis path', () => {
+  it('presents analysis as the primary action while keeping execution plumbing advanced', () => {
+    expect(app).toContain("['/','Situation'],['/operations','Analyze'],['/review','Review']");
+    expect(situation).toContain('Analyze this Situation →');
+    expect(operations).toContain('<h2>Analyze this Situation</h2>');
+    expect(operations).toContain('<summary>Advanced execution</summary>');
+    expect(operations.indexOf('<summary>Advanced execution</summary>')).toBeLessThan(operations.indexOf('Reasoning step budget'));
+    expect(operations).toContain("run.isPending?'Analyzing…':'Analyze this Situation'");
+    expect(operations).toContain('Review reasoning, clarifications and next steps →');
+  });
+});
