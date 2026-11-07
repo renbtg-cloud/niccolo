@@ -1,0 +1,21 @@
+name: tmp export v1720
+on:
+  push:
+    branches: [tmp-export-v1720]
+    paths: ['.export-current/ready-v1720']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .git .export-current .github/workflows/tmp-export-v1720.yml
+          tar -czf /tmp/niccolo-v1720.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-v1720
+          path: /tmp/niccolo-v1720.tar.gz
