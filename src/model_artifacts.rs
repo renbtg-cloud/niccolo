@@ -33,6 +33,13 @@ pub struct ArtifactSourceLink {
     pub evidence_id: Uuid,
     pub relation: String,
 }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactContextLink {
+    pub claim_id: Uuid,
+    pub contribution_id: Uuid,
+    pub relation: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -75,6 +82,8 @@ pub struct SynthesisArtifact {
     #[serde(default)]
     pub source_links: Vec<ArtifactSourceLink>,
     #[serde(default)]
+    pub context_links: Vec<ArtifactContextLink>,
+    #[serde(default)]
     pub assumptions: Vec<ArtifactAssumption>,
     #[serde(default)]
     pub alternatives: Vec<ArtifactAlternative>,
@@ -87,6 +96,7 @@ pub struct SynthesisArtifact {
 pub struct AppliedArtifact {
     pub claim_count: usize,
     pub source_link_count: usize,
+    pub context_link_count: usize,
     pub assumption_count: usize,
     pub alternative_count: usize,
     pub evidence_gap_count: usize,
@@ -109,6 +119,7 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     if a.claims.len() > 256
         || a.source_links.len() > 512
+        || a.context_links.len() > 512
         || a.assumptions.len() > 128
         || a.alternatives.len() > 128
         || a.evidence_gaps.len() > 128
@@ -141,6 +152,18 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
                 "SUPPORTS_AS_USED" | "CONTRADICTS_AS_USED" | "CONTEXT_ONLY"
             )
             || !source_links.insert((link.claim_id, link.evidence_id, link.relation.clone()))
+        {
+            return Err(ArtifactError::Invalid);
+        }
+    }
+    let mut context_links = std::collections::BTreeSet::new();
+    for link in &a.context_links {
+        if !claim_ids.contains(&link.claim_id)
+            || !matches!(
+                link.relation.as_str(),
+                "INFORMS" | "QUALIFIES" | "CONFLICTS_WITH_REPORTED_CONTEXT"
+            )
+            || !context_links.insert((link.claim_id, link.contribution_id, link.relation.clone()))
         {
             return Err(ArtifactError::Invalid);
         }
@@ -275,6 +298,32 @@ pub async fn apply(
             return Err(ArtifactError::Conflict);
         }
     }
+    for link in &artifact.context_links {
+        sqlx::query("INSERT INTO niccolo.situation_analysis_claim_contributions(workspace_id,situation_id,analysis_id,claim_id,contribution_id,relation,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.analysis)
+            .bind(link.claim_id)
+            .bind(link.contribution_id)
+            .bind(&link.relation)
+            .bind(actor)
+            .execute(&mut *tx)
+            .await?;
+        let stored: Option<Uuid> = sqlx::query_scalar(
+            "SELECT recorded_by_principal_id FROM niccolo.situation_analysis_claim_contributions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND claim_id=$4 AND contribution_id=$5 AND relation=$6",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(link.claim_id)
+        .bind(link.contribution_id)
+        .bind(&link.relation)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if stored != Some(actor) {
+            return Err(ArtifactError::Conflict);
+        }
+    }
     for a in &artifact.assumptions {
         sqlx::query("INSERT INTO niccolo.situation_analysis_assumptions(workspace_id,situation_id,analysis_id,assumption_id,claim_id,statement,basis_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
     .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).bind(a.claim_id).bind(a.statement.trim()).bind(a.basis_note.trim()).bind(actor).execute(&mut *tx).await?;
@@ -332,6 +381,7 @@ pub async fn apply(
     Ok(AppliedArtifact {
         claim_count: artifact.claims.len(),
         source_link_count: artifact.source_links.len(),
+        context_link_count: artifact.context_links.len(),
         assumption_count: artifact.assumptions.len(),
         alternative_count: artifact.alternatives.len(),
         evidence_gap_count: artifact.evidence_gaps.len(),
