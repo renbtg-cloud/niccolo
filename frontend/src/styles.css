@@ -15,3 +15,21 @@
 .advanced-nav{display:inline-block}.advanced-nav summary{cursor:pointer}.advanced-nav div{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}.demo-share{max-width:min(100%,760px)}.demo-share code{display:block;overflow-wrap:anywhere;margin:6px 0}.technical-details{margin-top:18px}.technical-details>.inspector-grid{margin-top:12px}
 
 .identity-summary{margin:14px 0;padding:12px;border:1px solid #ddd;border-radius:6px;background:#fafaf8}.identity-summary p{margin:6px 0}.human-boundary label{display:grid;gap:6px;align-items:start}
+
+
+/* Read-only epistemic laboratory; advanced controls remain available on mobile. */
+.epistemic-playground{display:grid;gap:12px}
+.epistemic-playground>p{margin:4px 0 10px}
+.epistemic-playground article,.epistemic-playground fieldset{border:1px solid #ddd;border-radius:6px;padding:14px}
+.epistemic-playground fieldset{min-width:0}
+.epistemic-playground-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.epistemic-playground-fields label{display:grid;gap:6px;align-items:start}
+.epistemic-playground-fields input{width:100%}
+.epistemic-playground-overlap{margin-top:16px;align-items:center}
+.epistemic-playground-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.epistemic-playground-results>div{border:1px solid #ddd;border-radius:6px;padding:12px}
+.epistemic-playground-results h4{margin:0 0 10px}
+.epistemic-playground-results dl{display:grid;grid-template-columns:1fr auto;gap:6px}
+.epistemic-playground-results dd{margin:0;font-variant-numeric:tabular-nums}
+.epistemic-playground-results dt{color:#555}
+@media(max-width:720px){.epistemic-playground-results{grid-template-columns:1fr}}
