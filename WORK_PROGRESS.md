@@ -1,5 +1,17 @@
 # Active work progress
 
+## Source-grounded claim weighting — EPI-013 (verified)
+
+PR #17 is merged into main at `1ab6a57`.
+- Authenticated read-only endpoint evaluates user-specified numeric strengths **only for existing, examined, explicitly claim-linked source fragments**.
+- Stance (support/contradiction/context) comes from stored claim-evidence relations, not a caller-provided stance. Document IDs come from source-fragment rows, not client-supplied origins.
+- Missing/forged links are rejected; multiple contradictory links for one evidence/claim pair are rejected as ambiguous; requests cannot invent a document origin or verified truth.
+- Conservative grouping by **source document** is explicit, but this is NOT multi-parent derivation-graph traversal, and separate documents are NOT established independent witnesses.
+- It does not change historical analysis, silently promote subjective opinion into fact, compute calibrated truth probabilities, or authorize consequential action.
+- The newly verified CI run `42418046760` passed **431/431 Rust tests** in the full PostgreSQL-feature suite, **2/2 grounded API integration tests**, **3/3 human credence integration tests**, **58/58 frontend tests**, all 83 migrations, strict Clippy, Rust formatting and frontend production build.
+- Further bounded work: EPI-012 (human confidence annotations BEFORE an analysis claim exists); EPI-014 (multi-parent derivation-root-aware grouping); EPI-015 (persist evaluation trace including the applied policy and graph revision); EPI-016 (full isolated, non-destructive reasoning replay).
+
+
 ## Epistemic reasoning weights — verified baseline
 
 Milestones EPI-001 through EPI-011 have been merged into main through PR #16:
