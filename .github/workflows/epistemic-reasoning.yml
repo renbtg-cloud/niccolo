@@ -6,12 +6,14 @@ on:
       - feature/grounded-claim-weights
       - feature/provenance-clusters-v1
       - feature/grounded-multiparent-lineage
+      - feature/epistemic-playground-mainline
     paths:
       - "src/**"
       - "sql/**"
       - "tests/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "frontend/**"
       - ".github/workflows/epistemic-reasoning.yml"
   pull_request:
     paths:
@@ -20,6 +22,7 @@ on:
       - "tests/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "frontend/**"
       - ".github/workflows/epistemic-reasoning.yml"
 
 concurrency:
