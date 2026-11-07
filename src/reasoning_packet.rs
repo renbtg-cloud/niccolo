@@ -96,6 +96,7 @@ pub struct ReasoningPacket {
     pub analysis_id: Uuid,
     pub frozen_input: FrozenInputPacket,
     pub claims: Vec<PacketClaim>,
+    pub candidate_interpretations: Vec<analysis_assumptions::CandidateInterpretationView>,
     pub lens: analysis_assumptions::AnalysisLens,
     pub evidence_gaps: Vec<human_agency::EvidenceGapView>,
     pub policy_signals: PolicySignalPacket,
@@ -309,6 +310,9 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
             .await
             .map_err(dep)?;
+    let candidate_interpretations = analysis_assumptions::candidate_interpretations(pool, scope)
+        .await
+        .map_err(dep)?;
     let lens = analysis_assumptions::lens(pool, scope).await.map_err(dep)?;
     let evidence_gaps = human_agency::evidence_gaps(pool, scope)
         .await
@@ -377,6 +381,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
                 qualification: c.qualification,
             })
             .collect(),
+        candidate_interpretations,
         lens,
         evidence_gaps,
         policy_signals: PolicySignalPacket {
