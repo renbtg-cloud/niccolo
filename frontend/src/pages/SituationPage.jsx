@@ -34,6 +34,8 @@ export function SituationPage(){
   const client = useClient();
   const qc = useQueryClient();
   const [file, setFile] = useState(null);
+  const [sourceCursor, setSourceCursor] = useState(null);
+  const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve the document identity across retries after a partial upload.
   const pendingDocumentId = useRef(null);
   const pendingContribution = useRef(null);
@@ -48,9 +50,9 @@ export function SituationPage(){
     retry: false,
   });
   const sources = useQuery({
-    queryKey: client ? qk.sources(client.config) : ['sources','none'],
+    queryKey: client ? [...qk.sources(client.config), sourceCursor] : ['sources','none'],
     enabled: !!client,
-    queryFn: async () => (await client.sources()).value,
+    queryFn: async () => (await client.sources(sourceCursor, 100)).value,
   });
   const refresh = async () => Promise.all([
     qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
@@ -208,6 +210,17 @@ export function SituationPage(){
           {document.original_bytes_available&&<button disabled={downloadOriginal.isPending} onClick={()=>downloadOriginal.mutate(document)}>Download original</button>}
         </li>)}
       </ul>
+      <div className="row">
+        <button disabled={sources.isFetching || sourceBackStack.length === 0} onClick={() => {
+          const stack = sourceBackStack.slice();
+          setSourceCursor(stack.pop() ?? null);
+          setSourceBackStack(stack);
+        }}>Previous sources</button>
+        <button disabled={sources.isFetching || !sources.data?.next_after} onClick={() => {
+          setSourceBackStack(stack => [...stack, sourceCursor]);
+          setSourceCursor(sources.data.next_after);
+        }}>Next sources</button>
+      </div>
       {attach.error && <p className="error">{attach.error.message}</p>}
       {downloadOriginal.error && <p className="error" role="alert">{downloadOriginal.error.message}</p>}
     </article>
