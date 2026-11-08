@@ -1,0 +1,515 @@
+//! Linux-first effective runtime resource observation.
+//!
+//! This module observes the process and its effective cgroup-v2 envelope.
+//! It deliberately does not treat host totals as process entitlements. The
+//! snapshot is telemetry only: it does not infer epistemic quality, mutate a
+//! cgroup, choose a model, change concurrency or expose infrastructure over HTTP.
+use serde::{Deserialize, Serialize};
+use std::path::{Component, Path, PathBuf};
+
+#[derive(Debug, thiserror::Error)]
+pub enum ResourceError {
+    #[error("runtime resource observation is unsupported on this platform")]
+    Unsupported,
+    #[error("invalid kernel resource data")]
+    Invalid,
+    #[error("resource observation failed: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceSnapshot {
+    pub platform: String,
+    pub logical_parallelism: usize,
+    pub process_rss_bytes: Option<u64>,
+    pub process_peak_rss_bytes: Option<u64>,
+    pub cgroup_v2: bool,
+    pub cgroup_path: Option<String>,
+    pub memory_current_bytes: Option<u64>,
+    /// None can mean either an unlimited cgroup or unavailable information;
+    /// the observed/unlimited flags below disambiguate it.
+    pub memory_limit_bytes: Option<u64>,
+    pub memory_limit_observed: bool,
+    pub memory_limit_unlimited: bool,
+    pub memory_headroom_bytes: Option<u64>,
+    pub memory_pressure_basis_points: Option<u16>,
+    /// CPU quota normalized to 1/1000 of one CPU. Example: 2500 = 2.5 CPUs.
+    pub cpu_quota_millicores: Option<u64>,
+    pub cpu_quota_observed: bool,
+    pub cpu_quota_unlimited: bool,
+    pub cpuset_cpu_count: Option<u32>,
+    /// Conservative minimum of observed CPU quota, effective cpuset and
+    /// available_parallelism(). This is capacity, not current CPU load.
+    pub effective_cpu_capacity_millicores: u64,
+    pub cpu_throttled_events: Option<u64>,
+    pub cpu_throttled_usec: Option<u64>,
+    pub pids_current: Option<u64>,
+    pub pids_limit: Option<u64>,
+    pub pids_limit_observed: bool,
+    pub pids_limit_unlimited: bool,
+    pub gpu_observation_implemented: bool,
+    pub mutates_resource_limits: bool,
+    pub establishes_epistemic_quality: bool,
+}
+
+#[derive(Clone, Debug)]
+struct LinuxPaths {
+    proc_status: PathBuf,
+    proc_cgroup: PathBuf,
+    cgroup_root: PathBuf,
+}
+
+impl Default for LinuxPaths {
+    fn default() -> Self {
+        Self {
+            proc_status: "/proc/self/status".into(),
+            proc_cgroup: "/proc/self/cgroup".into(),
+            cgroup_root: "/sys/fs/cgroup".into(),
+        }
+    }
+}
+
+fn read_optional(path: &Path) -> Result<Option<String>, ResourceError> {
+    match std::fs::read_to_string(path) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn parse_status_kib(status: &str, key: &str) -> Result<Option<u64>, ResourceError> {
+    let Some(line) = status.lines().find(|line| line.starts_with(key)) else {
+        return Ok(None);
+    };
+    let mut parts = line[key.len()..].split_whitespace();
+    let value = parts
+        .next()
+        .ok_or(ResourceError::Invalid)?
+        .parse::<u64>()
+        .map_err(|_| ResourceError::Invalid)?;
+    if parts.next() != Some("kB") || parts.next().is_some() {
+        return Err(ResourceError::Invalid);
+    }
+    value
+        .checked_mul(1024)
+        .map(Some)
+        .ok_or(ResourceError::Invalid)
+}
+
+fn cgroup_v2_relative_path(text: &str) -> Result<Option<String>, ResourceError> {
+    for line in text.lines() {
+        let mut parts = line.splitn(3, ':');
+        let hierarchy = parts.next().ok_or(ResourceError::Invalid)?;
+        let controllers = parts.next().ok_or(ResourceError::Invalid)?;
+        let path = parts.next().ok_or(ResourceError::Invalid)?;
+        if hierarchy == "0" && controllers.is_empty() {
+            if !path.starts_with('/') || path.contains('\0') {
+                return Err(ResourceError::Invalid);
+            }
+            return Ok(Some(path.to_owned()));
+        }
+    }
+    Ok(None)
+}
+
+fn safe_cgroup_dir(root: &Path, relative: &str) -> Result<PathBuf, ResourceError> {
+    let trimmed = relative.trim_start_matches('/');
+    let path = Path::new(trimmed);
+    if path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+        && !trimmed.is_empty()
+    {
+        return Err(ResourceError::Invalid);
+    }
+    Ok(root.join(path))
+}
+
+fn parse_scalar(text: Option<&str>) -> Result<Option<u64>, ResourceError> {
+    match text {
+        Some(value) => value
+            .trim()
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|_| ResourceError::Invalid),
+        None => Ok(None),
+    }
+}
+
+fn parse_limit(text: Option<&str>) -> Result<(Option<u64>, bool, bool), ResourceError> {
+    let Some(text) = text else {
+        return Ok((None, false, false));
+    };
+    let value = text.trim();
+    if value == "max" {
+        return Ok((None, true, true));
+    }
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|_| ResourceError::Invalid)?;
+    Ok((Some(parsed), true, false))
+}
+
+fn parse_cpu_max(text: Option<&str>) -> Result<(Option<u64>, bool, bool), ResourceError> {
+    let Some(text) = text else {
+        return Ok((None, false, false));
+    };
+    let mut fields = text.split_whitespace();
+    let quota = fields.next().ok_or(ResourceError::Invalid)?;
+    let period = fields
+        .next()
+        .ok_or(ResourceError::Invalid)?
+        .parse::<u64>()
+        .map_err(|_| ResourceError::Invalid)?;
+    if period == 0 || fields.next().is_some() {
+        return Err(ResourceError::Invalid);
+    }
+    if quota == "max" {
+        return Ok((None, true, true));
+    }
+    let quota = quota
+        .parse::<u64>()
+        .map_err(|_| ResourceError::Invalid)?;
+    let millicores = quota
+        .checked_mul(1000)
+        .ok_or(ResourceError::Invalid)?
+        / period;
+    Ok((Some(millicores), true, false))
+}
+
+fn parse_cpuset_count(text: Option<&str>) -> Result<Option<u32>, ResourceError> {
+    let Some(text) = text else {
+        return Ok(None);
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let mut total = 0u32;
+    for segment in text.split(',') {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            return Err(ResourceError::Invalid);
+        }
+        if let Some((start, end)) = segment.split_once('-') {
+            let start = start
+                .parse::<u32>()
+                .map_err(|_| ResourceError::Invalid)?;
+            let end = end
+                .parse::<u32>()
+                .map_err(|_| ResourceError::Invalid)?;
+            if end < start {
+                return Err(ResourceError::Invalid);
+            }
+            total = total
+                .checked_add(end - start + 1)
+                .ok_or(ResourceError::Invalid)?;
+        } else {
+            segment
+                .parse::<u32>()
+                .map_err(|_| ResourceError::Invalid)?;
+            total = total.checked_add(1).ok_or(ResourceError::Invalid)?;
+        }
+    }
+    Ok(Some(total))
+}
+
+fn parse_keyed_u64(text: Option<&str>, key: &str) -> Result<Option<u64>, ResourceError> {
+    let Some(text) = text else {
+        return Ok(None);
+    };
+    for line in text.lines() {
+        let mut fields = line.split_whitespace();
+        if fields.next() == Some(key) {
+            let value = fields
+                .next()
+                .ok_or(ResourceError::Invalid)?
+                .parse::<u64>()
+                .map_err(|_| ResourceError::Invalid)?;
+            if fields.next().is_some() {
+                return Err(ResourceError::Invalid);
+            }
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
+}
+
+fn observed_capacity(
+    logical_parallelism: usize,
+    cpu_quota_millicores: Option<u64>,
+    cpuset_cpu_count: Option<u32>,
+) -> Result<u64, ResourceError> {
+    let logical = u64::try_from(logical_parallelism)
+        .map_err(|_| ResourceError::Invalid)?
+        .checked_mul(1000)
+        .ok_or(ResourceError::Invalid)?;
+    let cpuset = cpuset_cpu_count
+        .map(|count| u64::from(count).checked_mul(1000))
+        .transpose()
+        .ok_or(ResourceError::Invalid)?;
+    Ok([Some(logical), cpu_quota_millicores, cpuset]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(1000)
+        .max(1))
+}
+
+fn snapshot_from(
+    logical_parallelism: usize,
+    proc_status: &str,
+    cgroup_relative: Option<String>,
+    memory_current: Option<&str>,
+    memory_max: Option<&str>,
+    cpu_max: Option<&str>,
+    cpuset: Option<&str>,
+    cpu_stat: Option<&str>,
+    pids_current: Option<&str>,
+    pids_max: Option<&str>,
+) -> Result<ResourceSnapshot, ResourceError> {
+    if logical_parallelism == 0 {
+        return Err(ResourceError::Invalid);
+    }
+    let process_rss_bytes = parse_status_kib(proc_status, "VmRSS:")?;
+    let process_peak_rss_bytes = parse_status_kib(proc_status, "VmHWM:")?;
+    let memory_current_bytes = parse_scalar(memory_current)?;
+    let (memory_limit_bytes, memory_limit_observed, memory_limit_unlimited) =
+        parse_limit(memory_max)?;
+    let memory_headroom_bytes = match (memory_current_bytes, memory_limit_bytes) {
+        (Some(current), Some(limit)) => Some(limit.saturating_sub(current)),
+        _ => None,
+    };
+    let memory_pressure_basis_points = match (memory_current_bytes, memory_limit_bytes) {
+        (Some(current), Some(limit)) if limit > 0 => {
+            let points = current
+                .saturating_mul(10_000)
+                .checked_div(limit)
+                .unwrap_or(10_000)
+                .min(10_000);
+            Some(u16::try_from(points).map_err(|_| ResourceError::Invalid)?)
+        }
+        _ => None,
+    };
+    let (cpu_quota_millicores, cpu_quota_observed, cpu_quota_unlimited) =
+        parse_cpu_max(cpu_max)?;
+    let cpuset_cpu_count = parse_cpuset_count(cpuset)?;
+    let effective_cpu_capacity_millicores = observed_capacity(
+        logical_parallelism,
+        cpu_quota_millicores,
+        cpuset_cpu_count,
+    )?;
+    let cpu_throttled_events = parse_keyed_u64(cpu_stat, "nr_throttled")?;
+    let cpu_throttled_usec = parse_keyed_u64(cpu_stat, "throttled_usec")?;
+    let pids_current = parse_scalar(pids_current)?;
+    let (pids_limit, pids_limit_observed, pids_limit_unlimited) = parse_limit(pids_max)?;
+    Ok(ResourceSnapshot {
+        platform: "linux".into(),
+        logical_parallelism,
+        process_rss_bytes,
+        process_peak_rss_bytes,
+        cgroup_v2: cgroup_relative.is_some(),
+        cgroup_path: cgroup_relative,
+        memory_current_bytes,
+        memory_limit_bytes,
+        memory_limit_observed,
+        memory_limit_unlimited,
+        memory_headroom_bytes,
+        memory_pressure_basis_points,
+        cpu_quota_millicores,
+        cpu_quota_observed,
+        cpu_quota_unlimited,
+        cpuset_cpu_count,
+        effective_cpu_capacity_millicores,
+        cpu_throttled_events,
+        cpu_throttled_usec,
+        pids_current,
+        pids_limit,
+        pids_limit_observed,
+        pids_limit_unlimited,
+        gpu_observation_implemented: false,
+        mutates_resource_limits: false,
+        establishes_epistemic_quality: false,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn observe_linux_with(paths: &LinuxPaths) -> Result<ResourceSnapshot, ResourceError> {
+    let proc_status = std::fs::read_to_string(&paths.proc_status)?;
+    let cgroup_text = read_optional(&paths.proc_cgroup)?;
+    let cgroup_relative = match cgroup_text {
+        Some(text) => cgroup_v2_relative_path(&text)?,
+        None => None,
+    };
+    let cgroup_dir = cgroup_relative
+        .as_deref()
+        .map(|path| safe_cgroup_dir(&paths.cgroup_root, path))
+        .transpose()?;
+    let read = |name: &str| -> Result<Option<String>, ResourceError> {
+        match &cgroup_dir {
+            Some(dir) => read_optional(&dir.join(name)),
+            None => Ok(None),
+        }
+    };
+    let memory_current = read("memory.current")?;
+    let memory_max = read("memory.max")?;
+    let cpu_max = read("cpu.max")?;
+    let cpuset = read("cpuset.cpus.effective")?;
+    let cpu_stat = read("cpu.stat")?;
+    let pids_current = read("pids.current")?;
+    let pids_max = read("pids.max")?;
+    let logical_parallelism = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    snapshot_from(
+        logical_parallelism,
+        &proc_status,
+        cgroup_relative,
+        memory_current.as_deref(),
+        memory_max.as_deref(),
+        cpu_max.as_deref(),
+        cpuset.as_deref(),
+        cpu_stat.as_deref(),
+        pids_current.as_deref(),
+        pids_max.as_deref(),
+    )
+}
+
+/// Observe current process/cgroup limits without modifying the runtime.
+///
+/// Linux/cgroup-v2 is the first supported implementation. Missing optional
+/// kernel files produce partial telemetry rather than fabricated host totals.
+pub fn observe() -> Result<ResourceSnapshot, ResourceError> {
+    #[cfg(target_os = "linux")]
+    {
+        observe_linux_with(&LinuxPaths::default())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err(ResourceError::Unsupported)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const STATUS: &str =
+        "Name:\tniccolo\nVmHWM:\t2048 kB\nVmRSS:\t1536 kB\nThreads:\t8\n";
+
+    #[test]
+    fn parses_realistic_cgroup_v2_envelope_without_using_host_totals() {
+        let snapshot = snapshot_from(
+            8,
+            STATUS,
+            Some("/tenant/niccolo".into()),
+            Some("3221225472\n"),
+            Some("4294967296\n"),
+            Some("250000 100000\n"),
+            Some("0-3,6\n"),
+            Some("usage_usec 100\nnr_throttled 7\nthrottled_usec 12345\n"),
+            Some("18\n"),
+            Some("256\n"),
+        )
+        .unwrap();
+        assert_eq!(snapshot.process_rss_bytes, Some(1536 * 1024));
+        assert_eq!(snapshot.process_peak_rss_bytes, Some(2048 * 1024));
+        assert_eq!(snapshot.memory_headroom_bytes, Some(1_073_741_824));
+        assert_eq!(snapshot.memory_pressure_basis_points, Some(7500));
+        assert_eq!(snapshot.cpu_quota_millicores, Some(2500));
+        assert_eq!(snapshot.cpuset_cpu_count, Some(5));
+        assert_eq!(snapshot.effective_cpu_capacity_millicores, 2500);
+        assert_eq!(snapshot.cpu_throttled_events, Some(7));
+        assert_eq!(snapshot.cpu_throttled_usec, Some(12345));
+        assert_eq!(snapshot.pids_limit, Some(256));
+        assert!(!snapshot.gpu_observation_implemented);
+        assert!(!snapshot.mutates_resource_limits);
+        assert!(!snapshot.establishes_epistemic_quality);
+    }
+
+    #[test]
+    fn unlimited_limits_are_distinct_from_unobserved_limits() {
+        let unlimited = snapshot_from(
+            4,
+            STATUS,
+            Some("/".into()),
+            Some("1000"),
+            Some("max"),
+            Some("max 100000"),
+            Some("0-1"),
+            None,
+            Some("3"),
+            Some("max"),
+        )
+        .unwrap();
+        assert_eq!(unlimited.memory_limit_bytes, None);
+        assert!(unlimited.memory_limit_observed);
+        assert!(unlimited.memory_limit_unlimited);
+        assert_eq!(unlimited.cpu_quota_millicores, None);
+        assert!(unlimited.cpu_quota_observed);
+        assert!(unlimited.cpu_quota_unlimited);
+        assert_eq!(unlimited.pids_limit, None);
+        assert!(unlimited.pids_limit_observed);
+        assert!(unlimited.pids_limit_unlimited);
+        assert_eq!(unlimited.effective_cpu_capacity_millicores, 2000);
+
+        let unknown = snapshot_from(4, STATUS, None, None, None, None, None, None, None, None)
+            .unwrap();
+        assert!(!unknown.memory_limit_observed);
+        assert!(!unknown.cpu_quota_observed);
+        assert!(!unknown.pids_limit_observed);
+        assert_eq!(unknown.effective_cpu_capacity_millicores, 4000);
+    }
+
+    #[test]
+    fn cgroup_path_cannot_escape_observation_root() {
+        assert!(safe_cgroup_dir(Path::new("/safe"), "/a/b").is_ok());
+        assert!(safe_cgroup_dir(Path::new("/safe"), "/../escape").is_err());
+        assert!(safe_cgroup_dir(Path::new("/safe"), "/a/../../escape").is_err());
+    }
+
+    #[test]
+    fn cpuset_parser_handles_ranges_and_rejects_malformed_data() {
+        assert_eq!(parse_cpuset_count(Some("0-3,6,8-9")).unwrap(), Some(7));
+        assert_eq!(parse_cpuset_count(Some("")).unwrap(), None);
+        assert!(parse_cpuset_count(Some("4-2")).is_err());
+        assert!(parse_cpuset_count(Some("0,,2")).is_err());
+    }
+
+    #[test]
+    fn malformed_kernel_units_and_zero_period_fail_closed() {
+        assert!(parse_status_kib("VmRSS: 3 MB", "VmRSS:").is_err());
+        assert!(parse_cpu_max(Some("1000 0")).is_err());
+        assert!(parse_cpu_max(Some("1000")).is_err());
+        assert!(parse_limit(Some("-1")).is_err());
+    }
+
+    #[test]
+    fn memory_usage_above_limit_clamps_headroom_and_pressure() {
+        let snapshot = snapshot_from(
+            1,
+            STATUS,
+            Some("/".into()),
+            Some("110"),
+            Some("100"),
+            Some("100000 100000"),
+            Some("0"),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(snapshot.memory_headroom_bytes, Some(0));
+        assert_eq!(snapshot.memory_pressure_basis_points, Some(10_000));
+    }
+
+    #[test]
+    fn cgroup_v2_parser_ignores_legacy_lines_and_requires_absolute_path() {
+        assert_eq!(
+            cgroup_v2_relative_path("9:cpu:/legacy\n0::/service.slice/x\n").unwrap(),
+            Some("/service.slice/x".into())
+        );
+        assert!(cgroup_v2_relative_path("0::relative").is_err());
+    }
+}
