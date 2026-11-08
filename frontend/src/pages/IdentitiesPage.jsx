@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
@@ -60,6 +60,8 @@ export function IdentitiesPage() {
   const client = useClient();
   const qc = useQueryClient();
   const [documentId, setDocumentId] = useState('');
+  const pendingAssign = useRef(null);
+  const pendingClear = useRef(null);
 
   const situation = useQuery({
     queryKey: client ? qk.situation(client.config) : ['situation','none'],
@@ -116,30 +118,43 @@ export function IdentitiesPage() {
 
   const assign = useMutation({
     mutationFn: async ({ speakerLabel, personId, newLabel, reason }) => {
-      let target = personId;
-      if (!target) {
-        target = crypto.randomUUID();
-        await client.createIdentity(target, newLabel);
+      const signature = JSON.stringify({ workspace: client.config.workspace, documentId, speakerLabel, personId, newLabel, reason });
+      if (pendingAssign.current?.signature !== signature) {
+        pendingAssign.current = {
+          signature,
+          eventId: crypto.randomUUID(),
+          personId: personId || crypto.randomUUID(),
+        };
       }
-      return (await client.recordIdentityEvent(crypto.randomUUID(), {
+      const attempt = pendingAssign.current;
+      if (!personId) {
+        await client.createIdentity(attempt.personId, newLabel);
+      }
+      return (await client.recordIdentityEvent(attempt.eventId, {
         document_id: documentId,
         speaker_label: speakerLabel,
         operation: 'assign',
-        person_id: target,
+        person_id: attempt.personId,
         human_reason: reason,
       })).value;
     },
-    onSuccess: refresh,
+    onSuccess: async () => { pendingAssign.current = null; await refresh(); },
   });
   const clear = useMutation({
-    mutationFn: async ({ speakerLabel, reason }) => (await client.recordIdentityEvent(crypto.randomUUID(), {
-      document_id: documentId,
-      speaker_label: speakerLabel,
-      operation: 'clear',
-      person_id: null,
-      human_reason: reason,
-    })).value,
-    onSuccess: refresh,
+    mutationFn: async ({ speakerLabel, reason }) => {
+      const signature = JSON.stringify({ workspace: client.config.workspace, documentId, speakerLabel, reason });
+      if (pendingClear.current?.signature !== signature) {
+        pendingClear.current = { signature, eventId: crypto.randomUUID() };
+      }
+      return (await client.recordIdentityEvent(pendingClear.current.eventId, {
+        document_id: documentId,
+        speaker_label: speakerLabel,
+        operation: 'clear',
+        person_id: null,
+        human_reason: reason,
+      })).value;
+    },
+    onSuccess: async () => { pendingClear.current = null; await refresh(); },
   });
 
   if (!client) return <p>Connect first.</p>;
