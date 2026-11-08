@@ -3,7 +3,7 @@
 //! can govern present execution without being misrepresented as historical analysis input.
 use crate::analysis_structure::AnalysisScope;
 use crate::{
-    agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
+    actors, agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
     collection_provenance, decision_points, decision_readiness, epistemic_policy_store, human_agency,
     human_control, human_credence,
     hypothesis_portfolio,
@@ -69,8 +69,12 @@ pub struct FrozenInputPacket {
     pub sources: Vec<Uuid>,
     pub identity_event_no_max: i64,
     pub identity_bindings: Vec<FrozenIdentityBinding>,
+    pub actor_kind_event_no_max: i64,
+    pub actor_binding_event_no_max: i64,
+    pub actor_bindings: Vec<actors::FrozenActorBinding>,
     pub identity_bindings_are_human_confirmed: bool,
     pub matching_speaker_labels_imply_same_person: bool,
+    pub actor_kind_is_investigation_gate: bool,
     pub source_fragments: Vec<FrozenSourceFragment>,
     pub source_fragment_count_total: i64,
     pub source_fragment_count_included: usize,
@@ -332,6 +336,18 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         identity_event_no_max,
     )
     .await?;
+    let actor_kind_event_no_max = frozen.analysis.actor_kind_event_no_max;
+    let actor_binding_event_no_max = frozen.analysis.actor_binding_event_no_max;
+    let actor_bindings = actors::frozen_bindings(
+        pool,
+        scope.workspace,
+        scope.situation,
+        frozen.input.revision,
+        actor_kind_event_no_max,
+        actor_binding_event_no_max,
+    )
+    .await
+    .map_err(dep)?;
     let claims =
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
             .await
@@ -413,8 +429,12 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             sources: frozen.input.sources,
             identity_event_no_max,
             identity_bindings,
+            actor_kind_event_no_max,
+            actor_binding_event_no_max,
+            actor_bindings,
             identity_bindings_are_human_confirmed: true,
             matching_speaker_labels_imply_same_person: false,
+            actor_kind_is_investigation_gate: false,
             source_fragment_count_included: source_fragments.len(),
             source_fragments,
             source_fragment_count_total,
