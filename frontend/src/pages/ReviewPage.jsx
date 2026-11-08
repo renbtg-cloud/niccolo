@@ -14,6 +14,7 @@ import { useAnalysisOutput } from '../hooks/useAnalysisOutput.js';
 import { useHandoffReceipts } from '../hooks/useHandoffReceipts.js';
 import { handoffSummary, receiptSummary } from '../state/handoffPresentation.js';
 import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
+import { presentationZip } from '../state/presentationZip.js';
 
 export function ReviewPage(){
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
@@ -24,6 +25,23 @@ export function ReviewPage(){
  // Keep every hook above conditional returns so connect/selection transitions never change hook order.
  const answerClarification=useMutation({mutationFn:async({questionId,text})=> (await client.answerClarification(analysis,questionId,crypto.randomUUID(),text)).value,onSuccess:async(_,variables)=>{setClarificationDrafts(current=>({...current,[variables.questionId]:''}));await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);}});
  const recordReceipt=useMutation({mutationFn:async(kind)=>{if(!handoffView?.sha256)throw new Error('No current handoff');return (await client.recordHandoffReceipt(analysis,crypto.randomUUID(),handoffView.sha256,kind,handoffNote.trim()||null)).value;},onSuccess:async()=>{setHandoffNote('');await qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'handoff-receipts')});}});
+ const exportPackage=useMutation({mutationFn:async()=>{
+   const result=await client.presentationPackage(analysis);
+   const files=result.value?.files;
+   const archive=presentationZip(result.value);
+   const url=URL.createObjectURL(archive);
+   try {
+     const anchor=document.createElement('a');
+     anchor.href=url;
+     anchor.download=`niccolo-analysis-${analysis}.zip`;
+     document.body.append(anchor);
+     anchor.click();
+     anchor.remove();
+   } finally {
+     window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+   }
+   return Object.keys(files).length;
+ }});
  const approveReanalysis=useMutation({mutationFn:async()=>launchApprovedReanalysis({client,priorAnalysis:analysis,goal:reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation'}),onSuccess:async(result)=>{setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']})]);}});
  if(!client)return <p>Connect first.</p>;
  if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
@@ -36,6 +54,12 @@ export function ReviewPage(){
      <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
      {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
      {output.error&&<p className="error">Answer unavailable: {output.error.message}</p>}
+     <article className="review-panel"><h3>Download this analysis</h3>
+       <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
+       <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
+       {exportPackage.error&&<p className="error" role="alert">Export unavailable: {exportPackage.error.message}</p>}
+       {exportPackage.isSuccess&&<p role="status">Archive prepared with {exportPackage.data} files. Keep it private unless you choose to share it.</p>}
+     </article>
      {reasoningInput.data&&<article className={`review-panel ${reasoningInput.data.source_packet_truncated?'input-warning':''}`}><h3>What reached the reasoning model</h3><p><strong>{reasoningInput.data.source_fragment_count_included}/{reasoningInput.data.source_fragment_count_total}</strong> frozen source fragment(s) included · {reasoningInput.data.source_bytes_included} source byte(s).</p>{reasoningInput.data.source_packet_truncated&&<p><strong>Input was truncated by the explicit reasoning budget.</strong> The model did not receive every frozen source fragment.</p>}<p><strong>{reasoningInput.data.identity_binding_count??0}</strong> human-confirmed identity binding(s) frozen at identity event #{reasoningInput.data.identity_event_no_max??0}.</p><p><small>Matching speaker labels do not imply the same person. Frozen revision {reasoningInput.data.input_revision} · packet SHA-256 <code>{reasoningInput.data.reasoning_packet_sha256}</code>. This is input observability, not a truth or completeness score.</small></p></article>}
      <div className="review-grid">
        <article><h3>What Niccolò actually used</h3>{coverage.map(x=><p key={x.label}><strong>{x.used}/{x.total}</strong> {x.label.toLowerCase()}</p>)}<p><small>These are recorded coverage counts, not a completeness or truth score.</small></p></article>
