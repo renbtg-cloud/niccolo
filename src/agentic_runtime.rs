@@ -177,81 +177,104 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     .await;
     match invocation {
         Ok(v) => {
-            let response = v
-                .response
-                .as_ref()
-                .expect("successful invocation has response");
-            if step.kind == "INSPECT_SOURCES" {
-                analysis_coverage::record_many(
-                    pool,
-                    scope.workspace,
-                    actor,
-                    scope.situation,
-                    analysis,
-                    &packet_evidence_ids,
-                )
-                .await?;
+            // Transport success does not establish that the provider returned
+            // a valid Niccolò artifact. Keep failed post-processing from
+            // stranding a durable step in STARTED indefinitely.
+            let applied: Result<(), RuntimeError> = async {
+                let response = v
+                    .response
+                    .as_ref()
+                    .expect("successful invocation has response");
+                if step.kind == "INSPECT_SOURCES" {
+                    analysis_coverage::record_many(
+                        pool,
+                        scope.workspace,
+                        actor,
+                        scope.situation,
+                        analysis,
+                        &packet_evidence_ids,
+                    )
+                    .await?;
+                }
+                if step.kind == "SYNTHESIZE" {
+                    let artifact = model_artifacts::parse(response)?
+                        .ok_or(model_artifacts::ArtifactError::Invalid)?;
+                    model_artifacts::apply(
+                        pool,
+                        crate::analysis_structure::AnalysisScope {
+                            workspace: scope.workspace,
+                            situation: scope.situation,
+                            analysis,
+                        },
+                        actor,
+                        &artifact,
+                    )
+                    .await?;
+                } else if matches!(
+                    step.kind.as_str(),
+                    "ASSESS_CONTEXT"
+                        | "CHECK_ASSUMPTIONS"
+                        | "PROPOSE_CLARIFICATION"
+                        | "CHECK_ALTERNATIVES"
+                ) {
+                    let update = reasoning_updates::parse(response)?
+                        .ok_or(reasoning_updates::UpdateError::Invalid)?;
+                    reasoning_updates::apply(
+                        pool,
+                        crate::analysis_structure::AnalysisScope {
+                            workspace: scope.workspace,
+                            situation: scope.situation,
+                            analysis,
+                        },
+                        actor,
+                        &update,
+                    )
+                    .await?;
+                } else if step.kind == "CHALLENGE_SYNTHESIS" {
+                    let artifact = adversarial_challenge::parse(response)?
+                        .ok_or(adversarial_challenge::ChallengeError::Invalid)?;
+                    adversarial_challenge::apply(
+                        pool,
+                        crate::analysis_structure::AnalysisScope {
+                            workspace: scope.workspace,
+                            situation: scope.situation,
+                            analysis,
+                        },
+                        actor,
+                        &artifact,
+                    )
+                    .await?;
+                }
+                Ok(())
             }
-            if step.kind == "SYNTHESIZE" {
-                let artifact = model_artifacts::parse(response)?
-                    .ok_or(model_artifacts::ArtifactError::Invalid)?;
-                model_artifacts::apply(
-                    pool,
-                    crate::analysis_structure::AnalysisScope {
-                        workspace: scope.workspace,
-                        situation: scope.situation,
-                        analysis,
-                    },
-                    actor,
-                    &artifact,
-                )
-                .await?;
-            } else if matches!(
-                step.kind.as_str(),
-                "ASSESS_CONTEXT"
-                    | "CHECK_ASSUMPTIONS"
-                    | "PROPOSE_CLARIFICATION"
-                    | "CHECK_ALTERNATIVES"
-            ) {
-                let update = reasoning_updates::parse(response)?
-                    .ok_or(reasoning_updates::UpdateError::Invalid)?;
-                reasoning_updates::apply(
-                    pool,
-                    crate::analysis_structure::AnalysisScope {
-                        workspace: scope.workspace,
-                        situation: scope.situation,
-                        analysis,
-                    },
-                    actor,
-                    &update,
-                )
-                .await?;
-            } else if step.kind == "CHALLENGE_SYNTHESIS" {
-                let artifact = adversarial_challenge::parse(response)?
-                    .ok_or(adversarial_challenge::ChallengeError::Invalid)?;
-                adversarial_challenge::apply(
-                    pool,
-                    crate::analysis_structure::AnalysisScope {
-                        workspace: scope.workspace,
-                        situation: scope.situation,
-                        analysis,
-                    },
-                    actor,
-                    &artifact,
-                )
-                .await?;
+            .await;
+            match applied {
+                Ok(()) => {
+                    agentic_controller::finish_step(
+                        pool,
+                        scope,
+                        step.step_id,
+                        actor,
+                        "SUCCEEDED",
+                        &format!("model invocation {} succeeded", v.invocation_id),
+                    )
+                    .await?;
+                    let _ = started;
+                    Ok(())
+                }
+                Err(error) => {
+                    agentic_controller::finish_step(
+                        pool,
+                        scope,
+                        step.step_id,
+                        actor,
+                        "FAILED",
+                        "model artifact failed validation or application",
+                    )
+                    .await?;
+                    Err(error)
+                }
             }
-            agentic_controller::finish_step(
-                pool,
-                scope,
-                step.step_id,
-                actor,
-                "SUCCEEDED",
-                &format!("model invocation {} succeeded", v.invocation_id),
-            )
-            .await?;
-            let _ = started;
-            Ok(())
         }
         Err(e) => {
             agentic_controller::finish_step(
