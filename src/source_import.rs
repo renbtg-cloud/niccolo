@@ -215,6 +215,9 @@ fn looks_like_datetime(dt: &str) -> bool {
 }
 
 fn message_speaker(line: &str) -> Option<&str> {
+    // A UTF-8 BOM at the beginning of a Windows export is not a speaker label.
+    // Keep original byte offsets: only the header recognition ignores the BOM.
+    let line = line.strip_prefix('\u{feff}').unwrap_or(line);
     let rest = if let Some(tail) = line.strip_prefix('[') {
         let (stamp, rest) = tail.split_once("] ")?;
         if !looks_like_datetime(stamp) {
@@ -318,6 +321,21 @@ mod tests {
             2
         );
     }
+    #[test]
+    fn utf8_bom_export_preserves_original_byte_offsets() {
+        let src = "\u{feff}[02/11/2026, 17:01] Ana: Olá\n[02/11/2026, 17:02] Beto: Sim\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].byte_start, 0);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
     #[test]
     fn impossible_calendar_dates_remain_message_content() {
         let src = "[28/02/2025, 12:00] Ana: Start\n[29/02/2025, 12:01] Fake: quoted line\n[31/04/2025, 12:02] Fake: another quoted line\n[01/03/2025, 12:03] Beto: valid\n";
