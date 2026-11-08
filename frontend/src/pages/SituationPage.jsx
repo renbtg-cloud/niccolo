@@ -163,7 +163,13 @@ export function SituationPage(){
 
     <details>
       <summary>Change focus</summary>
-      <FocusForm initial={snapshot.focus} label="Focus" pending={updateFocus.isPending} onSubmit={(focus) => updateFocus.mutate(focus)}/>
+      <FocusForm
+        key={JSON.stringify([client.config.workspace, client.config.situation, snapshot.focus])}
+        initial={snapshot.focus}
+        label="Focus"
+        pending={updateFocus.isPending}
+        onSubmit={(focus) => updateFocus.mutate(focus)}
+      />
       {updateFocus.error && <p className="error">{updateFocus.error.message}</p>}
     </details>
 
