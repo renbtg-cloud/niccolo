@@ -84,7 +84,12 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     let mut content_type: Option<&str> = None;
     let mut transfer: Option<&str> = None;
     let mut body_start = None;
-    for (_, end, line) in iter_lines(src) {
+    for (start, end, line) in iter_lines(src) {
+        let line = if start == 0 {
+            line.strip_prefix('\u{feff}').unwrap_or(line)
+        } else {
+            line
+        };
         if line.is_empty() {
             body_start = Some(end);
             break;
@@ -357,6 +362,20 @@ mod tests {
         assert_eq!(r.fragments[0].content, "Hello\r\n");
         assert_eq!(&s[r.fragments[0].byte_start as usize..], "Hello\r\n");
     }
+    #[test]
+    fn utf8_bom_email_preserves_original_body_offsets() {
+        let src = "\u{feff}From: Ana <ana@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nOlá!\r\n";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana <ana@example.org>");
+        let fragment = &parsed.fragments[0];
+        assert_eq!(
+            fragment.content.as_bytes(),
+            &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+        );
+        assert_eq!(fragment.content, "Olá!\r\n");
+    }
+
     #[test]
     fn rejects_encoded_or_multipart_mime() {
         for h in [
