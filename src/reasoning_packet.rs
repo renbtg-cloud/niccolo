@@ -115,6 +115,7 @@ pub struct ReasoningPacket {
     pub temporal_assertions: Vec<temporal_state::TemporalAssertion>,
     pub source_scope: Vec<source_scope::SourceScopeAssertion>,
     pub collection_events: Vec<collection_provenance::CollectionEvent>,
+    pub integrity_assessments: Vec<integrity_scope::IntegrityAssessment>,
     pub decisions: decision_points::DecisionPackage,
     pub decision_readiness: Vec<decision_readiness::DecisionReadinessView>,
     pub lens: analysis_assumptions::AnalysisLens,
@@ -344,6 +345,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
     let temporal_assertions = temporal_state::list(pool, scope).await.map_err(dep)?;
     let source_scope = source_scope::list(pool, scope).await.map_err(dep)?;
     let collection_events = collection_provenance::list(pool, scope).await.map_err(dep)?;
+    let integrity_assessments = integrity_scope::list(pool, scope).await.map_err(dep)?;
     let decisions = decision_points::package(pool, scope).await.map_err(dep)?;
     let decision_readiness = decision_readiness::latest(pool, scope).await.map_err(dep)?;
     let lens = analysis_assumptions::lens(pool, scope).await.map_err(dep)?;
@@ -449,6 +451,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         temporal_assertions,
         source_scope,
         collection_events,
+        integrity_assessments,
         decisions,
         decision_readiness,
         lens,
