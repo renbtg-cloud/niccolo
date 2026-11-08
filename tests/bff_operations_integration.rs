@@ -97,6 +97,45 @@ async fn v182_v186_operation_is_durable_idempotent_and_conflict_detecting() {
 }
 
 #[tokio::test]
+async fn idempotency_rejects_different_immutable_operation_metadata() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let id = Uuid::new_v4();
+    let original = input(s, "AGENTIC_ANALYSIS", Some("immutable"));
+    bff_operations::submit(&app, op(s, id), &original)
+        .await
+        .unwrap();
+
+    let mut variants = Vec::new();
+    let mut steps = original.clone();
+    steps.step_budget = 33;
+    variants.push(steps);
+    let mut analysis = original.clone();
+    analysis.target_analysis_id = Some(Uuid::new_v4());
+    variants.push(analysis);
+    let mut parent = original.clone();
+    parent.parent_operation_id = Some(Uuid::new_v4());
+    variants.push(parent);
+    let mut actor = original.clone();
+    actor.requested_by = Uuid::new_v4();
+    variants.push(actor);
+
+    for variant in variants {
+        assert!(matches!(
+            bff_operations::submit(&app, op(s, Uuid::new_v4()), &variant).await,
+            Err(bff_operations::BffOperationError::IdempotencyConflict)
+        ));
+    }
+
+    let mut changed_id = input(s, "AGENTIC_ANALYSIS", None);
+    changed_id.step_budget = 64;
+    assert!(matches!(
+        bff_operations::submit(&app, op(s, id), &changed_id).await,
+        Err(bff_operations::BffOperationError::IdempotencyConflict)
+    ));
+}
+
+#[tokio::test]
 async fn v187_v192_sync_execution_and_pull_cursor_share_one_operation() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
