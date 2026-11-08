@@ -302,5 +302,34 @@ oversize_status="$(curl --max-time 30 --silent --show-error \
 }
 echo 'PASS: HTTP source limit accepts 2–4 MiB, rejects >4 MiB, retains exact bytes'
 
+# Reject migrations over an unrelated application's tables, even when
+# there is no Niccolo schema yet.
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'CREATE DATABASE niccolo_ci_populated_probe'
+populated_url="$(node -e '
+const u=new URL(process.env.NICCOLO_PG_ADMIN_URL);
+u.pathname="/niccolo_ci_populated_probe";
+process.stdout.write(u.toString());
+')"
+psql -X -q -v ON_ERROR_STOP=1 "$populated_url" \
+  -c 'CREATE TABLE public.customer_records (record_id integer PRIMARY KEY)'
+if (cd "$probe_root" && NICCOLO_PG_ADMIN_URL="$populated_url" \
+    bash scripts/bootstrap-local-mvp.sh > populated-probe.log 2>&1); then
+  echo 'Bootstrap unexpectedly applied migrations over existing application data' >&2
+  exit 1
+fi
+grep -q 'Database contains existing user relations' "$probe_root/populated-probe.log" || {
+  echo 'Unexpected reason for refusing bootstrap over populated database' >&2
+  exit 1
+}
+[[ "$(psql -X -At -v ON_ERROR_STOP=1 "$populated_url" \
+  -c "SELECT to_regclass('public.customer_records') IS NOT NULL AND to_regclass('niccolo.workspaces') IS NULL")" == "t" ]] || {
+  echo 'Unsafe data mutation while refusing populated-database bootstrap' >&2
+  exit 1
+}
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'DROP DATABASE niccolo_ci_populated_probe'
+echo 'PASS: unrelated application data is protected from first-run migrations'
+
 echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
 
