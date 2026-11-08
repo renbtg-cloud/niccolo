@@ -138,5 +138,36 @@ denied_source="$(curl --max-time 10 --silent --output /dev/null --write-out '%{h
 }
 echo 'PASS: source upload/replay/attribution/original bytes/attachment'
 
+# A second source format must coexist with the chat in one Situation.
+eml_file=".niccolo-local/ci-mail.eml"
+printf 'From: Ana <ana@example.test>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nO encontro está confirmado.\r\n' > "$eml_file"
+email_id="$(node -p "require('node:crypto').randomUUID()")"
+email_path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${email_id}"
+email_result="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: message/rfc822' -H 'X-Source-Locator: ci-mail.eml' \
+  --data-binary @"$eml_file" "$email_path")"
+printf '%s' "$email_result" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.replayed!==false||j.fragment_ids?.length!==1)process.exit(1);
+});'
+curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${email_path}/original" -o ".niccolo-local/ci-original.eml"
+cmp "$eml_file" ".niccolo-local/ci-original.eml"
+curl --max-time 10 --silent --show-error --fail -X POST \
+  -H "Authorization: Bearer ${token}" \
+  "${path}/sources/${email_id}" >/dev/null
+sources_attached="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" "$path")"
+WHATSAPP_ID="$document_id" EMAIL_ID="$email_id" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(!j.source_document_ids?.includes(process.env.WHATSAPP_ID) ||
+    !j.source_document_ids?.includes(process.env.EMAIL_ID))process.exit(1);
+});' <<< "$sources_attached"
+echo 'PASS: two source formats attached to one Situation'
+
 echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
 
