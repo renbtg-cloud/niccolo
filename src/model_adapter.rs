@@ -8,7 +8,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use std::{
     future::Future,
     io::{Read, Write},
-    net::TcpStream,
+    net::{TcpStream, ToSocketAddrs},
     pin::Pin,
     sync::Arc,
     time::Instant,
@@ -427,6 +427,7 @@ pub struct OpenAiCompatibleModel {
     endpoint: ParsedEndpoint,
     api_key: String,
     json_mode: bool,
+    transport_timeout_secs: u64,
 }
 impl OpenAiCompatibleModel {
     pub fn new(
@@ -449,7 +450,16 @@ impl OpenAiCompatibleModel {
             endpoint,
             api_key: api_key.into(),
             json_mode: true,
+            transport_timeout_secs: 25,
         })
+    }
+
+    pub fn with_transport_timeout_secs(mut self, secs: u64) -> Result<Self, ModelError> {
+        if !(1..=120).contains(&secs) {
+            return Err(ModelError::Invalid);
+        }
+        self.transport_timeout_secs = secs;
+        Ok(self)
     }
 
     pub fn with_json_mode(mut self, enabled: bool) -> Self {
@@ -492,12 +502,34 @@ impl OpenAiCompatibleModel {
             body.len(),
             body
         );
-        let tcp = TcpStream::connect((self.endpoint.host.as_str(), self.endpoint.port))
-            .map_err(|e| ModelError::Provider(format!("connect failed: {e}")))?;
-        tcp.set_read_timeout(Some(std::time::Duration::from_secs(120)))
-            .ok();
-        tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
-            .ok();
+        // The async invocation timeout cannot cancel a Tokio blocking thread.
+        // Bound the blocking socket itself so stalled providers do not retain
+        // threads and memory for two minutes after an operation has stopped.
+        let timeout = std::time::Duration::from_secs(self.transport_timeout_secs);
+        let addresses = (self.endpoint.host.as_str(), self.endpoint.port)
+            .to_socket_addrs()
+            .map_err(|e| ModelError::Provider(format!("DNS failed: {e}")))?;
+        let mut connected = None;
+        let mut last_error = None;
+        for address in addresses {
+            match TcpStream::connect_timeout(&address, timeout) {
+                Ok(stream) => {
+                    connected = Some(stream);
+                    break;
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+        let tcp = connected.ok_or_else(|| {
+            ModelError::Provider(format!(
+                "connect failed: {}",
+                last_error.map(|e| e.to_string()).unwrap_or_else(|| "no address".into())
+            ))
+        })?;
+        tcp.set_read_timeout(Some(timeout))
+            .map_err(|e| ModelError::Provider(format!("read timeout setup failed: {e}")))?;
+        tcp.set_write_timeout(Some(timeout))
+            .map_err(|e| ModelError::Provider(format!("write timeout setup failed: {e}")))?;
         let raw = if self.endpoint.scheme == "https" {
             let roots =
                 rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
@@ -706,6 +738,44 @@ mod bounded_response_tests {
         assert!(OpenAiCompatibleModel::new(
             "remote", "model", "http://example.com/v1/chat/completions", ""
         ).is_err());
+    }
+
+    #[test]
+    fn native_transport_timeout_has_bounded_configuration() {
+        let original = OpenAiCompatibleModel::new(
+            "local", "model", "http://127.0.0.1:11434/v1/chat/completions", ""
+        ).unwrap();
+        assert_eq!(original.transport_timeout_secs, 25);
+        assert!(original.clone().with_transport_timeout_secs(0).is_err());
+        assert!(original.clone().with_transport_timeout_secs(121).is_err());
+        assert_eq!(
+            original.with_transport_timeout_secs(3).unwrap().transport_timeout_secs,
+            3
+        );
+    }
+
+    #[test]
+    fn stalled_local_model_times_out_at_transport_boundary() {
+        use std::{net::TcpListener, thread, time::{Duration, Instant}};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            thread::sleep(Duration::from_millis(1400));
+            drop(socket);
+        });
+        let model = OpenAiCompatibleModel::new(
+            "local", "model", &format!("http://127.0.0.1:{port}/v1/chat/completions"), ""
+        ).unwrap().with_transport_timeout_secs(1).unwrap();
+        let request = ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: serde_json::json!({}),
+            output_contract: serde_json::json!({}),
+        };
+        let start = Instant::now();
+        assert!(matches!(model.perform_blocking(&request), Err(ModelError::Provider(_))));
+        assert!(start.elapsed() < Duration::from_millis(1350));
+        server.join().unwrap();
     }
 
     #[test]
