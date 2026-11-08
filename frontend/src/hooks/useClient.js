@@ -2,6 +2,14 @@ import { useMemo } from 'react';
 import { useSessionStore } from '../stores/session.js';
 import { NiccoloClient } from '../api/client.js';
 export function useClient() {
-  const config = useSessionStore((s) => ({ workspace:s.workspace, situation:s.situation, token:s.token, connected:s.connected }));
-  return useMemo(() => config.connected ? new NiccoloClient(config) : null, [config.workspace, config.situation, config.token, config.connected]);
+  // Zustand 5 requires stable selector snapshots. Allocating a fresh object in
+  // the selector can create an endless React 19 render loop.
+  const workspace = useSessionStore((s) => s.workspace);
+  const situation = useSessionStore((s) => s.situation);
+  const token = useSessionStore((s) => s.token);
+  const connected = useSessionStore((s) => s.connected);
+  return useMemo(
+    () => connected ? new NiccoloClient({ workspace, situation, token, connected }) : null,
+    [workspace, situation, token, connected],
+  );
 }
