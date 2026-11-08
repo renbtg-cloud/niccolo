@@ -961,6 +961,11 @@ async fn v801_v900_intermediate_updates_feed_later_reasoning_and_quality_without
             question_id: question,
             text: "Did this happen before or after the call?".into(),
             reason: "Sequence changes the competing explanations".into(),
+            discriminates_interpretation_ids: vec![],
+            possible_outcomes: vec![],
+            decision_relevance: None,
+            acquisition_cost: None,
+            cheaper_alternative: None,
         }],
         source_queries: vec![],
     };
