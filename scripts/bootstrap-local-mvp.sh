@@ -23,6 +23,14 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT to_re
   echo 'Database already contains Niccolo tables; use a new empty database.' >&2
   exit 1
 fi
+# A first-run installer must never run migrations over someone else's data.
+# The service is intended for an empty dedicated database, not just a new
+# niccolo schema inside an unrelated application database.
+if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema')")" != "t" ]]; then
+  echo 'Database contains existing user relations; refusing first-run migrations. Use an empty dedicated database.' >&2
+  exit 1
+fi
+
 # PostgreSQL roles are cluster-global, not per-database. Overwriting an
 # existing niccolo_secure password could break an unrelated installation.
 if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='niccolo_secure')")" != "f" ]]; then
