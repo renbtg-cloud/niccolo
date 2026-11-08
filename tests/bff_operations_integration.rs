@@ -192,7 +192,6 @@ async fn v196_v200_parent_budget_and_operation_digest_contracts_are_preserved() 
     assert_eq!(events.events[0].kind, "QUEUED");
 }
 
-
 #[tokio::test]
 async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
     let (admin, app) = pools().await;
@@ -251,13 +250,8 @@ async fn adaptive_admission_serializes_competing_workers_at_workspace_limit() {
         let workspace = s.workspace;
         joins.push(tokio::spawn(async move {
             let owner = format!("adaptive-{idx}");
-            let claimed = bff_operations::claim_next_in_workspace_limited(
-                &pool,
-                workspace,
-                &owner,
-                60_000,
-                2,
-            )
+            let claimed =
+                bff_operations::claim_next_in_workspace_limited(&pool, workspace, &owner, 60_000, 2)
             .await
             .unwrap();
             (owner, claimed)
