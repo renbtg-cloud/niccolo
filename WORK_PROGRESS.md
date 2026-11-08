@@ -2,12 +2,12 @@
 
 ## Linux effective-resource observation — ARM-001 (verified)
 
-PR #25 merged into main at `3c3bdbda`.
+PR #26 merged into main at `f538ea31` (superseding the transient duplicate ARM branch/PR bookkeeping).
 - New read-only `runtime_resources` observer measures the process/cgroup-v2 envelope rather than assuming host totals are available to Niccolò.
 - Linux observations include process RSS/peak RSS, memory current/limit/headroom/pressure, CPU quota, effective cpuset, conservative effective CPU capacity, CPU throttling and PID current/limit.
 - Unknown and explicitly unlimited cgroup limits remain distinct; malformed kernel data fails closed; cgroup paths cannot escape the observation root.
 - Runtime capacity is explicitly **not** epistemic quality, does not change concurrency/model choice, does not mutate cgroups and does not claim GPU observation exists.
-- Live Linux CI exercises the actual observer. Full Actions run `42429716582` passed unit/Clippy/rustfmt, frontend and PostgreSQL regression.
+- Live Linux CI exercises the actual observer. Full Actions runs `42429716582` and `42430147310` passed the exact implementation head: **464/464 PostgreSQL-feature Rust tests**, **140/140 library tests**, **66/66 frontend tests**, **3/3 offline Python export tests**, all **83 SQL migrations**, rustfmt and strict Clippy.
 - Next ARM slice: operator-selected `self_managed` / `externally_managed` / `hybrid` policy and conservative admission/concurrency advice before any scheduler mutation.
 
 
@@ -20,7 +20,7 @@ PR #23 merged into main at `562e52d3`.
 - Exhausted signed counters are clamped at zero; actual PostgreSQL deadline expiry is integration-tested.
 - A preexisting agentic-plan visibility test was hardened from scheduler-only polling to a bounded wall-clock wait after recurring CI flakiness.
 - Linux Actions run `42428951000` passed: **456/456 PostgreSQL-feature Rust tests**, **132/132 library tests**, **66/66 frontend tests**, **3/3 offline Python export tests**, all **83 SQL migrations**, rustfmt and strict Clippy.
-- Next ARM work can safely build on this accounting surface: Linux effective-resource observation (including cgroup quotas), self-managed/delegated policy, admission/concurrency adaptation and eventually honest anytime partial-result/degradation semantics.
+- Next ARM work can safely build on the deadline/budget accounting plus the verified Linux effective-resource observer: self-managed/delegated policy, admission/concurrency adaptation and eventually honest anytime partial-result/degradation semantics.
 
 
 ## User-owned Git archival and Python/CSV explanation — MVP first slice (verified)
