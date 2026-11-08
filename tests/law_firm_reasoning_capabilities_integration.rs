@@ -2,8 +2,8 @@
 
 use niccolo_evidence::{
     analysis_structure::AnalysisScope,
-    authz, hypothesis_portfolio, investigation_policy, reasoning_packet, reasoning_updates,
-    source_scope, temporal_state,
+    authz, collection_provenance, hypothesis_portfolio, investigation_policy, reasoning_packet,
+    reasoning_updates, source_scope, temporal_state,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -72,6 +72,69 @@ async fn seed(admin: &PgPool) -> Seed {
         .await
         .unwrap();
     s
+}
+
+
+async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) -> (Uuid, Uuid) {
+    let document = Uuid::new_v4();
+    let evidence = Uuid::new_v4();
+    let bytes = content.as_bytes();
+    sqlx::query(
+        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
+         VALUES($1,$2,'WHATSAPP_EXPORT',$3,$4,$5)",
+    )
+    .bind(s.workspace)
+    .bind(document)
+    .bind(locator)
+    .bind("c".repeat(64))
+    .bind(i64::try_from(bytes.len()).unwrap())
+    .execute(admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class)
+         VALUES($1,$2,$3,$4,'REPORTED_SPEECH')",
+    )
+    .bind(s.workspace)
+    .bind(evidence)
+    .bind(locator)
+    .bind(content)
+    .execute(admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
+         VALUES($1,$2,0,$3,0,$4,'External operator')",
+    )
+    .bind(s.workspace)
+    .bind(document)
+    .bind(evidence)
+    .bind(i32::try_from(bytes.len()).unwrap())
+    .execute(admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_sources(workspace_id,situation_id,document_id,added_by_principal_id)
+         VALUES($1,$2,$3,$4)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(document)
+    .bind(s.principal)
+    .execute(admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_revision_sources(workspace_id,situation_id,revision,document_id)
+         VALUES($1,$2,1,$3)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(document)
+    .execute(admin)
+    .await
+    .unwrap();
+    (document, evidence)
 }
 
 #[tokio::test]
@@ -406,6 +469,60 @@ async fn source_scope_keeps_uncollected_unavailable_and_unknown_distinct() {
 
         let packet = reasoning_packet::build(&app, scope).await.unwrap();
         assert_eq!(packet.source_scope.len(), 3);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn collection_provenance_preserves_roles_without_creating_trust() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let (document, evidence) = attach_source(
+        &admin,
+        s,
+        "operator-transcript.txt",
+        "01/01/2026, 00:00 - External operator: Elias summarized the interview.",
+    )
+    .await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+
+    authz::with_auth_digest("law-firm-test".into(), async {
+        collection_provenance::record(
+            &app,
+            scope,
+            s.principal,
+            &collection_provenance::CollectionEventInput {
+                event_id: Uuid::new_v4(),
+                actor_label: "Elias".into(),
+                actor_role: "SUMMARIZER".into(),
+                operation: "Prepared interview summary".into(),
+                input_document_id: Some(document),
+                input_evidence_id: None,
+                output_document_id: Some(document),
+                output_evidence_id: Some(evidence),
+                occurred_at: Some("2026-05-20T12:00:00Z".into()),
+                method: "Human summary of interview material".into(),
+                assertion_kind: "HUMAN_ASSERTION".into(),
+                qualification: "ATTRIBUTED".into(),
+                note: "This event records the asserted transformation role only.".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let events = collection_provenance::list(&app, scope).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].actor_role, "SUMMARIZER");
+        assert!(!events[0].actor_role_establishes_original_authorship);
+        assert!(!events[0].actor_role_establishes_neutrality);
+
+        let packet = reasoning_packet::build(&app, scope).await.unwrap();
+        assert_eq!(packet.collection_events.len(), 1);
+        assert_eq!(packet.collection_events[0].output_evidence_id, Some(evidence));
     })
     .await;
 }
