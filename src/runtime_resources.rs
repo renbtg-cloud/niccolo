@@ -399,18 +399,18 @@ mod tests {
 
     #[test]
     fn parses_realistic_cgroup_v2_envelope_without_using_host_totals() {
-        let snapshot = snapshot_from(
-            8,
-            STATUS,
-            Some("/tenant/niccolo".into()),
-            Some("3221225472\n"),
-            Some("4294967296\n"),
-            Some("250000 100000\n"),
-            Some("0-3,6\n"),
-            Some("usage_usec 100\nnr_throttled 7\nthrottled_usec 12345\n"),
-            Some("18\n"),
-            Some("256\n"),
-        )
+        let snapshot = snapshot_from(RawResourceObservation {
+            logical_parallelism: 8,
+            proc_status: STATUS,
+            cgroup_relative: Some("/tenant/niccolo".into()),
+            memory_current: Some("3221225472\n"),
+            memory_max: Some("4294967296\n"),
+            cpu_max: Some("250000 100000\n"),
+            cpuset: Some("0-3,6\n"),
+            cpu_stat: Some("usage_usec 100\nnr_throttled 7\nthrottled_usec 12345\n"),
+            pids_current: Some("18\n"),
+            pids_max: Some("256\n"),
+        })
         .unwrap();
         assert_eq!(snapshot.process_rss_bytes, Some(1536 * 1024));
         assert_eq!(snapshot.process_peak_rss_bytes, Some(2048 * 1024));
@@ -429,18 +429,18 @@ mod tests {
 
     #[test]
     fn unlimited_limits_are_distinct_from_unobserved_limits() {
-        let unlimited = snapshot_from(
-            4,
-            STATUS,
-            Some("/".into()),
-            Some("1000"),
-            Some("max"),
-            Some("max 100000"),
-            Some("0-1"),
-            None,
-            Some("3"),
-            Some("max"),
-        )
+        let unlimited = snapshot_from(RawResourceObservation {
+            logical_parallelism: 4,
+            proc_status: STATUS,
+            cgroup_relative: Some("/".into()),
+            memory_current: Some("1000"),
+            memory_max: Some("max"),
+            cpu_max: Some("max 100000"),
+            cpuset: Some("0-1"),
+            cpu_stat: None,
+            pids_current: Some("3"),
+            pids_max: Some("max"),
+        })
         .unwrap();
         assert_eq!(unlimited.memory_limit_bytes, None);
         assert!(unlimited.memory_limit_observed);
@@ -453,8 +453,19 @@ mod tests {
         assert!(unlimited.pids_limit_unlimited);
         assert_eq!(unlimited.effective_cpu_capacity_millicores, 2000);
 
-        let unknown =
-            snapshot_from(4, STATUS, None, None, None, None, None, None, None, None).unwrap();
+        let unknown = snapshot_from(RawResourceObservation {
+            logical_parallelism: 4,
+            proc_status: STATUS,
+            cgroup_relative: None,
+            memory_current: None,
+            memory_max: None,
+            cpu_max: None,
+            cpuset: None,
+            cpu_stat: None,
+            pids_current: None,
+            pids_max: None,
+        })
+        .unwrap();
         assert!(!unknown.memory_limit_observed);
         assert!(!unknown.cpu_quota_observed);
         assert!(!unknown.pids_limit_observed);
@@ -486,18 +497,18 @@ mod tests {
 
     #[test]
     fn memory_usage_above_limit_clamps_headroom_and_pressure() {
-        let snapshot = snapshot_from(
-            1,
-            STATUS,
-            Some("/".into()),
-            Some("110"),
-            Some("100"),
-            Some("100000 100000"),
-            Some("0"),
-            None,
-            None,
-            None,
-        )
+        let snapshot = snapshot_from(RawResourceObservation {
+            logical_parallelism: 1,
+            proc_status: STATUS,
+            cgroup_relative: Some("/".into()),
+            memory_current: Some("110"),
+            memory_max: Some("100"),
+            cpu_max: Some("100000 100000"),
+            cpuset: Some("0"),
+            cpu_stat: None,
+            pids_current: None,
+            pids_max: None,
+        })
         .unwrap();
         assert_eq!(snapshot.memory_headroom_bytes, Some(0));
         assert_eq!(snapshot.memory_pressure_basis_points, Some(10_000));
