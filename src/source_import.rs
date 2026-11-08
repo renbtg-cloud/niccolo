@@ -320,7 +320,7 @@ mod tests {
     }
     #[test]
     fn impossible_calendar_dates_remain_message_content() {
-        let src = "[28/02/2025, 12:00] Ana: Start\\n[29/02/2025, 12:01] Fake: quoted line\\n[31/04/2025, 12:02] Fake: another quoted line\\n[01/03/2025, 12:03] Beto: valid\\n";
+        let src = "[28/02/2025, 12:00] Ana: Start\n[29/02/2025, 12:01] Fake: quoted line\n[31/04/2025, 12:02] Fake: another quoted line\n[01/03/2025, 12:03] Beto: valid\n";
         let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
         assert_eq!(parsed.fragments.len(), 2);
         assert!(parsed.fragments[0].content.contains("29/02/2025"));
