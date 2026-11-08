@@ -32,7 +32,7 @@ jobs:
 
       - name: Commit rendered PDF when changed
         run: |
-          if git diff --quiet -- docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf; then
+          if [ -z "$(git status --porcelain -- docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf)" ]; then
             echo "PDF unchanged."
             exit 0
           fi
