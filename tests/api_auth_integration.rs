@@ -780,3 +780,50 @@ async fn presentation_package_requires_authorization_and_published_analysis() {
     .await;
     assert_eq!(forbidden, StatusCode::FORBIDDEN);
 }
+
+
+#[tokio::test]
+async fn operation_budget_status_is_private_and_missing_operations_stay_hidden() {
+    let (admin, _app, workspace, _, token, router) = setup().await;
+    let situation = Uuid::new_v4();
+    let operation = Uuid::new_v4();
+    let route = format!(
+        "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/budget"
+    );
+    assert_eq!(
+        invoke(
+            router.clone(),
+            request("GET", &route, None, None, None, b"")
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        invoke(
+            router.clone(),
+            request("GET", &route, Some(&token), None, None, b"")
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let foreign = Uuid::new_v4();
+    sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'foreign-budget')")
+        .bind(foreign)
+        .execute(&admin)
+        .await
+        .unwrap();
+    let foreign_route = format!(
+        "/v1/workspaces/{foreign}/situations/{situation}/bff/operations/{operation}/budget"
+    );
+    assert_eq!(
+        invoke(
+            router,
+            request("GET", &foreign_route, Some(&token), None, None, b"")
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+}
