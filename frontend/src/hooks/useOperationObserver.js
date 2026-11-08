@@ -21,7 +21,10 @@ export function useOperationObserver(operationId) {
     },
     refetchInterval: (q) => {
       const state = q.state.data?.operation?.state;
-      return !state || TERMINAL_OPERATION_STATES.has(state) ? false : 50;
+      if (!state || TERMINAL_OPERATION_STATES.has(state)) return false;
+      // The API already long-polls for up to five seconds. Avoid tight
+      // additional polling when the server responds immediately.
+      return state === 'WAITING_FOR_HUMAN' ? 1000 : 250;
     },
     staleTime: 0,
     retry: 2,
