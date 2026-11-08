@@ -546,10 +546,13 @@ async fn readiness(State(state): State<AppState>) -> Response {
     .fetch_one(&state.pool)
     .await;
     if matches!(check, Ok((true, true, true, true, true, true))) {
-        no_store(json!({
-            "status":"ready",
-            "model_configured":state.model.provider() != "unconfigured"
-        }), StatusCode::OK)
+        no_store(
+            json!({
+                "status":"ready",
+                "model_configured":state.model.provider() != "unconfigured"
+            }),
+            StatusCode::OK,
+        )
     } else {
         no_store(
             json!({"status":"unavailable"}),
@@ -707,8 +710,16 @@ async fn download_source_original(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let (format, original) = source_catalog::source_original(&state.pool, workspace, document)
         .await
-        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source download unavailable"))?
-        .ok_or(ApiError(StatusCode::NOT_FOUND, "source original unavailable"))?;
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "source download unavailable",
+            )
+        })?
+        .ok_or(ApiError(
+            StatusCode::NOT_FOUND,
+            "source original unavailable",
+        ))?;
     let extension = if format == "EML" { "eml" } else { "txt" };
     let content_type = if format == "EML" {
         "message/rfc822"
@@ -717,8 +728,12 @@ async fn download_source_original(
     };
     let filename = format!("attachment; filename=\"niccolo-source-{document}.{extension}\"");
     let mut response = Bytes::from(original).into_response();
-    response.headers_mut().insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-    response.headers_mut().insert(header::CONTENT_DISPOSITION, filename.parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, filename.parse().unwrap());
     Ok(response)
 }
 
