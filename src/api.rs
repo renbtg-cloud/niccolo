@@ -34,6 +34,7 @@ use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
+use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
 use crate::{
     agentic_controller, agentic_policy, bff_dashboard, bff_epistemic, bff_executor,
     reasoning_handoff, reasoning_packet,
@@ -426,6 +427,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
             post(record_used_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/temporal-state",
+            get(list_temporal_state),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/temporal-state/{assertion}",
+            post(record_temporal_state),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/hypothesis-portfolio",
@@ -2335,6 +2344,109 @@ async fn list_hypotheses(
     ))
 }
 
+
+
+impl From<TemporalStateError> for ApiError {
+    fn from(error: TemporalStateError) -> Self {
+        match error {
+            TemporalStateError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid temporal assertion")
+            }
+            TemporalStateError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "temporal assertion reference unavailable")
+            }
+            TemporalStateError::Conflict => {
+                Self(StatusCode::CONFLICT, "temporal assertion conflict")
+            }
+            TemporalStateError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "temporal state runtime role unavailable",
+            ),
+            TemporalStateError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "temporal state unavailable")
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TemporalAssertionRequest {
+    subject_label: String,
+    assertion_type: String,
+    object_text: String,
+    valid_from: Option<String>,
+    valid_to: Option<String>,
+    epistemic_kind: String,
+    qualification: String,
+    evidence_id: Option<Uuid>,
+    contribution_id: Option<Uuid>,
+    rationale: String,
+}
+
+async fn record_temporal_state(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, assertion)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<TemporalAssertionRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let recorded = temporal_state::record(
+        &state.pool,
+        scope,
+        actor,
+        &TemporalAssertionInput {
+            assertion_id: assertion,
+            subject_label: input.subject_label,
+            assertion_type: input.assertion_type,
+            object_text: input.object_text,
+            valid_from: input.valid_from,
+            valid_to: input.valid_to,
+            epistemic_kind: input.epistemic_kind,
+            qualification: input.qualification,
+            evidence_id: input.evidence_id,
+            contribution_id: input.contribution_id,
+            rationale: input.rationale,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_temporal_state(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let assertions = temporal_state::list(&state.pool, scope).await?;
+    Ok(no_store(
+        json!({
+            "assertions": assertions,
+            "assertions_establish_truth": false,
+            "formal_authority_is_practical_influence": false,
+            "inferred_awareness_is_observed_knowledge": false
+        }),
+        StatusCode::OK,
+    ))
+}
 
 impl From<HypothesisPortfolioError> for ApiError {
     fn from(error: HypothesisPortfolioError) -> Self {
