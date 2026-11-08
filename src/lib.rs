@@ -18,6 +18,8 @@ pub mod evolution;
 pub mod human_feedback;
 pub mod hypotheses;
 pub mod identity;
+
+pub mod actors;
 pub mod postgres_ingest;
 pub mod postgres_repository;
 pub mod provenance_dag;
