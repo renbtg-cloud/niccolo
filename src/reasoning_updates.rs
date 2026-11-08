@@ -394,3 +394,74 @@ pub async fn apply(
         update_asserts_truth: false,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_discriminating_clarification_metadata() {
+        let interpretation_id = Uuid::new_v4();
+        let question_id = Uuid::new_v4();
+        let outcome_a = Uuid::new_v4();
+        let outcome_b = Uuid::new_v4();
+        let parsed = parse(&json!({
+            "niccolo_update": {
+                "clarifications": [{
+                    "question_id": question_id,
+                    "text": "Did the exception predate the compensation change?",
+                    "reason": "The answer separates two live explanations.",
+                    "discriminates_interpretation_ids": [interpretation_id],
+                    "possible_outcomes": [
+                        {"outcome_id": outcome_a, "label": "Before", "effect_note": "Weakens the incentive-timing explanation."},
+                        {"outcome_id": outcome_b, "label": "After", "effect_note": "Keeps the incentive-timing explanation live."}
+                    ],
+                    "decision_relevance": 95,
+                    "acquisition_cost": 10,
+                    "cheaper_alternative": null
+                }]
+            }
+        }))
+        .unwrap()
+        .unwrap();
+        assert_eq!(parsed.clarifications.len(), 1);
+        assert_eq!(
+            parsed.clarifications[0].discriminates_interpretation_ids,
+            vec![interpretation_id]
+        );
+        assert_eq!(parsed.clarifications[0].possible_outcomes.len(), 2);
+    }
+
+    #[test]
+    fn rejects_out_of_range_question_value_scores() {
+        let value = json!({
+            "niccolo_update": {
+                "clarifications": [{
+                    "question_id": Uuid::new_v4(),
+                    "text": "Question?",
+                    "reason": "Reason",
+                    "decision_relevance": 101
+                }]
+            }
+        });
+        assert!(parse(&value).is_err());
+    }
+
+    #[test]
+    fn legacy_clarification_remains_valid_without_value_metadata() {
+        let parsed = parse(&json!({
+            "niccolo_update": {
+                "clarifications": [{
+                    "question_id": Uuid::new_v4(),
+                    "text": "What happened next?",
+                    "reason": "Clarify chronology."
+                }]
+            }
+        }))
+        .unwrap()
+        .unwrap();
+        assert!(parsed.clarifications[0].possible_outcomes.is_empty());
+        assert!(parsed.clarifications[0].decision_relevance.is_none());
+    }
+}
