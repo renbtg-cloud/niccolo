@@ -3071,7 +3071,7 @@ impl From<HypothesisPortfolioError> for ApiError {
             HypothesisPortfolioError::Invalid => Self(
                 StatusCode::BAD_REQUEST,
                 "invalid hypothesis portfolio input",
-            )
+            ),
             HypothesisPortfolioError::Conflict => {
                 Self(StatusCode::CONFLICT, "hypothesis portfolio conflict")
             }
