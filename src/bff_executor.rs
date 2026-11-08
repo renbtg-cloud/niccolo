@@ -83,7 +83,9 @@ async fn run_with_owned_lease(
         let code = match &error {
             BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
             BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
-            BffExecutionError::Operation(_) => "BFF_EXECUTION_FAILED",
+            BffExecutionError::Operation(_)
+            | BffExecutionError::Resources(_)
+            | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
         };
         let message = error.to_string();
         mark_failed_best_effort(pool, scope, actor, code, &message).await;
