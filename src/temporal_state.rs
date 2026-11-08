@@ -272,9 +272,24 @@ pub async fn record(
     let Some(row) = row else {
         return Err(TemporalStateError::Invisible);
     };
+    let times_match: bool = sqlx::query_scalar(
+        "SELECT valid_from IS NOT DISTINCT FROM CASE WHEN $5::text IS NULL THEN NULL ELSE $5::text::timestamptz END
+                AND valid_to IS NOT DISTINCT FROM CASE WHEN $6::text IS NULL THEN NULL ELSE $6::text::timestamptz END
+           FROM niccolo.situation_analysis_temporal_assertions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND assertion_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(input.assertion_id)
+    .bind(input.valid_from.as_deref())
+    .bind(input.valid_to.as_deref())
+    .fetch_one(&mut *tx)
+    .await?;
     if row.1 != input.subject_label.trim()
         || row.2 != input.assertion_type
         || row.3 != input.object_text.trim()
+        || !times_match
         || row.6 != input.epistemic_kind
         || row.7 != input.qualification
         || row.8 != input.evidence_id
