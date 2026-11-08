@@ -102,6 +102,9 @@ fn validate_request(request: &IntentRequest, operation: Uuid) -> Result<String, 
 fn operation_input(request: &IntentRequest, goal: &str) -> Value {
     json!({
         "human_intent": request.intent,
+        "analysis_id": request.analysis_id,
+        "reanalysis_of": request.reanalysis_of,
+        "step_budget": request.step_budget.unwrap_or(32),
         "goal": goal,
         "context": request.context,
         "human_owns_project": true,
@@ -229,6 +232,22 @@ mod tests {
         ));
         input.reanalysis_of = None;
         assert!(validate_request(&input, operation).is_ok());
+    }
+
+    #[test]
+    fn idempotent_operation_input_binds_analysis_and_budget() {
+        let mut request = request();
+        let goal = cleaned_goal(&request).unwrap();
+        let original = operation_input(&request, &goal);
+        assert_eq!(original["analysis_id"], json!(request.analysis_id));
+        assert_eq!(original["step_budget"], json!(32));
+        request.step_budget = Some(16);
+        assert_ne!(original, operation_input(&request, &goal));
+        request.step_budget = None;
+        request.analysis_id = Uuid::new_v4();
+        assert_ne!(original, operation_input(&request, &goal));
+        request.reanalysis_of = Some(Uuid::new_v4());
+        assert_ne!(original, operation_input(&request, &goal));
     }
 
     #[test]
