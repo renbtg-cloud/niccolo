@@ -104,6 +104,44 @@ pub async fn list_sources(
     })
 }
 
+/// Return the original uploaded bytes only to a caller with workspace read
+/// authorization. A missing payload (legacy import) remains unavailable;
+/// parsed fragments must never be represented as the original artifact.
+pub async fn source_original(
+    pool: &PgPool,
+    workspace: Uuid,
+    document: Uuid,
+) -> Result<Option<(String, Vec<u8>)>, CatalogError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(CatalogError::PrivilegedRole);
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
+    let value: Option<(String, Vec<u8>)> = sqlx::query_as(
+        "SELECT d.format,p.original_bytes FROM niccolo.source_documents d \
+         JOIN niccolo.source_payloads p USING(workspace_id,document_id) \
+         WHERE d.workspace_id=$1 AND d.document_id=$2",
+    )
+    .bind(workspace)
+    .bind(document)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(value)
+}
+
 pub async fn document_speakers(
     pool: &PgPool,
     workspace: Uuid,
