@@ -1,34 +1,12 @@
 name: Epistemic reasoning checks
+# MVP batch workflow: run only by explicit operator decision.
+# Each push remains a rollback checkpoint, not a CI trigger.
 on:
-  push:
-    branches:
-      - main
-      - feature/epistemic-weights-v1
-      - feature/grounded-claim-weights
-      - feature/provenance-clusters-v1
-      - feature/grounded-multiparent-lineage
-      - feature/epistemic-playground-mainline
-    paths:
-      - "src/**"
-      - "sql/**"
-      - "tests/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "frontend/**"
-      - ".github/workflows/epistemic-reasoning.yml"
-  pull_request:
-    paths:
-      - "src/**"
-      - "sql/**"
-      - "tests/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "frontend/**"
-      - ".github/workflows/epistemic-reasoning.yml"
+  workflow_dispatch:
 
 concurrency:
-  group: epistemic-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: epistemic-${{ github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
