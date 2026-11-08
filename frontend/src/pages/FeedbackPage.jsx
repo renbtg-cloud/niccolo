@@ -16,14 +16,16 @@ function QuestionCard({ question }) {
   const [reason,setReason] = useState('');
   const [eventCursor,setEventCursor] = useState(0);
   const [eventBackStack,setEventBackStack] = useState([]);
+  const [positionsCursor,setPositionsCursor] = useState(null);
+  const [positionsBackStack,setPositionsBackStack] = useState([]);
   const pendingFeedback = useRef(null);
   const history = useQuery({
     queryKey:['question-feedback',client.config.workspace,question.question_id,eventCursor],
     queryFn:async()=> (await client.questionFeedback(question.question_id,eventCursor,100)).value,
   });
   const positions = useQuery({
-    queryKey:['question-positions',client.config.workspace,question.question_id],
-    queryFn:async()=> (await client.questionPositions(question.question_id)).value,
+    queryKey:['question-positions',client.config.workspace,question.question_id,positionsCursor],
+    queryFn:async()=> (await client.questionPositions(question.question_id,positionsCursor,100)).value,
   });
   const submit = useMutation({
     mutationFn:()=>{
@@ -53,7 +55,18 @@ function QuestionCard({ question }) {
     {submit.isSuccess&&<p role="status">Your position was recorded.</p>}
     <div className="feedback-history">
       <h4>Current recorded positions</h4>
-      {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : <p>No human position recorded yet.</p>}
+      {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : <p>No human position recorded on this page.</p>}
+      <div className="row">
+        <button disabled={positions.isFetching||positionsBackStack.length===0} onClick={()=>{
+          const stack=positionsBackStack.slice();
+          setPositionsCursor(stack.pop()??null);
+          setPositionsBackStack(stack);
+        }}>Previous positions</button>
+        <button disabled={positions.isFetching||!positions.data?.next_after} onClick={()=>{
+          setPositionsBackStack(stack=>[...stack,positionsCursor]);
+          setPositionsCursor(positions.data.next_after);
+        }}>Next positions</button>
+      </div>
       <details><summary>Feedback event history</summary>
         {history.isLoading&&<p>Loading feedback events…</p>}
         {history.error&&<p className="error">{history.error.message}</p>}
