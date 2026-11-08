@@ -22,8 +22,8 @@ use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
-use crate::postgres_ingest::{self, ImportError};
 use crate::operation_budget::{self, BudgetError};
+use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::presentation_package::{self, PresentationError};
 use crate::question_refs::{self, ReferenceError};
@@ -3707,7 +3707,6 @@ async fn get_presentation_package(
     Ok(no_store(json!(package), StatusCode::OK))
 }
 
-
 async fn get_bff_operation_budget(
     State(state): State<AppState>,
     Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
@@ -3725,10 +3724,9 @@ async fn get_bff_operation_budget(
     .await
     .map_err(|err| match err {
         BudgetError::Missing => ApiError(StatusCode::NOT_FOUND, "operation unavailable"),
-        BudgetError::Invalid => ApiError(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "invalid operation budget",
-        ),
+        BudgetError::Invalid => {
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid operation budget")
+        }
         _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "budget unavailable"),
     })?;
     Ok(no_store(
