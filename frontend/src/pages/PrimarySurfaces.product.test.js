@@ -24,6 +24,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).not.toContain('Connect to the BFF first.');
   });
 
+  it('remounts Situation-local drafts and cursors when the connection changes', () => {
+    expect(situation).toContain('function ConnectedSituation({client})');
+    expect(situation).toContain('key={JSON.stringify([client.config.workspace, client.config.situation])}');
+    expect(situation).toContain('if (!client) return <p>Connect this session first.</p>');
+  });
+
   it('separates persisted focus from draft state across Situation changes', () => {
     expect(situation).toContain('key={JSON.stringify([client.config.workspace, client.config.situation, snapshot.focus])}');
     expect(situation).toContain('initial={snapshot.focus}');
