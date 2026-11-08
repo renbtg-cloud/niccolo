@@ -87,7 +87,10 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     step: &agentic_controller::StepView,
     plan_revision: i64,
 ) -> Result<(), RuntimeError> {
-    let started = agentic_controller::start_step(pool, scope, step.step_id, actor).await?;
+    // Once STARTED is persisted, every error path must leave a terminal step.
+    // Model/artifact failures are handled here alongside pre-invocation errors.
+    agentic_controller::start_step(pool, scope, step.step_id, actor).await?;
+    let result: Result<(), RuntimeError> = async {
     if step.requires_human || step.kind == "REQUEST_HUMAN_DECISION" {
         agentic_controller::finish_step(
             pool,
@@ -259,36 +262,36 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                         &format!("model invocation {} succeeded", v.invocation_id),
                     )
                     .await?;
-                    let _ = started;
                     Ok(())
                 }
-                Err(error) => {
-                    agentic_controller::finish_step(
-                        pool,
-                        scope,
-                        step.step_id,
-                        actor,
-                        "FAILED",
-                        "model artifact failed validation or application",
-                    )
-                    .await?;
-                    Err(error)
-                }
+                Err(error) => Err(error),
             }
         }
-        Err(e) => {
-            agentic_controller::finish_step(
-                pool,
-                scope,
-                step.step_id,
-                actor,
-                "FAILED",
-                "model invocation failed",
-            )
-            .await?;
-            Err(e.into())
-        }
+        Err(e) => Err(e.into()),
     }
+    }
+    .await;
+    if let Err(error) = &result {
+        let reason = match error {
+            RuntimeError::Model(_) => "model invocation failed",
+            RuntimeError::Artifact(_) | RuntimeError::Update(_) | RuntimeError::Challenge(_) => {
+                "model artifact failed validation or application"
+            }
+            _ => "agentic step could not complete",
+        };
+        // A SQL failure may prevent this update too, but never suppress the
+        // original error. The enclosing BFF independently fails its operation.
+        let _ = agentic_controller::finish_step(
+            pool,
+            scope,
+            step.step_id,
+            actor,
+            "FAILED",
+            reason,
+        )
+        .await;
+    }
+    result
 }
 
 pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
