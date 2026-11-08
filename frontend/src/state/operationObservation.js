@@ -18,13 +18,16 @@ export function mergeOperationObservation(previous, incoming) {
   const bySeq = new Map();
   for (const event of prior.events ?? []) bySeq.set(event.event_seq, event);
   for (const event of incoming.events ?? []) bySeq.set(event.event_seq, event);
-  const events = [...bySeq.values()].sort((a, b) => a.event_seq - b.event_seq);
-  const observedCursor = incoming.next_after_event ?? events.at(-1)?.event_seq ?? 0;
+  const ordered = [...bySeq.values()].sort((a, b) => a.event_seq - b.event_seq);
+  const observedCursor = incoming.next_after_event ?? ordered.at(-1)?.event_seq ?? 0;
   const cursor = Math.max(prior.cursor ?? 0, observedCursor);
+  const eventsTruncated = Boolean(prior.eventsTruncated) || ordered.length > 500;
+  const events = eventsTruncated ? ordered.slice(-500) : ordered;
 
   return {
     operation,
     events,
+    eventsTruncated,
     cursor,
     operationChanged: Boolean(incoming.operation_changed),
     eventsChanged: Boolean(incoming.events_changed),
