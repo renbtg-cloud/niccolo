@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useDashboard } from '../hooks/useDashboard.js';
@@ -17,6 +17,7 @@ import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
 import { presentationZip } from '../state/presentationZip.js';
 
 export function ReviewPage(){
+ const pendingReanalysis=useRef(null);
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const clarifications=useClarifications(); const reasoningInput=useReasoningInput(); const handoff=useReasoningHandoff(); const output=useAnalysisOutput(analysis); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
@@ -42,7 +43,14 @@ export function ReviewPage(){
    }
    return Object.keys(files).length;
  }});
- const approveReanalysis=useMutation({mutationFn:async()=>launchApprovedReanalysis({client,priorAnalysis:analysis,goal:reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation'}),onSuccess:async(result)=>{setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']})]);}});
+ const approveReanalysis=useMutation({mutationFn:async()=>{
+   const goal=reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation';
+   const signature=JSON.stringify({analysis,goal});
+   if(pendingReanalysis.current?.signature!==signature){
+     pendingReanalysis.current={signature,ids:{snapshotOperation:crypto.randomUUID(),newAnalysis:crypto.randomUUID(),agenticOperation:crypto.randomUUID()}};
+   }
+   return launchApprovedReanalysis({client,priorAnalysis:analysis,goal,ids:pendingReanalysis.current.ids});
+ },onSuccess:async(result)=>{pendingReanalysis.current=null;setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']})]);}});
  if(!client)return <p>Connect first.</p>;
  if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
  if(review.error||dashboard.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {(review.error??dashboard.error).message}</p></section>;
