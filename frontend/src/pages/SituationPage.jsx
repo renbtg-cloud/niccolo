@@ -179,6 +179,11 @@ export function SituationPage(){
           <div>
             <strong>{document.locator}</strong>
             <div><small>{document.format} · {document.fragment_count} attributed fragment(s) · {document.byte_length} bytes</small></div>
+            {document.original_bytes_available === false
+              ? <div><small className="error">Original bytes unavailable (legacy import). Re-upload the same file to restore byte-exact retention.</small></div>
+              : document.original_bytes_available === true
+                ? <div><small>Original bytes preserved</small></div>
+                : null}
           </div>
           {attached.has(document.document_id)
             ? <span className="status-current">Attached</span>
