@@ -211,8 +211,10 @@ mod tests {
 
     #[test]
     fn constrained_memory_reduces_but_does_not_stop_progress() {
-        let mut p = ResourcePolicy::default();
-        p.reserved_memory_bytes = 0;
+        let p = ResourcePolicy {
+            reserved_memory_bytes: 0,
+            ..ResourcePolicy::default()
+        };
         let a = advise(&snapshot(4_000, Some(8_700), Some(1)), &p).unwrap();
         assert_eq!(a.pressure, ResourcePressure::Constrained);
         assert_eq!(a.recommended_parallel_operations, 4);
@@ -230,8 +232,10 @@ mod tests {
 
     #[test]
     fn delegated_mode_observes_but_does_not_authorize_auto_tuning() {
-        let mut p = ResourcePolicy::default();
-        p.mode = ResourceManagementMode::ExternallyManaged;
+        let p = ResourcePolicy {
+            mode: ResourceManagementMode::ExternallyManaged,
+            ..ResourcePolicy::default()
+        };
         let a = advise(&snapshot(1_000, Some(9_700), Some(0)), &p).unwrap();
         assert!(!a.apply_concurrency_automatically);
         assert_eq!(a.observed_parallel_ceiling, 2);
@@ -249,16 +253,20 @@ mod tests {
 
     #[test]
     fn invalid_thresholds_and_zero_budget_fail_closed() {
-        let mut p = ResourcePolicy::default();
-        p.operator_max_parallel_operations = 0;
+        let p = ResourcePolicy {
+            operator_max_parallel_operations: 0,
+            ..ResourcePolicy::default()
+        };
         assert_eq!(
             advise(&snapshot(1_000, None, None), &p),
             Err(ResourcePolicyError::Invalid)
         );
 
-        let mut p = ResourcePolicy::default();
-        p.high_memory_pressure_basis_points = 9_500;
-        p.critical_memory_pressure_basis_points = 9_000;
+        let p = ResourcePolicy {
+            high_memory_pressure_basis_points: 9_500,
+            critical_memory_pressure_basis_points: 9_000,
+            ..ResourcePolicy::default()
+        };
         assert!(validate(&p).is_err());
     }
 }
