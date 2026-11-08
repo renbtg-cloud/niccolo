@@ -76,6 +76,48 @@ The local web interface is intentionally functional and visually restrained. Som
 
 Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
 
+## First-time setup on one PC
+
+For a **new, dedicated PostgreSQL 17 database**, the MVP provides a first-run
+bootstrap that builds the React UI and Rust server, applies SQL migrations,
+creates a restricted API login, and issues a 30-day private bearer token.
+
+Prerequisites: Node.js/npm, Rust 1.99.1, PostgreSQL 17 client tools (`psql`),
+and a running PostgreSQL server/database that the provided admin account owns.
+On Windows, use Git Bash.
+
+Set `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SECURE_PASSWORD` in your shell's
+environment (do not include them in git commits or shared logs), then run:
+
+```bash
+bash scripts/bootstrap-local-mvp.sh
+```
+
+The script refuses to overwrite a previously initialized database or local
+credentials. It writes private files under the ignored `.niccolo-local/` folder:
+`local.env` (restricted service DB URL), `identifiers.txt` (workspace and
+Situation identifiers), and `token.txt` (bearer token). Treat the folder
+as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
+
+For a local OpenAI-compatible model runtime, configure
+`NICCOLO_LLM_BASE_URL` (for example `http://127.0.0.1:11434/v1`) and
+`NICCOLO_LLM_MODEL` before starting the API. Keyless HTTP is permitted only
+on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
+Some local models require `NICCOLO_LLM_JSON_MODE=false`.
+
+Start the server from the repository root with the generated configuration:
+
+```bash
+source .niccolo-local/local.env
+./target/release/niccolo-api
+```
+
+On Windows, append `.exe` to the executable name. Visit
+`http://127.0.0.1:38080`, enter the identifiers and token from the private
+files, and create the first Situation from its focus. This is a local
+single-PC workflow, **not** an Internet-facing or production-hardening guide.
+The setup currently assumes the user has installed PostgreSQL already.
+
 ## Run locally
 
 For an MVP binary containing the **current** React interface, use `bash scripts/build-mvp.sh` after installing the prerequisites below. This command builds `frontend/dist` before compiling `niccolo-api`, whose embedded HTML/JavaScript/CSS are captured at Rust compile time. Running Cargo alone after changing React sources can serve stale UI assets.
