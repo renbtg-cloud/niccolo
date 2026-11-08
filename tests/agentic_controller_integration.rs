@@ -2,8 +2,10 @@
 use niccolo_evidence::{
     agentic_controller::{self, StepInput},
     bff_operations::{self, NewOperation, OperationScope},
+    model_adapter::{self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel},
 };
 use serde_json::json;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 #[derive(Clone, Copy)]
@@ -82,6 +84,72 @@ fn step(id: Uuid, n: i32, kind: &str, human: bool, deps: Vec<Uuid>) -> StepInput
         depends_on: deps,
     }
 }
+struct OverBudgetModel {
+    calls: AtomicUsize,
+}
+
+impl ReasoningModel for OverBudgetModel {
+    fn provider(&self) -> &str { "over-budget-fixture" }
+    fn model(&self) -> &str { "static-response" }
+    fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async {
+            Ok(ModelResponse {
+                value: json!({"status":"ok"}),
+                prompt_tokens: Some(90),
+                completion_tokens: Some(20),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn model_token_budget_breach_is_not_retried_or_misreported() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (revision, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(step_id, 1, "SYNTHESIZE", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let model = OverBudgetModel { calls: AtomicUsize::new(0) };
+    let result = model_adapter::invoke_recorded_with_policy(
+        &app,
+        InvocationScope { operation: scope, plan_revision: revision, step_id },
+        s.principal,
+        &model,
+        &ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: json!({}),
+            output_contract: json!({}),
+        },
+        InvocationPolicy { timeout_ms: 5_000, max_attempts: 4, max_total_tokens: Some(100) },
+    )
+    .await;
+    assert!(matches!(result, Err(ModelError::Budget)));
+    assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+    let row: (i32, bool, String, String) = sqlx::query_as(
+        "SELECT attempt_count,budget_exceeded,status,error_code FROM niccolo.model_invocations          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5"
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(revision)
+    .bind(step_id)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(row, (1, true, "FAILED".into(), "BUDGET_EXCEEDED".into()));
+}
+
 #[tokio::test]
 async fn v211_v214_plan_is_versioned_hashed_and_rejects_cycles() {
     let (a, p) = pools().await;
