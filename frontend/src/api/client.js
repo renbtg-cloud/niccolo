@@ -27,6 +27,19 @@ export class NiccoloClient {
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag') };
   }
+  async downloadSourceOriginal(documentId) {
+    const url = `${sourcesPath(this.config)}/${documentId}/original`;
+    const response = await this.fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.token}`, Accept: 'application/octet-stream' },
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new ApiError(response.status, error.error ?? `HTTP ${response.status}`);
+    }
+    return response.blob();
+  }
   situation() { return this.request('GET', situationPath(this.config)); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
