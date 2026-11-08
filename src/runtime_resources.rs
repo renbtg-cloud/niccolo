@@ -245,10 +245,14 @@ fn observed_capacity(
         .map_err(|_| ResourceError::Invalid)?
         .checked_mul(1000)
         .ok_or(ResourceError::Invalid)?;
-    let cpuset = cpuset_cpu_count
-        .map(|count| u64::from(count).checked_mul(1000))
-        .transpose()
-        .ok_or(ResourceError::Invalid)?;
+    let cpuset = match cpuset_cpu_count {
+        Some(count) => Some(
+            u64::from(count)
+                .checked_mul(1000)
+                .ok_or(ResourceError::Invalid)?,
+        ),
+        None => None,
+    };
     Ok([Some(logical), cpu_quota_millicores, cpuset]
         .into_iter()
         .flatten()
@@ -283,9 +287,8 @@ fn snapshot_from(
     };
     let memory_pressure_basis_points = match (memory_current_bytes, memory_limit_bytes) {
         (Some(current), Some(limit)) if limit > 0 => {
-            let points = current
-                .saturating_mul(10_000)
-                .checked_div(limit)
+            let points = (u128::from(current) * 10_000)
+                .checked_div(u128::from(limit))
                 .unwrap_or(10_000)
                 .min(10_000);
             Some(u16::try_from(points).map_err(|_| ResourceError::Invalid)?)
@@ -360,7 +363,7 @@ fn observe_linux_with(paths: &LinuxPaths) -> Result<ResourceSnapshot, ResourceEr
     let pids_current = read("pids.current")?;
     let pids_max = read("pids.max")?;
     let logical_parallelism = std::thread::available_parallelism()
-        .map(usize::from)
+        .map(|value| value.get())
         .unwrap_or(1);
     snapshot_from(
         logical_parallelism,
@@ -502,6 +505,18 @@ mod tests {
         .unwrap();
         assert_eq!(snapshot.memory_headroom_bytes, Some(0));
         assert_eq!(snapshot.memory_pressure_basis_points, Some(10_000));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn live_linux_observation_is_read_only_and_reports_process_capacity() {
+        let snapshot = observe().unwrap();
+        assert_eq!(snapshot.platform, "linux");
+        assert!(snapshot.logical_parallelism >= 1);
+        assert!(snapshot.effective_cpu_capacity_millicores >= 1);
+        assert!(!snapshot.mutates_resource_limits);
+        assert!(!snapshot.establishes_epistemic_quality);
+        assert!(!snapshot.gpu_observation_implemented);
     }
 
     #[test]
