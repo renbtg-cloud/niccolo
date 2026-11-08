@@ -60,6 +60,11 @@ export function IdentitiesPage() {
   const client = useClient();
   const qc = useQueryClient();
   const [documentId, setDocumentId] = useState('');
+  const resetDocumentSelection = (id) => {
+    pendingAssign.current = null;
+    pendingClear.current = null;
+    setDocumentId(id);
+  };
   const pendingAssign = useRef(null);
   const pendingClear = useRef(null);
 
@@ -165,7 +170,7 @@ export function IdentitiesPage() {
     <p>Speaker labels come from the source artifact. Matching labels are never automatically treated as the same person. Every mapping below is an explicit human action with an append-only reason.</p>
 
     {reviewable.length === 0 ? <p>Import and attach at least one source to the Situation first.</p> : <label>Document
-      <select value={documentId} onChange={(event) => setDocumentId(event.target.value)}>
+      <select value={documentId} disabled={assign.isPending || clear.isPending} onChange={(event) => resetDocumentSelection(event.target.value)}>
         {reviewable.map((document) => <option key={document.document_id} value={document.document_id}>{document.locator}</option>)}
       </select>
     </label>}
