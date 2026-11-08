@@ -29,6 +29,8 @@ pub mod source_import;
 
 pub mod source_scope;
 
+pub mod collection_provenance;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
