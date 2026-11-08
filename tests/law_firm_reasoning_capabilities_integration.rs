@@ -2,9 +2,9 @@
 
 use niccolo_evidence::{
     analysis_structure::AnalysisScope,
-    authz, collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
-    integrity_scope, investigation_policy, reasoning_packet, reasoning_updates, source_scope,
-    temporal_state,
+    actors, analysis_snapshot, authz, collection_provenance, decision_points, decision_readiness,
+    hypothesis_portfolio, integrity_scope, investigation_policy, reasoning_packet,
+    reasoning_updates, source_scope, temporal_state,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -671,6 +671,87 @@ async fn verified_stored_bytes_do_not_upgrade_authenticity_or_completeness() {
         assert_eq!(packet.integrity_assessments.len(), 1);
         assert_eq!(packet.integrity_assessments[0].byte_continuity, "VERIFIED");
         assert_eq!(packet.integrity_assessments[0].authenticity, "UNKNOWN");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn old_niccolo_can_be_a_frozen_observable_actor_without_introspection() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let (document, _) = attach_source(
+        &admin,
+        s,
+        "old-niccolo-transcript.txt",
+        "01/01/2026, 00:00 - Historical Niccolo: Kessler appears commercially aggressive but not improper.",
+    )
+    .await;
+    let old_niccolo = Uuid::new_v4();
+
+    authz::with_auth_digest("law-firm-test".into(), async {
+        actors::create(
+            &app,
+            s.workspace,
+            s.principal,
+            old_niccolo,
+            "Historical Niccolo",
+        )
+        .await
+        .unwrap();
+        actors::record_kind(
+            &app,
+            s.workspace,
+            s.principal,
+            old_niccolo,
+            Uuid::new_v4(),
+            Some("SOFTWARE"),
+            "The observed participant is a historical software system; this is metadata, not an investigation gate.",
+        )
+        .await
+        .unwrap();
+        actors::bind_source_speaker(
+            &app,
+            s.workspace,
+            s.principal,
+            document,
+            "Historical Niccolo",
+            Uuid::new_v4(),
+            Some(old_niccolo),
+            "Bind the transcript speaker label to the observed historical system.",
+        )
+        .await
+        .unwrap();
+
+        let analysis = Uuid::new_v4();
+        let snapshot = analysis_snapshot::begin(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            analysis,
+            "Investigate observable behavior without requiring internal reasoning access",
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(snapshot.actor_kind_event_no_max > 0);
+        assert!(snapshot.actor_binding_event_no_max > 0);
+
+        let scope = AnalysisScope {
+            workspace: s.workspace,
+            situation: s.situation,
+            analysis,
+        };
+        let packet = reasoning_packet::build(&app, scope).await.unwrap();
+        let binding = packet
+            .frozen_input
+            .actor_bindings
+            .iter()
+            .find(|x| x.actor_id == Some(old_niccolo))
+            .unwrap();
+        assert_eq!(binding.actor_kind.as_deref(), Some("SOFTWARE"));
+        assert!(!binding.actor_kind_establishes_mind);
+        assert!(!packet.frozen_input.actor_kind_is_investigation_gate);
     })
     .await;
 }
