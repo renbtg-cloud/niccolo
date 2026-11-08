@@ -21,6 +21,13 @@ describe('primary analysis path', () => {
     expect(operations).toContain('No answer was published. You can start another analysis.');
   });
 
+  it('explains unavailable model setup before starting costly analysis work', () => {
+    expect(operations).toContain('client.readiness()');
+    expect(operations).toContain('readiness.data?.model_configured===false');
+    expect(operations).toContain('A reasoning model has not been configured.');
+    expect(operations).toContain('run.isPending||modelUnavailable||readiness.isPending||readiness.isError');
+  });
+
   it('reuses operation and analysis IDs after a lost response to avoid duplicate billing', () => {
     expect(operations).toContain('const pendingLaunch=useRef(null)');
     expect(operations).toContain('pendingLaunch.current?.signature!==signature');
