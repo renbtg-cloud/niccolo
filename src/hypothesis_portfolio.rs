@@ -15,6 +15,10 @@ pub enum HypothesisPortfolioError {
     Privileged,
     #[error("analysis unavailable")]
     Invisible,
+    #[error("invalid hypothesis portfolio input")]
+    Invalid,
+    #[error("hypothesis portfolio replay conflict")]
+    Conflict,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,7 +128,7 @@ pub async fn append_event(
     if !matches!(event_kind, "CHALLENGED" | "WEAKENED" | "RETAINED" | "RETIRED" | "RESTORED")
         || !valid_note(note)
     {
-        return Err(HypothesisPortfolioError::Invisible);
+        return Err(HypothesisPortfolioError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
     let visible: bool = sqlx::query_scalar(
@@ -171,7 +175,7 @@ pub async fn append_event(
     .fetch_optional(&mut *tx)
     .await?;
     if row != Some((event_kind.to_owned(), note.trim().to_owned(), actor)) {
-        return Err(HypothesisPortfolioError::Invisible);
+        return Err(HypothesisPortfolioError::Conflict);
     }
     tx.commit().await?;
     Ok(HypothesisEvent {
