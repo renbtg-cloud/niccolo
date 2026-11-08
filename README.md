@@ -74,7 +74,7 @@ The local web interface is intentionally functional and visually restrained. Som
 - **Frontend:** React, React Router, TanStack Query, Zustand, React Hook Form, and Zod.
 - **Model layer:** provider/model interaction and evaluation are independent concerns; the core must not assume that a generated answer is evidence or that a model may authorize action.
 
-Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
+Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
 
 ## First-time setup on one PC
 
@@ -159,7 +159,7 @@ Environment variables used by the repository's validation and service tooling:
 | `NICCOLO_PG_SECURE_URL` | Dedicated restricted API connection used by the HTTP service and current validation suites. |
 | `NICCOLO_API_PORT` | Optional loopback API port; default `38080`. |
 
-Provisioning roles, schema migrations, and token issuance are security-sensitive setup tasks. Follow the database and API instructions in [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) and the corresponding newer migration scripts; do not use an administrator URL as the runtime credential.
+Provisioning roles, schema migrations, and token issuance are security-sensitive setup tasks. Follow the database and API instructions in [HTTP_AUTH_V007.md](docs/reference/HTTP_AUTH_V007.md) and the corresponding newer migration scripts; do not use an administrator URL as the runtime credential.
 
 ### 3. Run the API
 
@@ -178,7 +178,7 @@ curl -i http://127.0.0.1:38080/readyz
 
 `/healthz` checks liveness; `/readyz` also evaluates selected database/runtime prerequisites. An HTTP 200 from either endpoint is not a certification of production security.
 
-Workspace operations require a token and workspace-specific authorization. The operator CLI `niccolo-provision` is intended for trusted local provisioning, not public user registration. See [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) for its command syntax and the documented API authorization boundary.
+Workspace operations require a token and workspace-specific authorization. The operator CLI `niccolo-provision` is intended for trusted local provisioning, not public user registration. See [HTTP_AUTH_V007.md](docs/reference/HTTP_AUTH_V007.md) for its command syntax and the documented API authorization boundary.
 
 ### 4. Run the React frontend
 
@@ -268,9 +268,10 @@ The direction is not a roadmap guarantee or a claim that all these integrations 
 
 ## Further reading
 
-- [MVP_ARCHITECTURE_V250.md](MVP_ARCHITECTURE_V250.md) — domain, BFF, controller and frontend architecture.
-- [HTTP_AUTH_V007.md](HTTP_AUTH_V007.md) — local API authorization model and development provisioning.
-- [SITUATIONS_V016.md](SITUATIONS_V016.md) — Situation state and immutable revisions.
-- [COMPETITIVE_EVALUATION.md](COMPETITIVE_EVALUATION.md) — benchmarking and candidate algorithm evolution.
+- [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md) — domain, BFF, controller and frontend architecture.
+- [HTTP_AUTH_V007.md](docs/reference/HTTP_AUTH_V007.md) — local API authorization model and development provisioning.
+- [SITUATIONS_V016.md](docs/reference/SITUATIONS_V016.md) — Situation state and immutable revisions.
+- [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md) — benchmarking and candidate algorithm evolution.
 - `sql/` and `scripts/` — executable schema and validation assets.
-- [README-REVIEW.md](README-REVIEW.md) — editorial decisions and documentation follow-up items; **not** part of the end-user product introduction.
+- [Documentation guide](docs/README.md) — current product orientation and technical references.
+- [Engineering history](dev-flow/README.md) — historical checkpoints, validation records, and decisions (not current product claims).
