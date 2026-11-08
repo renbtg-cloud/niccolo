@@ -71,3 +71,27 @@ describe('BFF client',()=>{
  it('reads the deterministic reasoning handoff independently of active operation state',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{handoff:{version:2,handoff_grants_authority:false},handoff_sha256:'a'.repeat(64),read_model_is_authority:false});});const r=await x.reasoningHandoff('a');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/handoff');expect(calls[0][1]).toBe('GET');expect(r.value.handoff.version).toBe(2);expect(r.value.read_model_is_authority).toBe(false);});
  it('lists and records SHA-bound handoff receipts without client-supplied recipient',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,o.method==='POST'?{receipt_id:'r',recipient_principal_id:'server-derived',receipt_means_agreement:false,receipt_grants_authority:false}:{receipts:[{kind:'REVIEWED'}],receipt_means_agreement:false,receipt_grants_authority:false});});const list=await x.handoffReceipts('a');await x.recordHandoffReceipt('a','r','a'.repeat(64),'REVIEWED','looked at it');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/handoff/receipts');expect(calls[0][1].method).toBe('GET');expect(calls[1][0]).toContain('/analysis-snapshots/a/bff/handoff/receipts/r');expect(JSON.parse(calls[1][1].body)).toEqual({handoff_sha256:'a'.repeat(64),kind:'REVIEWED',note:'looked at it'});expect(JSON.parse(calls[1][1].body)).not.toHaveProperty('recipient_principal_id');expect(list.value.receipt_means_agreement).toBe(false);});
 });
+
+describe('original source downloads', () => {
+  it('downloads exact binary bytes with session authorization', async () => {
+    const source = new Blob([new Uint8Array([0, 255, 10, 65])]);
+    const calls = [];
+    const client = new NiccoloClient(c, async (url, options) => {
+      calls.push([url, options]);
+      return { ok: true, status: 200, blob: async () => source };
+    });
+    const result = await client.downloadSourceOriginal('doc');
+    expect(new Uint8Array(await result.arrayBuffer())).toEqual(new Uint8Array([0, 255, 10, 65]));
+    expect(calls[0][0]).toContain('/sources/doc/original');
+    expect(calls[0][1].headers.Authorization).toBe('Bearer x');
+    expect(calls[0][1].cache).toBe('no-store');
+  });
+
+  it('does not present missing legacy source bytes as a successful download', async () => {
+    const client = new NiccoloClient(c, async () => ({
+      ok: false, status: 404,
+      json: async () => ({ error: 'source original unavailable' }),
+    }));
+    await expect(client.downloadSourceOriginal('legacy')).rejects.toThrow('source original unavailable');
+  });
+});
