@@ -156,6 +156,36 @@ pub async fn create(
     ))
 }
 
+
+pub async fn list(pool: &PgPool, workspace: Uuid) -> Result<Vec<ActorView>, ActorError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "SELECT a.actor_id,a.display_label,
+                (SELECT CASE WHEN e.operation='SET' THEN e.actor_kind ELSE NULL END
+                   FROM niccolo.actor_kind_events e
+                  WHERE e.workspace_id=a.workspace_id AND e.actor_id=a.actor_id
+                  ORDER BY e.event_no DESC LIMIT 1)
+           FROM niccolo.actors a
+          WHERE a.workspace_id=$1
+          ORDER BY a.created_at,a.actor_id
+          LIMIT 256",
+    )
+    .bind(workspace)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(|(actor_id, display_label, effective_kind)| ActorView {
+            actor_id,
+            display_label,
+            effective_kind,
+            kind_is_investigation_gate: false,
+            kind_establishes_mind: false,
+        })
+        .collect())
+}
+
 pub async fn record_kind(
     pool: &PgPool,
     workspace: Uuid,
