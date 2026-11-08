@@ -14,6 +14,14 @@ Niccolò helps one decision-maker reason through a human system in which **every
 
 ---
 
+## The story, compressed
+
+This is the story of **Aurelius & Finch**, an elite law firm whose year-end bonus system began rewarding rapid resolutions so effectively that the line between superb judgment and engineered closure started to blur. A client says one settlement was pushed through; star partners are making fortunes; politically connected matters close at uncanny moments; a private investigator arrives with a contradictory mountain of emails, messages, interviews, timelines, and summaries; the firm's own COO helped design both the bonus machinery and the first Niccolò deployment; IT controls the exports; the CEO herself created the incentives now under suspicion; and the old system may already have been taught whom to trust. Helena Vidal, the CEO who must sign the bonuses, starts again with a fresh Niccolò instance and one uncomfortable rule: nobody - not the investigator, not IT, not management, not the old Niccolò, not even Helena - gets to become true merely by speaking with authority. What begins as a compensation review turns into a reconstruction of who knew what, who believed what, who shaped whose beliefs, which evidence shares the same ancestor, which missing source matters most, and whether the apparent pattern is conspiracy, incentive drift, bad collection, corrupted context, or something more dangerous; by the time the reasoning converges, reputations have diverged sharply, executive trust has collapsed in unexpected places, a dossier is being built to survive hostile scrutiny, and one question is hanging over the firm: **who, exactly, was using whose authority as cover?**
+
+<small>**Below:** how the story unfolds.</small>
+
+---
+
 ## The firm
 
 **Aurelius & Finch LLP** is a fictional international law firm with roughly 1,900 lawyers across the Americas and Europe. It is known for complex commercial litigation, white-collar defense, internal investigations, regulatory disputes, and politically sensitive matters.
