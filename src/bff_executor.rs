@@ -60,10 +60,20 @@ async fn run_with_owned_lease(
             current
         };
         match running.kind.as_str() {
-            "AGENTIC_ANALYSIS" => agentic_runtime::run_until_boundary(pool, scope, actor, model)
-                .await
-                .map(|_| ())
-                .map_err(|e| BffExecutionError::Agentic(e.to_string())),
+            "AGENTIC_ANALYSIS" => {
+                let outcome = agentic_runtime::run_until_boundary(pool, scope, actor, model)
+                    .await
+                    .map_err(|e| BffExecutionError::Agentic(e.to_string()))?;
+                // A blocked/idle plan has no autonomous progress path. Returning
+                // Ok used to strand the durable operation in RUNNING forever.
+                if matches!(outcome.state.as_str(), "BLOCKED" | "IDLE") {
+                    Err(BffExecutionError::Agentic(format!(
+                        "agentic plan cannot advance: {}", outcome.state
+                    )))
+                } else {
+                    Ok(())
+                }
+            },
             "REANALYZE" => reanalysis_runtime::execute(pool, scope, actor)
                 .await
                 .map(|_| ())
