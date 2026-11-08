@@ -43,6 +43,16 @@ describe('buyer-facing primary surfaces', () => {
     }
   });
 
+  it('makes sources and human identity catalogs navigable past the first page', () => {
+    expect(situation).toContain('Next sources');
+    expect(situation).toContain('Previous sources');
+    expect(situation).toContain('client.sources(sourceCursor, 100)');
+    expect(identities).toContain('Next source records');
+    expect(identities).toContain('Next people');
+    expect(identities).toContain('client.identities(identityCursor, 100)');
+    expect(identities).toContain('resetDocumentSelection');
+  });
+
   it('retries speaker identity creation and binding with stable identifiers', () => {
     expect(identities).toContain('pendingAssign.current?.signature !== signature');
     expect(identities).toContain('client.createIdentity(attempt.personId, newLabel)');
