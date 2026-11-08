@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
+const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const connect = readFileSync(new URL('./ConnectPanel.jsx', import.meta.url), 'utf8');
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const review = readFileSync(new URL('./ReviewPage.jsx', import.meta.url), 'utf8');
@@ -8,6 +9,11 @@ const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'u
 const identities = readFileSync(new URL('./IdentitiesPage.jsx', import.meta.url), 'utf8');
 
 describe('buyer-facing primary surfaces', () => {
+  it('remounts every route after changing the authenticated session', () => {
+    expect(app).toContain('const generation=useSessionStore(s=>s.generation)');
+    expect(app).toContain('<Routes key={generation}>');
+  });
+
   it('collapses prepared demo identifiers while keeping the bearer token explicit', () => {
     expect(connect).toContain('Prepared Situation');
     expect(connect).toContain('<summary>Connection identifiers</summary>');
