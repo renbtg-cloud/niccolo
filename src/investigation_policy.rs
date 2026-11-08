@@ -36,6 +36,22 @@ fn dep<E: std::fmt::Display>(e: E) -> InvestigationError {
     InvestigationError::Dependency(e.to_string())
 }
 
+fn clarification_information_value(value: &clarification::ClarificationValue) -> u16 {
+    let hypothesis_component =
+        (value.discriminates_interpretation_ids.len().min(3) as u16) * 10;
+    let outcome_component = if value.possible_outcome_count >= 2 { 10 } else { 0 };
+    let decision_component = value.decision_relevance.unwrap_or(0) / 3;
+    let cost_penalty = value.acquisition_cost.unwrap_or(0) / 4;
+    let alternative_penalty = if value.cheaper_alternative.is_some() { 8 } else { 0 };
+    45u16
+        .saturating_add(hypothesis_component)
+        .saturating_add(outcome_component)
+        .saturating_add(decision_component)
+        .saturating_sub(cost_penalty)
+        .saturating_sub(alternative_penalty)
+        .min(100)
+}
+
 pub async fn queue(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -124,19 +140,7 @@ pub async fn queue(
     }
     for q in questions {
         let (score, rationale) = if let Some(value) = question_values.get(&q.question_id) {
-            let hypothesis_component =
-                (value.discriminates_interpretation_ids.len().min(3) as u16) * 10;
-            let outcome_component = if value.possible_outcome_count >= 2 { 10 } else { 0 };
-            let decision_component = value.decision_relevance.unwrap_or(0) / 3;
-            let cost_penalty = value.acquisition_cost.unwrap_or(0) / 4;
-            let alternative_penalty = if value.cheaper_alternative.is_some() { 8 } else { 0 };
-            let score = 45u16
-                .saturating_add(hypothesis_component)
-                .saturating_add(outcome_component)
-                .saturating_add(decision_component)
-                .saturating_sub(cost_penalty)
-                .saturating_sub(alternative_penalty)
-                .min(100);
+            let score = clarification_information_value(value);
             (
                 score,
                 format!(
@@ -180,4 +184,46 @@ pub async fn queue(
         ranking_establishes_truth: false,
         human_owns_external_actions: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn value(
+        hypotheses: usize,
+        outcomes: usize,
+        decision_relevance: u16,
+        acquisition_cost: u16,
+        cheaper: bool,
+    ) -> clarification::ClarificationValue {
+        clarification::ClarificationValue {
+            question_id: Uuid::nil(),
+            discriminates_interpretation_ids: (0..hypotheses)
+                .map(|i| Uuid::from_u128((i + 1) as u128))
+                .collect(),
+            possible_outcome_count: outcomes,
+            decision_relevance: Some(decision_relevance),
+            acquisition_cost: Some(acquisition_cost),
+            cheaper_alternative: cheaper.then(|| "Use the already available ledger".into()),
+        }
+    }
+
+    #[test]
+    fn cheap_decision_relevant_discriminator_outranks_generic_baseline() {
+        let strong = value(2, 2, 100, 5, false);
+        assert!(clarification_information_value(&strong) > 86);
+    }
+
+    #[test]
+    fn expensive_low_value_question_is_demoted() {
+        let weak = value(0, 1, 10, 90, true);
+        assert!(clarification_information_value(&weak) < 60);
+    }
+
+    #[test]
+    fn question_score_is_bounded() {
+        let maximal = value(20, 8, 100, 0, false);
+        assert_eq!(clarification_information_value(&maximal), 100);
+    }
 }
