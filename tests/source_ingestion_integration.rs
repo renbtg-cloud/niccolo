@@ -94,6 +94,8 @@ async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
     let page = source_catalog::list_sources(&service, w, None, 25).await.unwrap();
     assert_eq!(page.documents.len(), 1);
     assert!(page.documents[0].original_bytes_available);
+    let authorized = source_catalog::source_original(&service, w, id).await.unwrap();
+    assert_eq!(authorized, Some(("EML".to_owned(), raw.to_vec())));
     let replay = ingest_source(
         &service, w, id, SourceFormat::Eml, "fixture://original", raw
     ).await.unwrap();
@@ -113,6 +115,10 @@ async fn original_bytes_are_not_visible_outside_the_authorized_workspace() {
         "SELECT count(*) FROM niccolo.source_payloads WHERE workspace_id=$1",
     ).bind(w).fetch_one(&service).await.unwrap();
     assert_eq!(visible, 0);
+    let wrong_workspace = workspace(&admin).await;
+    let isolated = source_catalog::source_original(&service, wrong_workspace, id)
+        .await.unwrap();
+    assert!(isolated.is_none());
 }
 
 #[tokio::test]
