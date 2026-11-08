@@ -1,5 +1,12 @@
 export const TERMINAL_OPERATION_STATES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED']);
 
+// The observation endpoint already long-polls for changes. This delay applies
+// after each request and avoids busy loops when a response returns immediately.
+export function observationPollDelay(state) {
+  if (!state || TERMINAL_OPERATION_STATES.has(state)) return false;
+  return state === 'WAITING_FOR_HUMAN' ? 1000 : 250;
+}
+
 export function mergeOperationObservation(previous, incoming) {
   if (!incoming) return previous ?? null;
   const prior = previous ?? { operation: null, events: [], cursor: 0 };
