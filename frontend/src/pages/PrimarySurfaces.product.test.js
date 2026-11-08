@@ -35,6 +35,7 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingDocumentId.current = documentId');
     expect(situation).toContain('pendingDocumentId.current = null');
     expect(situation).toContain('onError: refresh');
+    expect(situation).toContain('upload.reset();');
     expect(situation).toContain('pendingContribution.current?.signature !== signature');
     expect(situation).toContain('pendingCorrection.current?.signature !== signature');
     expect(situation).toContain('pendingContribution.current.id');
