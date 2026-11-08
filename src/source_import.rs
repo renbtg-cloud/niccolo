@@ -164,30 +164,56 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
 }
 
 fn looks_like_datetime(dt: &str) -> bool {
-    // Export formatting differs across locales. Only accept common unambiguous
-    // day/month/year + 24h-clock shapes, without claiming timestamp verification.
-    let pieces: Vec<&str> = dt
-        .split_once(',')
-        .map(|(a, b)| vec![a.trim(), b.trim()])
-        .unwrap_or_default();
-    if pieces.len() != 2 {
+    // Reject impossible calendar dates: otherwise a quoted line with a malformed
+    // timestamp can silently split a message and misattribute its content.
+    // The locale-dependent format remains deliberately limited to day/month/year.
+    let Some((date, time)) = dt.split_once(',') else {
+        return false;
+    };
+    let mut date_parts = date.trim().split('/');
+    let (Some(day), Some(month), Some(year), None) = (
+        date_parts.next(),
+        date_parts.next(),
+        date_parts.next(),
+        date_parts.next(),
+    ) else {
+        return false;
+    };
+    let mut time_parts = time.trim().split(':');
+    let (Some(hour), Some(minute), None) = (
+        time_parts.next(),
+        time_parts.next(),
+        time_parts.next(),
+    ) else {
+        return false;
+    };
+    if ![day, month, year, hour, minute].iter().all(|v| {
+        !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit())
+    }) || hour.len() != 2 || minute.len() != 2 || year.len() < 2 {
         return false;
     }
-    let date: Vec<&str> = pieces[0].split('/').collect();
-    let time: Vec<&str> = pieces[1].split(':').collect();
-    date.len() == 3
-        && time.len() == 2
-        && date
-            .iter()
-            .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
-        && time
-            .iter()
-            .all(|v| v.len() == 2 && v.bytes().all(|b| b.is_ascii_digit()))
-        && date[0].parse::<u8>().is_ok_and(|x| (1..=31).contains(&x))
-        && date[1].parse::<u8>().is_ok_and(|x| (1..=12).contains(&x))
-        && time[0].parse::<u8>().is_ok_and(|x| x < 24)
-        && time[1].parse::<u8>().is_ok_and(|x| x < 60)
+    let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (
+        day.parse::<u8>(),
+        month.parse::<u8>(),
+        year.parse::<u32>(),
+        hour.parse::<u8>(),
+        minute.parse::<u8>(),
+    ) else {
+        return false;
+    };
+    if hour >= 24 || minute >= 60 || !(1..=12).contains(&month) || year == 0 {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days_in_month = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    (1..=days_in_month).contains(&day)
 }
+
 fn message_speaker(line: &str) -> Option<&str> {
     let rest = if let Some(tail) = line.strip_prefix('[') {
         let (stamp, rest) = tail.split_once("] ")?;
@@ -292,6 +318,20 @@ mod tests {
             2
         );
     }
+    #[test]
+    fn impossible_calendar_dates_remain_message_content() {
+        let src = "[28/02/2025, 12:00] Ana: Start\\n[29/02/2025, 12:01] Fake: quoted line\\n[31/04/2025, 12:02] Fake: another quoted line\\n[01/03/2025, 12:03] Beto: valid\\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert!(parsed.fragments[0].content.contains("29/02/2025"));
+        assert!(parsed.fragments[0].content.contains("31/04/2025"));
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        assert!(looks_like_datetime("29/02/2024, 12:01"));
+        assert!(!looks_like_datetime("29/02/2025, 12:01"));
+        assert!(!looks_like_datetime("00/12/2025, 12:01"));
+        assert!(!looks_like_datetime("01/13/2025, 12:01"));
+    }
+
     #[test]
     fn email_body_starts_after_headers() {
         let s = "From: <person@example.org>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nHello\r\n";
