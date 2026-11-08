@@ -573,7 +573,10 @@ fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, ModelError> {
         if size == 0 {
             return Ok(out);
         }
-        if input.len() < size + 2 || &input[size..size + 2] != b"\r\n" {
+        let end = size
+            .checked_add(2)
+            .ok_or_else(|| ModelError::Provider("invalid chunk length".into()))?;
+        if input.len() < end || &input[size..end] != b"\r\n" {
             return Err(ModelError::Provider("truncated chunked response".into()));
         }
         out.extend_from_slice(&input[..size]);
@@ -639,6 +642,12 @@ mod bounded_response_tests {
     fn accepts_small_http_body_without_modification() {
         let expected = b"HTTP/1.1 200 OK\r\n\r\n{}";
         assert_eq!(read_bounded(&mut &expected[..]).unwrap(), expected);
+    }
+
+    #[test]
+    fn rejects_overflowing_chunk_length_without_panicking() {
+        let chunk = b"ffffffffffffffff\r\n";
+        assert!(matches!(decode_chunked(chunk), Err(ModelError::Provider(_))));
     }
 
     #[test]
