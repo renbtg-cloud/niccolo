@@ -30,6 +30,11 @@ pub struct BudgetView {
     pub max_total_tokens: i64,
     pub used_total_tokens: i64,
     pub remaining_total_tokens: i64,
+    /// Number of completed calls whose provider did not report all usage.
+    /// Used tokens are a lower bound when this is nonzero.
+    pub unreported_token_usage_invocations: i64,
+    pub token_usage_complete: bool,
+    pub remaining_total_tokens_is_upper_bound: bool,
     pub deadline_active: bool,
     pub within_deadline: bool,
     /// SQL server clock; 0 means expired (or less than 1 ms remains).
@@ -112,6 +117,9 @@ fn summarize(
         max_total_tokens,
         used_total_tokens,
         remaining_total_tokens: (max_total_tokens - used_total_tokens).max(0),
+        unreported_token_usage_invocations: 0,
+        token_usage_complete: true,
+        remaining_total_tokens_is_upper_bound: false,
         deadline_active: remaining_deadline_ms.is_some(),
         within_deadline,
         remaining_deadline_ms,
@@ -120,6 +128,18 @@ fn summarize(
         budget_is_quality_score: false,
         graceful_quality_degradation_implemented: false,
     })
+}
+
+/// A successful call with absent token usage is not free. Expose the
+/// accounting uncertainty instead of claiming the token budget is exact.
+fn mark_unknown_usage(mut view: BudgetView, missing: i64) -> Result<BudgetView, BudgetError> {
+    if missing < 0 || missing > view.used_invocations {
+        return Err(BudgetError::Invalid);
+    }
+    view.unreported_token_usage_invocations = missing;
+    view.token_usage_complete = missing == 0;
+    view.remaining_total_tokens_is_upper_bound = missing > 0;
+    Ok(view)
 }
 
 /// Auth-scoped PostgreSQL observation. No mutation, external provider call,
@@ -142,9 +162,10 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
         return Err(BudgetError::Missing);
     };
     let input: Value = serde_json::from_str(&input).map_err(|_| BudgetError::Invalid)?;
-    let (used_invocations, used_total_tokens): (i64, i64) = sqlx::query_as(
+    let (used_invocations, used_total_tokens, missing_usage): (i64, i64, i64) = sqlx::query_as(
         "SELECT count(*), \
-         coalesce(sum(coalesce(prompt_tokens,0)::bigint+coalesce(completion_tokens,0)::bigint),0)::bigint \
+         coalesce(sum(coalesce(prompt_tokens,0)::bigint+coalesce(completion_tokens,0)::bigint),0)::bigint, \
+         count(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL) \
          FROM niccolo.model_invocations \
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED'",
     )
@@ -154,11 +175,14 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
-    summarize(
-        &input,
-        used_invocations,
-        used_total_tokens,
-        remaining_deadline_ms,
+    mark_unknown_usage(
+        summarize(
+            &input,
+            used_invocations,
+            used_total_tokens,
+            remaining_deadline_ms,
+        )?,
+        missing_usage,
     )
 }
 
@@ -183,6 +207,19 @@ pub async fn require_available(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn missing_provider_usage_is_not_treated_as_free_tokens() {
+        let base = summarize(&json!({}), 3, 1000, None).unwrap();
+        let uncertain = mark_unknown_usage(base.clone(), 2).unwrap();
+        assert_eq!(uncertain.unreported_token_usage_invocations, 2);
+        assert!(!uncertain.token_usage_complete);
+        assert!(uncertain.remaining_total_tokens_is_upper_bound);
+        assert_eq!(uncertain.used_total_tokens, 1000);
+        assert_eq!(uncertain.remaining_total_tokens, 199_000);
+        assert!(uncertain.can_start_model_call);
+        assert!(mark_unknown_usage(base, 4).is_err());
+    }
 
     #[test]
     fn no_deadline_and_default_budget_are_not_unlimited_quality() {
