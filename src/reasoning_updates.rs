@@ -18,10 +18,40 @@ pub enum UpdateError {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct UpdateHypothesisPrediction {
+    pub prediction_id: Uuid,
+    pub expected_observation: String,
+    pub direction: String,
+    pub rationale: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateHypothesisEvidenceLink {
+    pub link_id: Uuid,
+    pub evidence_id: Uuid,
+    pub relation: String,
+    pub rationale: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateHypothesisRelation {
+    pub relation_id: Uuid,
+    pub other_interpretation_id: Uuid,
+    pub relation: String,
+    pub rationale: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateInterpretation {
     pub interpretation_id: Uuid,
     pub text: String,
     pub rationale: String,
+    #[serde(default)]
+    pub predictions: Vec<UpdateHypothesisPrediction>,
+    #[serde(default)]
+    pub evidence_links: Vec<UpdateHypothesisEvidenceLink>,
+    #[serde(default)]
+    pub relations: Vec<UpdateHypothesisRelation>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -113,8 +143,40 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         if !ids.insert(interpretation.interpretation_id)
             || !valid(&interpretation.text, 4096)
             || !valid(&interpretation.rationale, 4096)
+            || interpretation.predictions.len() > 16
+            || interpretation.evidence_links.len() > 32
+            || interpretation.relations.len() > 16
         {
             return Err(UpdateError::Invalid);
+        }
+        let mut nested_ids = std::collections::BTreeSet::new();
+        for prediction in &interpretation.predictions {
+            if !nested_ids.insert(prediction.prediction_id)
+                || !valid(&prediction.expected_observation, 4096)
+                || !matches!(prediction.direction.as_str(), "SUPPORT" | "COUNTEREVIDENCE" | "DISCRIMINATE")
+                || !valid(&prediction.rationale, 4096)
+            {
+                return Err(UpdateError::Invalid);
+            }
+        }
+        nested_ids.clear();
+        for link in &interpretation.evidence_links {
+            if !nested_ids.insert(link.link_id)
+                || !matches!(link.relation.as_str(), "SUPPORTS" | "CONTRADICTS" | "CONTEXT")
+                || !valid(&link.rationale, 4096)
+            {
+                return Err(UpdateError::Invalid);
+            }
+        }
+        nested_ids.clear();
+        for relation in &interpretation.relations {
+            if !nested_ids.insert(relation.relation_id)
+                || relation.other_interpretation_id == interpretation.interpretation_id
+                || !matches!(relation.relation.as_str(), "COMPETES_WITH" | "CAN_COEXIST" | "REFINES" | "OVERLAPS")
+                || !valid(&relation.rationale, 4096)
+            {
+                return Err(UpdateError::Invalid);
+            }
         }
     }
     ids.clear();
@@ -268,6 +330,77 @@ pub async fn apply(
             return Err(UpdateError::Conflict);
         }
     }
+
+    for interpretation in &x.candidate_interpretations {
+        for prediction in &interpretation.predictions {
+            sqlx::query("INSERT INTO niccolo.situation_analysis_hypothesis_predictions(workspace_id,situation_id,analysis_id,interpretation_id,prediction_id,expected_observation,direction,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis)
+                .bind(interpretation.interpretation_id).bind(prediction.prediction_id)
+                .bind(prediction.expected_observation.trim()).bind(&prediction.direction)
+                .bind(prediction.rationale.trim()).bind(actor)
+                .execute(&mut *tx).await?;
+            let stored:Option<(String,String,String,Uuid)>=sqlx::query_as("SELECT expected_observation,direction,rationale,recorded_by_principal_id FROM niccolo.situation_analysis_hypothesis_predictions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND interpretation_id=$4 AND prediction_id=$5")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis)
+                .bind(interpretation.interpretation_id).bind(prediction.prediction_id)
+                .fetch_optional(&mut *tx).await?;
+            if stored != Some((
+                prediction.expected_observation.trim().to_owned(),
+                prediction.direction.clone(),
+                prediction.rationale.trim().to_owned(),
+                actor,
+            )) {
+                return Err(UpdateError::Conflict);
+            }
+        }
+        for link in &interpretation.evidence_links {
+            let inserted = sqlx::query(
+                "INSERT INTO niccolo.situation_analysis_hypothesis_evidence
+                 (workspace_id,situation_id,analysis_id,interpretation_id,link_id,evidence_id,relation,rationale,recorded_by_principal_id)
+                 SELECT s.workspace_id,s.situation_id,s.analysis_id,$4,$5,$6,$7,$8,$9
+                   FROM niccolo.situation_analysis_snapshots s
+                   JOIN niccolo.situation_revision_sources rs
+                     ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id AND rs.revision=s.input_revision
+                   JOIN niccolo.source_fragments f
+                     ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id
+                  WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 AND f.evidence_id=$6
+                 ON CONFLICT DO NOTHING"
+            )
+            .bind(scope.workspace).bind(scope.situation).bind(scope.analysis)
+            .bind(interpretation.interpretation_id).bind(link.link_id).bind(link.evidence_id)
+            .bind(&link.relation).bind(link.rationale.trim()).bind(actor)
+            .execute(&mut *tx).await?;
+            let stored:Option<(Uuid,String,String,Uuid)>=sqlx::query_as("SELECT evidence_id,relation,rationale,recorded_by_principal_id FROM niccolo.situation_analysis_hypothesis_evidence WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND interpretation_id=$4 AND link_id=$5")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis)
+                .bind(interpretation.interpretation_id).bind(link.link_id)
+                .fetch_optional(&mut *tx).await?;
+            if inserted.rows_affected() == 0 && stored.is_none() {
+                return Err(UpdateError::Invalid);
+            }
+            if stored != Some((link.evidence_id, link.relation.clone(), link.rationale.trim().to_owned(), actor)) {
+                return Err(UpdateError::Conflict);
+            }
+        }
+        for relation in &interpretation.relations {
+            sqlx::query("INSERT INTO niccolo.situation_analysis_hypothesis_relations(workspace_id,situation_id,analysis_id,relation_id,left_interpretation_id,right_interpretation_id,relation,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(relation.relation_id)
+                .bind(interpretation.interpretation_id).bind(relation.other_interpretation_id)
+                .bind(&relation.relation).bind(relation.rationale.trim()).bind(actor)
+                .execute(&mut *tx).await?;
+            let stored:Option<(Uuid,Uuid,String,String,Uuid)>=sqlx::query_as("SELECT left_interpretation_id,right_interpretation_id,relation,rationale,recorded_by_principal_id FROM niccolo.situation_analysis_hypothesis_relations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND relation_id=$4")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(relation.relation_id)
+                .fetch_optional(&mut *tx).await?;
+            if stored != Some((
+                interpretation.interpretation_id,
+                relation.other_interpretation_id,
+                relation.relation.clone(),
+                relation.rationale.trim().to_owned(),
+                actor,
+            )) {
+                return Err(UpdateError::Conflict);
+            }
+        }
+    }
+
     for query in &x.source_queries {
         sqlx::query(
             "INSERT INTO niccolo.situation_analysis_observation_queries              (workspace_id,situation_id,analysis_id,query_id,query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id)              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING",
