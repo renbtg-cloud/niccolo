@@ -57,6 +57,11 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingCorrection.current.id');
   });
 
+  it('keeps the Analysis UUID form in sync with history selection', () => {
+    expect(analysis).toContain('useEffect(()=>{reset({analysis});},[analysis,reset]);');
+    expect(analysis).toContain('defaultValues:{analysis}');
+  });
+
   it('keeps selected analyses observable outside the Analyze screen', () => {
     for (const surface of [review, analysis]) {
       expect(surface).toContain('useOperationObserver(activeOperation)');
