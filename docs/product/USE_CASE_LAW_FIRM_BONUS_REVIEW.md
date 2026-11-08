@@ -679,6 +679,53 @@ Niccolò changed several decisions in different directions.
 
 ---
 
+## Helena builds the Kessler Dossier
+
+Helena is not finished.
+
+She wants a package that can survive hostile reading.
+
+She tells Niccolò to prepare **The Kessler Dossier**: a provenance-preserving package containing the Orison chronology, the documented client-authority floor, the message to opposing counsel, the Kessler/Julian exchange, Helena's actual instructions, source lineage, integrity notes, counterevidence, alternative explanations, unresolved questions, and the adversarial challenge against Niccolò's own synthesis.
+
+Its front page is short.
+
+The rest is not.
+
+The dossier's authority comes from inspectability rather than asking anyone to trust Niccolò. It lets an authorized hostile reviewer see the evidence, how it is related, what depends on what, which explanations survived challenge, and what remains unresolved.
+
+Helena sends it to independent outside counsel for verification and tells them to prepare whatever referrals the verified facts justify - to courts, public authorities, and the appropriate professional disciplinary body.
+
+She has no intention of letting the matter end with an internal termination.
+
+<small>**Decision Support:** the point is not to replace the decision-maker, but to make the reasoning behind a consequential decision inspectable.</small>
+
+---
+
+## What changed because Niccolò was there
+
+Without Niccolò, Helena had a suspicion about bonus incentives and a private investigator with too much contradictory material.
+
+With Niccolò:
+
+- a suspicious aggregate pattern against Camille weakened;
+- three apparent witnesses collapsed into one documentary lineage;
+- Julian's false attribution to Helena became visible;
+- an excluded source family became a target for retrieval;
+- client authority became the decisive Kessler question;
+- Kessler's messages could be read in the temporal context of what each person knew;
+- Helena's own beliefs remained distinguishable from the record;
+- the old Niccolò system became part of the investigation rather than an unquestioned source;
+- outside counsel received a dossier designed to withstand hostile review;
+- Helena fired Kessler and Julian for different evidentiary reasons;
+- innocent proximity did not become guilt by association;
+- and the compensation system was frozen for redesign.
+
+Niccolò did not merely help Helena understand the mess.
+
+It changed what she did.
+
+---
+
 ## The shopping cart
 
 By the time Adrian returns to his office, his building credential has been disabled.
@@ -738,124 +785,6 @@ A building cleaner waiting beside a yellow floor machine looks at the suit, the 
 He nods toward the load.
 
 > "Economic crisis, huh, hotshot?"
-
-Adrian says nothing.
-
-The freight doors open.
-
-He pushes the cart out.
-
----
-
-## Helena asks Niccolò to build the Kessler Dossier
-
-Helena is not finished.
-
-She does not want a dramatic executive summary. She wants a package that can survive hostile reading.
-
-She tells Niccolò to prepare a dossier on Adrian Kessler.
-
-The system builds **The Kessler Dossier** as a provenance-preserving investigation package.
-
-Its front page is short.
-
-The rest is not.
-
-It contains:
-
-- a chronological account of the Orison matter;
-- the documented client-authority floor;
-- the message to opposing counsel;
-- the Julian/Kessler exchange about where closure pressure should appear to come from;
-- Helena's actual communications about Resolution Credit;
-- the later email Kessler sent to Helena;
-- source-by-source provenance;
-- copied-report lineage;
-- identity and authorship assertions;
-- integrity information and missing-integrity anchors;
-- the alternative explanations Niccolò considered;
-- the evidence that weakened those alternatives;
-- evidence still favorable to Kessler;
-- unresolved questions;
-- the investigator's collection-bias issue;
-- the old Niccolò configuration history;
-- the distinction between what Helena believes and what the documentary record establishes;
-- the adversarial challenge against Niccolò's own synthesis;
-- and a machine-readable export allowing another authorized reviewer to reconstruct the package.
-
-The dossier does not say:
-
-> Kessler is guilty because Niccolò says so.
-
-It says, in effect:
-
-> Here is the evidence. Here is how it is related. Here is what depends on what. Here are the strongest competing explanations. Here is what survived challenge. Here is what remains unknown.
-
-That is much harder to wave away.
-
-<small>**Decision Support:** the point is not to replace the decision-maker, but to make the reasoning behind a consequential decision inspectable.</small>
-
----
-
-## The bar complaint
-
-Helena gives the Kessler Dossier to independent outside counsel.
-
-Counsel verifies the primary materials again, interviews the relevant client representatives, separates privileged material from material that can properly be disclosed, and prepares a disciplinary complaint to the bar authority in the fictional jurisdiction.
-
-Helena signs it personally.
-
-She is angry enough that she tells outside counsel exactly what outcome she wants:
-
-> "If he did what this record says he did, I want him out of this profession."
-
-The bar does not answer to Helena.
-
-It opens its own investigation.
-
-Kessler hires formidable counsel. He attacks the firm's compensation system, Helena's motives, Elias's collection methods, the old Niccolò deployment, the new Niccolò deployment, source completeness, and the interpretation of every ambiguous sentence.
-
-That is precisely why the dossier contains the counterevidence too.
-
-Several of his attacks work.
-
-The bar disregards some peripheral allegations. It refuses to treat political associations as probative. It gives little weight to the three supposedly independent witness reports after their shared lineage becomes clear.
-
-The central record survives.
-
-Fourteen months later, after a disciplinary hearing, the fictional bar tribunal finds that Kessler knowingly acted outside documented client authority in the Orison matter, made materially misleading representations concerning the circumstances of the settlement, and participated in creating a record that misrepresented the source of decision pressure.
-
-His license to practice law is revoked.
-
-The tribunal's decision is its own.
-
-The investigation that made the decision possible began with Helena asking Niccolò why something felt wrong.
-
----
-
-## What changed because Niccolò was there
-
-Without Niccolò, Helena had a suspicion about bonus incentives and a private investigator with too much contradictory material.
-
-With Niccolò:
-
-- a suspicious aggregate pattern against Camille weakened;
-- three apparent witnesses collapsed into one documentary lineage;
-- Julian's false attribution to Helena became visible;
-- an excluded source family became a target for retrieval;
-- client authority became the decisive Kessler question;
-- Kessler's messages could be read in the temporal context of what each person knew;
-- Helena's own beliefs remained distinguishable from the record;
-- the old Niccolò system became part of the investigation rather than an unquestioned source;
-- outside counsel received a dossier designed to withstand hostile review;
-- Helena fired Kessler and Julian for different evidentiary reasons;
-- innocent proximity did not become guilt by association;
-- the compensation system was frozen for redesign;
-- and the bar received a disciplinary case whose strongest claims survived independent challenge.
-
-Niccolò did not merely help Helena understand the mess.
-
-It changed what she did.
 
 ---
 
@@ -1302,10 +1231,7 @@ KESSLER DOSSIER
 OUTSIDE COUNSEL
           |
           v
-BAR DISCIPLINARY PROCESS
-          |
-          v
-LICENSE REVOKED
+POTENTIAL COURT / AUTHORITY / BAR REFERRAL
 ```
 
 The same reasoning process can make one person look worse and another look better.
