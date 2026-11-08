@@ -220,9 +220,6 @@ fn looks_like_datetime(dt: &str) -> bool {
 }
 
 fn message_speaker(line: &str) -> Option<&str> {
-    // A UTF-8 BOM at the beginning of a Windows export is not a speaker label.
-    // Keep original byte offsets: only the header recognition ignores the BOM.
-    let line = line.strip_prefix('\u{feff}').unwrap_or(line);
     let rest = if let Some(tail) = line.strip_prefix('[') {
         let (stamp, rest) = tail.split_once("] ")?;
         if !looks_like_datetime(stamp) {
@@ -263,7 +260,14 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         Ok(())
     };
     for (start, _, line) in iter_lines(src) {
-        if let Some(speaker) = message_speaker(line) {
+        // BOM is legitimate only at byte offset zero. Stripping one from
+        // later lines can forge an apparent message boundary in quoted text.
+        let header = if start == 0 {
+            line.strip_prefix('\u{feff}').unwrap_or(line)
+        } else {
+            line
+        };
+        if let Some(speaker) = message_speaker(header) {
             if let Some((old, label)) = pending.replace((start, speaker.to_owned())) {
                 finish(old, start, label)?;
             }
@@ -339,6 +343,15 @@ mod tests {
                 &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
             );
         }
+    }
+
+    #[test]
+    fn embedded_bom_cannot_create_another_whatsapp_speaker() {
+        let src = "[02/11/2026, 17:01] Ana: Hi\n\u{feff}[02/11/2026, 17:02] Fake: quoted\n[02/11/2026, 17:03] Beto: reply\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert!(parsed.fragments[0].content.contains("Fake: quoted"));
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
     }
 
     #[test]
