@@ -62,7 +62,8 @@ printf 'export NICCOLO_PG_SECURE_URL=%q\n' "$runtime_url" > .niccolo-local/local
 printf 'export NICCOLO_API_PORT=38080\n' >> .niccolo-local/local.env
 printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' "$workspace" \
   "$(node -p "require('node:crypto').randomUUID()")" > .niccolo-local/identifiers.txt
-token="$(./target/release/niccolo-provision"${ext} mint "$workspace" "$principal" write 30)"
+provision_bin="./target/release/niccolo-provision${ext}"
+token="$("$provision_bin" mint "$workspace" "$principal" write 30)"
 printf '%s\n' "$token" > .niccolo-local/token.txt
 chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt 2>/dev/null || true
 
