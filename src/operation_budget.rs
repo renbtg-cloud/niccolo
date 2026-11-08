@@ -216,8 +216,13 @@ mod tests {
 
     #[test]
     fn token_exhaustion_does_not_claim_a_false_fact() {
-        let view = summarize(&json!({"model_budget":{"max_total_tokens":20}}), 0, 20, None)
-            .unwrap();
+        let view = summarize(
+            &json!({"model_budget":{"max_total_tokens":20}}),
+            0,
+            20,
+            None,
+        )
+        .unwrap();
         assert_eq!(view.stop_reasons, vec!["TOKEN_LIMIT"]);
         assert!(!view.budget_is_quality_score);
         assert!(!view.graceful_quality_degradation_implemented);
