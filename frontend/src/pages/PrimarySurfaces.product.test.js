@@ -5,6 +5,7 @@ const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const connect = readFileSync(new URL('./ConnectPanel.jsx', import.meta.url), 'utf8');
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const review = readFileSync(new URL('./ReviewPage.jsx', import.meta.url), 'utf8');
+const feedback = readFileSync(new URL('./FeedbackPage.jsx', import.meta.url), 'utf8');
 const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'utf8');
 const identities = readFileSync(new URL('./IdentitiesPage.jsx', import.meta.url), 'utf8');
 
@@ -80,6 +81,15 @@ describe('buyer-facing primary surfaces', () => {
     expect(identities).toContain('pendingClear.current.eventId');
     expect(identities).toContain('pendingAssign.current = null');
     expect(identities).toContain('pendingClear.current = null');
+  });
+
+  it('retries user questions and feedback with stable record identities', () => {
+    expect(feedback).toContain('pendingFeedback.current?.signature !== signature');
+    expect(feedback).toContain('pendingFeedback.current.eventId');
+    expect(feedback).toContain('pendingFeedback.current=null');
+    expect(feedback).toContain('pendingQuestion.current?.question !== question');
+    expect(feedback).toContain('pendingQuestion.current.questionId');
+    expect(feedback).toContain('pendingQuestion.current=null');
   });
 
   it('remounts review drafts when selecting another analysis', () => {
