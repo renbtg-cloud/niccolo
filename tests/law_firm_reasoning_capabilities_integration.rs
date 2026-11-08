@@ -3,7 +3,7 @@
 use niccolo_evidence::{
     analysis_structure::AnalysisScope,
     authz, hypothesis_portfolio, investigation_policy, reasoning_packet, reasoning_updates,
-    temporal_state,
+    source_scope, temporal_state,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -321,6 +321,91 @@ async fn temporal_state_keeps_formal_authority_separate_from_practical_influence
             .temporal_assertions
             .iter()
             .any(|x| x.qualification == "INFERRED"));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn source_scope_keeps_uncollected_unavailable_and_unknown_distinct() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+
+    authz::with_auth_digest("law-firm-test".into(), async {
+        source_scope::record(
+            &app,
+            scope,
+            s.principal,
+            &source_scope::SourceScopeInput {
+                scope_id: Uuid::new_v4(),
+                source_family: "Personal mobile messages".into(),
+                collection_status: "EXPECTED_NOT_REQUESTED".into(),
+                scope_description: "Messages potentially relevant to the review.".into(),
+                reason: "Collector declared that personal mobile messages were never collected.".into(),
+                collector_label: Some("Elias".into()),
+                date_scope: Some("2026-01-01..2026-05-31".into()),
+                assertion_kind: "HUMAN_ASSERTION".into(),
+                document_id: None,
+                supersedes_scope_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        source_scope::record(
+            &app,
+            scope,
+            s.principal,
+            &source_scope::SourceScopeInput {
+                scope_id: Uuid::new_v4(),
+                source_family: "Retention-deleted mailbox folder".into(),
+                collection_status: "KNOWN_UNAVAILABLE".into(),
+                scope_description: "One mailbox folder was deleted before collection.".into(),
+                reason: "Availability statement supplied by the collector.".into(),
+                collector_label: Some("Elias".into()),
+                date_scope: None,
+                assertion_kind: "HUMAN_ASSERTION".into(),
+                document_id: None,
+                supersedes_scope_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        source_scope::record(
+            &app,
+            scope,
+            s.principal,
+            &source_scope::SourceScopeInput {
+                scope_id: Uuid::new_v4(),
+                source_family: "Handwritten March notes".into(),
+                collection_status: "UNKNOWN_EXISTENCE".into(),
+                scope_description: "Possible handwritten meeting notes.".into(),
+                reason: "No one currently knows whether these notes exist.".into(),
+                collector_label: None,
+                date_scope: Some("2026-03".into()),
+                assertion_kind: "HUMAN_ASSERTION".into(),
+                document_id: None,
+                supersedes_scope_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let states = source_scope::list(&app, scope).await.unwrap();
+        let statuses = states
+            .iter()
+            .map(|x| x.collection_status.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(statuses.contains("EXPECTED_NOT_REQUESTED"));
+        assert!(statuses.contains("KNOWN_UNAVAILABLE"));
+        assert!(statuses.contains("UNKNOWN_EXISTENCE"));
+        assert!(states.iter().all(|x| !x.missingness_establishes_misconduct));
+
+        let packet = reasoning_packet::build(&app, scope).await.unwrap();
+        assert_eq!(packet.source_scope.len(), 3);
     })
     .await;
 }
