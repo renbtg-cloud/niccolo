@@ -8,6 +8,7 @@ use crate::analysis_delta::{self, AnalysisDeltaError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
+use crate::actors::{self, ActorError};
 use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
@@ -15,7 +16,9 @@ use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::collection_provenance::{self, CollectionEventInput, CollectionProvenanceError};
 use crate::decision_points::{self, DecisionError, DecisionOption, SelectionEvent};
-use crate::decision_readiness::{self, DecisionReadinessError, DecisionReadinessInput, ReversalConditionInput};
+use crate::decision_readiness::{
+    self, DecisionReadinessError, DecisionReadinessInput, ReversalConditionInput,
+};
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
@@ -25,6 +28,7 @@ use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
+use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
@@ -2414,9 +2418,6 @@ async fn list_hypotheses(
     ))
 }
 
-
-
-
 impl From<DecisionError> for ApiError {
     fn from(error: DecisionError) -> Self {
         match error {
@@ -2453,9 +2454,10 @@ impl From<DecisionReadinessError> for ApiError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "decision readiness runtime role unavailable",
             ),
-            DecisionReadinessError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "decision readiness unavailable")
-            }
+            DecisionReadinessError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "decision readiness unavailable",
+            ),
         }
     }
 }
@@ -2682,7 +2684,6 @@ async fn list_decision_readiness(
     ))
 }
 
-
 impl From<IntegrityScopeError> for ApiError {
     fn from(error: IntegrityScopeError) -> Self {
         match error {
@@ -2699,9 +2700,10 @@ impl From<IntegrityScopeError> for ApiError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "integrity runtime role unavailable",
             ),
-            IntegrityScopeError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "integrity assessment unavailable")
-            }
+            IntegrityScopeError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "integrity assessment unavailable",
+            ),
         }
     }
 }
@@ -2783,12 +2785,14 @@ async fn list_integrity_scope(
 impl From<CollectionProvenanceError> for ApiError {
     fn from(error: CollectionProvenanceError) -> Self {
         match error {
-            CollectionProvenanceError::Invalid => {
-                Self(StatusCode::BAD_REQUEST, "invalid collection provenance event")
-            }
-            CollectionProvenanceError::Invisible => {
-                Self(StatusCode::NOT_FOUND, "collection provenance reference unavailable")
-            }
+            CollectionProvenanceError::Invalid => Self(
+                StatusCode::BAD_REQUEST,
+                "invalid collection provenance event",
+            ),
+            CollectionProvenanceError::Invisible => Self(
+                StatusCode::NOT_FOUND,
+                "collection provenance reference unavailable",
+            ),
             CollectionProvenanceError::Conflict => {
                 Self(StatusCode::CONFLICT, "collection provenance conflict")
             }
@@ -2890,16 +2894,23 @@ async fn list_collection_provenance(
 impl From<SourceScopeError> for ApiError {
     fn from(error: SourceScopeError) -> Self {
         match error {
-            SourceScopeError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid source scope assertion"),
-            SourceScopeError::Invisible => Self(StatusCode::NOT_FOUND, "source scope reference unavailable"),
-            SourceScopeError::Conflict => Self(StatusCode::CONFLICT, "source scope assertion conflict"),
+            SourceScopeError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid source scope assertion")
+            }
+            SourceScopeError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "source scope reference unavailable")
+            }
+            SourceScopeError::Conflict => {
+                Self(StatusCode::CONFLICT, "source scope assertion conflict")
+            }
             SourceScopeError::Privileged => Self(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "source scope runtime role unavailable",
             ),
-            SourceScopeError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "source scope unavailable")
-            }
+            SourceScopeError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "source scope unavailable",
+            ),
         }
     }
 }
@@ -2987,9 +2998,10 @@ impl From<TemporalStateError> for ApiError {
             TemporalStateError::Invalid => {
                 Self(StatusCode::BAD_REQUEST, "invalid temporal assertion")
             }
-            TemporalStateError::Invisible => {
-                Self(StatusCode::NOT_FOUND, "temporal assertion reference unavailable")
-            }
+            TemporalStateError::Invisible => Self(
+                StatusCode::NOT_FOUND,
+                "temporal assertion reference unavailable",
+            ),
             TemporalStateError::Conflict => {
                 Self(StatusCode::CONFLICT, "temporal assertion conflict")
             }
@@ -2997,9 +3009,10 @@ impl From<TemporalStateError> for ApiError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "temporal state runtime role unavailable",
             ),
-            TemporalStateError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "temporal state unavailable")
-            }
+            TemporalStateError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "temporal state unavailable",
+            ),
         }
     }
 }
@@ -3168,24 +3181,25 @@ async fn record_hypothesis_portfolio_event(
     ))
 }
 
-
 impl From<ActorError> for ApiError {
     fn from(error: ActorError) -> Self {
         match error {
             ActorError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid actor input"),
             ActorError::Invisible => Self(StatusCode::NOT_FOUND, "actor or source unavailable"),
             ActorError::Conflict => Self(StatusCode::CONFLICT, "actor replay conflict"),
-            ActorError::Privileged => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "actor runtime role unavailable")
-            }
+            ActorError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "actor runtime role unavailable",
+            ),
             ActorError::Database(sqlx::Error::Database(ref db))
                 if matches!(db.code().as_deref(), Some("23503" | "23514" | "23505")) =>
             {
                 Self(StatusCode::BAD_REQUEST, "invalid actor reference")
             }
-            ActorError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "actor registry unavailable")
-            }
+            ActorError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "actor registry unavailable",
+            ),
         }
     }
 }
@@ -3234,8 +3248,14 @@ async fn create_actor(
     Json(input): Json<ActorCreateRequest>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let (actor, replayed) =
-        actors::create(&state.pool, workspace, recorder, actor_id, &input.display_label).await?;
+    let (actor, replayed) = actors::create(
+        &state.pool,
+        workspace,
+        recorder,
+        actor_id,
+        &input.display_label,
+    )
+    .await?;
     Ok(no_store(
         json!({"actor":actor,"replayed":replayed}),
         if replayed {
