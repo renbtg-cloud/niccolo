@@ -60,6 +60,10 @@ export function IdentitiesPage() {
   const client = useClient();
   const qc = useQueryClient();
   const [documentId, setDocumentId] = useState('');
+  const [sourceCursor, setSourceCursor] = useState(null);
+  const [sourceBackStack, setSourceBackStack] = useState([]);
+  const [identityCursor, setIdentityCursor] = useState(null);
+  const [identityBackStack, setIdentityBackStack] = useState([]);
   const pendingAssign = useRef(null);
   const pendingClear = useRef(null);
   const resetDocumentSelection = (id) => {
@@ -74,14 +78,14 @@ export function IdentitiesPage() {
     queryFn: async () => (await client.situation()).value,
   });
   const sources = useQuery({
-    queryKey: client ? qk.sources(client.config) : ['sources','none'],
+    queryKey: client ? [...qk.sources(client.config), sourceCursor] : ['sources','none'],
     enabled: !!client,
-    queryFn: async () => (await client.sources()).value,
+    queryFn: async () => (await client.sources(sourceCursor, 100)).value,
   });
   const identities = useQuery({
-    queryKey: client ? qk.identities(client.config) : ['identities','none'],
+    queryKey: client ? [...qk.identities(client.config), identityCursor] : ['identities','none'],
     enabled: !!client,
-    queryFn: async () => (await client.identities()).value,
+    queryFn: async () => (await client.identities(identityCursor, 100)).value,
   });
 
   const documents = sources.data?.documents ?? [];
@@ -174,6 +178,31 @@ export function IdentitiesPage() {
         {reviewable.map((document) => <option key={document.document_id} value={document.document_id}>{document.locator}</option>)}
       </select>
     </label>}
+
+    <div className="row">
+      <button disabled={sources.isFetching || sourceBackStack.length === 0} onClick={() => {
+        const stack = sourceBackStack.slice();
+        setSourceCursor(stack.pop() ?? null);
+        setSourceBackStack(stack);
+        resetDocumentSelection('');
+      }}>Previous source records</button>
+      <button disabled={sources.isFetching || !sources.data?.next_after} onClick={() => {
+        setSourceBackStack(stack => [...stack, sourceCursor]);
+        setSourceCursor(sources.data.next_after);
+        resetDocumentSelection('');
+      }}>Next source records</button>
+    </div>
+    <div className="row">
+      <button disabled={identities.isFetching || identityBackStack.length === 0} onClick={() => {
+        const stack = identityBackStack.slice();
+        setIdentityCursor(stack.pop() ?? null);
+        setIdentityBackStack(stack);
+      }}>Previous people</button>
+      <button disabled={identities.isFetching || !identities.data?.next_after} onClick={() => {
+        setIdentityBackStack(stack => [...stack, identityCursor]);
+        setIdentityCursor(identities.data.next_after);
+      }}>Next people</button>
+    </div>
 
     {(sources.error || situation.error || identities.error || speakers.error || bindings.error || history.error) &&
       <p className="error">{(sources.error || situation.error || identities.error || speakers.error || bindings.error || history.error).message}</p>}
