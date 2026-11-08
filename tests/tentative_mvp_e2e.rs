@@ -431,6 +431,16 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     .await
     .unwrap();
     assert_eq!(failed_synthesis, 1, "durable synthesis step must be marked FAILED");
+    let operation_state: String = sqlx::query_scalar(
+        "SELECT state FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3"
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(operation)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(operation_state, "FAILED", "human-facing operation must also terminate");
 }
 
 #[tokio::test]
