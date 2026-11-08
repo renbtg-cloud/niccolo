@@ -44,7 +44,7 @@ Candidates must pass **8/8 training** and **16/16 holdout** cases and **all conf
 - All fixture facts and expected outputs are **synthetic**, with deliberately unambiguous source-lineage topology. They are not evidence about real people's beliefs or intentions.
 - There are **no LLM calls**, no self-generated algorithms beyond enumerated trusted variations, no frontier baseline, no API keys, no user files/data and no authorized autonomous production changes.
 - **Never allow arbitrary uploaded Rust or LLM-generated Rust through this bare harness.** The subprocess timeout is not a security sandbox. Real extension requires filesystem/network isolation, CPU/RAM quotas, identity separation, integrity controls and explicit authorization before code can execute.
-- A future independent frontier-agent evaluation must use raw original evidence only, without Niccolò's derivations, as documented in `COMPETITIVE_EVALUATION.md`.
+- A future independent frontier-agent evaluation must use raw original evidence only, without Niccolò's derivations, as documented in [competitive evaluation](../product/COMPETITIVE_EVALUATION.md).
 - The PostgreSQL v0.2 migration files are retained unchanged. This POC does not need a database running and does not update production.
 
 ## Next technical increments
