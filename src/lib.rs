@@ -451,6 +451,8 @@ pub mod agentic_runtime;
 
 pub mod reasoning_packet;
 
+pub mod observation_retrieval;
+
 pub mod investigation_policy;
 
 pub mod reanalysis_advisor;

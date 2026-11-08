@@ -22,6 +22,7 @@ use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
+use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
@@ -380,6 +381,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/handoff/receipts/{receipt}",
             post(record_reasoning_handoff_receipt),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/observations/search",
+            get(search_frozen_observations),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/input",
@@ -1267,6 +1272,45 @@ async fn list_analysis_history(
         }),
         StatusCode::OK,
     ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ObservationSearchQuery {
+    q: String,
+    limit: Option<i64>,
+}
+
+async fn search_frozen_observations(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    Query(query): Query<ObservationSearchQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let page =
+        observation_retrieval::search(&state.pool, scope, &query.q, query.limit.unwrap_or(10))
+            .await
+            .map_err(|error| match error {
+                ObservationSearchError::Invalid => {
+                    ApiError(StatusCode::BAD_REQUEST, "invalid observation search")
+                }
+                ObservationSearchError::Invisible => {
+                    ApiError(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
+                }
+                ObservationSearchError::Privileged | ObservationSearchError::Database(_) => {
+                    ApiError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "observation search unavailable",
+                    )
+                }
+            })?;
+    Ok(no_store(json!(page), StatusCode::OK))
 }
 
 #[derive(Deserialize)]
