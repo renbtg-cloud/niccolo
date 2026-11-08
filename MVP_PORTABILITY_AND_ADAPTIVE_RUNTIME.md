@@ -56,16 +56,16 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
 | Milestone | Purpose | Status |
 | --- | --- | --- |
 | REX-001 | Record portable user-owned historical Git / Python+data MVP contract | This specification |
-| REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | In progress |
+| REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
 | REX-003 | Authorized extraction of select original inputs / scoring provenance | Not implemented |
 | GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Not implemented |
 | GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Not implemented |
 | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
-| ARM-001 | Observe effective Linux process/container resources; portable adapter boundary | Not implemented |
+| ARM-001 | Observe effective Linux process/container resources; portable adapter boundary | Verified Linux first slice (PR #26) |
 | ARM-002 | Self-managed/delegated modes; bounded budgets and visible degradation | Not implemented |
 | ARM-003 | Anytime partial-result checkpoints, bounded deadline and finalization time | Not implemented |
 
-The existing operation-wide model invocation/token/deadline limit in `src/operation_budget.rs` is a starting point, **not** proof that adaptive capacity, graceful degradation or full anytime reasoning exist.
+The operation-wide invocation/token/deadline accounting and Linux effective-resource observer are verified prerequisites. They are **not** proof that adaptive scheduling, graceful degradation or full anytime reasoning exist.
 
 ### Security and evidence rules
 
