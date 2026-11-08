@@ -1,9 +1,9 @@
-export async function launchApprovedReanalysis({ client, priorAnalysis, goal, uuid = () => crypto.randomUUID() }) {
+export async function launchApprovedReanalysis({ client, priorAnalysis, goal, uuid = () => crypto.randomUUID(), ids = null }) {
   const cleanGoal = goal.trim();
   if (!cleanGoal) throw new Error('Reanalysis goal is required');
-  const snapshotOperation = uuid();
-  const newAnalysis = uuid();
-  const agenticOperation = uuid();
+  const snapshotOperation = ids?.snapshotOperation ?? uuid();
+  const newAnalysis = ids?.newAnalysis ?? uuid();
+  const agenticOperation = ids?.agenticOperation ?? uuid();
   const snapshot = await client.runReanalysisSync(snapshotOperation, priorAnalysis, newAnalysis, cleanGoal);
   if (snapshot.value.result?.new_analysis_id !== newAnalysis || snapshot.value.result?.historical_output_preserved !== true) {
     throw new Error('Reanalysis snapshot was not preserved as expected');
