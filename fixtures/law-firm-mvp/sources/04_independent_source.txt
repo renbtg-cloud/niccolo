@@ -1,0 +1,5 @@
+Source family: contemporaneous finance access log
+Collector: Sofia
+Origin: separate system, not derived from Elias's interview
+Observation: Kessler opened the compensation-policy page at 10:02 on 18 March 2026.
+Limitation: access does not establish what Kessler read, understood, intended, or remembered.

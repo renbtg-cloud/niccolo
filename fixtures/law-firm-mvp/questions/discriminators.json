@@ -1,0 +1,22 @@
+{
+  "questions": [
+    {
+      "id": "cheap-high-value",
+      "text": "What was the effective date of the Resolution Credit rule?",
+      "discriminates": ["incentive-driven acceleration", "ordinary timing"],
+      "possible_outcomes": ["effective before settlement", "effective after settlement"],
+      "decision_relevance": 100,
+      "acquisition_cost": 5,
+      "cheaper_alternative": null
+    },
+    {
+      "id": "expensive-low-value",
+      "text": "Commission a full reconstruction of every partner's historical browser activity for five years.",
+      "discriminates": [],
+      "possible_outcomes": ["large heterogeneous dataset"],
+      "decision_relevance": 10,
+      "acquisition_cost": 95,
+      "cheaper_alternative": "Check the dated compensation-policy publication and access log first."
+    }
+  ]
+}

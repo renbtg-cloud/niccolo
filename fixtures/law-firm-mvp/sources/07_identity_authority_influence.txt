@@ -1,0 +1,13 @@
+IDENTITY DISPUTE
+Old operator mapping: chat label "A.K." = Adrian Kessler.
+Current review: mapping disputed; one thread contains signatures inconsistent with Kessler. Keep unresolved pending source-specific confirmation.
+
+AUTHORITY TIMELINE
+2026-01-01 to 2026-03-31: Camille Bensaïd held formal approval authority for settlement band X.
+2026-04-01 onward: Tomas Rhyne held formal approval authority for settlement band X.
+
+PRACTICAL INFLUENCE OBSERVATIONS
+- Julian had no formal approval authority for band X.
+- Three contemporaneous threads show Julian proposing the ranges ultimately adopted.
+- Camille formally approved one range after asking Julian "what number can we live with?"
+Qualification: these observations can support an influence hypothesis but do not establish hidden control or motive.

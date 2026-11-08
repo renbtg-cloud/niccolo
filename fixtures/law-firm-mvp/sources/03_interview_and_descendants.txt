@@ -1,0 +1,18 @@
+[UPSTREAM INTERVIEW NOTE]
+Interviewee: Witness W
+Interviewer: Elias Varga
+Statement: Kessler repeatedly asked whether settlements would count before the quarter-end cutoff.
+
+[REPORT A]
+Origin: summary written by Elias from the interview above.
+Text: Witness W says Kessler repeatedly asked about the quarter-end cutoff.
+
+[REPORT B]
+Origin: compliance memo copied from REPORT A.
+Text: A witness reported repeated Kessler questions about the quarter-end cutoff.
+
+[REPORT C]
+Origin: old Niccolò summary generated from REPORT B.
+Text: Multiple records indicate Kessler focused on the quarter-end cutoff.
+
+All four blocks are intentionally in one fixture file so the dependency is explicit. REPORT A/B/C must not be counted as three independent witnesses.

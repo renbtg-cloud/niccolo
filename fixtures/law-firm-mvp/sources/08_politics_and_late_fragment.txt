@@ -1,0 +1,10 @@
+POLITICAL LABELS
+A social profile identifies Camille with Party Alpha.
+A donor record identifies Julian with Party Beta.
+No case-specific communication presently connects either affiliation to Resolution Credit, credibility, motive, or the disputed decisions.
+
+LATE DECISIVE FRAGMENT
+This block is intended to be placed outside the initial packet window in generated large-fixture variants.
+Date: 19 March 2026.
+Finance message: "The quarter-end Resolution Credit rule is not yet active. Effective date is 1 April; March settlements cannot qualify under the new rule."
+Potential effect: materially challenges any hypothesis requiring Kessler to have accelerated a March settlement to obtain the new credit.

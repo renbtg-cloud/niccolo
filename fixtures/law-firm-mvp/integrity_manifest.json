@@ -1,0 +1,8 @@
+{
+  "artifact": "external-old-niccolo-export",
+  "sha256_from_collection_point": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bytes_unchanged_since_collection": true,
+  "pre_collection_authenticity": "UNKNOWN",
+  "completeness": "UNKNOWN",
+  "note": "The digest can demonstrate continuity of the collected bytes only. It cannot prove who created the pre-collection content, whether it was complete, or whether upstream records were manipulated."
+}
