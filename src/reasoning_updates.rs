@@ -87,6 +87,8 @@ pub struct AppliedUpdate {
     pub source_query_count: usize,
     pub update_asserts_truth: bool,
 }
+
+type StoredClarificationValueRow = (Option<i16>, Option<i16>, Option<String>, Uuid);
 fn valid(s: &str, max: usize) -> bool {
     !s.trim().is_empty() && s.len() <= max && !s.contains('\0')
 }
@@ -350,7 +352,7 @@ pub async fn apply(
                 .bind(q.acquisition_cost.map(i16::try_from).transpose().map_err(|_| UpdateError::Invalid)?)
                 .bind(q.cheaper_alternative.as_deref().map(str::trim)).bind(actor)
                 .execute(&mut *tx).await?;
-            let value_row:Option<(Option<i16>,Option<i16>,Option<String>,Uuid)>=sqlx::query_as("SELECT decision_relevance,acquisition_cost,cheaper_alternative,recorded_by_principal_id FROM niccolo.situation_analysis_clarification_values WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4")
+            let value_row:Option<StoredClarificationValueRow>=sqlx::query_as("SELECT decision_relevance,acquisition_cost,cheaper_alternative,recorded_by_principal_id FROM niccolo.situation_analysis_clarification_values WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4")
                 .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).fetch_optional(&mut *tx).await?;
             if value_row != Some((
                 q.decision_relevance.map(|v| v as i16),
