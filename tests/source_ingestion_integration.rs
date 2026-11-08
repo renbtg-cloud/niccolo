@@ -77,6 +77,57 @@ async fn attributed_import_and_workspace_graph_are_connected() {
     }
 }
 #[tokio::test]
+async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
+    let (admin, service) = pools().await;
+    let w = workspace(&admin).await;
+    let id = Uuid::new_v4();
+    let raw = b"From: Example <example@example.org>\r\n\r\nOl\xc3\xa1!\r\n";
+    let imported = ingest_source(
+        &service, w, id, SourceFormat::Eml, "fixture://original", raw
+    ).await.unwrap();
+    assert!(!imported.replayed);
+    let stored: Vec<u8> = sqlx::query_scalar(
+        "SELECT original_bytes FROM niccolo.source_payloads WHERE workspace_id=$1 AND document_id=$2",
+    ).bind(w).bind(id).fetch_one(&admin).await.unwrap();
+    assert_eq!(stored, raw);
+    let replay = ingest_source(
+        &service, w, id, SourceFormat::Eml, "fixture://original", raw
+    ).await.unwrap();
+    assert!(replay.replayed);
+    assert_eq!(replay.graph_revision, imported.graph_revision);
+}
+
+#[tokio::test]
+async fn original_bytes_are_not_visible_outside_the_authorized_workspace() {
+    let (admin, service) = pools().await;
+    let w = workspace(&admin).await;
+    let id = Uuid::new_v4();
+    ingest_source(&service, w, id, SourceFormat::Eml, "fixture://isolated", b"From: A\n\none")
+        .await.unwrap();
+    // No workspace GUC nor bearer digest is bound to this connection.
+    let visible: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.source_payloads WHERE workspace_id=$1",
+    ).bind(w).fetch_one(&service).await.unwrap();
+    assert_eq!(visible, 0);
+}
+
+#[tokio::test]
+async fn original_source_bytes_cannot_be_modified_after_import() {
+    let (admin, service) = pools().await;
+    let w = workspace(&admin).await;
+    let id = Uuid::new_v4();
+    ingest_source(&service, w, id, SourceFormat::Eml, "fixture://immutable", b"From: A\n\none")
+        .await.unwrap();
+    let attempt = sqlx::query(
+        "UPDATE niccolo.source_payloads SET original_bytes=$3 WHERE workspace_id=$1 AND document_id=$2",
+    ).bind(w).bind(id).bind(&b"tampered"[..]).execute(&admin).await;
+    assert_eq!(
+        attempt.unwrap_err().as_database_error().and_then(|e| e.code()).as_deref(),
+        Some("23514")
+    );
+}
+
+#[tokio::test]
 async fn retry_is_idempotent_and_does_not_advance_revision() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;
