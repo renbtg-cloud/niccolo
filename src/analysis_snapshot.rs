@@ -194,8 +194,8 @@ pub async fn begin(
     .await?;
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_snapshots \
-         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,goal,requested_by_principal_id,reanalysis_of) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
+         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of) \
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
     )
     .bind(workspace)
     .bind(situation)
