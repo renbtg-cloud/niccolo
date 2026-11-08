@@ -32,6 +32,36 @@ describe('human-approved reanalysis launch', () => {
     expect(result).toMatchObject({ newAnalysis: 'new-analysis', agenticOperation: 'agentic-op' });
   });
 
+  it('retries with stable identifiers after an interrupted agentic launch', async () => {
+    const seen = [];
+    let attempts = 0;
+    const client = {
+      async runReanalysisSync(operation, prior, next) {
+        seen.push(['snapshot', operation, next]);
+        return { value: { result: { new_analysis_id: next, historical_output_preserved: true } } };
+      },
+      async runIntentAsync(operation, body) {
+        seen.push(['agentic', operation, body.analysis_id]);
+        if (++attempts === 1) throw new Error('connection interrupted');
+        return { value: { operation: { operation_id: operation } } };
+      },
+    };
+    const options = {
+      client, priorAnalysis: 'old', goal: 'Try again',
+      ids: { snapshotOperation: 'fixed-snapshot', newAnalysis: 'fixed-analysis', agenticOperation: 'fixed-operation' },
+      uuid: () => { throw new Error('must not allocate new identity on retry'); },
+    };
+    await expect(launchApprovedReanalysis(options)).rejects.toThrow('connection interrupted');
+    const result = await launchApprovedReanalysis(options);
+    expect(result.newAnalysis).toBe('fixed-analysis');
+    expect(seen).toEqual([
+      ['snapshot', 'fixed-snapshot', 'fixed-analysis'],
+      ['agentic', 'fixed-operation', 'fixed-analysis'],
+      ['snapshot', 'fixed-snapshot', 'fixed-analysis'],
+      ['agentic', 'fixed-operation', 'fixed-analysis'],
+    ]);
+  });
+
   it('never launches agentic work if preservation contract fails', async () => {
     let agenticCalled = false;
     const client = {
