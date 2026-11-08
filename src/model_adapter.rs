@@ -975,11 +975,11 @@ mod bounded_response_tests {
 
     #[test]
     fn chunked_reply_detects_missing_frames_and_trailers() {
-        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n"), Ok(None));
-        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n\r\n"), Ok(Some(12)));
+        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n").unwrap(), None);
+        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n\r\n").unwrap(), Some(12));
         assert_eq!(
-            complete_chunked_body_end(b"2\r\n{}\r\n0\r\nX-Test: yes\r\n\r\n"),
-            Ok(Some(25))
+            complete_chunked_body_end(b"2\r\n{}\r\n0\r\nX-Test: yes\r\n\r\n").unwrap(),
+            Some(25)
         );
     }
 
