@@ -1413,6 +1413,8 @@ fn analysis_snapshot_json(snapshot: &analysis_snapshot::AnalysisInputSnapshot) -
         "input_revision": snapshot.input_revision,
         "input_fingerprint": snapshot.input_fingerprint,
         "identity_event_no_max": snapshot.identity_event_no_max,
+        "actor_kind_event_no_max": snapshot.actor_kind_event_no_max,
+        "actor_binding_event_no_max": snapshot.actor_binding_event_no_max,
         "goal": snapshot.goal,
         "requested_by_principal_id": snapshot.requested_by,
         "reanalysis_of": snapshot.reanalysis_of,
