@@ -101,9 +101,7 @@ async fn concurrent_same_key_submissions_reuse_one_operation_and_queue_event() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let request = input(s, "AGENTIC_ANALYSIS", Some("parallel-replay"));
-    let scopes = (0..10)
-        .map(|_| op(s, Uuid::new_v4()))
-        .collect::<Vec<_>>();
+    let scopes = (0..10).map(|_| op(s, Uuid::new_v4())).collect::<Vec<_>>();
     let mut tasks = tokio::task::JoinSet::new();
     for scope in scopes {
         let pool = app.clone();
