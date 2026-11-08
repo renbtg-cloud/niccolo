@@ -228,5 +228,35 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
 });'
 echo 'PASS: context provenance, idempotent replay, correction, frozen history, retraction'
 
+# A second, empty database on the SAME PostgreSQL cluster must not
+# trigger password rotation for the already-provisioned service role.
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'CREATE DATABASE niccolo_ci_role_probe'
+probe_url="$(node -e '
+const u = new URL(process.env.NICCOLO_PG_ADMIN_URL);
+u.pathname="/niccolo_ci_role_probe";
+process.stdout.write(u.toString());
+')"
+probe_root=".niccolo-local/role-probe"
+mkdir -p "$probe_root/scripts"
+cp scripts/bootstrap-local-mvp.sh "$probe_root/scripts/bootstrap-local-mvp.sh"
+if (cd "$probe_root" && NICCOLO_PG_ADMIN_URL="$probe_url" \
+    bash scripts/bootstrap-local-mvp.sh > bootstrap-probe.log 2>&1); then
+  echo 'Bootstrapping a second DB unexpectedly reused a cluster-global service role' >&2
+  exit 1
+fi
+grep -q 'role niccolo_secure already exists' "$probe_root/bootstrap-probe.log" || {
+  echo 'Role conflict was not the explicit reason for refusing second bootstrap' >&2
+  exit 1
+}
+[[ "$(psql -X -At -v ON_ERROR_STOP=1 "$probe_url" \
+  -c "SELECT to_regclass('niccolo.workspaces') IS NULL")" == "t" ]] || {
+  echo 'Second bootstrap mutated an empty database before refusing role reuse' >&2
+  exit 1
+}
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'DROP DATABASE niccolo_ci_role_probe'
+echo 'PASS: preflight refuses reuse of cluster-global service role'
+
 echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
 
