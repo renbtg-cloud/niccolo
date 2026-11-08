@@ -27,6 +27,8 @@ pub mod situation_store;
 pub mod source_catalog;
 pub mod source_import;
 
+pub mod source_scope;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
