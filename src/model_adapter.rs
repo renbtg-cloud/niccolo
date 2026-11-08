@@ -252,6 +252,10 @@ pub async fn invoke_recorded<M: ReasoningModel + ?Sized>(
     .await
 }
 
+fn retryable_model_error(error: &ModelError) -> bool {
+    matches!(error, ModelError::Provider(_) | ModelError::Timeout)
+}
+
 pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     pool: &PgPool,
     scope: InvocationScope,
@@ -279,7 +283,9 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     tx.commit().await?;
     let started = Instant::now();
     let mut last_error = ModelError::Provider("no attempt made".into());
+    let mut attempts_made = 0;
     for attempt in 1..=policy.max_attempts {
+        attempts_made = attempt;
         let outcome = tokio::time::timeout(
             std::time::Duration::from_millis(policy.timeout_ms),
             model.invoke(request),
@@ -303,10 +309,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     let response_json = serde_json::to_string(&response.value)?;
                     if response_json.len() > 1_048_576 {
                         last_error = ModelError::Invalid;
-                        if attempt < policy.max_attempts {
-                            tokio::task::yield_now().await;
-                        }
-                        continue;
+                        break;
                     }
                     let response_sha = digest(&response_json);
                     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
@@ -339,6 +342,11 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             Ok(Err(e)) => last_error = e,
             Err(_) => last_error = ModelError::Timeout,
         }
+        // A known token-budget breach or malformed provider output must not
+        // trigger another paid call. Retry only transient provider failures.
+        if !retryable_model_error(&last_error) {
+            break;
+        }
         if attempt < policy.max_attempts {
             tokio::task::yield_now().await;
         }
@@ -346,7 +354,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let budget = matches!(last_error, ModelError::Budget);
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
     sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(last_error.to_string()).bind(policy.max_attempts as i32).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
+      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(last_error.to_string()).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
     tx.commit().await?;
     Err(last_error)
 }
@@ -787,6 +795,14 @@ mod bounded_response_tests {
         assert!(matches!(model.perform_blocking(&request), Err(ModelError::Timeout)));
         assert!(start.elapsed() < Duration::from_millis(1350));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn budget_and_invalid_results_are_never_retried() {
+        assert!(!retryable_model_error(&ModelError::Budget));
+        assert!(!retryable_model_error(&ModelError::Invalid));
+        assert!(retryable_model_error(&ModelError::Timeout));
+        assert!(retryable_model_error(&ModelError::Provider("transient".into())));
     }
 
     #[test]
