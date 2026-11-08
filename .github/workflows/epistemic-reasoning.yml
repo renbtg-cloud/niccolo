@@ -29,6 +29,8 @@ jobs:
       - name: Verify Markdown navigation and root layout
         run: |
           python3 -m unittest discover -s tests -p "test_check_doc_links.py" -v
+          python3 -m unittest discover -s tests -p "test_law_firm_mvp_acceptance.py" -v
+          python3 scripts/check-law-firm-mvp-acceptance.py fixtures/law-firm-mvp/acceptance.example.json
           python3 scripts/check-doc-links.py
       - name: Validate local MVP shell syntax before compiling
         run: |
