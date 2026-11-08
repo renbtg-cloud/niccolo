@@ -226,32 +226,27 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                     ) {
                         let update = reasoning_updates::parse(response)?
                             .ok_or(reasoning_updates::UpdateError::Invalid)?;
-                        reasoning_updates::apply(
-                            pool,
-                            crate::analysis_structure::AnalysisScope {
-                                workspace: scope.workspace,
-                                situation: scope.situation,
-                                analysis,
-                            },
-                            actor,
-                            &update,
-                        )
-        
                         if step.kind != "CHECK_ALTERNATIVES" && !update.source_queries.is_empty() {
                             return Err(reasoning_updates::UpdateError::Invalid.into());
                         }
+                        reasoning_updates::apply(pool, analysis_scope, actor, &update).await?;
                         if step.kind == "CHECK_ALTERNATIVES" {
-                            // The model chooses limited retrieval intents; the database
-                            // enforces the frozen analysis horizon and workspace scope.
+                            // Model intents stay bounded by this operation's
+                            // frozen analysis and the workspace's RLS boundary.
                             for query in &update.source_queries {
-                                let found = observation_retrieval::search(
-                                    pool, analysis_scope, &query.query, 5,
-                                ).await?;
+                                let found =
+                                    observation_retrieval::search(pool, analysis_scope, &query.query, 5)
+                                        .await?;
                                 observation_query_ledger::record_hits(
-                                    pool, analysis_scope, query.query_id, actor, &found.results,
-                                ).await?;
+                                    pool,
+                                    analysis_scope,
+                                    query.query_id,
+                                    actor,
+                                    &found.results,
+                                )
+                                .await?;
                             }
-                        }                .await?;
+                        }
                     } else if step.kind == "CHALLENGE_SYNTHESIS" {
                         let artifact = adversarial_challenge::parse(response)?
                             .ok_or(adversarial_challenge::ChallengeError::Invalid)?;
