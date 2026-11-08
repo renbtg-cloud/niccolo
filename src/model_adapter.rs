@@ -291,12 +291,22 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     .prompt_tokens
                     .unwrap_or(0)
                     .saturating_add(response.completion_tokens.unwrap_or(0));
-                if policy.max_total_tokens.is_some_and(|max| total > max) {
+                // A broken provider response must reach the FAILED ledger transition;
+                // returning early here would strand this invocation as STARTED.
+                if response.prompt_tokens.is_some_and(|n| n < 0)
+                    || response.completion_tokens.is_some_and(|n| n < 0)
+                {
+                    last_error = ModelError::Invalid;
+                } else if policy.max_total_tokens.is_some_and(|max| total > max) {
                     last_error = ModelError::Budget;
                 } else {
                     let response_json = serde_json::to_string(&response.value)?;
                     if response_json.len() > 1_048_576 {
-                        return Err(ModelError::Invalid);
+                        last_error = ModelError::Invalid;
+                        if attempt < policy.max_attempts {
+                            tokio::task::yield_now().await;
+                        }
+                        continue;
                     }
                     let response_sha = digest(&response_json);
                     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
