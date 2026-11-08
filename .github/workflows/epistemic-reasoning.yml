@@ -1,8 +1,11 @@
 name: Epistemic reasoning checks
-# MVP batch workflow: run only by explicit operator decision.
-# Each push remains a rollback checkpoint, not a CI trigger.
+# Normal commits to main never trigger CI. An operator can dispatch manually,
+# or explicitly move ci/mvp-checkpoint to the desired tested commit.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ci/mvp-checkpoint
 
 concurrency:
   group: epistemic-${{ github.ref_name }}
