@@ -250,8 +250,9 @@ async fn adaptive_admission_serializes_competing_workers_at_workspace_limit() {
         let workspace = s.workspace;
         joins.push(tokio::spawn(async move {
             let owner = format!("adaptive-{idx}");
-            let claimed =
-                bff_operations::claim_next_in_workspace_limited(&pool, workspace, &owner, 60_000, 2)
+            let claimed = bff_operations::claim_next_in_workspace_limited(
+                &pool, workspace, &owner, 60_000, 2,
+            )
             .await
             .unwrap();
             (owner, claimed)
