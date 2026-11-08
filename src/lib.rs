@@ -457,6 +457,8 @@ pub mod observation_query_ledger;
 
 pub mod investigation_policy;
 
+pub mod hypothesis_portfolio;
+
 pub mod reanalysis_advisor;
 
 pub mod bff_dashboard;
