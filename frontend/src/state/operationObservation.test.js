@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeOperationObservation, operationPhase } from './operationObservation.js';
+import { mergeOperationObservation, operationPhase, observationPollDelay } from './operationObservation.js';
 
 describe('operation observation state', () => {
   it('never regresses operation version and deduplicates events', () => {
@@ -32,6 +32,16 @@ describe('operation observation state', () => {
     expect(merged.operation.state).toBe('WAITING_FOR_HUMAN');
     expect(merged.cursor).toBe(10);
     expect(operationPhase(merged, {})).toBe('waiting-human');
+  });
+
+  it('avoids tight polling and stops on terminal operations', () => {
+    expect(observationPollDelay(undefined)).toBe(false);
+    expect(observationPollDelay('QUEUED')).toBe(250);
+    expect(observationPollDelay('RUNNING')).toBe(250);
+    expect(observationPollDelay('WAITING_FOR_HUMAN')).toBe(1000);
+    for (const state of ['SUCCEEDED', 'FAILED', 'CANCELLED']) {
+      expect(observationPollDelay(state)).toBe(false);
+    }
   });
 
   it('reports transport and terminal phases explicitly', () => {
