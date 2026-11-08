@@ -1,6 +1,7 @@
 //! Bound, explicit HTTP boundary. Not a public Internet deployment template.
 //! AuthN/AuthZ decision precedes EVERY workspace read and write. The client
 //! may select a workspace but can never authorize itself by merely naming it.
+use crate::actors::{self, ActorError};
 use crate::analysis_context_summary::{self, AnalysisContextSummaryError};
 use crate::analysis_context_usage::{self, AnalysisContextUsageError};
 use crate::analysis_coverage::{self, AnalysisCoverageError};
@@ -8,7 +9,6 @@ use crate::analysis_delta::{self, AnalysisDeltaError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
-use crate::actors::{self, ActorError};
 use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
