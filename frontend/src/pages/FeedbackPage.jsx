@@ -14,10 +14,12 @@ function QuestionCard({ question }) {
   const qc = useQueryClient();
   const [response,setResponse] = useState('insufficient_evidence');
   const [reason,setReason] = useState('');
+  const [eventCursor,setEventCursor] = useState(0);
+  const [eventBackStack,setEventBackStack] = useState([]);
   const pendingFeedback = useRef(null);
   const history = useQuery({
-    queryKey:['question-feedback',client.config.workspace,question.question_id],
-    queryFn:async()=> (await client.questionFeedback(question.question_id)).value,
+    queryKey:['question-feedback',client.config.workspace,question.question_id,eventCursor],
+    queryFn:async()=> (await client.questionFeedback(question.question_id,eventCursor,100)).value,
   });
   const positions = useQuery({
     queryKey:['question-positions',client.config.workspace,question.question_id],
@@ -52,7 +54,22 @@ function QuestionCard({ question }) {
     <div className="feedback-history">
       <h4>Current recorded positions</h4>
       {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : <p>No human position recorded yet.</p>}
-      <details><summary>Feedback event history</summary><ul>{(history.data?.events??[]).map(item=><li key={item.event_id}>#{item.event_no} · {item.response.replaceAll('_',' ')} · {item.human_reason}</li>)}</ul></details>
+      <details><summary>Feedback event history</summary>
+        {history.isLoading&&<p>Loading feedback events…</p>}
+        {history.error&&<p className="error">{history.error.message}</p>}
+        <ul>{(history.data?.events??[]).map(item=><li key={item.event_id}>#{item.event_no} · {item.response.replaceAll('_',' ')} · {item.human_reason}</li>)}</ul>
+        <div className="row">
+          <button disabled={history.isFetching||eventBackStack.length===0} onClick={()=>{
+            const stack=eventBackStack.slice();
+            setEventCursor(stack.pop()??0);
+            setEventBackStack(stack);
+          }}>Previous feedback events</button>
+          <button disabled={history.isFetching||!history.data?.next_after} onClick={()=>{
+            setEventBackStack(stack=>[...stack,eventCursor]);
+            setEventCursor(history.data.next_after);
+          }}>Next feedback events</button>
+        </div>
+      </details>
       <small>Different people and later corrections remain separate events; this does not establish consensus or truth.</small>
     </div>
   </article>;
