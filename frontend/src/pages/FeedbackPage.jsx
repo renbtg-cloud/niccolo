@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClient } from '../hooks/useClient.js';
 import { useQuestions } from '../hooks/useQuestions.js';
@@ -14,6 +14,7 @@ function QuestionCard({ question }) {
   const qc = useQueryClient();
   const [response,setResponse] = useState('insufficient_evidence');
   const [reason,setReason] = useState('');
+  const pendingFeedback = useRef(null);
   const history = useQuery({
     queryKey:['question-feedback',client.config.workspace,question.question_id],
     queryFn:async()=> (await client.questionFeedback(question.question_id)).value,
@@ -23,8 +24,15 @@ function QuestionCard({ question }) {
     queryFn:async()=> (await client.questionPositions(question.question_id)).value,
   });
   const submit = useMutation({
-    mutationFn:()=>client.recordQuestionFeedback(question.question_id,crypto.randomUUID(),response,reason.trim()),
-    onSuccess:async()=>{setReason('');await Promise.all([
+    mutationFn:()=>{
+      const recordedReason = reason.trim();
+      const signature = JSON.stringify({ questionId: question.question_id, response, reason: recordedReason });
+      if (pendingFeedback.current?.signature !== signature) {
+        pendingFeedback.current = { signature, eventId: crypto.randomUUID() };
+      }
+      return client.recordQuestionFeedback(question.question_id, pendingFeedback.current.eventId, response, recordedReason);
+    },
+    onSuccess:async()=>{pendingFeedback.current=null;setReason('');await Promise.all([
       qc.invalidateQueries({queryKey:['question-feedback',client.config.workspace,question.question_id]}),
       qc.invalidateQueries({queryKey:['question-positions',client.config.workspace,question.question_id]}),
     ]);},
@@ -54,9 +62,16 @@ export function FeedbackPage(){
   const qc=useQueryClient();
   const questions=useQuestions();
   const [text,setText]=useState('');
+  const pendingQuestion = useRef(null);
   const create=useMutation({
-    mutationFn:()=>client.createQuestion(crypto.randomUUID(),text.trim()),
-    onSuccess:async()=>{setText('');await qc.invalidateQueries({queryKey:['questions']});},
+    mutationFn:()=>{
+      const question = text.trim();
+      if (pendingQuestion.current?.question !== question) {
+        pendingQuestion.current = { question, questionId: crypto.randomUUID() };
+      }
+      return client.createQuestion(pendingQuestion.current.questionId, question);
+    },
+    onSuccess:async()=>{pendingQuestion.current=null;setText('');await qc.invalidateQueries({queryKey:['questions']});},
   });
   if(!client)return <p>Connect first.</p>;
   return <section><h2>Questions & human feedback</h2>
