@@ -1,5 +1,16 @@
 # Active work progress
 
+## Linux effective-resource observation — ARM-001 (verified)
+
+PR #25 merged into main at `3c3bdbda`.
+- New read-only `runtime_resources` observer measures the process/cgroup-v2 envelope rather than assuming host totals are available to Niccolò.
+- Linux observations include process RSS/peak RSS, memory current/limit/headroom/pressure, CPU quota, effective cpuset, conservative effective CPU capacity, CPU throttling and PID current/limit.
+- Unknown and explicitly unlimited cgroup limits remain distinct; malformed kernel data fails closed; cgroup paths cannot escape the observation root.
+- Runtime capacity is explicitly **not** epistemic quality, does not change concurrency/model choice, does not mutate cgroups and does not claim GPU observation exists.
+- Live Linux CI exercises the actual observer. Full Actions run `42429716582` passed unit/Clippy/rustfmt, frontend and PostgreSQL regression.
+- Next ARM slice: operator-selected `self_managed` / `externally_managed` / `hybrid` policy and conservative admission/concurrency advice before any scheduler mutation.
+
+
 ## Operation deadline/budget observability — ARM/TIME first slice (verified)
 
 PR #23 merged into main at `562e52d3`.
