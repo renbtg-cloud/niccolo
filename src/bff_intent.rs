@@ -79,10 +79,7 @@ fn cleaned_goal(request: &IntentRequest) -> Result<String, IntentError> {
 
 /// Validate the complete request before persisting an analysis snapshot.
 /// An invalid operation must not leave behind an otherwise valid snapshot.
-fn validate_request(
-    request: &IntentRequest,
-    operation: Uuid,
-) -> Result<String, IntentError> {
+fn validate_request(request: &IntentRequest, operation: Uuid) -> Result<String, IntentError> {
     if request.analysis_id == operation
         || request.reanalysis_of == Some(request.analysis_id)
         || !(1..=10_000).contains(&request.step_budget.unwrap_or(32))
@@ -193,14 +190,26 @@ mod tests {
         let operation = Uuid::new_v4();
         let mut input = request();
         input.step_budget = Some(0);
-        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
         input.step_budget = Some(10_001);
-        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
         input.step_budget = Some(32);
         input.idempotency_key = Some(" ".into());
-        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
         input.idempotency_key = Some("x".repeat(257));
-        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
     }
 
     #[test]
@@ -208,10 +217,16 @@ mod tests {
         let operation = Uuid::new_v4();
         let mut input = request();
         input.context = json!({"message":"x".repeat(262_144)});
-        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
         input.context = json!({});
         input.reanalysis_of = Some(input.analysis_id);
-        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
         input.reanalysis_of = None;
         assert!(validate_request(&input, operation).is_ok());
     }
