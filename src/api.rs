@@ -34,6 +34,7 @@ use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
+use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
 use crate::{
     agentic_controller, agentic_policy, bff_dashboard, bff_epistemic, bff_executor,
@@ -427,6 +428,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
             post(record_used_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/source-scope",
+            get(list_source_scope),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/source-scope/{scope_id}",
+            post(record_source_scope),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/temporal-state",
@@ -2339,6 +2348,101 @@ async fn list_hypotheses(
                 "actor_principal_id":r.actor,"status":"HUMAN_HYPOTHESIS","is_verified_fact":false
             })).collect::<Vec<_>>(),
             "next_after":next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+
+impl From<SourceScopeError> for ApiError {
+    fn from(error: SourceScopeError) -> Self {
+        match error {
+            SourceScopeError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid source scope assertion"),
+            SourceScopeError::Invisible => Self(StatusCode::NOT_FOUND, "source scope reference unavailable"),
+            SourceScopeError::Conflict => Self(StatusCode::CONFLICT, "source scope assertion conflict"),
+            SourceScopeError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "source scope runtime role unavailable",
+            ),
+            SourceScopeError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "source scope unavailable")
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceScopeRequest {
+    source_family: String,
+    collection_status: String,
+    scope_description: String,
+    reason: String,
+    collector_label: Option<String>,
+    date_scope: Option<String>,
+    assertion_kind: String,
+    document_id: Option<Uuid>,
+    supersedes_scope_id: Option<Uuid>,
+}
+
+async fn record_source_scope(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, scope_id)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<SourceScopeRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let analysis_scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let recorded = source_scope::record(
+        &state.pool,
+        analysis_scope,
+        actor,
+        &SourceScopeInput {
+            scope_id,
+            source_family: input.source_family,
+            collection_status: input.collection_status,
+            scope_description: input.scope_description,
+            reason: input.reason,
+            collector_label: input.collector_label,
+            date_scope: input.date_scope,
+            assertion_kind: input.assertion_kind,
+            document_id: input.document_id,
+            supersedes_scope_id: input.supersedes_scope_id,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_source_scope(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let analysis_scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let assertions = source_scope::list(&state.pool, analysis_scope).await?;
+    Ok(no_store(
+        json!({
+            "source_scope": assertions,
+            "missingness_establishes_misconduct": false,
+            "uncollected_means_absent": false,
+            "unknown_existence_means_clean_collection": false
         }),
         StatusCode::OK,
     ))
