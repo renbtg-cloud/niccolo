@@ -137,10 +137,7 @@ pub fn observe() -> ResourceSnapshot {
         process_rss_bytes,
         cgroup_memory_limit_bytes,
         cgroup_memory_current_bytes,
-        effective_memory_limit_bytes: min_known(
-            host_memory_total_bytes,
-            cgroup_memory_limit_bytes,
-        ),
+        effective_memory_limit_bytes: min_known(host_memory_total_bytes, cgroup_memory_limit_bytes),
         cgroup_cpu_quota_millis,
         effective_cpu_limit_millis: min_known(affinity_hint_millis, cgroup_cpu_quota_millis),
         cgroup_v2_detected: cgroup.is_some(),
