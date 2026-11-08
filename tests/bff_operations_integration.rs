@@ -192,7 +192,6 @@ async fn v196_v200_parent_budget_and_operation_digest_contracts_are_preserved() 
     assert_eq!(events.events[0].kind, "QUEUED");
 }
 
-
 #[tokio::test]
 async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
     let (admin, app) = pools().await;
@@ -232,4 +231,79 @@ async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
         operation_budget::require_available(&app, expired_scope).await,
         Err(operation_budget::BudgetError::Deadline)
     ));
+}
+
+#[tokio::test]
+async fn adaptive_admission_serializes_competing_workers_at_workspace_limit() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    for _ in 0..6 {
+        let scope = op(s, Uuid::new_v4());
+        bff_operations::submit(&app, scope, &input(s, "BUILD_BRIEFING", None))
+            .await
+            .unwrap();
+    }
+
+    let mut joins = Vec::new();
+    for idx in 0..8 {
+        let pool = app.clone();
+        let workspace = s.workspace;
+        joins.push(tokio::spawn(async move {
+            let owner = format!("adaptive-{idx}");
+            let claimed = bff_operations::claim_next_in_workspace_limited(
+                &pool, workspace, &owner, 60_000, 2,
+            )
+            .await
+            .unwrap();
+            (owner, claimed)
+        }));
+    }
+
+    let mut claimed = Vec::new();
+    let mut rejected = 0;
+    for join in joins {
+        let (owner, scope) = join.await.unwrap();
+        match scope {
+            Some(scope) => claimed.push((owner, scope)),
+            None => rejected += 1,
+        }
+    }
+    assert_eq!(claimed.len(), 2);
+    assert_eq!(rejected, 6);
+
+    let (owner, released) = claimed.pop().unwrap();
+    assert!(
+        bff_operations::release_execution(&app, released, &owner)
+            .await
+            .unwrap()
+    );
+    let replacement = bff_operations::claim_next_in_workspace_limited(
+        &app,
+        s.workspace,
+        "adaptive-replacement",
+        60_000,
+        2,
+    )
+    .await
+    .unwrap();
+    assert!(replacement.is_some());
+}
+
+#[tokio::test]
+async fn adaptive_admission_rejects_zero_or_excessive_limit() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    for limit in [0, 513] {
+        assert!(matches!(
+            bff_operations::claim_next_in_workspace_limited(
+                &app,
+                s.workspace,
+                "invalid-limit",
+                60_000,
+                limit,
+            )
+            .await,
+            Err(bff_operations::BffOperationError::Invalid)
+        ));
+    }
 }

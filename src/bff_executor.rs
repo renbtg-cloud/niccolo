@@ -2,7 +2,7 @@
 //! Sync, async, pull and future push transports observe the same durable operation.
 use crate::bff_operations::{self, OperationScope, OperationView};
 use crate::model_adapter::ReasoningModel;
-use crate::{agentic_runtime, reanalysis_runtime};
+use crate::{agentic_runtime, reanalysis_runtime, resource_policy, runtime_resources};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -14,6 +14,10 @@ pub enum BffExecutionError {
     Agentic(String),
     #[error("reanalysis execution failed: {0}")]
     Reanalysis(String),
+    #[error("runtime resource observation failed: {0}")]
+    Resources(#[from] runtime_resources::ResourceError),
+    #[error("runtime resource policy failed: {0}")]
+    ResourcePolicy(#[from] resource_policy::ResourcePolicyError),
 }
 
 async fn mark_failed_best_effort(
@@ -77,7 +81,9 @@ async fn run_with_owned_lease(
         let code = match &error {
             BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
             BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
-            BffExecutionError::Operation(_) => "BFF_EXECUTION_FAILED",
+            BffExecutionError::Operation(_)
+            | BffExecutionError::Resources(_)
+            | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
         };
         let message = error.to_string();
         mark_failed_best_effort(pool, scope, actor, code, &message).await;
@@ -101,6 +107,55 @@ pub async fn worker_once(
     };
     let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;
     Ok(Some(WorkerRun { scope, view }))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdaptiveWorkerAttempt {
+    pub resources: runtime_resources::ResourceSnapshot,
+    pub advice: resource_policy::ResourceAdvice,
+    pub run: Option<WorkerRun>,
+}
+
+/// Observe the current Linux runtime envelope and apply the configured
+/// admission mode before claiming work.
+///
+/// Self-managed and hybrid modes enforce the advised workspace-wide active
+/// lease ceiling atomically. Externally-managed mode only reports the advice
+/// and leaves parallelism to the operator/orchestrator.
+pub async fn worker_once_adaptive(
+    pool: &PgPool,
+    workspace: Uuid,
+    actor: Uuid,
+    worker_id: &str,
+    model: &(dyn ReasoningModel + Send + Sync),
+    policy: &resource_policy::ResourcePolicy,
+) -> Result<AdaptiveWorkerAttempt, BffExecutionError> {
+    let resources = runtime_resources::observe()?;
+    let advice = resource_policy::advise(&resources, policy)?;
+    let scope = if advice.apply_concurrency_automatically {
+        bff_operations::claim_next_in_workspace_limited(
+            pool,
+            workspace,
+            worker_id,
+            300_000,
+            advice.recommended_parallel_operations,
+        )
+        .await?
+    } else {
+        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, 300_000).await?
+    };
+    let run = match scope {
+        Some(scope) => {
+            let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;
+            Some(WorkerRun { scope, view })
+        }
+        None => None,
+    };
+    Ok(AdaptiveWorkerAttempt {
+        resources,
+        advice,
+        run,
+    })
 }
 
 /// Execute one already-submitted operation until its natural BFF boundary.
