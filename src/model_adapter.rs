@@ -368,7 +368,13 @@ impl ParsedEndpoint {
             Some((a, p)) => (a, format!("/{p}")),
             None => (rest, "/".to_string()),
         };
-        if authority.is_empty() || authority.contains('@') {
+        // The authority will be sent as Host and used for DNS/TLS. Reject
+        // ambiguous or header-unsafe forms before constructing HTTP bytes.
+        if authority.is_empty()
+            || authority.contains('@')
+            || authority.bytes().any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+            || authority.contains(['?', '#', '\\'])
+        {
             return Err(ModelError::Invalid);
         }
         let (host, port) = if let Some((h, p)) = authority.rsplit_once(':') {
@@ -385,7 +391,11 @@ impl ParsedEndpoint {
                 if scheme == "https" { 443 } else { 80 },
             )
         };
-        if host.trim().is_empty() || path.contains('\r') || path.contains('\n') {
+        if host.trim().is_empty()
+            || port == 0
+            || path.bytes().any(|b| b.is_ascii_control())
+            || path.contains('#')
+        {
             return Err(ModelError::Invalid);
         }
         if scheme == "http" && !matches!(host.as_str(), "127.0.0.1" | "localhost") {
@@ -670,6 +680,19 @@ mod bounded_response_tests {
             &model.with_json_mode(false).request_body(&request).unwrap()
         ).unwrap();
         assert!(compatible.get("response_format").is_none());
+    }
+
+    #[test]
+    fn endpoint_rejects_ambiguous_authority_and_injected_headers() {
+        for url in [
+            "http://localhost:0/v1/chat/completions",
+            "http://localhost:11434\r\nX-Test: bad/v1",
+            "https://example.com?unexpected=1/v1",
+            "https://example.com/#fragment",
+            "https://user@example.com/v1",
+        ] {
+            assert!(ParsedEndpoint::parse(url).is_err(), "accepted {url}");
+        }
     }
 
     #[test]
