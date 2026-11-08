@@ -60,7 +60,9 @@ function QuestionCard({ question }) {
 export function FeedbackPage(){
   const client=useClient();
   const qc=useQueryClient();
-  const questions=useQuestions();
+  const [questionCursor,setQuestionCursor]=useState(null);
+  const [questionBackStack,setQuestionBackStack]=useState([]);
+  const questions=useQuestions(questionCursor);
   const [text,setText]=useState('');
   const pendingQuestion = useRef(null);
   const create=useMutation({
@@ -80,6 +82,17 @@ export function FeedbackPage(){
     {questions.isLoading&&<p>Loading questions…</p>}
     {questions.error&&<p className="error">{questions.error.message}</p>}
     <div className="feedback-list">{(questions.data?.questions??[]).map(q=><QuestionCard key={q.question_id} question={q}/>)}</div>
-    {!questions.isLoading&&(questions.data?.questions??[]).length===0&&<p>No investigative questions have been recorded yet.</p>}
+    {!questions.isLoading&&(questions.data?.questions??[]).length===0&&<p>No investigative questions on this page.</p>}
+    <div className="row">
+      <button disabled={questions.isFetching||questionBackStack.length===0} onClick={()=>{
+        const stack=questionBackStack.slice();
+        setQuestionCursor(stack.pop()??null);
+        setQuestionBackStack(stack);
+      }}>Previous questions</button>
+      <button disabled={questions.isFetching||!questions.data?.next_after} onClick={()=>{
+        setQuestionBackStack(stack=>[...stack,questionCursor]);
+        setQuestionCursor(questions.data.next_after);
+      }}>Next questions</button>
+    </div>
   </section>;
 }
