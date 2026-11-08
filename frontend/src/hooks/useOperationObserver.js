@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '../api/keys.js';
 import { useClient } from './useClient.js';
-import { mergeOperationObservation, operationPhase, TERMINAL_OPERATION_STATES } from '../state/operationObservation.js';
+import { mergeOperationObservation, operationPhase, observationPollDelay } from '../state/operationObservation.js';
 
 export function useOperationObserver(operationId) {
   const client = useClient();
@@ -21,10 +21,7 @@ export function useOperationObserver(operationId) {
     },
     refetchInterval: (q) => {
       const state = q.state.data?.operation?.state;
-      if (!state || TERMINAL_OPERATION_STATES.has(state)) return false;
-      // The API already long-polls for up to five seconds. Avoid tight
-      // additional polling when the server responds immediately.
-      return state === 'WAITING_FOR_HUMAN' ? 1000 : 250;
+      return observationPollDelay(state);
     },
     staleTime: 0,
     retry: 2,
