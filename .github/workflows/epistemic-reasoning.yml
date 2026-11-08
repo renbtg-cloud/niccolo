@@ -30,6 +30,12 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p "test_check_doc_links.py" -v
           python3 scripts/check-doc-links.py
+      - name: Validate local MVP shell syntax before compiling
+        run: |
+          set -euo pipefail
+          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/smoke-local-first-run.sh; do
+            bash -n "$script"
+          done
       - name: Standalone Python export template tests
         run: python3 -m unittest discover -s tests -p "test_presentation_inspector.py" -v
       - name: Unit tests
@@ -157,7 +163,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Check smoke shell syntax
-        run: bash -n scripts/smoke-local-first-run.sh scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh
+      - name: Check every MVP setup shell script
+        run: |
+          set -euo pipefail
+          for script in scripts/smoke-local-first-run.sh scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh; do
+            bash -n "$script"
+          done
       - name: Fresh MVP bootstrap and authenticated first Situation
         run: bash scripts/smoke-local-first-run.sh
