@@ -494,3 +494,5 @@ pub mod grounded_lineage_store;
 pub mod presentation_package;
 
 pub mod runtime_resources;
+
+pub mod resource_policy;
