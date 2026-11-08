@@ -31,9 +31,9 @@ pub struct ImportResult {
     pub graph_revision: i64,
 }
 
-/// Minimal document+fragments write path. All side effects commit or roll back
+/// Byte-exact document, fragments and original payload write path. All changes commit or roll back
 /// together; scoped connection state is automatically cleared at transaction end.
-/// This is deliberately a text-only POC, not a general MIME or identity parser.
+/// Source parsing remains deliberately bounded to supported text formats.
 pub async fn ingest_source(
     pool: &PgPool,
     workspace: Uuid,
@@ -100,6 +100,33 @@ pub async fn ingest_source(
         }
         verify_replay(&mut tx, workspace, document_id, &parsed).await?
     };
+
+    // Metadata/fragments and the byte-exact original commit atomically.
+    // Older documents may lack original bytes; a validated replay backfills
+    // only that exact supplied artifact, never a reconstructed approximation.
+    let payload_inserted = sqlx::query(
+        "INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) \
+         VALUES($1,$2,$3) ON CONFLICT(workspace_id,document_id) DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(document_id)
+    .bind(raw)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected() == 1;
+    if !payload_inserted {
+        let original: Option<Vec<u8>> = sqlx::query_scalar(
+            "SELECT original_bytes FROM niccolo.source_payloads \
+             WHERE workspace_id=$1 AND document_id=$2",
+        )
+        .bind(workspace)
+        .bind(document_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if original.as_deref() != Some(raw) {
+            return Err(ImportError::DocumentConflict);
+        }
+    }
 
     let graph_revision: i64 =
         sqlx::query_scalar("SELECT revision FROM niccolo.graph_revisions WHERE workspace_id=$1")
