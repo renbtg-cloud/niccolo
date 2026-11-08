@@ -3,6 +3,7 @@ use niccolo_evidence::{
     postgres_ingest::{ImportError, ingest_source},
     postgres_repository::{RepositoryError, load_workspace_graph},
     source_import::SourceFormat,
+    source_catalog,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::collections::BTreeSet;
@@ -90,6 +91,9 @@ async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
         "SELECT original_bytes FROM niccolo.source_payloads WHERE workspace_id=$1 AND document_id=$2",
     ).bind(w).bind(id).fetch_one(&admin).await.unwrap();
     assert_eq!(stored, raw);
+    let page = source_catalog::list_sources(&service, w, None, 25).await.unwrap();
+    assert_eq!(page.documents.len(), 1);
+    assert!(page.documents[0].original_bytes_available);
     let replay = ingest_source(
         &service, w, id, SourceFormat::Eml, "fixture://original", raw
     ).await.unwrap();
