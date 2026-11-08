@@ -42,9 +42,12 @@ impl OpenAiCompatibleConfig {
         if base_url.is_none() && api_key.is_none() && model.is_none() {
             return Ok(None);
         }
-        let (Some(base_url), Some(api_key), Some(model)) = (base_url, api_key, model) else {
+        let (Some(base_url), Some(model)) = (base_url, model) else {
             return Err(ProviderConfigError::Incomplete);
         };
+        // Local OpenAI-compatible runtimes often do not require a bearer key.
+        // Empty credentials remain invalid for remote HTTPS providers.
+        let api_key = api_key.unwrap_or_default();
         let provider =
             std::env::var("NICCOLO_LLM_PROVIDER").unwrap_or_else(|_| "openai-compatible".into());
         let curl_bin = std::env::var("NICCOLO_CURL_BIN").unwrap_or_else(|_| "curl".into());
@@ -81,7 +84,7 @@ impl OpenAiCompatibleConfig {
             || self.base_url.starts_with("http://localhost:");
         if !(self.base_url.starts_with("https://") || local_http)
             || self.base_url.contains(['\r', '\n'])
-            || self.api_key.is_empty()
+            || (self.api_key.is_empty() && !local_http)
             || self.api_key.len() > 4096
             || self.api_key.contains(['\r', '\n'])
             || self.model.trim().is_empty()
@@ -312,6 +315,16 @@ mod tests {
         assert!(c.validate().is_err());
         c.base_url = "https://example.com/v1".into();
         assert!(c.validate().is_ok());
+    }
+
+    #[test]
+    fn allows_keyless_loopback_but_rejects_unauthenticated_remote_provider() {
+        let mut c = config("http://127.0.0.1:11434/v1".into());
+        c.api_key.clear();
+        assert!(c.validate().is_ok());
+        assert!(c.native_model().is_ok());
+        c.base_url = "https://example.com/v1".into();
+        assert!(c.validate().is_err());
     }
 
     #[test]
