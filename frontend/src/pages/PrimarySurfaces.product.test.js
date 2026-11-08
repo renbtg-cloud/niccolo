@@ -22,6 +22,13 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).not.toContain('Connect to the BFF first.');
   });
 
+  it('retains upload document identity when a partial import must be retried', () => {
+    expect(situation).toContain('pendingDocumentId.current ?? crypto.randomUUID()');
+    expect(situation).toContain('pendingDocumentId.current = documentId');
+    expect(situation).toContain('pendingDocumentId.current = null');
+    expect(situation).toContain('onError: refresh');
+  });
+
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
     expect(review).toContain("<h3>Niccolò's answer</h3>");
     expect(review).toContain('Competing interpretations considered');
