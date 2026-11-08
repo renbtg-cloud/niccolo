@@ -2,8 +2,8 @@
 
 use niccolo_evidence::{
     analysis_structure::AnalysisScope,
-    authz, collection_provenance, hypothesis_portfolio, investigation_policy, reasoning_packet,
-    reasoning_updates, source_scope, temporal_state,
+    authz, collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
+    investigation_policy, reasoning_packet, reasoning_updates, source_scope, temporal_state,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -523,6 +523,94 @@ async fn collection_provenance_preserves_roles_without_creating_trust() {
         let packet = reasoning_packet::build(&app, scope).await.unwrap();
         assert_eq!(packet.collection_events.len(), 1);
         assert_eq!(packet.collection_events[0].output_evidence_id, Some(evidence));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn decision_readiness_can_stop_bounded_investigation_without_omniscience() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let decision = Uuid::new_v4();
+
+    authz::with_auth_digest("law-firm-test".into(), async {
+        decision_points::create(
+            &app,
+            scope,
+            decision,
+            "What employment consequence is justified for Kessler now?",
+            Some("Human decision after bounded investigation"),
+            s.principal,
+        )
+        .await
+        .unwrap();
+        decision_points::add_option(
+            &app,
+            scope,
+            decision,
+            &decision_points::DecisionOption {
+                option_id: Uuid::new_v4(),
+                ordinal: 1,
+                text: "Take no adverse action now".into(),
+                tradeoff_note: Some("Preserves status quo while uncertainty remains.".into()),
+            },
+            s.principal,
+        )
+        .await
+        .unwrap();
+        decision_points::add_option(
+            &app,
+            scope,
+            decision,
+            &decision_points::DecisionOption {
+                option_id: Uuid::new_v4(),
+                ordinal: 2,
+                text: "Apply the bounded consequence supported by the current record".into(),
+                tradeoff_note: Some("Must be revisited if material counterevidence appears.".into()),
+            },
+            s.principal,
+        )
+        .await
+        .unwrap();
+
+        let assessment = Uuid::new_v4();
+        let reversal = Uuid::new_v4();
+        let view = decision_readiness::record(
+            &app,
+            scope,
+            s.principal,
+            &decision_readiness::DecisionReadinessInput {
+                assessment_id: assessment,
+                decision_id: decision,
+                subject_label: "Kessler".into(),
+                readiness: "READY".into(),
+                rationale: "The current record is sufficient for this bounded human decision.".into(),
+                unresolved_unknowns: "Personal mobile messages remain uncollected.".into(),
+                reversal_conditions: vec![decision_readiness::ReversalConditionInput {
+                    condition_id: reversal,
+                    condition_text: "A contemporaneous message showing contrary authorization.".into(),
+                    impact: "MAY_REVERSE".into(),
+                    acquisition_note: Some("Reanalyse before acting if recovered.".into()),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(view.readiness, "READY");
+        assert!(!view.readiness_claims_omniscience);
+        assert!(view.human_owns_decision);
+        assert_eq!(view.reversal_conditions[0].condition_id, reversal);
+
+        let packet = reasoning_packet::build(&app, scope).await.unwrap();
+        assert_eq!(packet.decisions.decisions.len(), 1);
+        assert_eq!(packet.decision_readiness.len(), 1);
+        assert_eq!(packet.decision_readiness[0].readiness, "READY");
+        assert!(!packet.decision_readiness[0].readiness_claims_omniscience);
     })
     .await;
 }
