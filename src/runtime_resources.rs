@@ -449,7 +449,8 @@ fn observe_windows() -> Result<ResourceSnapshot, ResourceError> {
     };
     // SAFETY: GetCurrentProcess is a valid pseudo-handle; the destination is
     // correctly laid out and its size matches the declared Win32 structure.
-    if unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut process_mem, process_mem.size) } == 0 {
+    let process_mem_size = process_mem.size;
+    if unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut process_mem, process_mem_size) } == 0 {
         return Err(std::io::Error::last_os_error().into());
     }
 
