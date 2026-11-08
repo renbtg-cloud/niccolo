@@ -1,6 +1,6 @@
 //! v0.801-v0.850: structured intermediate reasoning updates.
 //! These records feed later reasoning steps but remain explicit assumptions/gaps/questions, not facts.
-use crate::analysis_structure::AnalysisScope;
+use crate::{analysis_structure::AnalysisScope, observation_query_ledger::{self, SourceQueryIntent}};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -57,6 +57,8 @@ pub struct ReasoningUpdate {
     pub evidence_gaps: Vec<UpdateGap>,
     #[serde(default)]
     pub clarifications: Vec<UpdateClarification>,
+    #[serde(default)]
+    pub source_queries: Vec<SourceQueryIntent>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedUpdate {
@@ -65,6 +67,7 @@ pub struct AppliedUpdate {
     pub assumption_count: usize,
     pub evidence_gap_count: usize,
     pub clarification_count: usize,
+    pub source_query_count: usize,
     pub update_asserts_truth: bool,
 }
 fn valid(s: &str, max: usize) -> bool {
@@ -76,6 +79,7 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         || x.assumptions.len() > 64
         || x.evidence_gaps.len() > 64
         || x.clarifications.len() > 32
+        || x.source_queries.len() > 3
         || x.used_contribution_ids
             .iter()
             .copied()
@@ -95,6 +99,43 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         }
     }
     ids.clear();
+    for query in &x.source_queries {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_analysis_observation_queries              (workspace_id,situation_id,analysis_id,query_id,query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id)              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(query.query_id)
+        .bind(query.query.trim())
+        .bind(query.rationale.trim())
+        .bind(query.expected_observation.trim())
+        .bind(&query.direction)
+        .bind(query.interpretation_id)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?;
+        let stored: Option<(String, String, String, String, Option<Uuid>, Uuid)> =
+            sqlx::query_as(
+                "SELECT query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id                  FROM niccolo.situation_analysis_observation_queries                  WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND query_id=$4",
+            )
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.analysis)
+            .bind(query.query_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if stored != Some((
+            query.query.trim().to_owned(),
+            query.rationale.trim().to_owned(),
+            query.expected_observation.trim().to_owned(),
+            query.direction.clone(),
+            query.interpretation_id,
+            actor,
+        )) {
+            return Err(UpdateError::Conflict);
+        }
+    }
     for a in &x.assumptions {
         if !ids.insert(a.assumption_id) || !valid(&a.statement, 4096) || !valid(&a.basis_note, 4096)
         {
@@ -115,6 +156,12 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
     ids.clear();
     for q in &x.clarifications {
         if !ids.insert(q.question_id) || !valid(&q.text, 4096) || !valid(&q.reason, 2048) {
+            return Err(UpdateError::Invalid);
+        }
+    }
+    ids.clear();
+    for q in &x.source_queries {
+        if !ids.insert(q.query_id) || !observation_query_ledger::valid_intent(q) {
             return Err(UpdateError::Invalid);
         }
     }
@@ -263,6 +310,7 @@ pub async fn apply(
         assumption_count: x.assumptions.len(),
         evidence_gap_count: x.evidence_gaps.len(),
         clarification_count: x.clarifications.len(),
+        source_query_count: x.source_queries.len(),
         update_asserts_truth: false,
     })
 }
