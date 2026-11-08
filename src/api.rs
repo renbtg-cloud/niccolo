@@ -14,6 +14,8 @@ use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScop
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::collection_provenance::{self, CollectionEventInput, CollectionProvenanceError};
+use crate::decision_points::{self, DecisionError, DecisionOption, SelectionEvent};
+use crate::decision_readiness::{self, DecisionReadinessError, DecisionReadinessInput, ReversalConditionInput};
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
@@ -429,6 +431,30 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
             post(record_used_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/decision-points",
+            get(list_decision_points),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/decision-points/{decision}",
+            post(create_decision_point),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/decision-points/{decision}/options/{option}",
+            post(add_decision_option),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/decision-points/{decision}/selections/{event}",
+            post(record_decision_selection),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/decision-readiness",
+            get(list_decision_readiness),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/decision-points/{decision}/readiness/{assessment}",
+            post(record_decision_readiness),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/collection-provenance",
@@ -2363,6 +2389,272 @@ async fn list_hypotheses(
 }
 
 
+
+
+impl From<DecisionError> for ApiError {
+    fn from(error: DecisionError) -> Self {
+        match error {
+            DecisionError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid decision input"),
+            DecisionError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "decision runtime role unavailable",
+            ),
+            DecisionError::Database(sqlx::Error::Database(ref db))
+                if matches!(db.code().as_deref(), Some("23503" | "23514" | "23505")) =>
+            {
+                Self(StatusCode::BAD_REQUEST, "invalid decision reference")
+            }
+            DecisionError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "decision unavailable")
+            }
+        }
+    }
+}
+
+impl From<DecisionReadinessError> for ApiError {
+    fn from(error: DecisionReadinessError) -> Self {
+        match error {
+            DecisionReadinessError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid decision readiness")
+            }
+            DecisionReadinessError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "decision unavailable")
+            }
+            DecisionReadinessError::Conflict => {
+                Self(StatusCode::CONFLICT, "decision readiness conflict")
+            }
+            DecisionReadinessError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "decision readiness runtime role unavailable",
+            ),
+            DecisionReadinessError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "decision readiness unavailable")
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionPointRequest {
+    question: String,
+    context_note: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionOptionRequest {
+    ordinal: i32,
+    text: String,
+    tradeoff_note: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionSelectionRequest {
+    kind: String,
+    option_id: Option<Uuid>,
+    note: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReversalConditionRequest {
+    condition_id: Uuid,
+    condition_text: String,
+    impact: String,
+    acquisition_note: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionReadinessRequest {
+    subject_label: String,
+    readiness: String,
+    rationale: String,
+    unresolved_unknowns: String,
+    #[serde(default)]
+    reversal_conditions: Vec<ReversalConditionRequest>,
+}
+
+async fn create_decision_point(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, decision)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<DecisionPointRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    decision_points::create(
+        &state.pool,
+        scope,
+        decision,
+        &input.question,
+        input.context_note.as_deref(),
+        actor,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"decision_id":decision,"human_owns_decision":true}),
+        StatusCode::CREATED,
+    ))
+}
+
+async fn add_decision_option(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, decision, option)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<DecisionOptionRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    decision_points::add_option(
+        &state.pool,
+        scope,
+        decision,
+        &DecisionOption {
+            option_id: option,
+            ordinal: input.ordinal,
+            text: input.text,
+            tradeoff_note: input.tradeoff_note,
+        },
+        actor,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"decision_id":decision,"option_id":option,"options_are_automatically_ranked":false}),
+        StatusCode::CREATED,
+    ))
+}
+
+async fn record_decision_selection(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, decision, event)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<DecisionSelectionRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    decision_points::append_selection(
+        &state.pool,
+        scope,
+        decision,
+        &SelectionEvent {
+            event_id: event,
+            kind: input.kind,
+            option_id: input.option_id,
+            note: input.note,
+            recorded_by: actor,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!({"decision_id":decision,"event_id":event,"selection_means_executed":false}),
+        StatusCode::CREATED,
+    ))
+}
+
+async fn list_decision_points(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    Ok(no_store(
+        json!(decision_points::package(&state.pool, scope).await?),
+        StatusCode::OK,
+    ))
+}
+
+async fn record_decision_readiness(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, decision, assessment)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(input): Json<DecisionReadinessRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let view = decision_readiness::record(
+        &state.pool,
+        scope,
+        actor,
+        &DecisionReadinessInput {
+            assessment_id: assessment,
+            decision_id: decision,
+            subject_label: input.subject_label,
+            readiness: input.readiness,
+            rationale: input.rationale,
+            unresolved_unknowns: input.unresolved_unknowns,
+            reversal_conditions: input
+                .reversal_conditions
+                .into_iter()
+                .map(|x| ReversalConditionInput {
+                    condition_id: x.condition_id,
+                    condition_text: x.condition_text,
+                    impact: x.impact,
+                    acquisition_note: x.acquisition_note,
+                })
+                .collect(),
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!(view),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_decision_readiness(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    Ok(no_store(
+        json!({
+            "decision_readiness": decision_readiness::latest(&state.pool, scope).await?,
+            "readiness_claims_omniscience": false,
+            "human_owns_decision": true
+        }),
+        StatusCode::OK,
+    ))
+}
 
 impl From<CollectionProvenanceError> for ApiError {
     fn from(error: CollectionProvenanceError) -> Self {
