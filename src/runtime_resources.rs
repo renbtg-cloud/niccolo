@@ -450,7 +450,8 @@ fn observe_windows() -> Result<ResourceSnapshot, ResourceError> {
     // SAFETY: GetCurrentProcess is a valid pseudo-handle; the destination is
     // correctly laid out and its size matches the declared Win32 structure.
     let process_mem_size = process_mem.size;
-    if unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut process_mem, process_mem_size) } == 0 {
+    if unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut process_mem, process_mem_size) } == 0
+    {
         return Err(std::io::Error::last_os_error().into());
     }
 
@@ -476,8 +477,7 @@ fn observe_windows() -> Result<ResourceSnapshot, ResourceError> {
         memory_headroom_bytes: Some(mem.available_physical),
         // System-wide pressure, not a claim about the current process quota.
         memory_pressure_basis_points: Some(
-            u16::try_from(mem.load_percent.min(100) * 100)
-                .map_err(|_| ResourceError::Invalid)?,
+            u16::try_from(mem.load_percent.min(100) * 100).map_err(|_| ResourceError::Invalid)?,
         ),
         cpu_quota_millicores: None,
         cpu_quota_observed: false,
