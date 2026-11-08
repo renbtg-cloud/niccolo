@@ -521,10 +521,10 @@ impl OpenAiCompatibleModel {
             }
         }
         let tcp = connected.ok_or_else(|| {
-            ModelError::Provider(format!(
-                "connect failed: {}",
-                last_error.map(|e| e.to_string()).unwrap_or_else(|| "no address".into())
-            ))
+            last_error.map_or_else(
+                || ModelError::Provider("connect failed: no address".into()),
+                |error| transport_io_error("connect", error),
+            )
         })?;
         tcp.set_read_timeout(Some(timeout))
             .map_err(|e| ModelError::Provider(format!("read timeout setup failed: {e}")))?;
@@ -543,13 +543,13 @@ impl OpenAiCompatibleModel {
             let mut stream = rustls::StreamOwned::new(connection, tcp);
             stream
                 .write_all(request_text.as_bytes())
-                .map_err(|e| ModelError::Provider(format!("write failed: {e}")))?;
+                .map_err(|e| transport_io_error("write", e))?;
             read_bounded(&mut stream)?
         } else {
             let mut stream = tcp;
             stream
                 .write_all(request_text.as_bytes())
-                .map_err(|e| ModelError::Provider(format!("write failed: {e}")))?;
+                .map_err(|e| transport_io_error("write", e))?;
             read_bounded(&mut stream)?
         };
         let (status, _headers, payload) = parse_http_response(&raw)?;
@@ -646,12 +646,23 @@ fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, ModelError> {
 // local worker buffer without bound. Includes headers and transport framing.
 const MAX_HTTP_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 
+fn transport_io_error(phase: &str, error: std::io::Error) -> ModelError {
+    if matches!(
+        error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    ) {
+        ModelError::Timeout
+    } else {
+        ModelError::Provider(format!("{phase} failed: {error}"))
+    }
+}
+
 fn read_bounded<R: Read>(reader: &mut R) -> Result<Vec<u8>, ModelError> {
     let mut raw = Vec::new();
     reader
         .take(MAX_HTTP_RESPONSE_BYTES + 1)
         .read_to_end(&mut raw)
-        .map_err(|e| ModelError::Provider(format!("read failed: {e}")))?;
+        .map_err(|e| transport_io_error("read", e))?;
     if raw.len() as u64 > MAX_HTTP_RESPONSE_BYTES {
         return Err(ModelError::Provider("provider response too large".into()));
     }
@@ -773,9 +784,19 @@ mod bounded_response_tests {
             output_contract: serde_json::json!({}),
         };
         let start = Instant::now();
-        assert!(matches!(model.perform_blocking(&request), Err(ModelError::Provider(_))));
+        assert!(matches!(model.perform_blocking(&request), Err(ModelError::Timeout)));
         assert!(start.elapsed() < Duration::from_millis(1350));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn socket_timeout_errors_are_classified_as_timeouts() {
+        for kind in [std::io::ErrorKind::TimedOut, std::io::ErrorKind::WouldBlock] {
+            let error = std::io::Error::new(kind, "timed out");
+            assert!(matches!(transport_io_error("read", error), ModelError::Timeout));
+        }
+        let other = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
+        assert!(matches!(transport_io_error("connect", other), ModelError::Provider(_)));
     }
 
     #[test]
