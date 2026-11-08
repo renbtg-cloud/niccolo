@@ -659,7 +659,11 @@ mod tests {
         assert!(snapshot.logical_parallelism >= 1);
         assert!(snapshot.process_rss_bytes.is_some_and(|bytes| bytes > 0));
         assert!(snapshot.memory_headroom_bytes.is_some());
-        assert!(snapshot.memory_pressure_basis_points.is_some_and(|points| points <= 10_000));
+        assert!(
+            snapshot
+                .memory_pressure_basis_points
+                .is_some_and(|points| points <= 10_000)
+        );
         assert!(!snapshot.memory_limit_observed);
         assert!(!snapshot.cpu_quota_observed);
         assert!(!snapshot.mutates_resource_limits);
