@@ -2,9 +2,7 @@
 //! Sync, async, pull and future push transports observe the same durable operation.
 use crate::bff_operations::{self, OperationScope, OperationView};
 use crate::model_adapter::ReasoningModel;
-use crate::{
-    agentic_runtime, reanalysis_runtime, resource_policy, runtime_resources,
-};
+use crate::{agentic_runtime, reanalysis_runtime, resource_policy, runtime_resources};
 use sqlx::PgPool;
 use uuid::Uuid;
 
