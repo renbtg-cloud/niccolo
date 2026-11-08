@@ -459,6 +459,8 @@ pub mod investigation_policy;
 
 pub mod hypothesis_portfolio;
 
+pub mod temporal_state;
+
 pub mod reanalysis_advisor;
 
 pub mod bff_dashboard;
