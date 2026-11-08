@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const connect = readFileSync(new URL('./ConnectPanel.jsx', import.meta.url), 'utf8');
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const review = readFileSync(new URL('./ReviewPage.jsx', import.meta.url), 'utf8');
+const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'utf8');
 
 describe('buyer-facing primary surfaces', () => {
   it('collapses prepared demo identifiers while keeping the bearer token explicit', () => {
@@ -31,6 +32,14 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingCorrection.current?.signature !== signature');
     expect(situation).toContain('pendingContribution.current.id');
     expect(situation).toContain('pendingCorrection.current.id');
+  });
+
+  it('keeps selected analyses observable outside the Analyze screen', () => {
+    for (const surface of [review, analysis]) {
+      expect(surface).toContain('useOperationObserver(activeOperation)');
+      expect(surface).toContain('observed.operation?.target_analysis_id===analysis');
+      expect(surface).toContain('useAnalysisOutput(analysis,');
+    }
   });
 
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
