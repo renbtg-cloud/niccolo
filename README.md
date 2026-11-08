@@ -78,6 +78,9 @@ Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](MVP_AR
 
 ## Run locally
 
+For an MVP binary containing the **current** React interface, use `bash scripts/build-mvp.sh` after installing the prerequisites below. This command builds `frontend/dist` before compiling `niccolo-api`, whose embedded HTML/JavaScript/CSS are captured at Rust compile time. Running Cargo alone after changing React sources can serve stale UI assets.
+
+
 ### Prerequisites
 
 - Linux environment with Rust/Cargo compatible with this repository (the offline toolchain bundle targets Rust 1.99.1).
