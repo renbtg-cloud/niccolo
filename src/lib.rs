@@ -425,6 +425,8 @@ pub mod analysis_timeline;
 pub mod attention_control;
 pub mod control_ledger;
 pub mod decision_points;
+
+pub mod decision_readiness;
 pub mod human_agency;
 pub mod human_briefing;
 pub mod human_control;
