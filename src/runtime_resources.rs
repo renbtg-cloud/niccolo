@@ -145,9 +145,7 @@ fn parse_limit(text: Option<&str>) -> Result<(Option<u64>, bool, bool), Resource
     if value == "max" {
         return Ok((None, true, true));
     }
-    let parsed = value
-        .parse::<u64>()
-        .map_err(|_| ResourceError::Invalid)?;
+    let parsed = value.parse::<u64>().map_err(|_| ResourceError::Invalid)?;
     Ok((Some(parsed), true, false))
 }
 
@@ -168,13 +166,8 @@ fn parse_cpu_max(text: Option<&str>) -> Result<(Option<u64>, bool, bool), Resour
     if quota == "max" {
         return Ok((None, true, true));
     }
-    let quota = quota
-        .parse::<u64>()
-        .map_err(|_| ResourceError::Invalid)?;
-    let millicores = quota
-        .checked_mul(1000)
-        .ok_or(ResourceError::Invalid)?
-        / period;
+    let quota = quota.parse::<u64>().map_err(|_| ResourceError::Invalid)?;
+    let millicores = quota.checked_mul(1000).ok_or(ResourceError::Invalid)? / period;
     Ok((Some(millicores), true, false))
 }
 
@@ -193,12 +186,8 @@ fn parse_cpuset_count(text: Option<&str>) -> Result<Option<u32>, ResourceError> 
             return Err(ResourceError::Invalid);
         }
         if let Some((start, end)) = segment.split_once('-') {
-            let start = start
-                .parse::<u32>()
-                .map_err(|_| ResourceError::Invalid)?;
-            let end = end
-                .parse::<u32>()
-                .map_err(|_| ResourceError::Invalid)?;
+            let start = start.parse::<u32>().map_err(|_| ResourceError::Invalid)?;
+            let end = end.parse::<u32>().map_err(|_| ResourceError::Invalid)?;
             if end < start {
                 return Err(ResourceError::Invalid);
             }
@@ -206,9 +195,7 @@ fn parse_cpuset_count(text: Option<&str>) -> Result<Option<u32>, ResourceError> 
                 .checked_add(end - start + 1)
                 .ok_or(ResourceError::Invalid)?;
         } else {
-            segment
-                .parse::<u32>()
-                .map_err(|_| ResourceError::Invalid)?;
+            segment.parse::<u32>().map_err(|_| ResourceError::Invalid)?;
             total = total.checked_add(1).ok_or(ResourceError::Invalid)?;
         }
     }
@@ -295,14 +282,10 @@ fn snapshot_from(
         }
         _ => None,
     };
-    let (cpu_quota_millicores, cpu_quota_observed, cpu_quota_unlimited) =
-        parse_cpu_max(cpu_max)?;
+    let (cpu_quota_millicores, cpu_quota_observed, cpu_quota_unlimited) = parse_cpu_max(cpu_max)?;
     let cpuset_cpu_count = parse_cpuset_count(cpuset)?;
-    let effective_cpu_capacity_millicores = observed_capacity(
-        logical_parallelism,
-        cpu_quota_millicores,
-        cpuset_cpu_count,
-    )?;
+    let effective_cpu_capacity_millicores =
+        observed_capacity(logical_parallelism, cpu_quota_millicores, cpuset_cpu_count)?;
     let cpu_throttled_events = parse_keyed_u64(cpu_stat, "nr_throttled")?;
     let cpu_throttled_usec = parse_keyed_u64(cpu_stat, "throttled_usec")?;
     let pids_current = parse_scalar(pids_current)?;
@@ -398,8 +381,7 @@ pub fn observe() -> Result<ResourceSnapshot, ResourceError> {
 mod tests {
     use super::*;
 
-    const STATUS: &str =
-        "Name:\tniccolo\nVmHWM:\t2048 kB\nVmRSS:\t1536 kB\nThreads:\t8\n";
+    const STATUS: &str = "Name:\tniccolo\nVmHWM:\t2048 kB\nVmRSS:\t1536 kB\nThreads:\t8\n";
 
     #[test]
     fn parses_realistic_cgroup_v2_envelope_without_using_host_totals() {
@@ -457,8 +439,8 @@ mod tests {
         assert!(unlimited.pids_limit_unlimited);
         assert_eq!(unlimited.effective_cpu_capacity_millicores, 2000);
 
-        let unknown = snapshot_from(4, STATUS, None, None, None, None, None, None, None, None)
-            .unwrap();
+        let unknown =
+            snapshot_from(4, STATUS, None, None, None, None, None, None, None, None).unwrap();
         assert!(!unknown.memory_limit_observed);
         assert!(!unknown.cpu_quota_observed);
         assert!(!unknown.pids_limit_observed);
