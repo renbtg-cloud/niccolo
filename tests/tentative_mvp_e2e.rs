@@ -63,7 +63,7 @@ fn model_request_from_wire(wire: &str) -> Value {
     serde_json::from_str(user).expect("provider user message is a structured Niccolò request")
 }
 
-fn response_content(wire: &str) -> (String, String) {
+fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
     let purpose = if wire.contains("CHALLENGE_SYNTHESIS") {
         "CHALLENGE_SYNTHESIS"
     } else if wire.contains("SYNTHESIZE") {
@@ -83,6 +83,12 @@ fn response_content(wire: &str) -> (String, String) {
     } else {
         "OTHER"
     };
+    if malformed_synthesis && purpose == "SYNTHESIZE" {
+        return (
+            purpose.to_owned(),
+            json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{"answer_text":42}}).to_string(),
+        );
+    }
     let value = match purpose {
         "SYNTHESIZE" => {
             let request = model_request_from_wire(wire);
@@ -214,7 +220,7 @@ fn read_request(socket: &mut std::net::TcpStream) -> String {
     String::from_utf8_lossy(&bytes).to_string()
 }
 
-fn provider() -> ProviderFixture {
+fn provider(malformed_synthesis: bool) -> ProviderFixture {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
@@ -230,7 +236,7 @@ fn provider() -> ProviderFixture {
                 Ok((mut socket, _)) => {
                     let wire = read_request(&mut socket);
                     wires_thread.lock().unwrap().push(wire.clone());
-                    let (purpose, content) = response_content(&wire);
+                    let (purpose, content) = response_content(&wire, malformed_synthesis);
                     purposes_thread.lock().unwrap().push(purpose);
                     let envelope = json!({
                         "model": "mock-e2e-model-v1",
@@ -269,6 +275,10 @@ fn provider() -> ProviderFixture {
 }
 
 async fn setup() -> Harness {
+    setup_with_mode(false).await
+}
+
+async fn setup_with_mode(malformed_synthesis: bool) -> Harness {
     let admin = PgPoolOptions::new()
         .max_connections(4)
         .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
@@ -292,7 +302,7 @@ async fn setup() -> Harness {
     let token = authz::provision_token(&admin, principal, workspace, true, true, 1)
         .await
         .unwrap();
-    let provider = provider();
+    let provider = provider(malformed_synthesis);
     Harness {
         _admin: admin,
         router: api::router_with_model(secure, Arc::new(provider.model)),
@@ -346,6 +356,81 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let value = serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({}));
     (status, value)
+}
+
+#[tokio::test]
+async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
+    let h = setup_with_mode(true).await;
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST", &situation_path, &h.token,
+            Some(json!({"focus":"Interpret conflicting context carefully"})),
+        ),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let document = Uuid::new_v4();
+    let (status, _) = invoke(
+        h.router.clone(),
+        raw_request(
+            "POST",
+            &format!("/v1/workspaces/{}/sources/{document}", h.workspace),
+            &h.token, "text/plain", "chat.txt",
+            "01/01/2026, 10:00 - Ana: Please confirm by noon\n",
+        ),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST", &format!("{situation_path}/sources/{document}"), &h.token, None,
+        ),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let contribution = Uuid::new_v4();
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST", &format!("{situation_path}/contributions/{contribution}"), &h.token,
+            Some(json!({"kind":"user_reported","text":"The deadline may matter.","related_evidence_id":null})),
+        ),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let (status, response) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST", &format!("{situation_path}/bff/intents/{operation}/sync"), &h.token,
+            Some(json!({
+                "analysis_id": analysis,
+                "intent": "UNDERSTAND",
+                "goal": "Consider competing interpretations.",
+                "reanalysis_of": null,
+                "idempotency_key": format!("invalid-artifact-{operation}"),
+                "step_budget": 32,
+                "context": {}
+            })),
+        ),
+    ).await;
+    assert!(
+        !status.is_success() || response["operation"]["state"] == "FAILED",
+        "a malformed LLM artifact must not be presented as a successful analysis"
+    );
+    let failed_synthesis: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_step_events e          JOIN niccolo.agentic_steps s USING(workspace_id,situation_id,operation_id,plan_revision,step_id)          WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3            AND s.step_kind='SYNTHESIZE' AND e.event_kind='FAILED'"
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(operation)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(failed_synthesis, 1, "durable synthesis step must be marked FAILED");
 }
 
 #[tokio::test]
