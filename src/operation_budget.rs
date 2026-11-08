@@ -58,15 +58,21 @@ async fn scoped(pool: &PgPool, w: uuid::Uuid) -> Result<Transaction<'_, Postgres
 }
 
 fn configured(input: &Value) -> Result<(i64, i64), BudgetError> {
-    let b = input.get("model_budget");
-    let max_i = b
-        .and_then(|x| x.get("max_invocations"))
-        .and_then(Value::as_i64)
-        .unwrap_or(32);
-    let max_t = b
-        .and_then(|x| x.get("max_total_tokens"))
-        .and_then(Value::as_i64)
-        .unwrap_or(200_000);
+    let budget = match input.get("model_budget") {
+        None => None,
+        Some(Value::Object(fields)) => Some(fields),
+        Some(_) => return Err(BudgetError::Invalid),
+    };
+    // Explicitly malformed user-supplied limits must not silently become defaults.
+    // Defaults apply only when a limit was omitted, not when it has the wrong type.
+    let read_limit = |name: &str, default: i64| -> Result<i64, BudgetError> {
+        match budget.and_then(|fields| fields.get(name)) {
+            None => Ok(default),
+            Some(value) => value.as_i64().ok_or(BudgetError::Invalid),
+        }
+    };
+    let max_i = read_limit("max_invocations", 32)?;
+    let max_t = read_limit("max_total_tokens", 200_000)?;
     if !(1..=1024).contains(&max_i) || !(1..=10_000_000).contains(&max_t) {
         return Err(BudgetError::Invalid);
     }
@@ -212,6 +218,34 @@ mod tests {
         assert!(summarize(&json!({}), -1, 0, None).is_err());
         assert!(summarize(&json!({}), 1, -1, None).is_err());
         assert!(summarize(&json!({}), 1, 0, Some(-1)).is_err());
+    }
+
+    #[test]
+    fn malformed_explicit_budgets_never_fall_back_to_default() {
+        for budget in [
+            json!({"model_budget":null}),
+            json!({"model_budget":"unlimited"}),
+            json!({"model_budget":[]}),
+            json!({"model_budget":{"max_invocations":null}}),
+            json!({"model_budget":{"max_invocations":"10"}}),
+            json!({"model_budget":{"max_invocations":true}}),
+            json!({"model_budget":{"max_total_tokens":2.5}}),
+            json!({"model_budget":{"max_total_tokens":-1}}),
+        ] {
+            assert!(matches!(
+                summarize(&budget, 0, 0, None),
+                Err(BudgetError::Invalid)
+            ), "accepted malformed budget: {budget}");
+        }
+        let valid = summarize(
+            &json!({"model_budget":{"max_invocations":5}}),
+            0,
+            0,
+            None,
+        )
+        .unwrap();
+        assert_eq!(valid.max_invocations, 5);
+        assert_eq!(valid.max_total_tokens, 200_000);
     }
 
     #[test]
