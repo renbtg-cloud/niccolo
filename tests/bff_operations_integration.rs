@@ -97,6 +97,49 @@ async fn v182_v186_operation_is_durable_idempotent_and_conflict_detecting() {
 }
 
 #[tokio::test]
+async fn concurrent_same_key_submissions_reuse_one_operation_and_queue_event() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let request = input(s, "AGENTIC_ANALYSIS", Some("parallel-replay"));
+    let scopes = (0..10)
+        .map(|_| op(s, Uuid::new_v4()))
+        .collect::<Vec<_>>();
+    let results = futures::future::join_all(
+        scopes
+            .iter()
+            .copied()
+            .map(|scope| bff_operations::submit(&app, scope, &request)),
+    )
+    .await;
+    let winner = results[0].as_ref().unwrap().operation_id;
+    for result in results {
+        let operation = result.unwrap();
+        assert_eq!(operation.operation_id, winner);
+        assert_eq!(operation.state, "QUEUED");
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.bff_operations          WHERE workspace_id=$1 AND situation_id=$2 AND idempotency_key='parallel-replay'"
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+    let events: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.bff_operation_events          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND event_kind='QUEUED'"
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(winner)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(events, 1);
+}
+
+#[tokio::test]
 async fn idempotency_rejects_different_immutable_operation_metadata() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
