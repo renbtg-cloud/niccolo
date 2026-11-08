@@ -20,4 +20,11 @@ describe('primary analysis path', () => {
     expect(operations).toContain("operation.state==='CANCELLED'");
     expect(operations).toContain('No answer was published. You can start another analysis.');
   });
+
+  it('reuses operation and analysis IDs after a lost response to avoid duplicate billing', () => {
+    expect(operations).toContain('const pendingLaunch=useRef(null)');
+    expect(operations).toContain('pendingLaunch.current?.signature!==signature');
+    expect(operations).toContain('const {operationId,analysisId}=pendingLaunch.current');
+    expect(operations).toContain('onSuccess:()=>{pendingLaunch.current=null;}');
+  });
 });
