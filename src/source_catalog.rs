@@ -1,4 +1,5 @@
 //! Workspace-scoped read-only source metadata; never returns raw uploaded bytes.
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -14,6 +15,8 @@ pub enum CatalogError {
     InvisibleDocument,
     #[error("source document has too many distinct speaker labels")]
     TooManySpeakers,
+    #[error("stored original source bytes do not match their declared SHA-256")]
+    CorruptOriginal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,8 +132,8 @@ pub async fn source_original(
         .fetch_one(&mut *tx)
         .await?;
     crate::authz::bind_auth_digest(&mut tx).await?;
-    let value: Option<(String, Vec<u8>)> = sqlx::query_as(
-        "SELECT d.format,p.original_bytes FROM niccolo.source_documents d \
+    let value: Option<(String, String, Vec<u8>)> = sqlx::query_as(
+        "SELECT d.format,d.sha256,p.original_bytes FROM niccolo.source_documents d \
          JOIN niccolo.source_payloads p USING(workspace_id,document_id) \
          WHERE d.workspace_id=$1 AND d.document_id=$2",
     )
@@ -139,7 +142,12 @@ pub async fn source_original(
     .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(value)
+    value.map(|(format, digest, original)| {
+        if format!("{:x}", Sha256::digest(&original)) != digest {
+            return Err(CatalogError::CorruptOriginal);
+        }
+        Ok((format, original))
+    }).transpose()
 }
 
 pub async fn document_speakers(
