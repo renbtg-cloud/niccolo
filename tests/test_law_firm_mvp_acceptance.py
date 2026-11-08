@@ -31,5 +31,12 @@ class LawFirmMvpAcceptanceTest(unittest.TestCase):
         doc["actors"] = [a for a in doc["actors"] if a["id"] != "old-niccolo"]
         self.assertTrue(any("old-niccolo" in e for e in mod.validate(doc)))
 
+    def test_structural_fixture_may_be_pending(self):
+        self.assertEqual(mod.validate(fixture(), require_complete=False), [])
+
+    def test_complete_acceptance_rejects_pending_cases(self):
+        errors = mod.validate(fixture(), require_complete=True)
+        self.assertTrue(any("has not been executed" in e for e in errors))
+
 if __name__ == "__main__":
     unittest.main()
