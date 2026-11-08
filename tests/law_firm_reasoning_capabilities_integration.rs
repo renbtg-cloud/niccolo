@@ -3,8 +3,10 @@
 use niccolo_evidence::{
     analysis_structure::AnalysisScope,
     authz, collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
-    investigation_policy, reasoning_packet, reasoning_updates, source_scope, temporal_state,
+    integrity_scope, investigation_policy, reasoning_packet, reasoning_updates, source_scope,
+    temporal_state,
 };
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -79,6 +81,7 @@ async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) ->
     let document = Uuid::new_v4();
     let evidence = Uuid::new_v4();
     let bytes = content.as_bytes();
+    let digest = format!("{:x}", Sha256::digest(bytes));
     sqlx::query(
         "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
          VALUES($1,$2,'WHATSAPP_EXPORT',$3,$4,$5)",
@@ -86,8 +89,17 @@ async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) ->
     .bind(s.workspace)
     .bind(document)
     .bind(locator)
-    .bind("c".repeat(64))
+    .bind(&digest)
     .bind(i64::try_from(bytes.len()).unwrap())
+    .execute(admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) VALUES($1,$2,$3)",
+    )
+    .bind(s.workspace)
+    .bind(document)
+    .bind(bytes)
     .execute(admin)
     .await
     .unwrap();
@@ -611,6 +623,54 @@ async fn decision_readiness_can_stop_bounded_investigation_without_omniscience()
         assert_eq!(packet.decision_readiness.len(), 1);
         assert_eq!(packet.decision_readiness[0].readiness, "READY");
         assert!(!packet.decision_readiness[0].readiness_claims_omniscience);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn verified_stored_bytes_do_not_upgrade_authenticity_or_completeness() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let (document, _) = attach_source(
+        &admin,
+        s,
+        "integrity-fixture.txt",
+        "01/01/2026, 00:00 - External operator: retained bytes with unknown upstream authenticity.",
+    )
+    .await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+
+    authz::with_auth_digest("law-firm-test".into(), async {
+        let assessment = integrity_scope::record(
+            &app,
+            scope,
+            s.principal,
+            &integrity_scope::IntegrityAssessmentInput {
+                assessment_id: Uuid::new_v4(),
+                document_id: document,
+                integrity_scope: "STORED_ORIGINAL_BYTES".into(),
+                authenticity: "UNKNOWN".into(),
+                completeness: "UNKNOWN".into(),
+                rationale: "Only post-ingest byte continuity is directly verifiable.".into(),
+                assertion_kind: "DOCUMENTARY_OBSERVATION".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(assessment.byte_continuity, "VERIFIED");
+        assert_eq!(assessment.authenticity, "UNKNOWN");
+        assert_eq!(assessment.completeness, "UNKNOWN");
+        assert!(!assessment.byte_continuity_establishes_authenticity);
+        assert!(!assessment.byte_continuity_establishes_completeness);
+
+        let packet = reasoning_packet::build(&app, scope).await.unwrap();
+        assert_eq!(packet.integrity_assessments.len(), 1);
+        assert_eq!(packet.integrity_assessments[0].byte_continuity, "VERIFIED");
+        assert_eq!(packet.integrity_assessments[0].authenticity, "UNKNOWN");
     })
     .await;
 }
