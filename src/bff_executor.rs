@@ -2,7 +2,9 @@
 //! Sync, async, pull and future push transports observe the same durable operation.
 use crate::bff_operations::{self, OperationScope, OperationView};
 use crate::model_adapter::ReasoningModel;
-use crate::{agentic_runtime, reanalysis_runtime};
+use crate::{
+    agentic_runtime, reanalysis_runtime, resource_policy, runtime_resources,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -14,6 +16,8 @@ pub enum BffExecutionError {
     Agentic(String),
     #[error("reanalysis execution failed: {0}")]
     Reanalysis(String),
+    #[error("resource admission policy invalid: {0}")]
+    ResourcePolicy(#[from] resource_policy::ResourcePolicyError),
 }
 
 async fn mark_failed_best_effort(
@@ -101,6 +105,86 @@ pub async fn worker_once(
     };
     let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;
     Ok(Some(WorkerRun { scope, view }))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdaptiveWorkerAttempt {
+    pub run: Option<WorkerRun>,
+    pub advice: Option<resource_policy::ResourceAdvice>,
+    /// True only when local/self-managed policy could not observe resources and
+    /// conservatively fell back to one active lease. It is not a quality score.
+    pub observation_fallback_used: bool,
+    /// None means the external resource manager remains authoritative for
+    /// admission. Some(n) is the local lease cap used for this attempt.
+    pub local_active_lease_limit: Option<u16>,
+}
+
+/// Execute at most one queued/recoverable operation with bounded resource-aware
+/// admission. This is the first scheduler wiring slice:
+///
+/// - SELF_MANAGED/HYBRID apply the advisory concurrency ceiling to *worker*
+///   lease claims; unknown/unavailable telemetry falls back to one active lease.
+/// - EXTERNALLY_MANAGED observes when possible but does not locally cap claims.
+/// - Direct sync/async execution surfaces are intentionally unchanged here, so
+///   this is not yet a process-wide concurrency guarantee.
+/// - Critical pressure preserves one path of progress instead of stopping all work.
+pub async fn worker_once_with_resource_policy(
+    pool: &PgPool,
+    workspace: Uuid,
+    actor: Uuid,
+    worker_id: &str,
+    model: &(dyn ReasoningModel + Send + Sync),
+    policy: &resource_policy::ResourcePolicy,
+) -> Result<AdaptiveWorkerAttempt, BffExecutionError> {
+    resource_policy::validate(policy)?;
+
+    let observed = runtime_resources::observe();
+    let advice = observed
+        .as_ref()
+        .ok()
+        .and_then(|snapshot| resource_policy::advise(snapshot, policy).ok());
+
+    let (scope, observation_fallback_used, local_active_lease_limit) = match policy.mode {
+        resource_policy::ResourceManagementMode::ExternallyManaged => (
+            bff_operations::claim_next_in_workspace(pool, workspace, worker_id, 300_000).await?,
+            false,
+            None,
+        ),
+        resource_policy::ResourceManagementMode::SelfManaged
+        | resource_policy::ResourceManagementMode::Hybrid => {
+            let (limit, fallback) = match &advice {
+                Some(value) => (value.recommended_parallel_operations, false),
+                None => (1, true),
+            };
+            (
+                bff_operations::claim_next_in_workspace_with_limit(
+                    pool,
+                    workspace,
+                    worker_id,
+                    300_000,
+                    limit,
+                )
+                .await?,
+                fallback,
+                Some(limit),
+            )
+        }
+    };
+
+    let run = match scope {
+        Some(scope) => {
+            let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;
+            Some(WorkerRun { scope, view })
+        }
+        None => None,
+    };
+
+    Ok(AdaptiveWorkerAttempt {
+        run,
+        advice,
+        observation_fallback_used,
+        local_active_lease_limit,
+    })
 }
 
 /// Execute one already-submitted operation until its natural BFF boundary.
