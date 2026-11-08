@@ -714,6 +714,131 @@ Use a synthetic law-firm fixture and assert that each class is present and separ
 
 ---
 
+## LF-015 - Adversarial dossier generation
+
+### Problem
+
+The public story now has a concrete product payoff: Helena uses Niccolò to build a **Kessler Dossier** that outside counsel can inspect, challenge, verify, and adapt into a disciplinary complaint.
+
+A generic narrative handoff is not enough.
+
+### Required capability
+
+Niccolò must be able to produce a bounded, portable, hostile-review-ready dossier for a selected person, hypothesis, decision, or investigation focus.
+
+The dossier must be generated from persisted Niccolò state and must preserve distinctions between:
+
+- documentary source observations;
+- attributed human statements;
+- human recollections and beliefs;
+- machine hypotheses and interpretations;
+- imported prior machine outputs;
+- support and counterevidence;
+- source dependence / shared provenance roots;
+- temporal assertions;
+- formal authority vs practical influence;
+- integrity continuity and missing integrity anchors;
+- known collection gaps and missing source families;
+- alternative explanations considered;
+- unresolved questions;
+- human review/corrections;
+- adversarial challenges;
+- changes introduced by reanalysis.
+
+The dossier must provide both:
+
+1. a human-readable review package; and
+2. a machine-readable package that another authorized Niccolò instance or inspection tool can verify and reconstruct without silently upgrading any inference into evidence.
+
+### Dossier requirements
+
+For a high-stakes focus such as Kessler/Orison, include at least:
+
+- cover / scope / generation metadata;
+- concise findings overview;
+- chronology;
+- actor/role map;
+- claim matrix;
+- support/counterevidence table;
+- provenance/lineage graph representation;
+- source inventory;
+- dependency/root summary;
+- temporal knowledge/authority timeline;
+- alternative hypotheses;
+- evidence favorable to the investigated person;
+- missingness and collection-scope notes;
+- integrity notes;
+- human-belief vs documentary-fact distinctions;
+- prior-machine-output lineage;
+- challenge record;
+- unresolved questions;
+- export manifest and deterministic hashes.
+
+### Critical invariants
+
+- A dossier is not a verdict.
+- A dossier generated about a person must contain materially relevant counterevidence, not only inculpatory evidence.
+- Machine-generated prose must remain distinguishable from primary evidence.
+- The current user/CEO cannot silently promote a belief into a dossier fact.
+- Source-lineage collapse must survive dossier export.
+- Re-importing the dossier must not create duplicate independent evidence.
+- A dossier must be regenerable from the same frozen state with deterministic structural content apart from explicitly non-deterministic presentation metadata.
+
+### Required tests
+
+- generate a Kessler-style dossier from the synthetic acceptance fixture;
+- confirm counterevidence is present;
+- confirm three dependent reports remain one provenance family;
+- confirm CEO belief about framing remains a human belief;
+- confirm the below-floor authority record and later client statement remain different epistemic classes;
+- confirm integrity limitations are represented;
+- confirm cross-workspace dossier access is rejected;
+- confirm exported dossier hashes verify;
+- confirm dossier re-import does not create corroboration by duplication.
+
+---
+
+## LF-016 - Decision-relevant stopping and divergent outcomes
+
+### Problem
+
+The use case must not terminate in permanent "more research needed."
+
+Niccolò needs to support a human decision when uncertainty remains but the investigation has become decision-useful.
+
+### Required capability
+
+Add an explicit **decision-readiness / stopping assessment** that can state, without pretending certainty:
+
+- which material questions have been resolved enough for the user's decision;
+- which uncertainties remain;
+- which remaining questions could still reverse or materially alter the decision;
+- which additional investigations now have low expected decision value;
+- whether different people/hypotheses warrant different outcomes.
+
+This must work with the existing human-owned stop/decision boundary.
+
+The law-firm acceptance case requires divergent results:
+
+- Camille's initial suspicion weakens enough that her bonus can be approved;
+- Tomas receives a narrower review rather than guilt by association;
+- Nadine remains in position because preserved audit evidence points away from IT-wide complicity;
+- Julian's verified false attribution and exclusion override support termination;
+- Kessler's evidence package supports termination and external referral;
+- the compensation system itself is frozen for redesign.
+
+Niccolò does not execute those actions. It must make the evidentiary distinctions supporting them inspectable.
+
+### Required tests
+
+- a single investigation can produce materially different readiness/outcome recommendations for different actors;
+- "uncertainty remains" does not automatically block handoff;
+- a high-value unresolved discriminator blocks a strong conclusion when appropriate;
+- low-value residual uncertainty can remain explicit without forcing endless retrieval;
+- human may override stop/readiness assessment.
+
+---
+
 # End-to-end synthetic acceptance fixture
 
 Create a synthetic fixture derived from the public story, but keep it compact enough for CI.
@@ -741,7 +866,7 @@ The fixture should include at least:
 15. one expensive clarification and one cheap high-information clarification so question ranking can be tested;
 16. a valid manifest around an artifact whose pre-ingest authenticity remains unknown.
 
-The expected result must **not** be "prove collusion."
+The expected result must **not** be a magic "prove collusion" flag. It must be a reproducible evidence-and-hypothesis path that is strong enough to drive the divergent human decisions in the public story.
 
 The acceptance expectations should instead verify behaviors such as:
 
@@ -756,7 +881,7 @@ The acceptance expectations should instead verify behaviors such as:
 - rank a discriminator above a generic interesting question;
 - show the missing source family;
 - keep politically affiliated actors epistemically neutral absent narrower evidence;
-- return control to the human before bonus action.
+- return control to the human before consequential action;\n- generate a portable adversarial Kessler dossier with counterevidence and lineage intact;\n- support a decision-readiness handoff that can end the investigation without pretending all uncertainty is gone.
 
 ---
 
@@ -928,6 +1053,6 @@ It is done for the MVP when all of the following are true:
 12. The current user/CEO/operator is never automatically epistemically privileged.
 13. The final handoff exposes provenance, uncertainty, alternatives, missingness, and decision boundaries clearly.
 14. The synthetic Aurelius & Finch acceptance fixture passes end to end.
-15. Existing authorization, provenance, reanalysis, model-governance, and frontend regression suites still pass.
+15. Existing authorization, provenance, reanalysis, model-governance, and frontend regression suites still pass.\n16. A Kessler-style hostile-review dossier can be generated, verified, exported, and re-imported without epistemic class collapse.\n17. Decision-readiness can support divergent human outcomes without requiring omniscience or forcing indefinite investigation.
 
 At that point the public law-firm use case is not aspirational prose. It is an executable MVP acceptance story.
