@@ -20,6 +20,7 @@ use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeig
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
+use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
@@ -425,6 +426,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
             post(record_used_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/hypothesis-portfolio",
+            get(get_hypothesis_portfolio),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/hypothesis-portfolio/{interpretation}/events/{event}",
+            post(record_hypothesis_portfolio_event),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/clarifications",
@@ -2323,6 +2332,85 @@ async fn list_hypotheses(
             "next_after":next_after
         }),
         StatusCode::OK,
+    ))
+}
+
+
+impl From<HypothesisPortfolioError> for ApiError {
+    fn from(error: HypothesisPortfolioError) -> Self {
+        match error {
+            HypothesisPortfolioError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid hypothesis portfolio input")
+            }
+            HypothesisPortfolioError::Conflict => {
+                Self(StatusCode::CONFLICT, "hypothesis portfolio conflict")
+            }
+            HypothesisPortfolioError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "hypothesis portfolio unavailable")
+            }
+            HypothesisPortfolioError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "hypothesis portfolio runtime role unavailable",
+            ),
+            HypothesisPortfolioError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "hypothesis portfolio unavailable",
+            ),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HypothesisPortfolioEventRequest {
+    event_kind: String,
+    note: String,
+}
+
+async fn get_hypothesis_portfolio(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let portfolio = hypothesis_portfolio::portfolio(&state.pool, scope).await?;
+    Ok(no_store(json!(portfolio), StatusCode::OK))
+}
+
+async fn record_hypothesis_portfolio_event(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, interpretation, event)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<HypothesisPortfolioEventRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let recorded = hypothesis_portfolio::append_event(
+        &state.pool,
+        scope,
+        actor,
+        interpretation,
+        event,
+        &input.event_kind,
+        &input.note,
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
