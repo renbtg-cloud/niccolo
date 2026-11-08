@@ -26,7 +26,8 @@ describe('buyer-facing primary surfaces', () => {
 
   it('remounts Situation-local drafts and cursors when the connection changes', () => {
     expect(situation).toContain('function ConnectedSituation({client})');
-    expect(situation).toContain('key={JSON.stringify([client.config.workspace, client.config.situation])}');
+    expect(situation).toContain('const generation = useSessionStore((state) => state.generation)');
+    expect(situation).toContain('key={generation}');
     expect(situation).toContain('if (!client) return <p>Connect this session first.</p>');
   });
 
