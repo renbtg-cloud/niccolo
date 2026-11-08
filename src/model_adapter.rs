@@ -665,16 +665,75 @@ fn transport_io_error(phase: &str, error: std::io::Error) -> ModelError {
     }
 }
 
-fn read_bounded<R: Read>(reader: &mut R) -> Result<Vec<u8>, ModelError> {
-    let mut raw = Vec::new();
-    reader
-        .take(MAX_HTTP_RESPONSE_BYTES + 1)
-        .read_to_end(&mut raw)
-        .map_err(|e| transport_io_error("read", e))?;
-    if raw.len() as u64 > MAX_HTTP_RESPONSE_BYTES {
+/// A complete Content-Length response is usable without waiting for EOF.
+/// Some otherwise compatible local inference servers keep the socket open
+/// even when the request explicitly asks for Connection: close.
+fn complete_content_length_end(raw: &[u8]) -> Result<Option<usize>, ModelError> {
+    let Some(marker) = raw.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return Ok(None);
+    };
+    let headers = std::str::from_utf8(&raw[..marker])
+        .map_err(|_| ModelError::Provider("non-UTF8 HTTP headers".into()))?;
+    let mut body_length = None;
+    let mut chunked = false;
+    for line in headers.lines().skip(1) {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("transfer-encoding")
+            && value.to_ascii_lowercase().contains("chunked")
+        {
+            chunked = true;
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            if body_length.is_some() {
+                return Err(ModelError::Provider("duplicate Content-Length".into()));
+            }
+            body_length = Some(
+                value.trim().parse::<usize>()
+                    .map_err(|_| ModelError::Provider("invalid Content-Length".into()))?
+            );
+        }
+    }
+    // Transfer-Encoding overrides Content-Length; chunked framing continues
+    // to be decoded by parse_http_response after the transport is complete.
+    if chunked {
+        return Ok(None);
+    }
+    let Some(length) = body_length else {
+        return Ok(None);
+    };
+    let end = marker
+        .checked_add(4)
+        .and_then(|start| start.checked_add(length))
+        .ok_or_else(|| ModelError::Provider("provider response too large".into()))?;
+    if end as u64 > MAX_HTTP_RESPONSE_BYTES {
         return Err(ModelError::Provider("provider response too large".into()));
     }
-    Ok(raw)
+    Ok(Some(end))
+}
+
+fn read_bounded<R: Read>(reader: &mut R) -> Result<Vec<u8>, ModelError> {
+    let mut raw = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|e| transport_io_error("read", e))?;
+        if count == 0 {
+            return Ok(raw);
+        }
+        if raw.len().saturating_add(count) as u64 > MAX_HTTP_RESPONSE_BYTES {
+            return Err(ModelError::Provider("provider response too large".into()));
+        }
+        raw.extend_from_slice(&buffer[..count]);
+        if let Some(end) = complete_content_length_end(&raw)?
+            && raw.len() >= end
+        {
+            raw.truncate(end);
+            return Ok(raw);
+        }
+    }
 }
 
 impl ReasoningModel for OpenAiCompatibleModel {
@@ -819,6 +878,44 @@ mod bounded_response_tests {
     fn accepts_small_http_body_without_modification() {
         let expected = b"HTTP/1.1 200 OK\r\n\r\n{}";
         assert_eq!(read_bounded(&mut &expected[..]).unwrap(), expected);
+    }
+
+    #[test]
+    fn complete_content_length_does_not_wait_for_connection_close() {
+        struct KeepAliveReply {
+            bytes: &'static [u8],
+            sent: bool,
+        }
+        impl std::io::Read for KeepAliveReply {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                if self.sent {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "server still holding connection",
+                    ));
+                }
+                self.sent = true;
+                buffer[..self.bytes.len()].copy_from_slice(self.bytes);
+                Ok(self.bytes.len())
+            }
+        }
+        let expected = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n{}";
+        let mut server = KeepAliveReply { bytes: expected, sent: false };
+        assert_eq!(read_bounded(&mut server).unwrap(), expected);
+    }
+
+    #[test]
+    fn rejects_invalid_or_oversized_content_length_before_body_allocation() {
+        for response in [
+            b"HTTP/1.1 200 OK\r\nContent-Length: bad\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 3000000\r\n\r\n".as_slice(),
+        ] {
+            assert!(matches!(
+                complete_content_length_end(response),
+                Err(ModelError::Provider(_))
+            ));
+        }
     }
 
     #[test]
