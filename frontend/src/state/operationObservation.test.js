@@ -24,6 +24,34 @@ describe('operation observation state', () => {
     expect(merged.cursor).toBe(3);
   });
 
+  it('keeps only recent browser events without losing the server cursor', () => {
+    const previous = {
+      operation: { state: 'RUNNING', state_version: 2 },
+      events: Array.from({ length: 500 }, (_, index) => ({
+        event_seq: index + 1,
+        kind: 'PROGRESS',
+      })),
+      cursor: 500,
+    };
+    const merged = mergeOperationObservation(previous, {
+      operation: { state: 'RUNNING', state_version: 3 },
+      events: [{ event_seq: 501, kind: 'PROGRESS' }],
+      next_after_event: 501,
+    });
+    expect(merged.events).toHaveLength(500);
+    expect(merged.events[0].event_seq).toBe(2);
+    expect(merged.events.at(-1).event_seq).toBe(501);
+    expect(merged.cursor).toBe(501);
+    expect(merged.eventsTruncated).toBe(true);
+    const next = mergeOperationObservation(merged, {
+      operation: { state: 'SUCCEEDED', state_version: 4 },
+      events: [],
+      next_after_event: 501,
+    });
+    expect(next.eventsTruncated).toBe(true);
+    expect(next.cursor).toBe(501);
+  });
+
   it('advances operation and cursor monotonically', () => {
     const merged = mergeOperationObservation(
       { operation: { state: 'RUNNING', state_version: 2 }, events: [], cursor: 10 },
