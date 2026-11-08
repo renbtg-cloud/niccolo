@@ -418,6 +418,8 @@ pub mod analysis_claims;
 pub mod analysis_compare;
 pub mod analysis_export;
 pub mod analysis_integrity;
+
+pub mod integrity_scope;
 pub mod analysis_manifest;
 pub mod analysis_read_models;
 pub mod analysis_structure;
