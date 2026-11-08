@@ -390,6 +390,8 @@ struct ManifestCore<'a> {
     input_revision: i64,
     input_fingerprint: &'a str,
     identity_event_no_max: i64,
+    actor_kind_event_no_max: i64,
+    actor_binding_event_no_max: i64,
     goal: &'a str,
     requested_by: Uuid,
     reanalysis_of: Option<Uuid>,
@@ -409,13 +411,15 @@ pub fn canonical_json(bundle: &AnalysisBundle) -> Result<Vec<u8>, ManifestError>
     // intentionally excluded: they are append-only events that may legitimately arrive after
     // the analysis itself has been sealed.
     let core = ManifestCore {
-        manifest_core_version: 2,
+        manifest_core_version: 3,
         workspace_id: bundle.workspace_id,
         situation_id: bundle.situation_id,
         analysis_id: bundle.analysis_id,
         input_revision: bundle.input_revision,
         input_fingerprint: &bundle.input_fingerprint,
         identity_event_no_max: bundle.identity_event_no_max,
+        actor_kind_event_no_max: bundle.actor_kind_event_no_max,
+        actor_binding_event_no_max: bundle.actor_binding_event_no_max,
         goal: &bundle.goal,
         requested_by: bundle.requested_by,
         reanalysis_of: bundle.reanalysis_of,
