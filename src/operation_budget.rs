@@ -232,18 +232,12 @@ mod tests {
             json!({"model_budget":{"max_total_tokens":2.5}}),
             json!({"model_budget":{"max_total_tokens":-1}}),
         ] {
-            assert!(matches!(
-                summarize(&budget, 0, 0, None),
-                Err(BudgetError::Invalid)
-            ), "accepted malformed budget: {budget}");
+            assert!(
+                matches!(summarize(&budget, 0, 0, None), Err(BudgetError::Invalid)),
+                "accepted malformed budget: {budget}"
+            );
         }
-        let valid = summarize(
-            &json!({"model_budget":{"max_invocations":5}}),
-            0,
-            0,
-            None,
-        )
-        .unwrap();
+        let valid = summarize(&json!({"model_budget":{"max_invocations":5}}), 0, 0, None).unwrap();
         assert_eq!(valid.max_invocations, 5);
         assert_eq!(valid.max_total_tokens, 200_000);
     }
