@@ -35,6 +35,10 @@ async fn mark_failed_best_effort(
     }
 }
 
+fn agentic_outcome_is_stalled(state: &str) -> bool {
+    matches!(state, "BLOCKED" | "IDLE")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkerRun {
     pub scope: OperationScope,
@@ -66,7 +70,7 @@ async fn run_with_owned_lease(
                     .map_err(|e| BffExecutionError::Agentic(e.to_string()))?;
                 // A blocked/idle plan has no autonomous progress path. Returning
                 // Ok used to strand the durable operation in RUNNING forever.
-                if matches!(outcome.state.as_str(), "BLOCKED" | "IDLE") {
+                if agentic_outcome_is_stalled(&outcome.state) {
                     Err(BffExecutionError::Agentic(format!(
                         "agentic plan cannot advance: {}", outcome.state
                     )))
@@ -185,4 +189,17 @@ pub async fn execute(
         return Ok(bff_operations::get(pool, scope).await?);
     }
     run_with_owned_lease(pool, scope, actor, model, &lease_owner).await
+}
+
+#[cfg(test)]
+mod stalled_outcome_tests {
+    use super::*;
+
+    #[test]
+    fn only_undeliverable_agentic_states_fail_the_operation() {
+        assert!(agentic_outcome_is_stalled("BLOCKED"));
+        assert!(agentic_outcome_is_stalled("IDLE"));
+        assert!(!agentic_outcome_is_stalled("WAITING_FOR_HUMAN"));
+        assert!(!agentic_outcome_is_stalled("SUCCEEDED"));
+    }
 }
