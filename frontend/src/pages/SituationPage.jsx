@@ -36,6 +36,8 @@ export function SituationPage(){
   const [file, setFile] = useState(null);
   // Preserve the document identity across retries after a partial upload.
   const pendingDocumentId = useRef(null);
+  const pendingContribution = useRef(null);
+  const pendingCorrection = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
   const [contextText,setContextText]=useState('');
 
@@ -68,12 +70,25 @@ export function SituationPage(){
     onSuccess: refresh,
   });
   const addContext = useMutation({
-    mutationFn: async () => client.addSituationContribution(crypto.randomUUID(), contextKind, contextText.trim(), null),
-    onSuccess: async () => { setContextText(''); await refresh(); },
+    mutationFn: async () => {
+      const text = contextText.trim();
+      const signature = JSON.stringify({ kind: contextKind, text });
+      if (pendingContribution.current?.signature !== signature) {
+        pendingContribution.current = { signature, id: crypto.randomUUID() };
+      }
+      return client.addSituationContribution(pendingContribution.current.id, contextKind, text, null);
+    },
+    onSuccess: async () => { pendingContribution.current = null; setContextText(''); await refresh(); },
   });
   const correctContext = useMutation({
-    mutationFn: ({item,text}) => client.correctSituationContribution(item.contribution_id, crypto.randomUUID(), text, item.related_evidence_id ?? null),
-    onSuccess: refresh,
+    mutationFn: ({item,text}) => {
+      const signature = JSON.stringify({ contribution: item.contribution_id, text, evidence: item.related_evidence_id ?? null });
+      if (pendingCorrection.current?.signature !== signature) {
+        pendingCorrection.current = { signature, id: crypto.randomUUID() };
+      }
+      return client.correctSituationContribution(item.contribution_id, pendingCorrection.current.id, text, item.related_evidence_id ?? null);
+    },
+    onSuccess: async () => { pendingCorrection.current = null; await refresh(); },
   });
   const retractContext = useMutation({
     mutationFn: (item) => client.retractSituationContribution(item.contribution_id),
