@@ -18,14 +18,38 @@ import { presentationZip } from '../state/presentationZip.js';
 
 export function ReviewPage(){
  const pendingReanalysis=useRef(null);
+ const pendingClarification=useRef(null);
+ const pendingReceipt=useRef(null);
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const clarifications=useClarifications(); const reasoningInput=useReasoningInput(); const handoff=useReasoningHandoff(); const output=useAnalysisOutput(analysis); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
  const r=review.data; const d=dashboard.data; const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
  const [clarificationDrafts,setClarificationDrafts]=useState({});
  // Keep every hook above conditional returns so connect/selection transitions never change hook order.
- const answerClarification=useMutation({mutationFn:async({questionId,text})=> (await client.answerClarification(analysis,questionId,crypto.randomUUID(),text)).value,onSuccess:async(_,variables)=>{setClarificationDrafts(current=>({...current,[variables.questionId]:''}));await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);}});
- const recordReceipt=useMutation({mutationFn:async(kind)=>{if(!handoffView?.sha256)throw new Error('No current handoff');return (await client.recordHandoffReceipt(analysis,crypto.randomUUID(),handoffView.sha256,kind,handoffNote.trim()||null)).value;},onSuccess:async()=>{setHandoffNote('');await qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'handoff-receipts')});}});
+ const answerClarification=useMutation({mutationFn:async({questionId,text})=>{
+   const signature=JSON.stringify({analysis,questionId,text});
+   if(pendingClarification.current?.signature!==signature){
+     pendingClarification.current={signature,id:crypto.randomUUID()};
+   }
+   return (await client.answerClarification(analysis,questionId,pendingClarification.current.id,text)).value;
+ },onSuccess:async(_,variables)=>{
+   pendingClarification.current=null;
+   setClarificationDrafts(current=>({...current,[variables.questionId]:''}));
+   await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);
+ }});
+ const recordReceipt=useMutation({mutationFn:async(kind)=>{
+   if(!handoffView?.sha256)throw new Error('No current handoff');
+   const note=handoffNote.trim()||null;
+   const signature=JSON.stringify({analysis,hash:handoffView.sha256,kind,note});
+   if(pendingReceipt.current?.signature!==signature){
+     pendingReceipt.current={signature,id:crypto.randomUUID()};
+   }
+   return (await client.recordHandoffReceipt(analysis,pendingReceipt.current.id,handoffView.sha256,kind,note)).value;
+ },onSuccess:async()=>{
+   pendingReceipt.current=null;
+   setHandoffNote('');
+   await qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'handoff-receipts')});
+ }});
  const exportPackage=useMutation({mutationFn:async()=>{
    const result=await client.presentationPackage(analysis);
    const files=result.value?.files;
