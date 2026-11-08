@@ -13,6 +13,7 @@ use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
+use crate::collection_provenance::{self, CollectionEventInput, CollectionProvenanceError};
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
@@ -428,6 +429,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/used-contributions/{contribution}",
             post(record_used_contribution),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/collection-provenance",
+            get(list_collection_provenance),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/collection-provenance/{event}",
+            post(record_collection_provenance),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/source-scope",
@@ -2353,6 +2362,114 @@ async fn list_hypotheses(
     ))
 }
 
+
+
+impl From<CollectionProvenanceError> for ApiError {
+    fn from(error: CollectionProvenanceError) -> Self {
+        match error {
+            CollectionProvenanceError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid collection provenance event")
+            }
+            CollectionProvenanceError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "collection provenance reference unavailable")
+            }
+            CollectionProvenanceError::Conflict => {
+                Self(StatusCode::CONFLICT, "collection provenance conflict")
+            }
+            CollectionProvenanceError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "collection provenance runtime role unavailable",
+            ),
+            CollectionProvenanceError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "collection provenance unavailable",
+            ),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CollectionProvenanceRequest {
+    actor_label: String,
+    actor_role: String,
+    operation: String,
+    input_document_id: Option<Uuid>,
+    input_evidence_id: Option<Uuid>,
+    output_document_id: Option<Uuid>,
+    output_evidence_id: Option<Uuid>,
+    occurred_at: Option<String>,
+    method: String,
+    assertion_kind: String,
+    qualification: String,
+    note: String,
+}
+
+async fn record_collection_provenance(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, event)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<CollectionProvenanceRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let analysis_scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let recorded = collection_provenance::record(
+        &state.pool,
+        analysis_scope,
+        actor,
+        &CollectionEventInput {
+            event_id: event,
+            actor_label: input.actor_label,
+            actor_role: input.actor_role,
+            operation: input.operation,
+            input_document_id: input.input_document_id,
+            input_evidence_id: input.input_evidence_id,
+            output_document_id: input.output_document_id,
+            output_evidence_id: input.output_evidence_id,
+            occurred_at: input.occurred_at,
+            method: input.method,
+            assertion_kind: input.assertion_kind,
+            qualification: input.qualification,
+            note: input.note,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_collection_provenance(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let analysis_scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let events = collection_provenance::list(&state.pool, analysis_scope).await?;
+    Ok(no_store(
+        json!({
+            "events": events,
+            "collector_is_original_author": false,
+            "operator_is_epistemically_privileged": false,
+            "collection_metadata_establishes_authenticity": false
+        }),
+        StatusCode::OK,
+    ))
+}
 
 impl From<SourceScopeError> for ApiError {
     fn from(error: SourceScopeError) -> Self {
