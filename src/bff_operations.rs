@@ -254,7 +254,16 @@ pub async fn submit(
     let inserted = sqlx::query("INSERT INTO niccolo.bff_operations(workspace_id,situation_id,operation_id,operation_kind,target_analysis_id,parent_operation_id,idempotency_key,input_json,input_sha256,deadline_at,step_budget,requested_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::timestamptz,$11,$12) ON CONFLICT (workspace_id,situation_id,operation_id) DO NOTHING")
         .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(&input.kind).bind(input.target_analysis_id).bind(input.parent_operation_id).bind(&input.idempotency_key).bind(&input_json).bind(&input_sha).bind(deadline).bind(input.step_budget).bind(input.requested_by).execute(&mut *tx).await?.rows_affected();
     if inserted == 0 {
-        type ExactReplayRow = (String, String, Option<Uuid>, Option<Uuid>, i32, Uuid, Option<String>, bool);
+        type ExactReplayRow = (
+            String,
+            String,
+            Option<Uuid>,
+            Option<Uuid>,
+            i32,
+            Uuid,
+            Option<String>,
+            bool,
+        );
         let exact: Option<ExactReplayRow> = sqlx::query_as("SELECT operation_kind,input_sha256,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,idempotency_key,(deadline_at IS NOT DISTINCT FROM $4::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
             .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(deadline).fetch_optional(&mut *tx).await?;
         if exact
