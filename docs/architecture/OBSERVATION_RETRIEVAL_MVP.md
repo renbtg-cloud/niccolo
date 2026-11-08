@@ -42,6 +42,36 @@ constraints, and record which original fragments were actually included in
 the subsequent reasoning input. This may use existing agentic steps and
 model-invocation ledgers; no new global ontology is required.
 
+
+## Second increment: bounded model-guided lookup
+
+The `CHECK_ALTERNATIVES` model step may now emit up to three
+`source_queries` in its structured `niccolo_update`. Each query includes
+a stable ID, literal lexical terms, why it matters, a predicted observation,
+a direction (`SUPPORT`, `COUNTEREVIDENCE` or `DISCRIMINATE`), and an
+optional candidate-interpretation reference.
+
+The runtime persists these intents, searches the exact frozen input revision
+under the current workspace and bearer authorization, and records at most five
+matching original evidence fragments per query. The query-hit ledger enforces
+frozen membership and actual lexical matching at insert time.
+
+Subsequent model steps receive an explicit `observation_queries` section
+in their canonical reasoning packet. It includes the rationale and the
+retrieved source fragments, bounded by 128 KiB. A zero-hit query remains
+visible. Withdrawn evidence is withheld from later model inputs and the count
+is disclosed.
+
+This is an initial **one-cycle** model-guided lookup: it happens after the
+competing-interpretations step, before synthesis. It is not yet the general
+multi-round investigation planner envisaged by LF-008. There are no outbound
+network actions, no unrestricted tool calling, no automatic trust upgrade,
+and no claim that a retrieved text has been truly understood by the model.
+
+The `agentic_observation_query_e2e` integration test checks that a model
+can request a late source outside the initial 256-fragment context and that
+the next model request contains the original source with attribution.
+
 ## Acceptance checks
 
 1. A 300-message Situation, frozen before new sources arrive, can retrieve a
