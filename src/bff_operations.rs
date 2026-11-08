@@ -260,7 +260,8 @@ pub async fn submit(
         if let Some(key) = &input.idempotency_key {
             let replay: Option<ReplayRow> = sqlx::query_as("SELECT operation_id,input_sha256,input_json,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,(deadline_at IS NOT DISTINCT FROM $5::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_kind=$3 AND idempotency_key=$4")
                 .bind(scope.workspace).bind(scope.situation).bind(&input.kind).bind(key).bind(deadline).fetch_optional(&mut *tx).await?;
-            if let Some((existing, sha, json, target, parent, steps, actor, same_deadline)) = replay {
+            if let Some((existing, sha, json, target, parent, steps, actor, same_deadline)) = replay
+            {
                 if sha != input_sha
                     || json != input_json
                     || target != input.target_analysis_id
@@ -272,7 +273,14 @@ pub async fn submit(
                     return Err(BffOperationError::IdempotencyConflict);
                 }
                 tx.commit().await?;
-                return get(pool, OperationScope { operation: existing, ..scope }).await;
+                return get(
+                    pool,
+                    OperationScope {
+                        operation: existing,
+                        ..scope
+                    },
+                )
+                .await;
             }
         }
         type ExactReplayRow = (
