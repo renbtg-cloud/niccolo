@@ -94,7 +94,13 @@ bash scripts/bootstrap-local-mvp.sh
 ```
 
 The script refuses to overwrite a previously initialized database or local
-credentials. It writes private files under the ignored `.niccolo-local/` folder:
+credentials. It also refuses to change the password of an existing
+`niccolo_secure` PostgreSQL role: **roles belong to the whole PostgreSQL
+cluster**, not just a database. Use a dedicated cluster for an independent
+installation rather than letting bootstrap silently modify another
+installation's service credentials.
+
+It writes private files under the ignored `.niccolo-local/` folder:
 `local.env` (restricted service DB URL), `identifiers.txt` (workspace and
 Situation identifiers), and `token.txt` (bearer token). Treat the folder
 as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
