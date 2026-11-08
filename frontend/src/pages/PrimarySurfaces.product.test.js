@@ -82,6 +82,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(identities).toContain('pendingClear.current = null');
   });
 
+  it('remounts review drafts when selecting another analysis', () => {
+    expect(review).toContain("const selectedAnalysis=useUiStore(s=>s.analysis)");
+    expect(review).toContain("<ReviewContent key={selectedAnalysis||'unselected'} />");
+    expect(review).toContain('function ReviewContent()');
+  });
+
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
     expect(review).toContain("<h3>Niccolò's answer</h3>");
     expect(review).toContain('Competing interpretations considered');
