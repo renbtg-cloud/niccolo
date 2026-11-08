@@ -30,6 +30,9 @@ pub struct AdaptiveResourcePolicy {
     pub mode: ResourceManagementMode,
     /// Local upper bound even if the effective CPU envelope is larger.
     pub max_local_parallelism: u16,
+    /// Capacity budget per parallel operation. This is a scheduling heuristic,
+    /// not a claim that each operation continuously consumes this much CPU.
+    pub min_cpu_millicores_per_operation: u64,
     /// 8500 means 85% of a finite cgroup memory limit.
     pub memory_soft_pressure_basis_points: u16,
     pub memory_hard_pressure_basis_points: u16,
@@ -45,6 +48,7 @@ impl Default for AdaptiveResourcePolicy {
         Self {
             mode: ResourceManagementMode::SelfManaged,
             max_local_parallelism: 32,
+            min_cpu_millicores_per_operation: 1000,
             memory_soft_pressure_basis_points: 8500,
             memory_hard_pressure_basis_points: 9500,
             min_memory_headroom_bytes: 256 * 1024 * 1024,
@@ -82,6 +86,8 @@ pub enum ResourcePolicyError {
 pub fn valid(policy: &AdaptiveResourcePolicy) -> bool {
     policy.max_local_parallelism > 0
         && policy.max_local_parallelism <= 1024
+        && policy.min_cpu_millicores_per_operation > 0
+        && policy.min_cpu_millicores_per_operation <= 1_000_000
         && policy.memory_soft_pressure_basis_points < policy.memory_hard_pressure_basis_points
         && policy.memory_hard_pressure_basis_points <= 10_000
         && policy.pids_soft_pressure_basis_points < policy.pids_hard_pressure_basis_points
@@ -110,10 +116,12 @@ fn cpu_parallelism_ceiling(
     if snapshot.effective_cpu_capacity_millicores == 0 {
         return Err(ResourcePolicyError::InvalidSnapshot);
     }
-    let full_cores = (snapshot.effective_cpu_capacity_millicores / 1000).max(1);
-    let full_cores = u16::try_from(full_cores.min(u64::from(u16::MAX)))
+    let operations = (snapshot.effective_cpu_capacity_millicores
+        / policy.min_cpu_millicores_per_operation)
+        .max(1);
+    let operations = u16::try_from(operations.min(u64::from(u16::MAX)))
         .map_err(|_| ResourcePolicyError::InvalidSnapshot)?;
-    Ok(full_cores.min(policy.max_local_parallelism).max(1))
+    Ok(operations.min(policy.max_local_parallelism).max(1))
 }
 
 /// Return resource-management advice without changing runtime state.
@@ -263,6 +271,15 @@ mod tests {
         assert!(!result.advice_is_enforced);
         assert!(!result.mutates_resource_limits);
         assert!(!result.establishes_epistemic_quality);
+    }
+
+    #[test]
+    fn operator_can_choose_subcore_capacity_per_operation_without_changing_entitlement() {
+        let mut policy = AdaptiveResourcePolicy::default();
+        policy.min_cpu_millicores_per_operation = 500;
+        let result = advise(&snapshot(), &policy).unwrap();
+        assert_eq!(result.recommended_max_parallelism, Some(5));
+        assert_eq!(snapshot().effective_cpu_capacity_millicores, 2500);
     }
 
     #[test]
