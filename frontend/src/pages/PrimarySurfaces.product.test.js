@@ -93,6 +93,15 @@ describe('buyer-facing primary surfaces', () => {
     expect(questionsHook).toContain('client.questions(after, 100)');
   });
 
+  it('does not mutate in-flight feedback payloads and confirms stored results', () => {
+    expect(feedback).toContain('disabled={submit.isPending}');
+    expect(feedback).toContain('disabled={create.isPending}');
+    expect(feedback).toContain('submit.reset()');
+    expect(feedback).toContain('create.reset()');
+    expect(feedback).toContain('Your position was recorded.');
+    expect(feedback).toContain('Investigative question recorded.');
+  });
+
   it('retries user questions and feedback with stable record identities', () => {
     expect(feedback).toContain('pendingFeedback.current?.signature !== signature');
     expect(feedback).toContain('pendingFeedback.current.eventId');
