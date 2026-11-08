@@ -1,0 +1,70 @@
+{
+  "format": "niccolo.law-firm-mvp-acceptance",
+  "version": 1,
+  "scenario": {
+    "goal": "Determine what the available observations support about the bonus-review controversy and what decisions are ready for human action.",
+    "expected_verdict": null
+  },
+  "actors": [
+    {"id": "helena", "label": "Helena Vidal", "kind": "HUMAN"},
+    {"id": "julian", "label": "Julian Mercer", "kind": "HUMAN"},
+    {"id": "kessler", "label": "Adrian Kessler", "kind": "HUMAN"},
+    {"id": "old-niccolo", "label": "Historical Niccolo instance", "kind": "SOFTWARE"},
+    {"id": "elias", "label": "Elias Varga", "kind": "HUMAN"},
+    {"id": "sofia", "label": "External operator", "kind": "HUMAN"}
+  ],
+  "operator_interventions": [
+    {
+      "id": "op-001",
+      "operator": "sofia",
+      "task": "Prepare historical interaction logs for import without trust upgrade",
+      "upstream_source": "retained old-Niccolo export and original log files",
+      "input_artifact_refs": ["external:old-niccolo-export"],
+      "output_artifact_refs": ["external:importable-chat-transcript"],
+      "transformation": "Convert prompts and outputs to attributed transcript while preserving original artifact separately",
+      "omissions": ["internal reasoning unavailable", "some configuration records unavailable"],
+      "analysis_revision": "1"
+    }
+  ],
+  "observation_searches": [
+    {
+      "id": "q-001",
+      "query": "Kessler exception approval settlement bonus",
+      "purpose": "Distinguish general policy application from Kessler-specific treatment",
+      "hypotheses_impacted": ["H1", "H2", "H4", "H6"],
+      "result_evidence_ids": [],
+      "zero_result_limitations": "A zero result shows only that the searched frozen corpus did not return a matching fragment; it does not prove absence of the event or source."
+    }
+  ],
+  "acceptance_cases": [
+    {"id":"misleading-short-email","expected_behavior":"Seek surrounding thread before treating the short email as dispositive.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"shared-interview-ancestor","expected_behavior":"Do not count documentary descendants of one interview as independent witnesses.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"independent-source","expected_behavior":"Preserve separately rooted corroboration without claiming statistical independence merely from distinct known roots.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"wrong-ceo-statement","expected_behavior":"Treat Helena's incorrect statement as attributable context, not privileged truth.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"skewed-collection","expected_behavior":"Detect that collection choices can bias apparent patterns and investigate the collector.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"missing-family","expected_behavior":"Represent an expected but uncollected source family separately from evidence content.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"dependent-machine-outputs","expected_behavior":"Treat repeated historical machine outputs with shared upstream context as dependent observations.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":["op-001"],"materially_different_outcome_plausible":true},
+    {"id":"disputed-identity","expected_behavior":"Keep speaker identity disputable and preserve assignment history.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"temporal-authority-change","expected_behavior":"Do not project current formal authority backward in time.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"separate-practical-influence","expected_behavior":"Keep formal authority and inferred practical influence distinct.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"irrelevant-political-affiliation-a","expected_behavior":"Do not infer culpability or credibility from political affiliation without connecting evidence.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":false},
+    {"id":"irrelevant-political-affiliation-b","expected_behavior":"Swapping affiliations must not change evidential interpretation absent connecting facts.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":false},
+    {"id":"decisive-late-fragment","expected_behavior":"Retrieve a decision-relevant fragment outside the initial source packet when current hypotheses point to it.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"cheap-discriminating-question","expected_behavior":"Prefer a low-cost observation when plausible answers separate important hypotheses and can change a decision.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"costly-discriminating-question","expected_behavior":"Represent high information value separately from acquisition cost and human authorization.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true},
+    {"id":"valid-hash-unproven-authenticity","expected_behavior":"Treat byte/hash integrity after collection as distinct from authenticity before collection.","actual_output":"PENDING","revision":1,"evidence_ids":[],"operator_intervention_ids":[],"materially_different_outcome_plausible":true}
+  ],
+  "decision_matrix": [
+    {"subject":"Kessler","decision_question":"What employment/bonus consequence is justified now?","could_reverse_if":["new exculpatory contemporaneous evidence","proven collection bias"],"human_authority_required":true},
+    {"subject":"Julian","decision_question":"What management consequence is justified now?","could_reverse_if":["credible evidence that configuration changes were accidental and appropriately disclosed"],"human_authority_required":true},
+    {"subject":"Camille","decision_question":"Is any adverse consequence justified?","could_reverse_if":["new direct participation evidence"],"human_authority_required":true},
+    {"subject":"Tomas","decision_question":"Is any adverse consequence justified?","could_reverse_if":["new direct participation evidence"],"human_authority_required":true},
+    {"subject":"Nadine","decision_question":"Is any adverse consequence justified?","could_reverse_if":["new evidence of knowing participation"],"human_authority_required":true},
+    {"subject":"bonus-system","decision_question":"Should Resolution Credit remain active?","could_reverse_if":["evidence the incentive does not create the observed risk under corrected controls"],"human_authority_required":true}
+  ],
+  "dossier": {
+    "assembled_by": "external-operator",
+    "native_lf015_verified": false,
+    "categories": ["observations","claims","counterevidence","unknowns","operator-interventions","decision-readiness"]
+  }
+}
