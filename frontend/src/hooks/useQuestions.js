@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useClient } from './useClient.js';
 
-export function useQuestions() {
+export function useQuestions(after = null) {
   const client = useClient();
   return useQuery({
-    queryKey: client ? ['questions', client.config.workspace] : ['questions','none'],
+    queryKey: client ? ['questions', client.config.workspace, after] : ['questions','none'],
     enabled: Boolean(client),
-    queryFn: async () => (await client.questions(null, 100)).value,
+    queryFn: async () => (await client.questions(after, 100)).value,
   });
 }
