@@ -86,6 +86,8 @@ type HeaderRow = (
     i64,
     String,
     i64,
+    i64,
+    i64,
     String,
     Uuid,
     Option<Uuid>,
@@ -104,6 +106,8 @@ pub struct AnalysisBundle {
     pub input_revision: i64,
     pub input_fingerprint: String,
     pub identity_event_no_max: i64,
+    pub actor_kind_event_no_max: i64,
+    pub actor_binding_event_no_max: i64,
     pub goal: String,
     pub requested_by: Uuid,
     pub reanalysis_of: Option<Uuid>,
@@ -154,7 +158,7 @@ pub async fn load_bundle(
 ) -> Result<AnalysisBundle, ManifestError> {
     let mut tx = scoped(pool, workspace).await?;
     let header: Option<HeaderRow> = sqlx::query_as(
-        "SELECT s.input_revision,s.input_fingerprint,s.identity_event_no_max,s.goal,s.requested_by_principal_id,s.reanalysis_of,\
+        "SELECT s.input_revision,s.input_fingerprint,s.identity_event_no_max,s.actor_kind_event_no_max,s.actor_binding_event_no_max,s.goal,s.requested_by_principal_id,s.reanalysis_of,\
                 o.answer_text,o.coverage_note,o.published_by_principal_id \
          FROM niccolo.situation_analysis_snapshots s \
          JOIN niccolo.situation_analysis_outputs o USING(workspace_id,situation_id,analysis_id) \
@@ -169,6 +173,8 @@ pub async fn load_bundle(
         input_revision,
         input_fingerprint,
         identity_event_no_max,
+        actor_kind_event_no_max,
+        actor_binding_event_no_max,
         goal,
         requested_by,
         reanalysis_of,
@@ -354,6 +360,8 @@ pub async fn load_bundle(
         input_revision,
         input_fingerprint,
         identity_event_no_max,
+        actor_kind_event_no_max,
+        actor_binding_event_no_max,
         goal,
         requested_by,
         reanalysis_of,
