@@ -169,5 +169,64 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
 });' <<< "$sources_attached"
 echo 'PASS: two source formats attached to one Situation'
 
+# Human context has distinct provenance from source evidence and must be
+# correctable/retractable without rewriting previous Situation revisions.
+context_id="$(node -p "require('node:crypto').randomUUID()")"
+context_path="${path}/contributions/${context_id}"
+context_result="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: application/json' \
+  --data '{"kind":"user_reported","text":"I remember a phone call; not verified by records.","related_evidence_id":null}' \
+  "$context_path")"
+before_correction="$(CONTRIBUTION_ID="$context_id" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ const c=j.contributions?.find(x=>x.contribution_id===process.env.CONTRIBUTION_ID);
+ if(!c||c.is_verified_evidence!==false||j.replayed!==false ||
+    !Number.isInteger(j.revision))process.exit(1);
+ console.log(j.revision);
+});' <<< "$context_result")"
+replayed_context="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: application/json' \
+  --data '{"kind":"user_reported","text":"I remember a phone call; not verified by records.","related_evidence_id":null}' \
+  "$context_path")"
+printf '%s' "$replayed_context" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);if(j.replayed!==true||j.contributions?.length!==1)process.exit(1);
+});'
+replacement_id="$(node -p "require('node:crypto').randomUUID()")"
+corrected="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"Correction: this was only a guess, not a remembered call.","related_evidence_id":null}' \
+  "${context_path}/corrections/${replacement_id}")"
+CONTRIBUTION_ID="$replacement_id" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ const c=j.contributions?.find(x=>x.contribution_id===process.env.CONTRIBUTION_ID);
+ if(!c||!c.text.startsWith("Correction:")||c.is_verified_evidence!==false ||
+    j.contributions.length!==1)process.exit(1);
+});' <<< "$corrected"
+old_revision="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" "${path}/revisions/${before_correction}")"
+CONTRIBUTION_ID="$context_id" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(!j.contributions?.some(x=>x.contribution_id===process.env.CONTRIBUTION_ID))
+    process.exit(1);
+});' <<< "$old_revision"
+retracted="$(curl --max-time 10 --silent --show-error --fail -X POST \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: application/json' \
+  --data '{}' "${path}/contributions/${replacement_id}/retract")"
+printf '%s' "$retracted" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.contributions?.length!==0||j.source_document_ids?.length!==2)
+    process.exit(1);
+});'
+echo 'PASS: context provenance, idempotent replay, correction, frozen history, retraction'
+
 echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
 
