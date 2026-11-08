@@ -962,6 +962,7 @@ async fn v801_v900_intermediate_updates_feed_later_reasoning_and_quality_without
             text: "Did this happen before or after the call?".into(),
             reason: "Sequence changes the competing explanations".into(),
         }],
+        source_queries: vec![],
     };
     authz::with_auth_digest("test-digest".into(), async {
         let applied = niccolo_evidence::reasoning_updates::apply(&app, scope, s.principal, &update)
@@ -1017,6 +1018,7 @@ async fn v1281_v1320_model_reported_context_usage_rejects_non_frozen_contributio
         }],
         evidence_gaps: vec![],
         clarifications: vec![],
+            source_queries: vec![],
     };
     let result = authz::with_auth_digest("test-digest".into(), async {
         niccolo_evidence::reasoning_updates::apply(&app, scope, s.principal, &invalid).await
@@ -1068,6 +1070,7 @@ async fn candidate_interpretation_replay_conflict_preserves_original_non_fact_st
         assumptions: vec![],
         evidence_gaps: vec![],
         clarifications: vec![],
+            source_queries: vec![],
     };
     authz::with_auth_digest("test-digest".into(), async {
         let applied =
@@ -1089,6 +1092,7 @@ async fn candidate_interpretation_replay_conflict_preserves_original_non_fact_st
             assumptions: vec![],
             evidence_gaps: vec![],
             clarifications: vec![],
+            source_queries: vec![],
         };
         assert!(
             niccolo_evidence::reasoning_updates::apply(&app, scope, s.principal, &conflicting,)

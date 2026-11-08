@@ -4,7 +4,7 @@ use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
     bff_operations, model_adapter, model_artifacts, operation_budget, reasoning_handoff,
-    reasoning_packet, reasoning_updates,
+    reasoning_packet, reasoning_updates, observation_retrieval, observation_query_ledger,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,10 @@ pub enum RuntimeError {
     Coverage(#[from] analysis_coverage::AnalysisCoverageError),
     #[error("reasoning handoff unavailable: {0}")]
     Handoff(#[from] reasoning_handoff::HandoffError),
+    #[error("observation search unavailable: {0}")]
+    ObservationSearch(#[from] observation_retrieval::ObservationSearchError),
+    #[error("observation query audit unavailable: {0}")]
+    ObservationLedger(#[from] observation_query_ledger::QueryLedgerError),
     #[error("agentic operation requires an analysis")]
     MissingAnalysis,
 }
@@ -159,7 +163,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                 step.kind.as_str(),
                 "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" | "CHECK_ALTERNATIVES"
             ) {
-                json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","candidate_interpretations","assumptions","evidence_gaps","clarifications"]},"niccolo_rules":{"human_context_is_not_evidence":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
+                json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","candidate_interpretations","assumptions","evidence_gaps","clarifications","source_queries"]},"niccolo_rules":{"human_context_is_not_evidence":true,"source_queries_are_retrieval_intents_not_facts":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
             } else if step.kind == "CHALLENGE_SYNTHESIS" {
                 json!({"type":"object","required":["purpose","status","niccolo_challenge"],"niccolo_challenge":{"required":["challenges"]},"niccolo_rules":{"seek_counterevidence":true,"seek_competing_interpretations":true,"challenge_is_not_truth":true,"do_not_execute_human_actions":true}})
             } else {
@@ -222,17 +226,27 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                     ) {
                         let update = reasoning_updates::parse(response)?
                             .ok_or(reasoning_updates::UpdateError::Invalid)?;
-                        reasoning_updates::apply(
-                            pool,
-                            crate::analysis_structure::AnalysisScope {
-                                workspace: scope.workspace,
-                                situation: scope.situation,
-                                analysis,
-                            },
-                            actor,
-                            &update,
-                        )
-                        .await?;
+                        if step.kind != "CHECK_ALTERNATIVES" && !update.source_queries.is_empty() {
+                            return Err(reasoning_updates::UpdateError::Invalid.into());
+                        }
+                        reasoning_updates::apply(pool, analysis_scope, actor, &update).await?;
+                        if step.kind == "CHECK_ALTERNATIVES" {
+                            // Model intents stay bounded by this operation's
+                            // frozen analysis and the workspace's RLS boundary.
+                            for query in &update.source_queries {
+                                let found =
+                                    observation_retrieval::search(pool, analysis_scope, &query.query, 5)
+                                        .await?;
+                                observation_query_ledger::record_hits(
+                                    pool,
+                                    analysis_scope,
+                                    query.query_id,
+                                    actor,
+                                    &found.results,
+                                )
+                                .await?;
+                            }
+                        }
                     } else if step.kind == "CHALLENGE_SYNTHESIS" {
                         let artifact = adversarial_challenge::parse(response)?
                             .ok_or(adversarial_challenge::ChallengeError::Invalid)?;

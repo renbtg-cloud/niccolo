@@ -4,7 +4,8 @@
 use crate::analysis_structure::AnalysisScope;
 use crate::{
     agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
-    epistemic_policy_store, human_agency, human_control, human_credence, proactive_briefing,
+    epistemic_policy_store, human_agency, human_control, human_credence, observation_query_ledger,
+    proactive_briefing,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -114,6 +115,9 @@ pub struct ReasoningPacket {
     pub clarifications_truncated: bool,
     pub policy_signals: PolicySignalPacket,
     pub proactive_leads: proactive_briefing::ProactiveBriefing,
+    /// Model-requested searches, grounded in the frozen revision; not facts.
+    pub observation_queries: Vec<observation_query_ledger::QueryTrace>,
+    pub observation_query_packet_truncated: bool,
     pub current_human_control: CurrentHumanControl,
     pub packet_asserts_truth: bool,
 }
@@ -373,6 +377,10 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         .await
         .map_err(dep)?;
     let proactive_leads = proactive_briefing::build(pool, scope).await.map_err(dep)?;
+    let (observation_queries, observation_query_packet_truncated) =
+        observation_query_ledger::for_packet(pool, scope)
+            .await
+            .map_err(dep)?;
     Ok(ReasoningPacket {
         format: "niccolo.reasoning-packet".into(),
         version: 1,
@@ -432,6 +440,8 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             source_requests: signals.source_requests,
         },
         proactive_leads,
+        observation_queries,
+        observation_query_packet_truncated,
         current_human_control: CurrentHumanControl {
             goals,
             priorities,
