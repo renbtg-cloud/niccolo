@@ -684,7 +684,8 @@ async fn list_sources(
         json!({
             "documents":page.documents.iter().map(|d|json!({
                 "document_id":d.document_id,"format":d.format,"locator":d.locator,
-                "sha256":d.sha256,"byte_length":d.byte_length,"fragment_count":d.fragment_count
+                "sha256":d.sha256,"byte_length":d.byte_length,"fragment_count":d.fragment_count,
+                "original_bytes_available":d.original_bytes_available
             })).collect::<Vec<_>>(),"next_after":page.next_after
         }),
         StatusCode::OK,
