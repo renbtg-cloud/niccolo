@@ -213,19 +213,20 @@ pub async fn submit(
     }
     let input_sha = digest(&input_json);
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    type ReplayRow = (Uuid, String, String, Option<Uuid>, Option<Uuid>, i32, Uuid);
+    type ReplayRow = (Uuid, String, String, Option<Uuid>, Option<Uuid>, i32, Uuid, bool);
     let row: Option<ReplayRow> = if let Some(key) = &input.idempotency_key {
-        sqlx::query_as("SELECT operation_id,input_sha256,input_json,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_kind=$3 AND idempotency_key=$4")
-            .bind(scope.workspace).bind(scope.situation).bind(&input.kind).bind(key).fetch_optional(&mut *tx).await?
+        sqlx::query_as("SELECT operation_id,input_sha256,input_json,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,(deadline_at IS NOT DISTINCT FROM $5::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_kind=$3 AND idempotency_key=$4")
+            .bind(scope.workspace).bind(scope.situation).bind(&input.kind).bind(key).bind(input.deadline_at.as_deref()).fetch_optional(&mut *tx).await?
     } else {
         None
     };
-    if let Some((existing, sha, json, target, parent, steps, actor)) = row {
+    if let Some((existing, sha, json, target, parent, steps, actor, same_deadline)) = row {
         if sha != input_sha || json != input_json
             || target != input.target_analysis_id
             || parent != input.parent_operation_id
             || steps != input.step_budget
             || actor != input.requested_by
+            || !same_deadline
         {
             return Err(BffOperationError::IdempotencyConflict);
         }
@@ -243,8 +244,8 @@ pub async fn submit(
     let inserted = sqlx::query("INSERT INTO niccolo.bff_operations(workspace_id,situation_id,operation_id,operation_kind,target_analysis_id,parent_operation_id,idempotency_key,input_json,input_sha256,deadline_at,step_budget,requested_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::timestamptz,$11,$12) ON CONFLICT (workspace_id,situation_id,operation_id) DO NOTHING")
         .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(&input.kind).bind(input.target_analysis_id).bind(input.parent_operation_id).bind(&input.idempotency_key).bind(&input_json).bind(&input_sha).bind(deadline).bind(input.step_budget).bind(input.requested_by).execute(&mut *tx).await?.rows_affected();
     if inserted == 0 {
-        let exact: Option<(String, String, Option<Uuid>, Option<Uuid>, i32, Uuid)> = sqlx::query_as("SELECT operation_kind,input_sha256,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
-            .bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_optional(&mut *tx).await?;
+        let exact: Option<(String, String, Option<Uuid>, Option<Uuid>, i32, Uuid, Option<String>, bool)> = sqlx::query_as("SELECT operation_kind,input_sha256,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,idempotency_key,(deadline_at IS NOT DISTINCT FROM $4::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
+             .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(deadline).fetch_optional(&mut *tx).await?;
         if exact != Some((
             input.kind.clone(),
             input_sha.clone(),
@@ -252,6 +253,8 @@ pub async fn submit(
             input.parent_operation_id,
             input.step_budget,
             input.requested_by,
+            input.idempotency_key.clone(),
+            true,
         )) {
             return Err(BffOperationError::IdempotencyConflict);
         }
