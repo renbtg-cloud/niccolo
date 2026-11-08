@@ -187,6 +187,22 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
         .route("/readyz", get(readiness))
         .route(
+            "/v1/workspaces/{workspace}/actors",
+            get(list_actors),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/actors/{actor_id}",
+            post(create_actor),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/actors/{actor_id}/kind-events/{event}",
+            post(record_actor_kind),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/actor-bindings/{event}",
+            post(record_actor_binding),
+        )
+        .route(
             "/v1/workspaces/{workspace}/identities",
             get(list_identity_subjects),
         )
@@ -3138,6 +3154,139 @@ async fn record_hypothesis_portfolio_event(
         event,
         &input.event_kind,
         &input.note,
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+
+impl From<ActorError> for ApiError {
+    fn from(error: ActorError) -> Self {
+        match error {
+            ActorError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid actor input"),
+            ActorError::Invisible => Self(StatusCode::NOT_FOUND, "actor or source unavailable"),
+            ActorError::Conflict => Self(StatusCode::CONFLICT, "actor replay conflict"),
+            ActorError::Privileged => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "actor runtime role unavailable")
+            }
+            ActorError::Database(sqlx::Error::Database(ref db))
+                if matches!(db.code().as_deref(), Some("23503" | "23514" | "23505")) =>
+            {
+                Self(StatusCode::BAD_REQUEST, "invalid actor reference")
+            }
+            ActorError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "actor registry unavailable")
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActorCreateRequest {
+    display_label: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActorKindRequest {
+    actor_kind: Option<String>,
+    rationale: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActorBindingRequest {
+    speaker_label: String,
+    actor_id: Option<Uuid>,
+    rationale: String,
+}
+
+async fn list_actors(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    Ok(no_store(
+        json!({
+            "actors": actors::list(&state.pool, workspace).await?,
+            "actor_kind_is_investigation_gate": false,
+            "actor_kind_establishes_mind": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn create_actor(
+    State(state): State<AppState>,
+    Path((workspace, actor_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ActorCreateRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (actor, replayed) =
+        actors::create(&state.pool, workspace, recorder, actor_id, &input.display_label).await?;
+    Ok(no_store(
+        json!({"actor":actor,"replayed":replayed}),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn record_actor_kind(
+    State(state): State<AppState>,
+    Path((workspace, actor_id, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ActorKindRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let recorded = actors::record_kind(
+        &state.pool,
+        workspace,
+        recorder,
+        actor_id,
+        event,
+        input.actor_kind.as_deref(),
+        &input.rationale,
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn record_actor_binding(
+    State(state): State<AppState>,
+    Path((workspace, document, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ActorBindingRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let recorded = actors::bind_source_speaker(
+        &state.pool,
+        workspace,
+        recorder,
+        document,
+        &input.speaker_label,
+        event,
+        input.actor_id,
+        &input.rationale,
     )
     .await?;
     Ok(no_store(
