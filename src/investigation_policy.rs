@@ -61,6 +61,17 @@ pub async fn queue(
     )
     .await
     .map_err(dep)?;
+    let question_values = clarification::values(
+        pool,
+        scope.workspace,
+        scope.situation,
+        scope.analysis,
+    )
+    .await
+    .map_err(dep)?
+    .into_iter()
+    .map(|v| (v.question_id, v))
+    .collect::<std::collections::BTreeMap<_, _>>();
     let mut items = Vec::new();
     for g in gaps
         .into_iter()
@@ -112,12 +123,41 @@ pub async fn queue(
         });
     }
     for q in questions {
+        let (score, rationale) = if let Some(value) = question_values.get(&q.question_id) {
+            let hypothesis_component =
+                (value.discriminates_interpretation_ids.len().min(3) as u16) * 10;
+            let outcome_component = if value.possible_outcome_count >= 2 { 10 } else { 0 };
+            let decision_component = value.decision_relevance.unwrap_or(0) / 3;
+            let cost_penalty = value.acquisition_cost.unwrap_or(0) / 4;
+            let alternative_penalty = if value.cheaper_alternative.is_some() { 8 } else { 0 };
+            let score = 45u16
+                .saturating_add(hypothesis_component)
+                .saturating_add(outcome_component)
+                .saturating_add(decision_component)
+                .saturating_sub(cost_penalty)
+                .saturating_sub(alternative_penalty)
+                .min(100);
+            (
+                score,
+                format!(
+                    "{}; discriminates {} interpretation(s), {} possible outcome class(es), decision relevance {:?}, acquisition cost {:?}{}",
+                    q.reason,
+                    value.discriminates_interpretation_ids.len(),
+                    value.possible_outcome_count,
+                    value.decision_relevance,
+                    value.acquisition_cost,
+                    value.cheaper_alternative.as_ref().map(|x| format!(", cheaper alternative: {x}")).unwrap_or_default()
+                ),
+            )
+        } else {
+            (86, q.reason)
+        };
         items.push(InvestigationCandidate {
             id: q.question_id,
             kind: "CLARIFICATION".into(),
             text: q.text,
-            rationale: q.reason,
-            information_value_score: 86,
+            rationale,
+            information_value_score: score,
             score_is_heuristic: true,
             requires_human_action: true,
             system_may_execute_external_action: false,
