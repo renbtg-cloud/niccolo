@@ -77,6 +77,31 @@ fn cleaned_goal(request: &IntentRequest) -> Result<String, IntentError> {
     Ok(value.to_owned())
 }
 
+/// Validate the complete request before persisting an analysis snapshot.
+/// An invalid operation must not leave behind an otherwise valid snapshot.
+fn validate_request(
+    request: &IntentRequest,
+    operation: Uuid,
+) -> Result<String, IntentError> {
+    if request.analysis_id == operation
+        || request.reanalysis_of == Some(request.analysis_id)
+        || !(1..=10_000).contains(&request.step_budget.unwrap_or(32))
+        || request
+            .idempotency_key
+            .as_ref()
+            .is_some_and(|key| key.trim().is_empty() || key.len() > 256)
+    {
+        return Err(IntentError::Invalid);
+    }
+    let goal = cleaned_goal(request)?;
+    let payload = operation_input(request, &goal);
+    let encoded = serde_json::to_vec(&payload).map_err(|_| IntentError::Invalid)?;
+    if encoded.len() > 262_144 {
+        return Err(IntentError::Invalid);
+    }
+    Ok(goal)
+}
+
 fn operation_input(request: &IntentRequest, goal: &str) -> Value {
     json!({
         "human_intent": request.intent,
@@ -97,10 +122,7 @@ pub async fn submit(
     actor: Uuid,
     request: &IntentRequest,
 ) -> Result<IntentLaunch, IntentError> {
-    if request.analysis_id == operation || request.reanalysis_of == Some(request.analysis_id) {
-        return Err(IntentError::Invalid);
-    }
-    let goal = cleaned_goal(request)?;
+    let goal = validate_request(request, operation)?;
     let analysis: AnalysisInputSnapshot = analysis_snapshot::begin(
         pool,
         workspace,
@@ -152,6 +174,46 @@ mod tests {
         ] {
             assert!(!intent.default_goal().trim().is_empty());
         }
+    }
+
+    fn request() -> IntentRequest {
+        IntentRequest {
+            analysis_id: Uuid::new_v4(),
+            intent: HumanIntent::Understand,
+            goal: None,
+            reanalysis_of: None,
+            idempotency_key: None,
+            step_budget: None,
+            context: json!({}),
+        }
+    }
+
+    #[test]
+    fn invalid_budget_and_idempotency_are_rejected_before_snapshot_creation() {
+        let operation = Uuid::new_v4();
+        let mut input = request();
+        input.step_budget = Some(0);
+        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        input.step_budget = Some(10_001);
+        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        input.step_budget = Some(32);
+        input.idempotency_key = Some(" ".into());
+        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        input.idempotency_key = Some("x".repeat(257));
+        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+    }
+
+    #[test]
+    fn oversized_context_and_self_reanalysis_are_rejected_before_snapshot_creation() {
+        let operation = Uuid::new_v4();
+        let mut input = request();
+        input.context = json!({"message":"x".repeat(262_144)});
+        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        input.context = json!({});
+        input.reanalysis_of = Some(input.analysis_id);
+        assert!(matches!(validate_request(&input, operation), Err(IntentError::Invalid)));
+        input.reanalysis_of = None;
+        assert!(validate_request(&input, operation).is_ok());
     }
 
     #[test]
