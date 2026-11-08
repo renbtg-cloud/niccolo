@@ -44,9 +44,9 @@ export class NiccoloClient {
   situation() { return this.request('GET', situationPath(this.config)); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
-  sources(after = 0, limit = 100) { return this.request('GET', `${sourcesPath(this.config)}?after=${after}&limit=${limit}`); }
+  sources(after = null, limit = 100) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${sourcesPath(this.config)}${q}`); }
   sourceSpeakers(documentId) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/speakers`); }
-  identities(after = 0, limit = 100) { return this.request('GET', `${identitiesPath(this.config)}?after=${after}&limit=${limit}`); }
+  identities(after = null, limit = 100) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${identitiesPath(this.config)}${q}`); }
   questions(after = null, limit = 100) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `/v1/workspaces/${this.config.workspace}/questions${q}`); }
   createQuestion(questionId, text) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/questions/${questionId}`, { body: { text } }); }
   questionFeedback(questionId, after = 0, limit = 100) { return this.request('GET', `/v1/workspaces/${this.config.workspace}/questions/${questionId}/feedback?after=${after}&limit=${limit}`); }
