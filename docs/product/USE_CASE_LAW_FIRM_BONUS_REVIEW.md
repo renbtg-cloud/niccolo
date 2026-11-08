@@ -1,16 +1,16 @@
 # Niccolò Use Case: The Aurelius & Finch Bonus Review
 
-## A fictional adversarial human-context investigation
+## A fictional adversarial human-reasoning investigation
 
 > **Fictional scenario.** Every person, organization, political group, client, case, event, and document described here is invented for product illustration. Similarity to real people or institutions is coincidental.
 
 ## Why this case exists
 
-Niccolò is not a general legal-analytics system and it is not a machine for deciding whether a lawsuit should settle at a particular number. Its object is narrower and, in some ways, harder: **the humans inside a complicated situation** - what they may have known, believed, misunderstood, wanted, feared, delegated, concealed, inferred, or expected; how those states may have changed; how they affected one another; and what consequences followed.
+**Niccolò is human reasoning for complicated situations.** Its object is the humans inside them - what they may have known, believed, misunderstood, wanted, feared, delegated, concealed, inferred, or expected; how those states may have changed; how they affected one another; and what consequences followed.
 
 This use case is deliberately hostile to easy answers. It contains money, professional incentives, criminal matters, partisan political relationships, conflicting testimony, ambiguous authority, a private investigator who may be biased, an original Niccolò operator who may be implicated, an IT function that may have influenced the data, and a CEO who cannot simply mark anyone as "trusted" and proceed.
 
-The point is not for Niccolò to declare that a conspiracy exists. The point is to help one decision-maker reason through a human system in which **every source may be incomplete, interested, mistaken, manipulated, or misunderstood**.
+Niccolò helps one decision-maker reason through a human system in which **every source may be incomplete, interested, mistaken, manipulated, or misunderstood** - while still reaching decisions when the evidence becomes decision-useful.
 
 ---
 
@@ -1182,7 +1182,7 @@ for person in relevant_people:
 
 maintain_self_model(
     what_niccolo_knows,
-    what_niccolo_inferrs,
+    what_niccolo_infers,
     what_niccolo_is_uncertain_about,
     what_niccolo_may_be_framing_badly,
 )
