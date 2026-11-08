@@ -453,6 +453,8 @@ pub mod reasoning_packet;
 
 pub mod observation_retrieval;
 
+pub mod observation_query_ledger;
+
 pub mod investigation_policy;
 
 pub mod reanalysis_advisor;
