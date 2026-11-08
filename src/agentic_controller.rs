@@ -348,7 +348,7 @@ pub async fn resolve_human_boundary(
     response_text: &str,
 ) -> Result<HumanBoundaryResolution, ControllerError> {
     if !matches!(decision, "CONTINUE" | "STOP" | "REPLAN")
-        || response_text.trim().is_empty()
+        || (decision != "STOP" && response_text.trim().is_empty())
         || response_text.len() > 4096
     {
         return Err(ControllerError::Invalid);
