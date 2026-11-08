@@ -249,6 +249,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(list_source_speakers),
         )
         .route(
+            "/v1/workspaces/{workspace}/sources/{document}/original",
+            get(download_source_original),
+        )
+        .route(
             "/v1/workspaces/{workspace}/sources/{document}",
             post(ingest),
         )
@@ -690,6 +694,29 @@ async fn list_sources(
         }),
         StatusCode::OK,
     ))
+}
+
+async fn download_source_original(
+    State(state): State<AppState>,
+    Path((workspace, document)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let (format, original) = source_catalog::source_original(&state.pool, workspace, document)
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source download unavailable"))?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "source original unavailable"))?;
+    let extension = if format == "EML" { "eml" } else { "txt" };
+    let content_type = if format == "EML" {
+        "message/rfc822"
+    } else {
+        "text/plain; charset=utf-8"
+    };
+    let filename = format!("attachment; filename=\"niccolo-source-{document}.{extension}\"");
+    let mut response = Bytes::from(original).into_response();
+    response.headers_mut().insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    response.headers_mut().insert(header::CONTENT_DISPOSITION, filename.parse().unwrap());
+    Ok(response)
 }
 
 async fn list_source_speakers(
