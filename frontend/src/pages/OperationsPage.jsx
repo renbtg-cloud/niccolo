@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -37,6 +37,14 @@ function AnswerPanel({ output, operation, error }) {
 
 export function OperationsPage(){
  const client=useClient(); const qc=useQueryClient();
+ const readiness=useQuery({
+   queryKey:['mvp-runtime-readiness'],
+   enabled:!!client,
+   queryFn:async()=> (await client.readiness()).value,
+   staleTime:60000,
+   retry:false,
+ });
+ const modelUnavailable=readiness.data?.model_configured===false;
  const pendingLaunch=useRef(null);
  const pendingHumanResponse=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
@@ -63,11 +71,14 @@ export function OperationsPage(){
    return (await client.respondAgentic(active,waitingStep.step_id,{response_id:pendingHumanResponse.current.responseId,decision:v.decision,response_text:v.responseText})).value;
  },onSuccess:async()=>{pendingHumanResponse.current=null;humanForm.reset({decision:'CONTINUE',responseText:''});await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
  if(!client)return <p>Connect first.</p>;
- return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p><form onSubmit={handleSubmit(v=>run.mutate(v))}>
+ return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p>
+ {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. Configure a local or remote OpenAI-compatible model and restart the Niccolò service before analyzing.</p>}
+ {readiness.error&&<p className="error" role="alert">Niccolò is not ready to analyze: {readiness.error.message}</p>}
+ <form onSubmit={handleSubmit(v=>run.mutate(v))}>
    <label>What are you trying to do?<select {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
    <label>Goal / question (optional)<textarea {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
    <details><summary>Advanced execution</summary><label>Delivery<select {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Return immediately and observe by PULL</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" {...register('stepBudget')}/></label><small>The default settings are appropriate for ordinary use. Change these only when testing execution behavior.</small></details>
-   <button disabled={run.isPending}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
+   <button disabled={run.isPending||modelUnavailable||readiness.isPending||readiness.isError}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
  </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error">{run.error.message}</p>}
  <AnswerPanel output={output.data} operation={observed.operation??run.data?.operation??null} error={output.error}/>
  {waitingStep&&<form className="human-boundary" onSubmit={humanForm.handleSubmit(v=>respond.mutate(v))}><h3>Niccolò needs your input</h3><p>{waitingStep.label}</p><p><small>Reasoning pauses here until you respond. Your input is recorded; it is not inferred consent for any external action.</small></p><label>What should happen next?<select {...humanForm.register('decision')}><option value="CONTINUE">Continue with this understanding</option><option value="REPLAN">Reconsider the reasoning plan</option><option value="STOP">Stop this analysis</option></select></label><label>Your input<textarea aria-label="Human response" {...humanForm.register('responseText')} placeholder="Clarify, correct, or explain what you want Niccolò to consider."/></label><button disabled={respond.isPending}>{respond.isPending?'Sending…':'Send input'}</button>{humanForm.formState.errors.responseText&&<p className="error">A response is required to continue or replan, but not to stop.</p>}{respond.error&&<p className="error">{respond.error.message}</p>}</form>}
