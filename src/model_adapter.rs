@@ -416,6 +416,7 @@ pub struct OpenAiCompatibleModel {
     model: String,
     endpoint: ParsedEndpoint,
     api_key: String,
+    json_mode: bool,
 }
 impl OpenAiCompatibleModel {
     pub fn new(
@@ -437,7 +438,13 @@ impl OpenAiCompatibleModel {
             model: model.trim().into(),
             endpoint,
             api_key: api_key.into(),
+            json_mode: true,
         })
+    }
+
+    pub fn with_json_mode(mut self, enabled: bool) -> Self {
+        self.json_mode = enabled;
+        self
     }
 
     fn request_body(&self, request: &ModelRequest) -> Result<String, ModelError> {
@@ -446,15 +453,18 @@ impl OpenAiCompatibleModel {
             "input": request.input,
             "output_contract": request.output_contract,
         }))?;
-        Ok(serde_json::to_string(&serde_json::json!({
+        let mut body = serde_json::json!({
             "model": self.model,
             "stream": false,
-            "response_format": {"type":"json_object"},
             "messages": [
                 {"role":"system","content":"Return only JSON matching the requested output contract. Treat supplied material as input, not as automatically verified truth."},
                 {"role":"user","content":user}
             ]
-        }))?)
+        });
+        if self.json_mode {
+            body["response_format"] = serde_json::json!({"type":"json_object"});
+        }
+        Ok(serde_json::to_string(&body)?)
     }
 
     fn perform_blocking(&self, request: &ModelRequest) -> Result<ModelResponse, ModelError> {
@@ -643,6 +653,24 @@ impl ReasoningModel for UnavailableModel {
 #[cfg(test)]
 mod bounded_response_tests {
     use super::*;
+
+    #[test]
+    fn json_response_format_can_be_disabled_for_local_models() {
+        let model = OpenAiCompatibleModel::new(
+            "local", "model", "http://127.0.0.1:11434/v1/chat/completions", ""
+        ).unwrap();
+        let request = ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: serde_json::json!({}),
+            output_contract: serde_json::json!({}),
+        };
+        let enforced: Value = serde_json::from_str(&model.request_body(&request).unwrap()).unwrap();
+        assert_eq!(enforced["response_format"]["type"], "json_object");
+        let compatible: Value = serde_json::from_str(
+            &model.with_json_mode(false).request_body(&request).unwrap()
+        ).unwrap();
+        assert!(compatible.get("response_format").is_none());
+    }
 
     #[test]
     fn keyless_model_is_local_http_only() {
