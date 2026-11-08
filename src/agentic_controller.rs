@@ -338,6 +338,12 @@ pub struct HumanBoundaryResolution {
     pub human_response_persisted: bool,
     pub system_inferred_consent: bool,
 }
+fn human_boundary_input_valid(decision: &str, response_text: &str) -> bool {
+    matches!(decision, "CONTINUE" | "STOP" | "REPLAN")
+        && (decision == "STOP" || !response_text.trim().is_empty())
+        && response_text.len() <= 4096
+}
+
 pub async fn resolve_human_boundary(
     pool: &PgPool,
     scope: OperationScope,
@@ -347,10 +353,7 @@ pub async fn resolve_human_boundary(
     decision: &str,
     response_text: &str,
 ) -> Result<HumanBoundaryResolution, ControllerError> {
-    if !matches!(decision, "CONTINUE" | "STOP" | "REPLAN")
-        || (decision != "STOP" && response_text.trim().is_empty())
-        || response_text.len() > 4096
-    {
+    if !human_boundary_input_valid(decision, response_text) {
         return Err(ControllerError::Invalid);
     }
     let before = view(pool, scope).await?;
@@ -434,4 +437,20 @@ pub async fn recover_stale_started(
     }
     tx.commit().await?;
     view(pool, scope).await
+}
+
+#[cfg(test)]
+mod human_boundary_input_tests {
+    use super::human_boundary_input_valid;
+
+    #[test]
+    fn stopping_needs_no_explanation_but_continuing_does() {
+        assert!(human_boundary_input_valid("STOP", ""));
+        assert!(human_boundary_input_valid("STOP", "  "));
+        assert!(!human_boundary_input_valid("CONTINUE", ""));
+        assert!(!human_boundary_input_valid("REPLAN", "  "));
+        assert!(human_boundary_input_valid("CONTINUE", "Please include another source"));
+        assert!(!human_boundary_input_valid("UNKNOWN", "yes"));
+        assert!(!human_boundary_input_valid("STOP", &"x".repeat(4097)));
+    }
 }
