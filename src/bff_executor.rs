@@ -72,12 +72,13 @@ async fn run_with_owned_lease(
                 // Ok used to strand the durable operation in RUNNING forever.
                 if agentic_outcome_is_stalled(&outcome.state) {
                     Err(BffExecutionError::Agentic(format!(
-                        "agentic plan cannot advance: {}", outcome.state
+                        "agentic plan cannot advance: {}",
+                        outcome.state
                     )))
                 } else {
                     Ok(())
                 }
-            },
+            }
             "REANALYZE" => reanalysis_runtime::execute(pool, scope, actor)
                 .await
                 .map(|_| ())
