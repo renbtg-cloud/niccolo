@@ -141,6 +141,13 @@ async fn concurrent_same_key_submissions_reuse_one_operation_and_queue_event() {
     .await
     .unwrap();
     assert_eq!(events, 1);
+
+    let mut changed = request.clone();
+    changed.input = json!({"different":"intent"});
+    assert!(matches!(
+        bff_operations::submit(&app, op(s, Uuid::new_v4()), &changed).await,
+        Err(bff_operations::BffOperationError::IdempotencyConflict)
+    ));
 }
 
 #[tokio::test]
