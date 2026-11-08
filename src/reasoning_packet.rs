@@ -3,11 +3,10 @@
 //! can govern present execution without being misrepresented as historical analysis input.
 use crate::analysis_structure::AnalysisScope;
 use crate::{
-    actors, agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
-    collection_provenance, decision_points, decision_readiness, epistemic_policy_store, human_agency,
-    human_control, human_credence,
-    hypothesis_portfolio,
-    observation_query_ledger, proactive_briefing, source_scope, temporal_state,
+    actors, agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot,
+    clarification, collection_provenance, decision_points, decision_readiness,
+    epistemic_policy_store, human_agency, human_control, human_credence, hypothesis_portfolio,
+    integrity_scope, observation_query_ledger, proactive_briefing, source_scope, temporal_state,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -360,7 +359,9 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         .map_err(dep)?;
     let temporal_assertions = temporal_state::list(pool, scope).await.map_err(dep)?;
     let source_scope = source_scope::list(pool, scope).await.map_err(dep)?;
-    let collection_events = collection_provenance::list(pool, scope).await.map_err(dep)?;
+    let collection_events = collection_provenance::list(pool, scope)
+        .await
+        .map_err(dep)?;
     let integrity_assessments = integrity_scope::list(pool, scope).await.map_err(dep)?;
     let decisions = decision_points::package(pool, scope).await.map_err(dep)?;
     let decision_readiness = decision_readiness::latest(pool, scope).await.map_err(dep)?;
