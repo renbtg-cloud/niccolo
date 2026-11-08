@@ -106,6 +106,7 @@ impl OpenAiCompatibleConfig {
 
     pub fn native_model(&self) -> Result<OpenAiCompatibleModel, ProviderConfigError> {
         OpenAiCompatibleModel::new(&self.provider, &self.model, &self.endpoint(), &self.api_key)
+            .and_then(|model| model.with_transport_timeout_secs(self.max_time_secs))
             .map(|model| model.with_json_mode(self.json_mode))
             .map_err(|_| ProviderConfigError::Invalid)
     }
