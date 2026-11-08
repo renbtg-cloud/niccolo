@@ -60,13 +60,13 @@ export function IdentitiesPage() {
   const client = useClient();
   const qc = useQueryClient();
   const [documentId, setDocumentId] = useState('');
+  const pendingAssign = useRef(null);
+  const pendingClear = useRef(null);
   const resetDocumentSelection = (id) => {
     pendingAssign.current = null;
     pendingClear.current = null;
     setDocumentId(id);
   };
-  const pendingAssign = useRef(null);
-  const pendingClear = useRef(null);
 
   const situation = useQuery({
     queryKey: client ? qk.situation(client.config) : ['situation','none'],
