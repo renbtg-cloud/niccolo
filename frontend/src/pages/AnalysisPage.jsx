@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { analysisSchema } from '../config.js';
 import { useUiStore } from '../stores/ui.js';
 import { useAnalysisOutput } from '../hooks/useAnalysisOutput.js';
+import { useOperationObserver } from '../hooks/useOperationObserver.js';
 import { useAnalysisHistory } from '../hooks/useAnalysisHistory.js';
 import { analysisHistoryLabel, historyGroups } from '../state/analysisHistoryPresentation.js';
 
@@ -23,9 +24,10 @@ function AnalysisAnswer({ output, pending, error }) {
 }
 
 export function AnalysisPage(){
- const analysis=useUiStore(s=>s.analysis); const setAnalysis=useUiStore(s=>s.setAnalysis);
+ const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const {register,handleSubmit}=useForm({resolver:zodResolver(analysisSchema),defaultValues:{analysis}});
- const output=useAnalysisOutput(analysis); const history=useAnalysisHistory(); const rows=historyGroups(history.data?.analyses??[]);
+ const observed=useOperationObserver(activeOperation);
+ const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const history=useAnalysisHistory(); const rows=historyGroups(history.data?.analyses??[]);
  return <section><h2>Analysis</h2>
    <form onSubmit={handleSubmit(v=>setAnalysis(v.analysis))}><input aria-label="Analysis UUID" placeholder="Analysis UUID" {...register('analysis')}/><button>Select analysis</button></form>
    <p>Selected: <code>{analysis||'none'}</code></p>
