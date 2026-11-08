@@ -213,7 +213,16 @@ pub async fn submit(
     }
     let input_sha = digest(&input_json);
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    type ReplayRow = (Uuid, String, String, Option<Uuid>, Option<Uuid>, i32, Uuid, bool);
+    type ReplayRow = (
+        Uuid,
+        String,
+        String,
+        Option<Uuid>,
+        Option<Uuid>,
+        i32,
+        Uuid,
+        bool,
+    );
     let row: Option<ReplayRow> = if let Some(key) = &input.idempotency_key {
         sqlx::query_as("SELECT operation_id,input_sha256,input_json,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,(deadline_at IS NOT DISTINCT FROM $5::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_kind=$3 AND idempotency_key=$4")
             .bind(scope.workspace).bind(scope.situation).bind(&input.kind).bind(key).bind(input.deadline_at.as_deref()).fetch_optional(&mut *tx).await?
@@ -221,7 +230,8 @@ pub async fn submit(
         None
     };
     if let Some((existing, sha, json, target, parent, steps, actor, same_deadline)) = row {
-        if sha != input_sha || json != input_json
+        if sha != input_sha
+            || json != input_json
             || target != input.target_analysis_id
             || parent != input.parent_operation_id
             || steps != input.step_budget
@@ -246,16 +256,18 @@ pub async fn submit(
     if inserted == 0 {
         let exact: Option<(String, String, Option<Uuid>, Option<Uuid>, i32, Uuid, Option<String>, bool)> = sqlx::query_as("SELECT operation_kind,input_sha256,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,idempotency_key,(deadline_at IS NOT DISTINCT FROM $4::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
             .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(deadline).fetch_optional(&mut *tx).await?;
-        if exact != Some((
-            input.kind.clone(),
-            input_sha.clone(),
-            input.target_analysis_id,
-            input.parent_operation_id,
-            input.step_budget,
-            input.requested_by,
-            input.idempotency_key.clone(),
-            true,
-        )) {
+        if exact
+            != Some((
+                input.kind.clone(),
+                input_sha.clone(),
+                input.target_analysis_id,
+                input.parent_operation_id,
+                input.step_budget,
+                input.requested_by,
+                input.idempotency_key.clone(),
+                true,
+            ))
+        {
             return Err(BffOperationError::IdempotencyConflict);
         }
     } else {
