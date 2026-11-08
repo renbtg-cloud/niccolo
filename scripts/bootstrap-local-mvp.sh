@@ -23,6 +23,12 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT to_re
   echo 'Database already contains Niccolo tables; use a new empty database.' >&2
   exit 1
 fi
+# PostgreSQL roles are cluster-global, not per-database. Overwriting an
+# existing niccolo_secure password could break an unrelated installation.
+if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='niccolo_secure')")" != "f" ]]; then
+  echo 'PostgreSQL role niccolo_secure already exists; refusing to change its password. Use a dedicated cluster or a supported migration.' >&2
+  exit 1
+fi
 
 echo '[1/4] Build MVP before changing the database'
 bash scripts/build-mvp.sh
@@ -37,9 +43,7 @@ done
 echo '[3/4] Create restricted runtime PostgreSQL login'
 psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" <<'SQL'
 \getenv secure_password NICCOLO_PG_SECURE_PASSWORD
-SELECT format('CREATE ROLE niccolo_secure LOGIN PASSWORD %L', :'secure_password')
- WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='niccolo_secure') \gexec
-ALTER ROLE niccolo_secure LOGIN PASSWORD :'secure_password';
+SELECT format('CREATE ROLE niccolo_secure LOGIN PASSWORD %L', :'secure_password') \gexec
 GRANT niccolo_api TO niccolo_secure WITH INHERIT TRUE, SET FALSE;
 SQL
 
