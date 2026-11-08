@@ -38,6 +38,7 @@ function AnswerPanel({ output, operation, error }) {
 export function OperationsPage(){
  const client=useClient(); const qc=useQueryClient();
  const pendingLaunch=useRef(null);
+ const pendingHumanResponse=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const observed=useOperationObserver(active); const plan=useAgenticPlan(active); const output=useAnalysisOutput(analysis,observed.operation);
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32}});
@@ -53,7 +54,14 @@ export function OperationsPage(){
    setAnalysis(r.value.analysis_id); setActive(operationId); return r.value;
  },onSuccess:()=>{pendingLaunch.current=null;}});
  const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
- const respond=useMutation({mutationFn:async(v)=>{if(!active||!waitingStep)throw new Error('No waiting human step');return (await client.respondAgentic(active,waitingStep.step_id,{response_id:crypto.randomUUID(),decision:v.decision,response_text:v.responseText})).value;},onSuccess:async()=>{humanForm.reset({decision:'CONTINUE',responseText:''});await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
+ const respond=useMutation({mutationFn:async(v)=>{
+   if(!active||!waitingStep)throw new Error('No waiting human step');
+   const signature=JSON.stringify({active,step:waitingStep.step_id,decision:v.decision,text:v.responseText});
+   if(pendingHumanResponse.current?.signature!==signature){
+     pendingHumanResponse.current={signature,responseId:crypto.randomUUID()};
+   }
+   return (await client.respondAgentic(active,waitingStep.step_id,{response_id:pendingHumanResponse.current.responseId,decision:v.decision,response_text:v.responseText})).value;
+ },onSuccess:async()=>{pendingHumanResponse.current=null;humanForm.reset({decision:'CONTINUE',responseText:''});await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
  if(!client)return <p>Connect first.</p>;
  return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p><form onSubmit={handleSubmit(v=>run.mutate(v))}>
    <label>What are you trying to do?<select {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
