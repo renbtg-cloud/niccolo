@@ -546,7 +546,10 @@ async fn readiness(State(state): State<AppState>) -> Response {
     .fetch_one(&state.pool)
     .await;
     if matches!(check, Ok((true, true, true, true, true, true))) {
-        no_store(json!({"status":"ready"}), StatusCode::OK)
+        no_store(json!({
+            "status":"ready",
+            "model_configured":state.model.provider() != "unconfigured"
+        }), StatusCode::OK)
     } else {
         no_store(
             json!({"status":"unavailable"}),
