@@ -457,6 +457,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_decision_readiness),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/integrity-scope",
+            get(list_integrity_scope),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/integrity-scope/{document}/{assessment}",
+            post(record_integrity_scope),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/collection-provenance",
             get(list_collection_provenance),
         )
@@ -2651,6 +2659,104 @@ async fn list_decision_readiness(
             "decision_readiness": decision_readiness::latest(&state.pool, scope).await?,
             "readiness_claims_omniscience": false,
             "human_owns_decision": true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+
+impl From<IntegrityScopeError> for ApiError {
+    fn from(error: IntegrityScopeError) -> Self {
+        match error {
+            IntegrityScopeError::Invalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid integrity assessment")
+            }
+            IntegrityScopeError::Invisible => {
+                Self(StatusCode::NOT_FOUND, "integrity source unavailable")
+            }
+            IntegrityScopeError::Conflict => {
+                Self(StatusCode::CONFLICT, "integrity assessment conflict")
+            }
+            IntegrityScopeError::Privileged => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "integrity runtime role unavailable",
+            ),
+            IntegrityScopeError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "integrity assessment unavailable")
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntegrityScopeRequest {
+    integrity_scope: String,
+    authenticity: String,
+    completeness: String,
+    rationale: String,
+    assertion_kind: String,
+}
+
+async fn record_integrity_scope(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, document, assessment)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(input): Json<IntegrityScopeRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let recorded = integrity_scope::record(
+        &state.pool,
+        scope,
+        actor,
+        &IntegrityAssessmentInput {
+            assessment_id: assessment,
+            document_id: document,
+            integrity_scope: input.integrity_scope,
+            authenticity: input.authenticity,
+            completeness: input.completeness,
+            rationale: input.rationale,
+            assertion_kind: input.assertion_kind,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_integrity_scope(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    Ok(no_store(
+        json!({
+            "assessments": integrity_scope::list(&state.pool, scope).await?,
+            "byte_continuity_establishes_authenticity": false,
+            "byte_continuity_establishes_completeness": false
         }),
         StatusCode::OK,
     ))
