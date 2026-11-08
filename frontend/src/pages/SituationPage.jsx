@@ -69,6 +69,23 @@ export function SituationPage(){
     mutationFn: (documentId) => client.addSituationSource(documentId),
     onSuccess: refresh,
   });
+  const downloadOriginal = useMutation({
+    mutationFn: async (document) => {
+      const blob = await client.downloadSourceOriginal(document.document_id);
+      const ext = document.format === 'EML' ? 'eml' : 'txt';
+      const url = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `niccolo-source-${document.document_id}.${ext}`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      }
+    },
+  });
   const addContext = useMutation({
     mutationFn: async () => {
       const text = contextText.trim();
@@ -188,9 +205,11 @@ export function SituationPage(){
           {attached.has(document.document_id)
             ? <span className="status-current">Attached</span>
             : <button disabled={attach.isPending} onClick={() => attach.mutate(document.document_id)}>Attach to Situation</button>}
+          {document.original_bytes_available&&<button disabled={downloadOriginal.isPending} onClick={()=>downloadOriginal.mutate(document)}>Download original</button>}
         </li>)}
       </ul>
       {attach.error && <p className="error">{attach.error.message}</p>}
+      {downloadOriginal.error && <p className="error" role="alert">{downloadOriginal.error.message}</p>}
     </article>
 
     <article className="human-context">
