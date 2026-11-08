@@ -3,6 +3,10 @@
 use crate::analysis_assumptions;
 use crate::analysis_claims;
 use crate::analysis_structure::AnalysisScope;
+use crate::{
+    collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
+    integrity_scope, source_scope, temporal_state,
+};
 use crate::review_workflow;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -21,6 +25,8 @@ pub enum HandoffError {
     Database(#[from] sqlx::Error),
     #[error("serialization failed: {0}")]
     Serialization(#[from] serde_json::Error),
+    #[error("handoff dependency failed: {0}")]
+    Dependency(String),
 }
 
 async fn scoped(pool: &PgPool, workspace: Uuid) -> Result<Transaction<'_, Postgres>, HandoffError> {
@@ -101,6 +107,13 @@ pub struct ReasoningHandoffBundle {
     pub clarifications: Vec<HandoffClarification>,
     pub candidate_interpretations: Vec<HandoffCandidateInterpretation>,
     pub revision_conditions: Vec<HandoffCondition>,
+    pub hypothesis_portfolio: hypothesis_portfolio::HypothesisPortfolio,
+    pub temporal_assertions: Vec<temporal_state::TemporalAssertion>,
+    pub source_scope: Vec<source_scope::SourceScopeAssertion>,
+    pub collection_events: Vec<collection_provenance::CollectionEvent>,
+    pub integrity_assessments: Vec<integrity_scope::IntegrityAssessment>,
+    pub decisions: decision_points::DecisionPackage,
+    pub decision_readiness: Vec<decision_readiness::DecisionReadinessView>,
     pub clarifications_are_evidence: bool,
     pub candidate_interpretations_are_facts: bool,
     pub candidate_interpretations_are_automatically_ranked: bool,
@@ -196,9 +209,25 @@ pub async fn bundle(
             latest_event: c.latest_event,
         })
         .collect();
+    let dep = |e: &dyn std::fmt::Display| HandoffError::Dependency(e.to_string());
+    let hypothesis_portfolio = hypothesis_portfolio::portfolio(pool, scope)
+        .await
+        .map_err(|e| dep(&e))?;
+    let temporal_assertions = temporal_state::list(pool, scope).await.map_err(|e| dep(&e))?;
+    let source_scope = source_scope::list(pool, scope).await.map_err(|e| dep(&e))?;
+    let collection_events = collection_provenance::list(pool, scope)
+        .await
+        .map_err(|e| dep(&e))?;
+    let integrity_assessments = integrity_scope::list(pool, scope)
+        .await
+        .map_err(|e| dep(&e))?;
+    let decisions = decision_points::package(pool, scope).await.map_err(|e| dep(&e))?;
+    let decision_readiness = decision_readiness::latest(pool, scope)
+        .await
+        .map_err(|e| dep(&e))?;
     Ok(ReasoningHandoffBundle {
         format: "niccolo.reasoning-handoff".into(),
-        version: 2,
+        version: 3,
         workspace_id: scope.workspace,
         situation_id: scope.situation,
         analysis_id: scope.analysis,
@@ -208,6 +237,13 @@ pub async fn bundle(
         clarifications,
         candidate_interpretations,
         revision_conditions,
+        hypothesis_portfolio,
+        temporal_assertions,
+        source_scope,
+        collection_events,
+        integrity_assessments,
+        decisions,
+        decision_readiness,
         clarifications_are_evidence: false,
         candidate_interpretations_are_facts: false,
         candidate_interpretations_are_automatically_ranked: false,
