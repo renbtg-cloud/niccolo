@@ -1,5 +1,17 @@
 # Active work progress
 
+## Operation deadline/budget observability — ARM/TIME first slice (verified)
+
+PR #23 merged into main at `562e52d3`.
+- Existing hard-stop operation budgeting now exposes PostgreSQL-clock **remaining deadline milliseconds**, invocation capacity and token capacity, plus explicit stop reasons.
+- New authenticated read-only endpoint: `GET /v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/budget`.
+- Budget counters remain operational limits, **not epistemic quality, probability or truth**. The API explicitly reports that graceful quality degradation is not yet implemented.
+- Exhausted signed counters are clamped at zero; actual PostgreSQL deadline expiry is integration-tested.
+- A preexisting agentic-plan visibility test was hardened from scheduler-only polling to a bounded wall-clock wait after recurring CI flakiness.
+- Linux Actions run `42428951000` passed: **456/456 PostgreSQL-feature Rust tests**, **132/132 library tests**, **66/66 frontend tests**, **3/3 offline Python export tests**, all **83 SQL migrations**, rustfmt and strict Clippy.
+- Next ARM work can safely build on this accounting surface: Linux effective-resource observation (including cgroup quotas), self-managed/delegated policy, admission/concurrency adaptation and eventually honest anytime partial-result/degradation semantics.
+
+
 ## User-owned Git archival and Python/CSV explanation — MVP first slice (verified)
 
 PR #22 merged into main at `e20fcfea`; implementation/plan are documented in `MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md`.
