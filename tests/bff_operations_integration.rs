@@ -233,3 +233,112 @@ async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
         Err(operation_budget::BudgetError::Deadline)
     ));
 }
+
+#[tokio::test]
+async fn policy_aware_claim_limit_is_atomic_and_releases_capacity() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+
+    for idx in 0..8 {
+        let id = Uuid::new_v4();
+        let mut request = input(s, "BUILD_BRIEFING", None);
+        request.idempotency_key = Some(format!("adaptive-{idx}"));
+        bff_operations::submit(&app, op(s, id), &request)
+            .await
+            .unwrap();
+    }
+
+    let mut tasks = Vec::new();
+    for idx in 0..12 {
+        let pool = app.clone();
+        let workspace = s.workspace;
+        tasks.push(tokio::spawn(async move {
+            let owner = format!("adaptive-worker-{idx}");
+            (
+                owner.clone(),
+                bff_operations::claim_next_in_workspace_with_limit(
+                    &pool,
+                    workspace,
+                    &owner,
+                    30_000,
+                    1,
+                )
+                .await
+                .unwrap(),
+            )
+        }));
+    }
+
+    let mut claimed = Vec::new();
+    for task in tasks {
+        let value = task.await.unwrap();
+        if value.1.is_some() {
+            claimed.push(value);
+        }
+    }
+    assert_eq!(claimed.len(), 1, "workspace admission cap must be atomic");
+
+    let (first_owner, first_scope) = claimed.pop().unwrap();
+    let first_scope = first_scope.unwrap();
+    assert!(
+        bff_operations::execution_owned_by(&app, first_scope, &first_owner)
+            .await
+            .unwrap()
+    );
+
+    let blocked = bff_operations::claim_next_in_workspace_with_limit(
+        &app,
+        s.workspace,
+        "blocked-worker",
+        30_000,
+        1,
+    )
+    .await
+    .unwrap();
+    assert!(blocked.is_none());
+
+    assert!(
+        bff_operations::release_execution(&app, first_scope, &first_owner)
+            .await
+            .unwrap()
+    );
+    let next = bff_operations::claim_next_in_workspace_with_limit(
+        &app,
+        s.workspace,
+        "next-worker",
+        30_000,
+        1,
+    )
+    .await
+    .unwrap();
+    assert!(next.is_some());
+}
+
+#[tokio::test]
+async fn policy_aware_claim_limit_rejects_zero_and_excessive_caps() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    assert!(matches!(
+        bff_operations::claim_next_in_workspace_with_limit(
+            &app,
+            s.workspace,
+            "worker",
+            30_000,
+            0,
+        )
+        .await,
+        Err(bff_operations::BffOperationError::Invalid)
+    ));
+    assert!(matches!(
+        bff_operations::claim_next_in_workspace_with_limit(
+            &app,
+            s.workspace,
+            "worker",
+            30_000,
+            513,
+        )
+        .await,
+        Err(bff_operations::BffOperationError::Invalid)
+    ));
+}
+
