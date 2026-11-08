@@ -30,6 +30,16 @@ pub struct Clarification {
     pub replayed: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClarificationValue {
+    pub question_id: Uuid,
+    pub discriminates_interpretation_ids: Vec<Uuid>,
+    pub possible_outcome_count: usize,
+    pub decision_relevance: Option<u16>,
+    pub acquisition_cost: Option<u16>,
+    pub cheaper_alternative: Option<String>,
+}
+
 fn valid(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
     !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
@@ -165,6 +175,77 @@ pub async fn propose(
         current_revision,
         replayed: !inserted,
     })
+}
+
+
+pub async fn values(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<Vec<ClarificationValue>, ClarificationError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3)",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !visible {
+        return Err(ClarificationError::Invisible);
+    }
+
+    let rows: Vec<(Uuid, Option<i16>, Option<i16>, Option<String>)> = sqlx::query_as(
+        "SELECT question_id,decision_relevance,acquisition_cost,cheaper_alternative
+         FROM niccolo.situation_analysis_clarification_values
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+         ORDER BY question_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (question_id, decision_relevance, acquisition_cost, cheaper_alternative) in rows {
+        let interpretations: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT interpretation_id
+             FROM niccolo.situation_analysis_clarification_interpretations
+             WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4
+             ORDER BY interpretation_id",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(analysis)
+        .bind(question_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        let possible_outcome_count: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint
+             FROM niccolo.situation_analysis_clarification_outcomes
+             WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(analysis)
+        .bind(question_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        out.push(ClarificationValue {
+            question_id,
+            discriminates_interpretation_ids: interpretations,
+            possible_outcome_count: usize::try_from(possible_outcome_count)
+                .map_err(|_| ClarificationError::Invalid)?,
+            decision_relevance: decision_relevance.map(|v| v as u16),
+            acquisition_cost: acquisition_cost.map(|v| v as u16),
+            cheaper_alternative,
+        });
+    }
+    tx.commit().await?;
+    Ok(out)
 }
 
 pub async fn list(
