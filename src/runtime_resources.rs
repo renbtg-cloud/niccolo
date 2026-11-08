@@ -651,6 +651,21 @@ mod tests {
         assert!(!snapshot.gpu_observation_implemented);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn live_windows_telemetry_is_read_only_and_distinguishes_host_from_job_limits() {
+        let snapshot = observe().unwrap();
+        assert_eq!(snapshot.platform, "windows");
+        assert!(snapshot.logical_parallelism >= 1);
+        assert!(snapshot.process_rss_bytes.is_some_and(|bytes| bytes > 0));
+        assert!(snapshot.memory_headroom_bytes.is_some());
+        assert!(snapshot.memory_pressure_basis_points.is_some_and(|points| points <= 10_000));
+        assert!(!snapshot.memory_limit_observed);
+        assert!(!snapshot.cpu_quota_observed);
+        assert!(!snapshot.mutates_resource_limits);
+        assert!(!snapshot.establishes_epistemic_quality);
+    }
+
     #[test]
     fn cgroup_v2_parser_ignores_legacy_lines_and_requires_absolute_path() {
         assert_eq!(
