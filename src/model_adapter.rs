@@ -424,9 +424,10 @@ impl OpenAiCompatibleModel {
         endpoint: &str,
         api_key: &str,
     ) -> Result<Self, ModelError> {
+        let endpoint = ParsedEndpoint::parse(endpoint)?;
         if provider.trim().is_empty()
             || model.trim().is_empty()
-            || api_key.trim().is_empty()
+            || (api_key.trim().is_empty() && endpoint.scheme != "http")
             || api_key.contains(['\r', '\n'])
         {
             return Err(ModelError::Invalid);
@@ -434,7 +435,7 @@ impl OpenAiCompatibleModel {
         Ok(Self {
             provider: provider.trim().into(),
             model: model.trim().into(),
-            endpoint: ParsedEndpoint::parse(endpoint)?,
+            endpoint,
             api_key: api_key.into(),
         })
     }
@@ -458,11 +459,16 @@ impl OpenAiCompatibleModel {
 
     fn perform_blocking(&self, request: &ModelRequest) -> Result<ModelResponse, ModelError> {
         let body = self.request_body(request)?;
+        let authorization = if self.api_key.is_empty() {
+            String::new()
+        } else {
+            format!("Authorization: Bearer {}\r\n", self.api_key)
+        };
         let request_text = format!(
-            "POST {} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            "POST {} HTTP/1.1\r\nHost: {}\r\n{}Content-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             self.endpoint.path,
             self.endpoint.host_header(),
-            self.api_key,
+            authorization,
             body.len(),
             body
         );
@@ -637,6 +643,19 @@ impl ReasoningModel for UnavailableModel {
 #[cfg(test)]
 mod bounded_response_tests {
     use super::*;
+
+    #[test]
+    fn keyless_model_is_local_http_only() {
+        assert!(OpenAiCompatibleModel::new(
+            "local", "model", "http://127.0.0.1:11434/v1/chat/completions", ""
+        ).is_ok());
+        assert!(OpenAiCompatibleModel::new(
+            "remote", "model", "https://example.com/v1/chat/completions", ""
+        ).is_err());
+        assert!(OpenAiCompatibleModel::new(
+            "remote", "model", "http://example.com/v1/chat/completions", ""
+        ).is_err());
+    }
 
     #[test]
     fn accepts_small_http_body_without_modification() {
