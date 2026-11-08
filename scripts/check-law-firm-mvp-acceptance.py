@@ -28,7 +28,7 @@ REQUIRED_DOSSIER_CATEGORIES = {
 def _nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
-def validate(doc):
+def validate(doc, require_complete=False):
     errors = []
     if doc.get("format") != "niccolo.law-firm-mvp-acceptance":
         errors.append("format must be niccolo.law-firm-mvp-acceptance")
@@ -66,6 +66,8 @@ def validate(doc):
             errors.append(f"case {cid} operator_intervention_ids must be a list")
         if "materially_different_outcome_plausible" not in c:
             errors.append(f"case {cid} missing materially_different_outcome_plausible")
+        if require_complete and str(c.get("actual_output", "")).strip().upper() in {"", "PENDING", "TODO", "NOT_RUN"}:
+            errors.append(f"case {cid} has not been executed")
 
     interventions = doc.get("operator_interventions") or []
     seen_interventions = set()
@@ -119,20 +121,28 @@ def validate(doc):
     return errors
 
 def main(argv):
-    if len(argv) != 2:
-        print(f"usage: {Path(argv[0]).name} acceptance.json", file=sys.stderr)
+    args = list(argv[1:])
+    require_complete = False
+    if "--require-complete" in args:
+        args.remove("--require-complete")
+        require_complete = True
+    if len(args) != 1:
+        print(f"usage: {Path(argv[0]).name} [--require-complete] acceptance.json", file=sys.stderr)
         return 2
     try:
-        doc = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+        doc = json.loads(Path(args[0]).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         print(f"invalid acceptance file: {e}", file=sys.stderr)
         return 2
-    errors = validate(doc)
+    errors = validate(doc, require_complete=require_complete)
     if errors:
         for e in errors:
             print("FAIL:", e)
         return 1
-    print("PASS: operator-assisted Aurelius & Finch MVP acceptance fixture is structurally complete")
+    if require_complete:
+        print("PASS: operator-assisted Aurelius & Finch MVP acceptance record is complete")
+    else:
+        print("PASS: operator-assisted Aurelius & Finch MVP acceptance fixture is structurally complete")
     return 0
 
 if __name__ == "__main__":
