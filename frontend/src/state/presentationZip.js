@@ -16,8 +16,10 @@ function crc32(bytes) {
 
 function entryPathValid(path) {
   return typeof path === 'string' && path.length > 0
-    && !path.startsWith('/') && !path.includes('\\') && !path.includes('\\0')
+    && !path.startsWith('/') && !path.includes('\\\\')
+    && !path.includes(':') && !path.includes(String.fromCharCode(0))
     && path.split('/').every(part => part.length > 0 && part !== '.' && part !== '..');
+
 }
 
 function localHeader(name, length, checksum) {
