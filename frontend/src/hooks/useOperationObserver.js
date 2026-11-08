@@ -30,6 +30,7 @@ export function useOperationObserver(operationId) {
     ...query,
     operation: query.data?.operation ?? null,
     events: query.data?.events ?? [],
+    eventsTruncated: query.data?.eventsTruncated ?? false,
     cursor: query.data?.cursor ?? 0,
     phase: operationPhase(query.data, { pending: query.isPending, fetching: query.isFetching, error: query.error }),
     stale: query.isStale,
