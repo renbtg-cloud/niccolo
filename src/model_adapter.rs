@@ -665,6 +665,47 @@ fn transport_io_error(phase: &str, error: std::io::Error) -> ModelError {
     }
 }
 
+/// Return the number of framed chunked-body bytes once the final zero
+/// chunk and any HTTP trailer section have arrived. Do not wait for EOF on
+/// keep-alive connections; retain the frame for the existing chunk decoder.
+fn complete_chunked_body_end(body: &[u8]) -> Result<Option<usize>, ModelError> {
+    let mut cursor = 0usize;
+    loop {
+        let Some(line_end) = body[cursor..].windows(2).position(|w| w == b"\r\n") else {
+            return Ok(None);
+        };
+        let length_text = std::str::from_utf8(&body[cursor..cursor + line_end])
+            .map_err(|_| ModelError::Provider("invalid chunk length".into()))?;
+        let size_hex = length_text.split(';').next().unwrap_or(length_text);
+        let size = usize::from_str_radix(size_hex.trim(), 16)
+            .map_err(|_| ModelError::Provider("invalid chunk length".into()))?;
+        cursor += line_end + 2;
+        if size == 0 {
+            if body[cursor..].starts_with(b"\r\n") {
+                return Ok(Some(cursor + 2));
+            }
+            return Ok(body[cursor..]
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .map(|length| cursor + length + 4));
+        }
+        let end = cursor
+            .checked_add(size)
+            .and_then(|value| value.checked_add(2))
+            .ok_or_else(|| ModelError::Provider("provider response too large".into()))?;
+        if end as u64 > MAX_HTTP_RESPONSE_BYTES {
+            return Err(ModelError::Provider("provider response too large".into()));
+        }
+        if end > body.len() {
+            return Ok(None);
+        }
+        if &body[end - 2..end] != b"\r\n" {
+            return Err(ModelError::Provider("invalid chunk framing".into()));
+        }
+        cursor = end;
+    }
+}
+
 /// A complete Content-Length response is usable without waiting for EOF.
 /// Some otherwise compatible local inference servers keep the socket open
 /// even when the request explicitly asks for Connection: close.
@@ -698,7 +739,8 @@ fn complete_content_length_end(raw: &[u8]) -> Result<Option<usize>, ModelError> 
     // Transfer-Encoding overrides Content-Length; chunked framing continues
     // to be decoded by parse_http_response after the transport is complete.
     if chunked {
-        return Ok(None);
+        return complete_chunked_body_end(&raw[marker + 4..])
+            .map(|end| end.map(|length| marker + 4 + length));
     }
     let Some(length) = body_length else {
         return Ok(None);
@@ -902,6 +944,43 @@ mod bounded_response_tests {
         let expected = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n{}";
         let mut server = KeepAliveReply { bytes: expected, sent: false };
         assert_eq!(read_bounded(&mut server).unwrap(), expected);
+    }
+
+    #[test]
+    fn complete_chunked_reply_does_not_wait_for_keepalive_socket_close() {
+        struct PersistentReply {
+            wire: &'static [u8],
+            received: bool,
+        }
+        impl std::io::Read for PersistentReply {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                if self.received {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "server kept socket open",
+                    ));
+                }
+                self.received = true;
+                out[..self.wire.len()].copy_from_slice(self.wire);
+                Ok(self.wire.len())
+            }
+        }
+        let wire = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n2\r\n{}\r\n0\r\n\r\n";
+        let framed = read_bounded(&mut PersistentReply { wire, received: false }).unwrap();
+        assert_eq!(framed, wire);
+        let (code, _, body) = parse_http_response(&framed).unwrap();
+        assert_eq!(code, 200);
+        assert_eq!(body, b"{}");
+    }
+
+    #[test]
+    fn chunked_reply_detects_missing_frames_and_trailers() {
+        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n"), Ok(None));
+        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n\r\n"), Ok(Some(12)));
+        assert_eq!(
+            complete_chunked_body_end(b"2\r\n{}\r\n0\r\nX-Test: yes\r\n\r\n"),
+            Ok(Some(25))
+        );
     }
 
     #[test]
