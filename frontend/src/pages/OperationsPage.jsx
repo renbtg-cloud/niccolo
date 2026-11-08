@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -36,16 +37,21 @@ function AnswerPanel({ output, operation, error }) {
 
 export function OperationsPage(){
  const client=useClient(); const qc=useQueryClient();
+ const pendingLaunch=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const observed=useOperationObserver(active); const plan=useAgenticPlan(active); const output=useAnalysisOutput(analysis,observed.operation);
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32}});
  const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:{decision:'CONTINUE',responseText:''}});
  const run=useMutation({mutationFn:async(v)=>{
-   const operationId=crypto.randomUUID(); const analysisId=crypto.randomUUID();
+   const signature=JSON.stringify({mode:v.mode,intent:v.intent,goal:v.goal?.trim()||null,stepBudget:v.stepBudget});
+   if(pendingLaunch.current?.signature!==signature){
+     pendingLaunch.current={signature,operationId:crypto.randomUUID(),analysisId:crypto.randomUUID()};
+   }
+   const {operationId,analysisId}=pendingLaunch.current;
    const task={analysis_id:analysisId,intent:v.intent,goal:v.goal?.trim()||null,reanalysis_of:null,idempotency_key:`ui-intent-${operationId}`,step_budget:v.stepBudget,context:{surface:'react-v1',human_owns_project:true}};
    const r=v.mode==='sync'?await client.runIntentSync(operationId,task):await client.runIntentAsync(operationId,task);
    setAnalysis(r.value.analysis_id); setActive(operationId); return r.value;
- }});
+ },onSuccess:()=>{pendingLaunch.current=null;}});
  const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
  const respond=useMutation({mutationFn:async(v)=>{if(!active||!waitingStep)throw new Error('No waiting human step');return (await client.respondAgentic(active,waitingStep.step_id,{response_id:crypto.randomUUID(),decision:v.decision,response_text:v.responseText})).value;},onSuccess:async()=>{humanForm.reset({decision:'CONTINUE',responseText:''});await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
  if(!client)return <p>Connect first.</p>;
