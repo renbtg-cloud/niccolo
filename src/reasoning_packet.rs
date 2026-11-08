@@ -4,7 +4,8 @@
 use crate::analysis_structure::AnalysisScope;
 use crate::{
     agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot, clarification,
-    epistemic_policy_store, human_agency, human_control, human_credence, hypothesis_portfolio,
+    collection_provenance, epistemic_policy_store, human_agency, human_control, human_credence,
+    hypothesis_portfolio,
     observation_query_ledger, proactive_briefing, source_scope, temporal_state,
 };
 use serde::{Deserialize, Serialize};
@@ -112,6 +113,7 @@ pub struct ReasoningPacket {
     pub hypothesis_portfolio: hypothesis_portfolio::HypothesisPortfolio,
     pub temporal_assertions: Vec<temporal_state::TemporalAssertion>,
     pub source_scope: Vec<source_scope::SourceScopeAssertion>,
+    pub collection_events: Vec<collection_provenance::CollectionEvent>,
     pub lens: analysis_assumptions::AnalysisLens,
     pub evidence_gaps: Vec<human_agency::EvidenceGapView>,
     pub clarifications: Vec<PacketClarification>,
@@ -338,6 +340,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         .map_err(dep)?;
     let temporal_assertions = temporal_state::list(pool, scope).await.map_err(dep)?;
     let source_scope = source_scope::list(pool, scope).await.map_err(dep)?;
+    let collection_events = collection_provenance::list(pool, scope).await.map_err(dep)?;
     let lens = analysis_assumptions::lens(pool, scope).await.map_err(dep)?;
     let evidence_gaps = human_agency::evidence_gaps(pool, scope)
         .await
@@ -440,6 +443,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         hypothesis_portfolio,
         temporal_assertions,
         source_scope,
+        collection_events,
         lens,
         evidence_gaps,
         clarifications,
