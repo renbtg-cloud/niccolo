@@ -39,10 +39,27 @@ pub struct UpdateGap {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct UpdateClarificationOutcome {
+    pub outcome_id: Uuid,
+    pub label: String,
+    pub effect_note: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateClarification {
     pub question_id: Uuid,
     pub text: String,
     pub reason: String,
+    #[serde(default)]
+    pub discriminates_interpretation_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub possible_outcomes: Vec<UpdateClarificationOutcome>,
+    #[serde(default)]
+    pub decision_relevance: Option<u16>,
+    #[serde(default)]
+    pub acquisition_cost: Option<u16>,
+    #[serde(default)]
+    pub cheaper_alternative: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -118,8 +135,26 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
     }
     ids.clear();
     for q in &x.clarifications {
-        if !ids.insert(q.question_id) || !valid(&q.text, 4096) || !valid(&q.reason, 2048) {
+        if !ids.insert(q.question_id)
+            || !valid(&q.text, 4096)
+            || !valid(&q.reason, 2048)
+            || q.discriminates_interpretation_ids.len() > 32
+            || q.possible_outcomes.len() > 8
+            || q.decision_relevance.is_some_and(|v| v > 100)
+            || q.acquisition_cost.is_some_and(|v| v > 100)
+            || q.cheaper_alternative.as_ref().is_some_and(|v| !valid(v, 2048))
+            || q.discriminates_interpretation_ids.iter().copied().collect::<std::collections::BTreeSet<_>>().len() != q.discriminates_interpretation_ids.len()
+        {
             return Err(UpdateError::Invalid);
+        }
+        let mut outcome_ids = std::collections::BTreeSet::new();
+        for outcome in &q.possible_outcomes {
+            if !outcome_ids.insert(outcome.outcome_id)
+                || !valid(&outcome.label, 512)
+                || !valid(&outcome.effect_note, 2048)
+            {
+                return Err(UpdateError::Invalid);
+            }
         }
     }
     ids.clear();
@@ -301,6 +336,51 @@ pub async fn apply(
         let row:Option<(String,Uuid)>=sqlx::query_as("SELECT reason,proposed_by_principal_id FROM niccolo.situation_analysis_clarification_questions WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).fetch_optional(&mut *tx).await?;
         if row != Some((q.reason.trim().into(), actor)) {
             return Err(UpdateError::Conflict);
+        }
+
+        if q.decision_relevance.is_some()
+            || q.acquisition_cost.is_some()
+            || q.cheaper_alternative.is_some()
+            || !q.discriminates_interpretation_ids.is_empty()
+            || !q.possible_outcomes.is_empty()
+        {
+            sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_values(workspace_id,situation_id,analysis_id,question_id,decision_relevance,acquisition_cost,cheaper_alternative,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id)
+                .bind(q.decision_relevance.map(i16::try_from).transpose().map_err(|_| UpdateError::Invalid)?)
+                .bind(q.acquisition_cost.map(i16::try_from).transpose().map_err(|_| UpdateError::Invalid)?)
+                .bind(q.cheaper_alternative.as_deref().map(str::trim)).bind(actor)
+                .execute(&mut *tx).await?;
+            let value_row:Option<(Option<i16>,Option<i16>,Option<String>,Uuid)>=sqlx::query_as("SELECT decision_relevance,acquisition_cost,cheaper_alternative,recorded_by_principal_id FROM niccolo.situation_analysis_clarification_values WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4")
+                .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).fetch_optional(&mut *tx).await?;
+            if value_row != Some((
+                q.decision_relevance.map(|v| v as i16),
+                q.acquisition_cost.map(|v| v as i16),
+                q.cheaper_alternative.as_deref().map(str::trim).map(str::to_owned),
+                actor,
+            )) {
+                return Err(UpdateError::Conflict);
+            }
+            for interpretation_id in &q.discriminates_interpretation_ids {
+                sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_interpretations(workspace_id,situation_id,analysis_id,question_id,interpretation_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
+                    .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).bind(*interpretation_id).bind(actor)
+                    .execute(&mut *tx).await?;
+                let recorded_by:Option<Uuid>=sqlx::query_scalar("SELECT recorded_by_principal_id FROM niccolo.situation_analysis_clarification_interpretations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4 AND interpretation_id=$5")
+                    .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).bind(*interpretation_id).fetch_optional(&mut *tx).await?;
+                if recorded_by != Some(actor) {
+                    return Err(UpdateError::Conflict);
+                }
+            }
+            for outcome in &q.possible_outcomes {
+                sqlx::query("INSERT INTO niccolo.situation_analysis_clarification_outcomes(workspace_id,situation_id,analysis_id,question_id,outcome_id,outcome_label,effect_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+                    .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).bind(outcome.outcome_id)
+                    .bind(outcome.label.trim()).bind(outcome.effect_note.trim()).bind(actor)
+                    .execute(&mut *tx).await?;
+                let outcome_row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT outcome_label,effect_note,recorded_by_principal_id FROM niccolo.situation_analysis_clarification_outcomes WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4 AND outcome_id=$5")
+                    .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).bind(outcome.outcome_id).fetch_optional(&mut *tx).await?;
+                if outcome_row != Some((outcome.label.trim().to_owned(), outcome.effect_note.trim().to_owned(), actor)) {
+                    return Err(UpdateError::Conflict);
+                }
+            }
         }
     }
     tx.commit().await?;
