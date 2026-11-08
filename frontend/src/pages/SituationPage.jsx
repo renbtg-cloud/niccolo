@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
@@ -34,6 +34,8 @@ export function SituationPage(){
   const client = useClient();
   const qc = useQueryClient();
   const [file, setFile] = useState(null);
+  // Preserve the document identity across retries after a partial upload.
+  const pendingDocumentId = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
   const [contextText,setContextText]=useState('');
 
@@ -80,7 +82,8 @@ export function SituationPage(){
   const upload = useMutation({
     mutationFn: async (selected) => {
       const descriptor = sourceDescriptor(selected);
-      const documentId = crypto.randomUUID();
+      const documentId = pendingDocumentId.current ?? crypto.randomUUID();
+      pendingDocumentId.current = documentId;
       const ingested = await client.ingestSource(documentId, {
         locator: descriptor.locator,
         contentType: descriptor.contentType,
@@ -91,8 +94,12 @@ export function SituationPage(){
     },
     onSuccess: async () => {
       setFile(null);
+      pendingDocumentId.current = null;
       await refresh();
     },
+    // If ingestion succeeded but attachment failed, surface the imported record
+    // in the catalog so the user can attach it without uploading a duplicate.
+    onError: refresh,
   });
 
   if (!client) return <p>Connect this session first.</p>;
@@ -133,7 +140,11 @@ export function SituationPage(){
         aria-label="Source file"
         type="file"
         accept=".eml,.txt,message/rfc822,text/plain"
-        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+        disabled={upload.isPending}
+        onChange={(event) => {
+          pendingDocumentId.current = null;
+          setFile(event.target.files?.[0] ?? null);
+        }}
       />
       <button disabled={!file || upload.isPending} onClick={() => file && upload.mutate(file)}>
         {upload.isPending ? 'Importing…' : 'Import and attach'}
