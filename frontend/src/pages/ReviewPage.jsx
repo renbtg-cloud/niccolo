@@ -18,6 +18,11 @@ import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
 import { presentationZip } from '../state/presentationZip.js';
 
 export function ReviewPage(){
+ const selectedAnalysis=useUiStore(s=>s.analysis);
+ return <ReviewContent key={selectedAnalysis||'unselected'} />;
+}
+
+function ReviewContent(){
  const pendingReanalysis=useRef(null);
  const pendingClarification=useRef(null);
  const pendingReceipt=useRef(null);
