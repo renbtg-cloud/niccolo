@@ -22,8 +22,8 @@ use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
-use crate::operation_budget::{self, BudgetError};
 use crate::observation_retrieval::{self, ObservationSearchError};
+use crate::operation_budget::{self, BudgetError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::presentation_package::{self, PresentationError};
@@ -1293,24 +1293,23 @@ async fn search_frozen_observations(
         situation,
         analysis,
     };
-    let page = observation_retrieval::search(
-        &state.pool,
-        scope,
-        &query.q,
-        query.limit.unwrap_or(10),
-    )
-    .await
-    .map_err(|error| match error {
-        ObservationSearchError::Invalid => {
-            ApiError(StatusCode::BAD_REQUEST, "invalid observation search")
-        }
-        ObservationSearchError::Invisible => {
-            ApiError(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
-        }
-        ObservationSearchError::Privileged | ObservationSearchError::Database(_) => {
-            ApiError(StatusCode::INTERNAL_SERVER_ERROR, "observation search unavailable")
-        }
-    })?;
+    let page =
+        observation_retrieval::search(&state.pool, scope, &query.q, query.limit.unwrap_or(10))
+            .await
+            .map_err(|error| match error {
+                ObservationSearchError::Invalid => {
+                    ApiError(StatusCode::BAD_REQUEST, "invalid observation search")
+                }
+                ObservationSearchError::Invisible => {
+                    ApiError(StatusCode::NOT_FOUND, "analysis snapshot unavailable")
+                }
+                ObservationSearchError::Privileged | ObservationSearchError::Database(_) => {
+                    ApiError(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "observation search unavailable",
+                    )
+                }
+            })?;
     Ok(no_store(json!(page), StatusCode::OK))
 }
 
