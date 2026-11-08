@@ -26,9 +26,9 @@ jobs:
 
       - name: Render HTML and PDF
         run: |
-          pandoc docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.md             --standalone             --from=markdown+raw_html             --to=html5             --css=law-firm-use-case.css             -o /tmp/USE_CASE_LAW_FIRM_BONUS_REVIEW.html
-          cd docs/product
-          weasyprint /tmp/USE_CASE_LAW_FIRM_BONUS_REVIEW.html USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf
+          pandoc docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.md --standalone --from=markdown+raw_html --to=html5 --css=law-firm-use-case.css -o docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.html
+          weasyprint docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.html docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf
+          rm docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.html
 
       - name: Commit rendered PDF when changed
         run: |
