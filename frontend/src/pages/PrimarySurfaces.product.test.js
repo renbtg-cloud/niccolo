@@ -84,6 +84,17 @@ describe('buyer-facing primary surfaces', () => {
     expect(identities).toContain('pendingClear.current = null');
   });
 
+  it('pages both current positions and immutable feedback events', () => {
+    expect(feedback).toContain('questionFeedback(question.question_id,eventCursor,100)');
+    expect(feedback).toContain('questionPositions(question.question_id,positionsCursor,100)');
+    expect(feedback).toContain('Previous feedback events');
+    expect(feedback).toContain('Next feedback events');
+    expect(feedback).toContain('Previous positions');
+    expect(feedback).toContain('Next positions');
+    expect(feedback).toContain('history.data.next_after');
+    expect(feedback).toContain('positions.data.next_after');
+  });
+
   it('navigates human feedback beyond the first 100 questions', () => {
     expect(feedback).toContain('useQuestions(questionCursor)');
     expect(feedback).toContain('Previous questions');
