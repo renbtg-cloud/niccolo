@@ -248,18 +248,32 @@ fn observed_capacity(
         .max(1))
 }
 
-fn snapshot_from(
+struct RawResourceObservation<'a> {
     logical_parallelism: usize,
-    proc_status: &str,
+    proc_status: &'a str,
     cgroup_relative: Option<String>,
-    memory_current: Option<&str>,
-    memory_max: Option<&str>,
-    cpu_max: Option<&str>,
-    cpuset: Option<&str>,
-    cpu_stat: Option<&str>,
-    pids_current: Option<&str>,
-    pids_max: Option<&str>,
-) -> Result<ResourceSnapshot, ResourceError> {
+    memory_current: Option<&'a str>,
+    memory_max: Option<&'a str>,
+    cpu_max: Option<&'a str>,
+    cpuset: Option<&'a str>,
+    cpu_stat: Option<&'a str>,
+    pids_current: Option<&'a str>,
+    pids_max: Option<&'a str>,
+}
+
+fn snapshot_from(raw: RawResourceObservation<'_>) -> Result<ResourceSnapshot, ResourceError> {
+    let RawResourceObservation {
+        logical_parallelism,
+        proc_status,
+        cgroup_relative,
+        memory_current,
+        memory_max,
+        cpu_max,
+        cpuset,
+        cpu_stat,
+        pids_current,
+        pids_max,
+    } = raw;
     if logical_parallelism == 0 {
         return Err(ResourceError::Invalid);
     }
@@ -348,18 +362,18 @@ fn observe_linux_with(paths: &LinuxPaths) -> Result<ResourceSnapshot, ResourceEr
     let logical_parallelism = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
-    snapshot_from(
+    snapshot_from(RawResourceObservation {
         logical_parallelism,
-        &proc_status,
+        proc_status: &proc_status,
         cgroup_relative,
-        memory_current.as_deref(),
-        memory_max.as_deref(),
-        cpu_max.as_deref(),
-        cpuset.as_deref(),
-        cpu_stat.as_deref(),
-        pids_current.as_deref(),
-        pids_max.as_deref(),
-    )
+        memory_current: memory_current.as_deref(),
+        memory_max: memory_max.as_deref(),
+        cpu_max: cpu_max.as_deref(),
+        cpuset: cpuset.as_deref(),
+        cpu_stat: cpu_stat.as_deref(),
+        pids_current: pids_current.as_deref(),
+        pids_max: pids_max.as_deref(),
+    })
 }
 
 /// Observe current process/cgroup limits without modifying the runtime.
