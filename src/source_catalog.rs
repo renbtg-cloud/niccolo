@@ -24,6 +24,7 @@ pub struct SourceMetadata {
     pub sha256: String,
     pub byte_length: i64,
     pub fragment_count: i64,
+    pub original_bytes_available: bool,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpeakerSummary {
@@ -63,10 +64,12 @@ pub async fn list_sources(
         .fetch_one(&mut *tx)
         .await?;
     crate::authz::bind_auth_digest(&mut tx).await?;
-    let rows:Vec<(Uuid,String,String,String,i64,i64)>=sqlx::query_as(
+    let rows:Vec<(Uuid,String,String,String,i64,i64,bool)>=sqlx::query_as(
         "SELECT d.document_id,d.format,d.locator,d.sha256,d.byte_length, \
            (SELECT count(*) FROM niccolo.source_fragments f \
-             WHERE f.workspace_id=d.workspace_id AND f.document_id=d.document_id) AS fragment_count \
+             WHERE f.workspace_id=d.workspace_id AND f.document_id=d.document_id) AS fragment_count, \
+           EXISTS(SELECT 1 FROM niccolo.source_payloads p \
+             WHERE p.workspace_id=d.workspace_id AND p.document_id=d.document_id) AS original_bytes_available \
          FROM niccolo.source_documents d \
          WHERE d.workspace_id=$1 AND ($2::uuid IS NULL OR d.document_id > $2) \
          ORDER BY d.document_id LIMIT $3")
@@ -77,13 +80,14 @@ pub async fn list_sources(
         .into_iter()
         .take(limit as usize)
         .map(
-            |(document_id, format, locator, sha256, byte_length, fragment_count)| SourceMetadata {
+            |(document_id, format, locator, sha256, byte_length, fragment_count, original_bytes_available)| SourceMetadata {
                 document_id,
                 format,
                 locator,
                 sha256,
                 byte_length,
                 fragment_count,
+                original_bytes_available,
             },
         )
         .collect();
