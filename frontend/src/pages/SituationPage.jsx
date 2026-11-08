@@ -32,6 +32,14 @@ function FocusForm({ initial = '', label, pending, onSubmit }) {
 
 export function SituationPage(){
   const client = useClient();
+  if (!client) return <p>Connect this session first.</p>;
+  return <ConnectedSituation
+    key={JSON.stringify([client.config.workspace, client.config.situation])}
+    client={client}
+  />;
+}
+
+function ConnectedSituation({client}){
   const qc = useQueryClient();
   const [file, setFile] = useState(null);
   const [sourceCursor, setSourceCursor] = useState(null);
@@ -136,7 +144,6 @@ export function SituationPage(){
     onError: refresh,
   });
 
-  if (!client) return <p>Connect this session first.</p>;
   if (situation.isLoading) return <p>Loading Situation…</p>;
 
   if (situation.error?.status === 404) {
