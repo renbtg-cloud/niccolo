@@ -583,6 +583,73 @@ mod tests {
         assert!(parse(&value).is_err());
     }
 
+
+    #[test]
+    fn parses_hypothesis_predictions_relations_and_evidence_links() {
+        let left = Uuid::new_v4();
+        let right = Uuid::new_v4();
+        let evidence = Uuid::new_v4();
+        let value = json!({
+            "niccolo_update": {
+                "candidate_interpretations": [
+                    {
+                        "interpretation_id": left,
+                        "text": "Configuration bias influenced the old system.",
+                        "rationale": "Observed outputs consistently favor one actor.",
+                        "predictions": [{
+                            "prediction_id": Uuid::new_v4(),
+                            "expected_observation": "Changing the configuration changes the output pattern.",
+                            "direction": "SUPPORT",
+                            "rationale": "A configuration-sensitive shift would support this explanation."
+                        }],
+                        "evidence_links": [{
+                            "link_id": Uuid::new_v4(),
+                            "evidence_id": evidence,
+                            "relation": "SUPPORTS",
+                            "rationale": "The visible prompt/output pair is consistent with the hypothesis."
+                        }],
+                        "relations": [{
+                            "relation_id": Uuid::new_v4(),
+                            "other_interpretation_id": right,
+                            "relation": "CAN_COEXIST",
+                            "rationale": "Selection bias and configuration bias can both operate."
+                        }]
+                    },
+                    {
+                        "interpretation_id": right,
+                        "text": "The collected corpus is selection-biased.",
+                        "rationale": "Collector initially searched bonus-related terms."
+                    }
+                ]
+            }
+        });
+        let parsed = parse(&value).unwrap().unwrap();
+        assert_eq!(parsed.candidate_interpretations[0].predictions.len(), 1);
+        assert_eq!(parsed.candidate_interpretations[0].evidence_links[0].evidence_id, evidence);
+        assert_eq!(parsed.candidate_interpretations[0].relations[0].other_interpretation_id, right);
+    }
+
+    #[test]
+    fn rejects_self_relation_in_hypothesis_portfolio() {
+        let id = Uuid::new_v4();
+        let value = json!({
+            "niccolo_update": {
+                "candidate_interpretations": [{
+                    "interpretation_id": id,
+                    "text": "A",
+                    "rationale": "B",
+                    "relations": [{
+                        "relation_id": Uuid::new_v4(),
+                        "other_interpretation_id": id,
+                        "relation": "COMPETES_WITH",
+                        "rationale": "invalid self relation"
+                    }]
+                }]
+            }
+        });
+        assert!(parse(&value).is_err());
+    }
+
     #[test]
     fn legacy_clarification_remains_valid_without_value_metadata() {
         let parsed = parse(&json!({
