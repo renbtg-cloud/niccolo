@@ -10,7 +10,7 @@ export function sourceDescriptor(file) {
   const name = file.name.trim();
   // Match the server's 1024-byte UTF-8 locator limit and control-character
   // rejection before transferring a potentially multi-megabyte source.
-  if (new TextEncoder().encode(name).length > 1024 || /[\\x00-\\x1f\\x7f]/u.test(name)) {
+  if (new TextEncoder().encode(name).length > 1024 || /[\x00-\x1f\x7f]/u.test(name)) {
     throw new Error('Source file name is invalid or exceeds 1024 UTF-8 bytes.');
   }
   const lower = name.toLowerCase();
