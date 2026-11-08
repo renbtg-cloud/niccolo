@@ -5,6 +5,7 @@ const connect = readFileSync(new URL('./ConnectPanel.jsx', import.meta.url), 'ut
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const review = readFileSync(new URL('./ReviewPage.jsx', import.meta.url), 'utf8');
 const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'utf8');
+const identities = readFileSync(new URL('./IdentitiesPage.jsx', import.meta.url), 'utf8');
 
 describe('buyer-facing primary surfaces', () => {
   it('collapses prepared demo identifiers while keeping the bearer token explicit', () => {
@@ -40,6 +41,15 @@ describe('buyer-facing primary surfaces', () => {
       expect(surface).toContain('observed.operation?.target_analysis_id===analysis');
       expect(surface).toContain('useAnalysisOutput(analysis,');
     }
+  });
+
+  it('retries speaker identity creation and binding with stable identifiers', () => {
+    expect(identities).toContain('pendingAssign.current?.signature !== signature');
+    expect(identities).toContain('client.createIdentity(attempt.personId, newLabel)');
+    expect(identities).toContain('client.recordIdentityEvent(attempt.eventId');
+    expect(identities).toContain('pendingClear.current.eventId');
+    expect(identities).toContain('pendingAssign.current = null');
+    expect(identities).toContain('pendingClear.current = null');
   });
 
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
