@@ -1,0 +1,43 @@
+name: Render law-firm use-case PDF
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.md
+      - docs/product/law-firm-use-case.css
+      - .github/workflows/render-law-firm-use-case.yml
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install PDF toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc weasyprint fonts-dejavu-core
+
+      - name: Render HTML and PDF
+        run: |
+          pandoc docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.md             --standalone             --from=markdown+raw_html             --to=html5             --css=law-firm-use-case.css             -o /tmp/USE_CASE_LAW_FIRM_BONUS_REVIEW.html
+          cd docs/product
+          weasyprint /tmp/USE_CASE_LAW_FIRM_BONUS_REVIEW.html USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf
+
+      - name: Commit rendered PDF when changed
+        run: |
+          if git diff --quiet -- docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf; then
+            echo "PDF unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.pdf
+          git commit -m "docs: render law-firm use-case PDF"
+          git push
