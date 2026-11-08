@@ -54,6 +54,7 @@ pub struct QueryTrace {
     pub direction: String,
     pub interpretation_id: Option<Uuid>,
     pub returned_hit_count: usize,
+    pub withheld_hit_count: usize,
     pub retrieved_observations: Vec<RetrievedObservation>,
     pub is_evidence_verification: bool,
 }
@@ -133,7 +134,7 @@ pub async fn record_hits(
     for (position, hit) in hits.iter().enumerate() {
         let rank = (position + 1) as i16;
         let inserted = sqlx::query(
-            "INSERT INTO niccolo.situation_analysis_observation_query_hits              (workspace_id,situation_id,analysis_id,query_id,evidence_id,hit_rank,lexical_relevance,recorded_by_principal_id)              SELECT s.workspace_id,s.situation_id,s.analysis_id,$4,$5,$6,$7,$8              FROM niccolo.situation_analysis_snapshots s              JOIN niccolo.situation_revision_sources rs                ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id AND rs.revision=s.input_revision              JOIN niccolo.source_fragments f                ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id AND f.evidence_id=$5              JOIN niccolo.evidence e                ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id AND e.admissible              WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3              ON CONFLICT DO NOTHING",
+            "INSERT INTO niccolo.situation_analysis_observation_query_hits              (workspace_id,situation_id,analysis_id,query_id,evidence_id,hit_rank,lexical_relevance,recorded_by_principal_id)              SELECT s.workspace_id,s.situation_id,s.analysis_id,$4,$5,$6,$7,$8              FROM niccolo.situation_analysis_snapshots s              JOIN niccolo.situation_analysis_observation_queries q                ON q.workspace_id=s.workspace_id AND q.situation_id=s.situation_id AND q.analysis_id=s.analysis_id AND q.query_id=$4              JOIN niccolo.situation_revision_sources rs                ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id AND rs.revision=s.input_revision              JOIN niccolo.source_fragments f                ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id AND f.evidence_id=$5              JOIN niccolo.evidence e                ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id AND e.admissible              WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3                AND to_tsvector('simple',e.content) @@ plainto_tsquery('simple',q.query_text)              ON CONFLICT DO NOTHING",
         )
         .bind(scope.workspace)
         .bind(scope.situation)
@@ -191,7 +192,7 @@ pub async fn for_packet(
     for (query_id, query, rationale, expected_observation, direction, interpretation_id) in queries {
         type ResultRow = (Uuid, Uuid, i32, i32, i32, String, String, String, String, String, i16);
         let rows: Vec<ResultRow> = sqlx::query_as(
-            "SELECT h.evidence_id,d.document_id,f.ordinal,f.byte_start,f.byte_end,                     f.speaker_label,e.content,e.source_class,d.format,d.locator,h.hit_rank              FROM niccolo.situation_analysis_observation_query_hits h              JOIN niccolo.source_fragments f                ON f.workspace_id=h.workspace_id AND f.evidence_id=h.evidence_id              JOIN niccolo.evidence e                ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id              JOIN niccolo.source_documents d                ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id              WHERE h.workspace_id=$1 AND h.situation_id=$2 AND h.analysis_id=$3 AND h.query_id=$4              ORDER BY h.hit_rank,h.evidence_id",
+            "SELECT h.evidence_id,d.document_id,f.ordinal,f.byte_start,f.byte_end,                     f.speaker_label,e.content,e.source_class,d.format,d.locator,h.hit_rank              FROM niccolo.situation_analysis_observation_query_hits h              JOIN niccolo.source_fragments f                ON f.workspace_id=h.workspace_id AND f.evidence_id=h.evidence_id              JOIN niccolo.evidence e                ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id AND e.admissible              JOIN niccolo.source_documents d                ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id              WHERE h.workspace_id=$1 AND h.situation_id=$2 AND h.analysis_id=$3 AND h.query_id=$4              ORDER BY h.hit_rank,h.evidence_id",
         )
         .bind(scope.workspace)
         .bind(scope.situation)
@@ -199,7 +200,18 @@ pub async fn for_packet(
         .bind(query_id)
         .fetch_all(&mut *tx)
         .await?;
+        let stored_hit_count: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM niccolo.situation_analysis_observation_query_hits
+             WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND query_id=$4",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(query_id)
+        .fetch_one(&mut *tx)
+        .await?;
         let returned_hit_count = rows.len();
+        let withheld_hit_count = (stored_hit_count as usize).saturating_sub(returned_hit_count);
         let mut retrieved_observations = Vec::new();
         for row in rows {
             if bytes.saturating_add(row.6.len()) > MAX_RETRIEVED_BYTES {
@@ -229,6 +241,7 @@ pub async fn for_packet(
             direction,
             interpretation_id,
             returned_hit_count,
+            withheld_hit_count,
             retrieved_observations,
             is_evidence_verification: false,
         });
