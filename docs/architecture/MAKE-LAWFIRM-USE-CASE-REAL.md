@@ -839,6 +839,20 @@ Niccolò does not execute those actions. It must make the evidentiary distinctio
 
 ---
 
+## Narrative boundary for the public law-firm case
+
+The public story must end on Kessler's social collapse in the service elevator, with the cleaner's line:
+
+> "Economic crisis, huh, hotshot?"
+
+The reader should already know, before that final scene, that Helena has commissioned the Kessler Dossier, sent it to independent outside counsel, and intends the verified facts to be referred as appropriate to courts, public authorities, and the relevant professional disciplinary body.
+
+Do **not** continue the public narrative into bar proceedings, hearings, disbarment, prosecution, or later institutional outcomes. Those consequences remain implied possibilities, not part of the dramatic ending.
+
+This is a narrative decision, not an MVP capability reduction. Dossier generation, hostile-review readiness, exportability, provenance, counterevidence, and external-review support remain required capabilities.
+
+---
+
 # End-to-end synthetic acceptance fixture
 
 Create a synthetic fixture derived from the public story, but keep it compact enough for CI.
