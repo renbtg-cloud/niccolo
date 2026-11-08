@@ -1,5 +1,17 @@
 # Active work progress
 
+## Adaptive worker admission — ARM-003 first scheduler slice (verified)
+
+PR #29 merged into main at `519d575d`.
+- Added atomic workspace-wide active execution lease ceilings. Competing workers serialize admission on the workspace row, preventing several workers from observing the same free capacity and oversubscribing it.
+- New explicit `worker_once_adaptive` path: live Linux resource snapshot -> ARM policy advice -> bounded claim for `SELF_MANAGED` / `HYBRID`; `EXTERNALLY_MANAGED` continues to delegate parallelism.
+- Critical pressure can reduce admission to one active path, preserving progress while blocking uncontrolled parallel expansion.
+- Existing `worker_once` and direct execution remain unchanged for compatibility; adaptive behavior is opt-in at this layer.
+- Concurrent PostgreSQL integration races eight workers against an active-lease ceiling of two and verifies exactly two admissions, then verifies capacity becomes reusable after release.
+- Full Linux CI for PR #29 passed unit/rustfmt/strict Clippy, frontend, migrations and PostgreSQL regression.
+- Still not implemented: cgroup mutation, GPU scheduling/residency, predictive resource planning, persisted resource telemetry, or the epistemic-degradation/anytime-result controller itself.
+
+
 ## Adaptive resource policy modes — ARM-002 advisory layer (verified)
 
 PR #27 merged into main at `4a3c081f`.
