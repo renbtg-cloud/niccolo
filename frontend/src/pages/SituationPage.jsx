@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
+import { useSessionStore } from '../stores/session.js';
 import { sourceDescriptor } from '../state/sourceUpload.js';
 import { situationGuide } from '../state/situationGuide.js';
 
@@ -32,9 +33,10 @@ function FocusForm({ initial = '', label, pending, onSubmit }) {
 
 export function SituationPage(){
   const client = useClient();
+  const generation = useSessionStore((state) => state.generation);
   if (!client) return <p>Connect this session first.</p>;
   return <ConnectedSituation
-    key={JSON.stringify([client.config.workspace, client.config.situation])}
+    key={generation}
     client={client}
   />;
 }
