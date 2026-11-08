@@ -1,8 +1,11 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::{
     agentic_controller::{self, StepInput},
+    agentic_runtime,
     bff_operations::{self, NewOperation, OperationScope},
     model_adapter::{self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel},
+    model_adapter::DeterministicModel,
+    operation_budget::BudgetError,
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -148,6 +151,61 @@ async fn model_token_budget_breach_is_not_retried_or_misreported() {
     .await
     .unwrap();
     assert_eq!(row, (1, true, "FAILED".into(), "BUDGET_EXCEEDED".into()));
+}
+
+#[tokio::test]
+async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = OperationScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        operation: Uuid::new_v4(),
+    };
+    let mut request = NewOperation {
+        kind: "AGENTIC_ANALYSIS".into(),
+        target_analysis_id: Some(s.analysis),
+        parent_operation_id: None,
+        idempotency_key: None,
+        input: json!({"model_budget":{"max_invocations":0}}),
+        deadline_at: None,
+        step_budget: 32,
+        requested_by: s.principal,
+    };
+    bff_operations::submit(&app, scope, &request).await.unwrap();
+    let step_id = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let model = DeterministicModel::new("local-fixture", "none").unwrap();
+    let result = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model).await;
+    assert!(matches!(
+        result,
+        Err(agentic_runtime::RuntimeError::Budget(BudgetError::Invalid))
+    ));
+    let last_event: String = sqlx::query_scalar(
+        "SELECT event_kind FROM niccolo.agentic_step_events \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4 \
+         ORDER BY event_seq DESC LIMIT 1"
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(step_id)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(last_event, "FAILED");
+    request.input = json!({"model_budget":{"max_invocations":1}});
+    assert!(matches!(
+        bff_operations::submit(&app, scope, &request).await,
+        Err(bff_operations::BffOperationError::IdempotencyConflict)
+    ));
 }
 
 #[tokio::test]
