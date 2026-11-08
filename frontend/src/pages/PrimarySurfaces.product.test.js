@@ -6,6 +6,7 @@ const connect = readFileSync(new URL('./ConnectPanel.jsx', import.meta.url), 'ut
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const review = readFileSync(new URL('./ReviewPage.jsx', import.meta.url), 'utf8');
 const feedback = readFileSync(new URL('./FeedbackPage.jsx', import.meta.url), 'utf8');
+const questionsHook = readFileSync(new URL('../hooks/useQuestions.js', import.meta.url), 'utf8');
 const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'utf8');
 const identities = readFileSync(new URL('./IdentitiesPage.jsx', import.meta.url), 'utf8');
 
@@ -81,6 +82,15 @@ describe('buyer-facing primary surfaces', () => {
     expect(identities).toContain('pendingClear.current.eventId');
     expect(identities).toContain('pendingAssign.current = null');
     expect(identities).toContain('pendingClear.current = null');
+  });
+
+  it('navigates human feedback beyond the first 100 questions', () => {
+    expect(feedback).toContain('useQuestions(questionCursor)');
+    expect(feedback).toContain('Previous questions');
+    expect(feedback).toContain('Next questions');
+    expect(feedback).toContain('questions.data.next_after');
+    expect(questionsHook).toContain("['questions', client.config.workspace, after]");
+    expect(questionsHook).toContain('client.questions(after, 100)');
   });
 
   it('retries user questions and feedback with stable record identities', () => {
