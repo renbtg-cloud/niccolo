@@ -27,6 +27,10 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingDocumentId.current = documentId');
     expect(situation).toContain('pendingDocumentId.current = null');
     expect(situation).toContain('onError: refresh');
+    expect(situation).toContain('pendingContribution.current?.signature !== signature');
+    expect(situation).toContain('pendingCorrection.current?.signature !== signature');
+    expect(situation).toContain('pendingContribution.current.id');
+    expect(situation).toContain('pendingCorrection.current.id');
   });
 
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
