@@ -54,4 +54,26 @@ curl --max-time 10 --silent --show-error --fail \
 curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" "$path" | \
   node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const v=JSON.parse(s);if(v.focus!=="First-run MVP bootstrap smoke")process.exit(1);});'
-echo 'PASS: fresh local bootstrap, embedded web UI, bearer-authenticated Situation creation/read'
+# Authentication and workspace authorization must fail closed on the same
+# freshly provisioned server, not just in unit-level fixtures.
+unauthenticated="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' "$path")"
+[[ "$unauthenticated" == 401 ]] || {
+  echo "Expected 401 without token, got $unauthenticated" >&2
+  exit 1
+}
+malformed="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' \
+  -H 'Authorization: Bearer invalid-token' "$path")"
+[[ "$malformed" == 401 ]] || {
+  echo "Expected 401 for invalid token, got $malformed" >&2
+  exit 1
+}
+other_workspace="$(node -p "require('node:crypto').randomUUID()")"
+other_path="http://127.0.0.1:38080/v1/workspaces/${other_workspace}/situations/${SITUATION_UUID}"
+denied="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' \
+  -H "Authorization: Bearer ${token}" "$other_path")"
+[[ "$denied" == 403 ]] || {
+  echo "Expected 403 across workspaces, got $denied" >&2
+  exit 1
+}
+echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
+
