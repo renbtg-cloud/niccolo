@@ -70,11 +70,16 @@ type RelationRow = (Uuid, Uuid, Uuid, String, String);
 async fn scoped(
     pool: &PgPool,
     workspace: Uuid,
+    read_only: bool,
 ) -> Result<Transaction<'_, Postgres>, HypothesisPortfolioError> {
     let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(if read_only {
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+    } else {
+        "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
+    })
+    .execute(&mut *tx)
+    .await?;
     let privileged: bool = sqlx::query_scalar(
         "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
     )
@@ -91,11 +96,99 @@ async fn scoped(
     Ok(tx)
 }
 
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HypothesisEvent {
+    pub event_id: Uuid,
+    pub interpretation_id: Uuid,
+    pub event_kind: String,
+    pub note: String,
+    pub recorded_by: Uuid,
+    pub replayed: bool,
+}
+
+fn valid_note(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && value.len() <= 4096 && !value.contains('\0')
+}
+
+pub async fn append_event(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    actor: Uuid,
+    interpretation_id: Uuid,
+    event_id: Uuid,
+    event_kind: &str,
+    note: &str,
+) -> Result<HypothesisEvent, HypothesisPortfolioError> {
+    if !matches!(event_kind, "CHALLENGED" | "WEAKENED" | "RETAINED" | "RETIRED" | "RESTORED")
+        || !valid_note(note)
+    {
+        return Err(HypothesisPortfolioError::Invisible);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_candidate_interpretations
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND interpretation_id=$4)",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(interpretation_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !visible {
+        return Err(HypothesisPortfolioError::Invisible);
+    }
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_hypothesis_events
+         (workspace_id,situation_id,analysis_id,interpretation_id,event_id,event_kind,note,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(interpretation_id)
+    .bind(event_id)
+    .bind(event_kind)
+    .bind(note.trim())
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    let row: Option<(String, String, Uuid)> = sqlx::query_as(
+        "SELECT event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_hypothesis_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND interpretation_id=$4 AND event_id=$5",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(interpretation_id)
+    .bind(event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if row != Some((event_kind.to_owned(), note.trim().to_owned(), actor)) {
+        return Err(HypothesisPortfolioError::Invisible);
+    }
+    tx.commit().await?;
+    Ok(HypothesisEvent {
+        event_id,
+        interpretation_id,
+        event_kind: event_kind.into(),
+        note: note.trim().into(),
+        recorded_by: actor,
+        replayed: !inserted,
+    })
+}
+
 pub async fn portfolio(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<HypothesisPortfolio, HypothesisPortfolioError> {
-    let mut tx = scoped(pool, scope.workspace).await?;
+    let mut tx = scoped(pool, scope.workspace, true).await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3)",
     )
