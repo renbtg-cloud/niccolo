@@ -5,7 +5,7 @@ use niccolo_evidence::{
     bff_operations::{self, NewOperation, OperationScope},
     model_adapter::{self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel},
     model_adapter::DeterministicModel,
-    operation_budget::BudgetError,
+    operation_budget::{self, BudgetError},
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -107,6 +107,58 @@ impl ReasoningModel for OverBudgetModel {
             })
         })
     }
+}
+
+struct NoUsageModel;
+impl ReasoningModel for NoUsageModel {
+    fn provider(&self) -> &str { "usage-omitting-fixture" }
+    fn model(&self) -> &str { "static-response" }
+    fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        Box::pin(async {
+            Ok(ModelResponse {
+                value: json!({"status":"ok"}),
+                prompt_tokens: None,
+                completion_tokens: None,
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (revision, _) = agentic_controller::create_plan(
+        &app, scope, s.principal,
+        &[step(step_id, 1, "SYNTHESIZE", false, vec![])],
+    )
+    .await
+    .unwrap();
+    model_adapter::invoke_recorded(
+        &app,
+        InvocationScope { operation: scope, plan_revision: revision, step_id },
+        s.principal,
+        &NoUsageModel,
+        &ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: json!({}),
+            output_contract: json!({}),
+        },
+    )
+    .await
+    .unwrap();
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_invocations, 1);
+    assert_eq!(budget.unreported_token_usage_invocations, 1);
+    assert!(!budget.token_usage_complete);
+    assert!(budget.remaining_total_tokens_is_upper_bound);
+    assert_eq!(budget.used_total_tokens, 0);
+    assert!(budget.can_start_model_call);
 }
 
 #[tokio::test]
