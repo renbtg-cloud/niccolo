@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { analysisSchema } from '../config.js';
@@ -25,7 +26,8 @@ function AnalysisAnswer({ output, pending, error }) {
 
 export function AnalysisPage(){
  const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
- const {register,handleSubmit}=useForm({resolver:zodResolver(analysisSchema),defaultValues:{analysis}});
+ const {register,handleSubmit,reset}=useForm({resolver:zodResolver(analysisSchema),defaultValues:{analysis}});
+ useEffect(()=>{reset({analysis});},[analysis,reset]);
  const observed=useOperationObserver(activeOperation);
  const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const history=useAnalysisHistory(); const rows=historyGroups(history.data?.analyses??[]);
  return <section><h2>Analysis</h2>
