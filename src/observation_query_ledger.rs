@@ -30,7 +30,7 @@ pub struct SourceQueryIntent {
     pub interpretation_id: Option<Uuid>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetrievedObservation {
     pub evidence_id: Uuid,
     pub document_id: Uuid,
@@ -42,10 +42,10 @@ pub struct RetrievedObservation {
     pub source_class: String,
     pub format: String,
     pub locator: String,
-    pub lexical_relevance: f32,
+    pub search_rank: i16,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueryTrace {
     pub query_id: Uuid,
     pub query: String,
@@ -189,7 +189,7 @@ pub async fn for_packet(
     let mut truncated = false;
     let mut traces = Vec::new();
     for (query_id, query, rationale, expected_observation, direction, interpretation_id) in queries {
-        type ResultRow = (Uuid, Uuid, i32, i32, i32, String, String, String, String, String, f32);
+        type ResultRow = (Uuid, Uuid, i32, i32, i32, String, String, String, String, String, i16);
         let rows: Vec<ResultRow> = sqlx::query_as(
             "SELECT h.evidence_id,d.document_id,f.ordinal,f.byte_start,f.byte_end,                     f.speaker_label,e.content,e.source_class,d.format,d.locator,h.lexical_relevance              FROM niccolo.situation_analysis_observation_query_hits h              JOIN niccolo.source_fragments f                ON f.workspace_id=h.workspace_id AND f.evidence_id=h.evidence_id              JOIN niccolo.evidence e                ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id              JOIN niccolo.source_documents d                ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id              WHERE h.workspace_id=$1 AND h.situation_id=$2 AND h.analysis_id=$3 AND h.query_id=$4              ORDER BY h.hit_rank,h.evidence_id",
         )
@@ -218,7 +218,7 @@ pub async fn for_packet(
                 source_class: row.7,
                 format: row.8,
                 locator: row.9,
-                lexical_relevance: row.10,
+                search_rank: row.10,
             });
         }
         traces.push(QueryTrace {
