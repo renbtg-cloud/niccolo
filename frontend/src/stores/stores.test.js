@@ -10,3 +10,16 @@ it('clears stale operation when a different analysis is selected',()=>{
   expect(useUiStore.getState().analysis).toBe('second');
   expect(useUiStore.getState().activeOperation).toBe('');
 });
+
+it('increments session identity even when changing only the bearer token', () => {
+  const before = useSessionStore.getState().generation;
+  useSessionStore.getState().connect({workspace:'w',situation:'s',token:'first'});
+  const first = useSessionStore.getState().generation;
+  expect(first).toBe(before+1);
+  useSessionStore.getState().connect({workspace:'w',situation:'s',token:'second'});
+  const second = useSessionStore.getState().generation;
+  expect(second).toBe(first+1);
+  useSessionStore.getState().disconnect();
+  expect(useSessionStore.getState().generation).toBe(second+1);
+  expect(useSessionStore.getState().token).toBe('');
+});
