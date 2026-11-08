@@ -1,5 +1,6 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::bff_operations::{self, NewOperation, OperationScope};
+use niccolo_evidence::operation_budget;
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -189,4 +190,46 @@ async fn v196_v200_parent_budget_and_operation_digest_contracts_are_preserved() 
         .await
         .unwrap();
     assert_eq!(events.events[0].kind, "QUEUED");
+}
+
+
+#[tokio::test]
+async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
+    let (admin, app) = pools().await;
+    let seed = seed(&admin).await;
+
+    let live_scope = op(seed, Uuid::new_v4());
+    let mut live = input(seed, "BUILD_BRIEFING", None);
+    live.deadline_at = Some("2099-01-01T00:00:00Z".into());
+    live.input = json!({
+        "analysis_id": seed.analysis,
+        "model_budget": {"max_invocations": 2, "max_total_tokens": 80}
+    });
+    bff_operations::submit(&app, live_scope, &live)
+        .await
+        .unwrap();
+    let current = operation_budget::view(&app, live_scope).await.unwrap();
+    assert!(current.deadline_active);
+    assert!(current.within_deadline);
+    assert!(current.remaining_deadline_ms.unwrap() > 0);
+    assert_eq!(current.remaining_invocations, 2);
+    assert_eq!(current.remaining_total_tokens, 80);
+    assert!(current.stop_reasons.is_empty());
+    assert!(current.can_start_model_call);
+
+    let expired_scope = op(seed, Uuid::new_v4());
+    let mut expired_input = input(seed, "BUILD_BRIEFING", None);
+    expired_input.deadline_at = Some("2000-01-01T00:00:00Z".into());
+    bff_operations::submit(&app, expired_scope, &expired_input)
+        .await
+        .unwrap();
+    let past = operation_budget::view(&app, expired_scope).await.unwrap();
+    assert_eq!(past.remaining_deadline_ms, Some(0));
+    assert!(!past.within_deadline);
+    assert!(!past.can_start_model_call);
+    assert_eq!(past.stop_reasons, vec!["DEADLINE_EXPIRED"]);
+    assert!(matches!(
+        operation_budget::require_available(&app, expired_scope).await,
+        Err(operation_budget::BudgetError::Deadline)
+    ));
 }

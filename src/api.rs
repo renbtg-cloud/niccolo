@@ -22,6 +22,7 @@ use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
+use crate::operation_budget::{self, BudgetError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::presentation_package::{self, PresentationError};
@@ -306,6 +307,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}",
             get(get_bff_operation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/budget",
+            get(get_bff_operation_budget),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/events",
@@ -3700,4 +3705,32 @@ async fn get_presentation_package(
             ),
         })?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+async fn get_bff_operation_budget(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = operation_budget::view(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+    )
+    .await
+    .map_err(|err| match err {
+        BudgetError::Missing => ApiError(StatusCode::NOT_FOUND, "operation unavailable"),
+        BudgetError::Invalid => {
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid operation budget")
+        }
+        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "budget unavailable"),
+    })?;
+    Ok(no_store(
+        json!({"operation_id":operation,"budget":view}),
+        StatusCode::OK,
+    ))
 }

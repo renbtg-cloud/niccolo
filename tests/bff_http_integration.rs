@@ -348,7 +348,9 @@ async fn v316_v325_agentic_plan_is_inspectable_through_bff() {
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED);
-    for _ in 0..40 {
+    let deadline =
+        tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
         let (status, _, plan) = invoke(
             s.router.clone(),
             req("GET", &path(&s, id, "/agentic"), &s.token, None, None),
@@ -359,9 +361,11 @@ async fn v316_v325_agentic_plan_is_inspectable_through_bff() {
             assert!(plan["plan_sha256"].as_str().unwrap().len() == 64);
             return;
         }
-        tokio::task::yield_now().await;
+        if tokio::time::Instant::now() >= deadline {
+            panic!("agentic plan was not visible within 3 seconds");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
-    panic!("agentic plan was not visible");
 }
 
 #[tokio::test]
