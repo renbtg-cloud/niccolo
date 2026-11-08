@@ -119,6 +119,9 @@ async fn idempotency_rejects_different_immutable_operation_metadata() {
     let mut actor = original.clone();
     actor.requested_by = Uuid::new_v4();
     variants.push(actor);
+    let mut deadline = original.clone();
+    deadline.deadline_at = Some("2099-01-01T00:00:00Z".into());
+    variants.push(deadline);
 
     for variant in variants {
         assert!(matches!(
@@ -131,6 +134,11 @@ async fn idempotency_rejects_different_immutable_operation_metadata() {
     changed_id.step_budget = 64;
     assert!(matches!(
         bff_operations::submit(&app, op(s, id), &changed_id).await,
+        Err(bff_operations::BffOperationError::IdempotencyConflict)
+    ));
+    let same_id_wrong_key = input(s, "AGENTIC_ANALYSIS", Some("other-key"));
+    assert!(matches!(
+        bff_operations::submit(&app, op(s, id), &same_id_wrong_key).await,
         Err(bff_operations::BffOperationError::IdempotencyConflict)
     ));
 }
