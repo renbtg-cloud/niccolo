@@ -1,6 +1,6 @@
-//! Linux-first effective runtime resource observation.
+//! Native Windows/Linux runtime resource observation.
 //!
-//! This module observes the process and its effective cgroup-v2 envelope.
+//! This module observes process and system pressure, including cgroup-v2 limits when available.
 //! It deliberately does not treat host totals as process entitlements. The
 //! snapshot is telemetry only: it does not infer epistemic quality, mutate a
 //! cgroup, choose a model, change concurrency or expose infrastructure over HTTP.
@@ -376,16 +376,140 @@ fn observe_linux_with(paths: &LinuxPaths) -> Result<ResourceSnapshot, ResourceEr
     })
 }
 
+/// Windows host telemetry. Host memory pressure informs local work admission,
+/// but it must never be presented as the process's Job Object memory quota.
+#[cfg(windows)]
+fn observe_windows() -> Result<ResourceSnapshot, ResourceError> {
+    use std::{ffi::c_void, mem::size_of};
+    type Handle = *mut c_void;
+
+    #[repr(C)]
+    struct MemoryStatus {
+        length: u32,
+        load_percent: u32,
+        total_physical: u64,
+        available_physical: u64,
+        total_pagefile: u64,
+        available_pagefile: u64,
+        total_virtual: u64,
+        available_virtual: u64,
+        available_extended_virtual: u64,
+    }
+
+    #[repr(C)]
+    struct ProcessMemory {
+        size: u32,
+        page_fault_count: u32,
+        peak_working_set: usize,
+        working_set: usize,
+        quota_peak_paged_pool: usize,
+        quota_paged_pool: usize,
+        quota_peak_nonpaged_pool: usize,
+        quota_nonpaged_pool: usize,
+        pagefile_usage: usize,
+        peak_pagefile_usage: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GlobalMemoryStatusEx(status: *mut MemoryStatus) -> i32;
+        fn GetCurrentProcess() -> Handle;
+    }
+    #[link(name = "psapi")]
+    unsafe extern "system" {
+        fn GetProcessMemoryInfo(process: Handle, counters: *mut ProcessMemory, size: u32) -> i32;
+    }
+
+    let mut mem = MemoryStatus {
+        length: size_of::<MemoryStatus>() as u32,
+        load_percent: 0,
+        total_physical: 0,
+        available_physical: 0,
+        total_pagefile: 0,
+        available_pagefile: 0,
+        total_virtual: 0,
+        available_virtual: 0,
+        available_extended_virtual: 0,
+    };
+    // SAFETY: initialized writable MEMORYSTATUSEX, including required byte size.
+    if unsafe { GlobalMemoryStatusEx(&mut mem) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let mut process_mem = ProcessMemory {
+        size: size_of::<ProcessMemory>() as u32,
+        page_fault_count: 0,
+        peak_working_set: 0,
+        working_set: 0,
+        quota_peak_paged_pool: 0,
+        quota_paged_pool: 0,
+        quota_peak_nonpaged_pool: 0,
+        quota_nonpaged_pool: 0,
+        pagefile_usage: 0,
+        peak_pagefile_usage: 0,
+    };
+    // SAFETY: GetCurrentProcess is a valid pseudo-handle; the destination is
+    // correctly laid out and its size matches the declared Win32 structure.
+    if unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut process_mem, process_mem.size) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+
+    let logical_parallelism = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1);
+    let capacity = u64::try_from(logical_parallelism)
+        .map_err(|_| ResourceError::Invalid)?
+        .checked_mul(1000)
+        .ok_or(ResourceError::Invalid)?;
+    Ok(ResourceSnapshot {
+        platform: "windows".into(),
+        logical_parallelism,
+        process_rss_bytes: Some(process_mem.working_set as u64),
+        process_peak_rss_bytes: Some(process_mem.peak_working_set as u64),
+        cgroup_v2: false,
+        cgroup_path: None,
+        memory_current_bytes: None,
+        memory_limit_bytes: None,
+        memory_limit_observed: false,
+        memory_limit_unlimited: false,
+        // This is free physical memory, NOT remaining Job Object memory quota.
+        memory_headroom_bytes: Some(mem.available_physical),
+        // System-wide pressure, not a claim about the current process quota.
+        memory_pressure_basis_points: Some(
+            u16::try_from(mem.load_percent.min(100) * 100)
+                .map_err(|_| ResourceError::Invalid)?,
+        ),
+        cpu_quota_millicores: None,
+        cpu_quota_observed: false,
+        cpu_quota_unlimited: false,
+        cpuset_cpu_count: None,
+        effective_cpu_capacity_millicores: capacity,
+        cpu_throttled_events: None,
+        cpu_throttled_usec: None,
+        pids_current: None,
+        pids_limit: None,
+        pids_limit_observed: false,
+        pids_limit_unlimited: false,
+        gpu_observation_implemented: false,
+        mutates_resource_limits: false,
+        establishes_epistemic_quality: false,
+    })
+}
+
 /// Observe current process/cgroup limits without modifying the runtime.
 ///
-/// Linux/cgroup-v2 is the first supported implementation. Missing optional
-/// kernel files produce partial telemetry rather than fabricated host totals.
+/// Linux observes effective cgroup limits; Windows observes system memory
+/// pressure and the current process working set, without claiming to know
+/// unqueried Job Object quotas. Missing information remains explicit.
 pub fn observe() -> Result<ResourceSnapshot, ResourceError> {
     #[cfg(target_os = "linux")]
     {
         observe_linux_with(&LinuxPaths::default())
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        observe_windows()
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         Err(ResourceError::Unsupported)
     }
