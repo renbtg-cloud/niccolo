@@ -99,43 +99,6 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         }
     }
     ids.clear();
-    for query in &x.source_queries {
-        sqlx::query(
-            "INSERT INTO niccolo.situation_analysis_observation_queries              (workspace_id,situation_id,analysis_id,query_id,query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id)              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING",
-        )
-        .bind(scope.workspace)
-        .bind(scope.situation)
-        .bind(scope.analysis)
-        .bind(query.query_id)
-        .bind(query.query.trim())
-        .bind(query.rationale.trim())
-        .bind(query.expected_observation.trim())
-        .bind(&query.direction)
-        .bind(query.interpretation_id)
-        .bind(actor)
-        .execute(&mut *tx)
-        .await?;
-        let stored: Option<(String, String, String, String, Option<Uuid>, Uuid)> =
-            sqlx::query_as(
-                "SELECT query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id                  FROM niccolo.situation_analysis_observation_queries                  WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND query_id=$4",
-            )
-            .bind(scope.workspace)
-            .bind(scope.situation)
-            .bind(scope.analysis)
-            .bind(query.query_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-        if stored != Some((
-            query.query.trim().to_owned(),
-            query.rationale.trim().to_owned(),
-            query.expected_observation.trim().to_owned(),
-            query.direction.clone(),
-            query.interpretation_id,
-            actor,
-        )) {
-            return Err(UpdateError::Conflict);
-        }
-    }
     for a in &x.assumptions {
         if !ids.insert(a.assumption_id) || !valid(&a.statement, 4096) || !valid(&a.basis_note, 4096)
         {
@@ -265,6 +228,43 @@ pub async fn apply(
                 actor,
             ))
         {
+            return Err(UpdateError::Conflict);
+        }
+    }
+    for query in &x.source_queries {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_analysis_observation_queries              (workspace_id,situation_id,analysis_id,query_id,query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id)              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(query.query_id)
+        .bind(query.query.trim())
+        .bind(query.rationale.trim())
+        .bind(query.expected_observation.trim())
+        .bind(&query.direction)
+        .bind(query.interpretation_id)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?;
+        let stored: Option<(String, String, String, String, Option<Uuid>, Uuid)> =
+            sqlx::query_as(
+                "SELECT query_text,rationale,expected_observation,direction,interpretation_id,recorded_by_principal_id                  FROM niccolo.situation_analysis_observation_queries                  WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND query_id=$4",
+            )
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.analysis)
+            .bind(query.query_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if stored != Some((
+            query.query.trim().to_owned(),
+            query.rationale.trim().to_owned(),
+            query.expected_observation.trim().to_owned(),
+            query.direction.clone(),
+            query.interpretation_id,
+            actor,
+        )) {
             return Err(UpdateError::Conflict);
         }
     }
