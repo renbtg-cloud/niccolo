@@ -40,6 +40,8 @@ pub struct ClarificationValue {
     pub cheaper_alternative: Option<String>,
 }
 
+type ClarificationValueRow = (Uuid, Option<i16>, Option<i16>, Option<String>);
+
 fn valid(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
     !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
@@ -197,7 +199,7 @@ pub async fn values(
         return Err(ClarificationError::Invisible);
     }
 
-    let rows: Vec<(Uuid, Option<i16>, Option<i16>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<ClarificationValueRow> = sqlx::query_as(
         "SELECT question_id,decision_relevance,acquisition_cost,cheaper_alternative
          FROM niccolo.situation_analysis_clarification_values
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
