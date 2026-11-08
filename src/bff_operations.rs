@@ -245,7 +245,7 @@ pub async fn submit(
         .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(&input.kind).bind(input.target_analysis_id).bind(input.parent_operation_id).bind(&input.idempotency_key).bind(&input_json).bind(&input_sha).bind(deadline).bind(input.step_budget).bind(input.requested_by).execute(&mut *tx).await?.rows_affected();
     if inserted == 0 {
         let exact: Option<(String, String, Option<Uuid>, Option<Uuid>, i32, Uuid, Option<String>, bool)> = sqlx::query_as("SELECT operation_kind,input_sha256,target_analysis_id,parent_operation_id,step_budget,requested_by_principal_id,idempotency_key,(deadline_at IS NOT DISTINCT FROM $4::timestamptz) FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
-             .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(deadline).fetch_optional(&mut *tx).await?;
+            .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(deadline).fetch_optional(&mut *tx).await?;
         if exact != Some((
             input.kind.clone(),
             input_sha.clone(),
