@@ -24,12 +24,17 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT to_re
   exit 1
 fi
 
-echo '[1/4] Apply all migrations to the fresh database'
+echo '[1/4] Build MVP before changing the database'
+bash scripts/build-mvp.sh
+ext=''
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ext='.exe';; esac
+
+echo '[2/4] Apply all migrations to the fresh database'
 for migration in sql/[0-9][0-9][0-9][0-9]_*.sql; do
   psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -f "$migration" >/dev/null
 done
 
-echo '[2/4] Create restricted runtime PostgreSQL login'
+echo '[3/4] Create restricted runtime PostgreSQL login'
 psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" <<'SQL'
 \getenv secure_password NICCOLO_PG_SECURE_PASSWORD
 SELECT format('CREATE ROLE niccolo_secure LOGIN PASSWORD %L', :'secure_password')
@@ -44,11 +49,6 @@ psql -X -q -v ON_ERROR_STOP=1 -v workspace="$workspace" "$NICCOLO_PG_ADMIN_URL" 
 INSERT INTO niccolo.workspaces(workspace_id,label)
   VALUES (:'workspace'::uuid, 'Local Niccolo MVP');
 SQL
-
-echo '[3/4] Build MVP (frontend first, then embedded Rust server)'
-./scripts/build-mvp.sh
-ext=''
-case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ext='.exe';; esac
 
 echo '[4/4] Issue private workspace token and write local runtime configuration'
 mkdir -p .niccolo-local
@@ -68,7 +68,7 @@ chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/ident
 
 echo 'Local setup complete. Credentials are in .niccolo-local/ (never commit or share).'
 echo 'Set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL to enable local inference.'
-echo 'Start: source .niccolo-local/local.env && ./target/release/niccolo-api'
+echo "Start: source .niccolo-local/local.env && ./target/release/niccolo-api${ext}"
 echo 'Open: http://127.0.0.1:38080'
 echo 'Use workspace and Situation UUIDs from identifiers.txt and bearer from token.txt.'
 echo 'The first Situation is created through the web UI, not automatically here.'
