@@ -1,5 +1,15 @@
 # Active work progress
 
+## Adaptive resource policy modes — ARM-002 advisory layer (verified)
+
+PR #27 merged into main at `4a3c081f`.
+- Added explicit `SELF_MANAGED`, `EXTERNALLY_MANAGED` and `HYBRID` resource-management modes over the verified Linux telemetry from ARM-001.
+- Policy computes a conservative observed parallel-operation ceiling from effective CPU entitlement and memory pressure/headroom, including constrained and critical pressure states.
+- Critical memory pressure preserves one path of progress instead of pretending unlimited capacity; delegated mode observes and reports pressure but does not authorize Niccolò to apply tuning automatically.
+- The layer is deliberately advisory: it does not mutate cgroups, worker concurrency, model selection or epistemic state. Capacity remains distinct from epistemic quality.
+- Full Linux Actions passed for PR #27. Next work is bounded scheduler/admission wiring, with explicit operator mode and safe fallback when telemetry is unavailable.
+
+
 ## Linux effective-resource observation — ARM-001 (verified)
 
 PR #26 merged into main at `f538ea31` (superseding the transient duplicate ARM branch/PR bookkeeping).
