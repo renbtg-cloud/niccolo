@@ -41,13 +41,14 @@ function QuestionCard({ question }) {
   return <article className="feedback-question">
     <h3>{question.text}</h3>
     <p><small>Investigative question · not evidence</small></p>
-    <label>Your position<select value={response} onChange={e=>setResponse(e.target.value)}>
+    <label>Your position<select value={response} disabled={submit.isPending} onChange={e=>{submit.reset();setResponse(e.target.value);}}>
       {Object.entries(RESPONSE_COPY).map(([value,[label]])=><option key={value} value={value}>{label}</option>)}
     </select></label>
     <p><small>{RESPONSE_COPY[response][1]}</small></p>
-    <label>Why?<textarea aria-label={`Feedback reason ${question.question_id}`} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Explain your judgment in your own words"/></label>
+    <label>Why?<textarea aria-label={`Feedback reason ${question.question_id}`} value={reason} disabled={submit.isPending} onChange={e=>{submit.reset();setReason(e.target.value);}} placeholder="Explain your judgment in your own words"/></label>
     <button disabled={!reason.trim()||submit.isPending} onClick={()=>submit.mutate()}>{submit.isPending?'Recording…':'Record my position'}</button>
     {submit.error&&<p className="error">{submit.error.message}</p>}
+    {submit.isSuccess&&<p role="status">Your position was recorded.</p>}
     <div className="feedback-history">
       <h4>Current recorded positions</h4>
       {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : <p>No human position recorded yet.</p>}
@@ -78,7 +79,7 @@ export function FeedbackPage(){
   if(!client)return <p>Connect first.</p>;
   return <section><h2>Questions & human feedback</h2>
     <p>Use different responses for different epistemic states. Rejecting an interpretation is not the same as saying the evidence is insufficient, and neither is the same as not knowing.</p>
-    <article className="question-create"><h3>Add an investigative question</h3><label>Question<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="What should we explicitly keep open for human judgment?"/></label><button disabled={!text.trim()||create.isPending} onClick={()=>create.mutate()}>{create.isPending?'Adding…':'Add question'}</button>{create.error&&<p className="error">{create.error.message}</p>}</article>
+    <article className="question-create"><h3>Add an investigative question</h3><label>Question<textarea value={text} disabled={create.isPending} onChange={e=>{create.reset();setText(e.target.value);}} placeholder="What should we explicitly keep open for human judgment?"/></label><button disabled={!text.trim()||create.isPending} onClick={()=>create.mutate()}>{create.isPending?'Adding…':'Add question'}</button>{create.error&&<p className="error">{create.error.message}</p>}{create.isSuccess&&<p role="status">Investigative question recorded. Use question navigation to browse older records.</p>}</article>
     {questions.isLoading&&<p>Loading questions…</p>}
     {questions.error&&<p className="error">{questions.error.message}</p>}
     <div className="feedback-list">{(questions.data?.questions??[]).map(q=><QuestionCard key={q.question_id} question={q}/>)}</div>
