@@ -40,6 +40,7 @@ export class NiccoloClient {
     }
     return response.blob();
   }
+  readiness() { return this.request('GET', '/readyz'); }
   situation() { return this.request('GET', situationPath(this.config)); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
