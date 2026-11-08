@@ -16,7 +16,7 @@ use uuid::Uuid;
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderConfigError {
     #[error(
-        "incomplete LLM configuration: set NICCOLO_LLM_BASE_URL, NICCOLO_LLM_API_KEY and NICCOLO_LLM_MODEL together"
+        "incomplete LLM configuration: set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL; remote providers also require NICCOLO_LLM_API_KEY"
     )]
     Incomplete,
     #[error("invalid LLM configuration")]
@@ -213,10 +213,14 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
     fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
         Box::pin(async move {
             let body = serde_json::to_vec(&self.request_body(request))?;
-            let headers = format!(
-                "Authorization: Bearer {}\nContent-Type: application/json\nAccept: application/json\n",
-                self.config.api_key
-            );
+            let headers = if self.config.api_key.is_empty() {
+                "Content-Type: application/json\nAccept: application/json\n".to_owned()
+            } else {
+                format!(
+                    "Authorization: Bearer {}\nContent-Type: application/json\nAccept: application/json\n",
+                    self.config.api_key
+                )
+            };
             let body_path = private_temp("llm-body", &body)?;
             let header_path = match private_temp("llm-headers", headers.as_bytes()) {
                 Ok(path) => path,
