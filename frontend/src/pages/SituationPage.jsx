@@ -183,6 +183,7 @@ export function SituationPage(){
         disabled={upload.isPending}
         onChange={(event) => {
           pendingDocumentId.current = null;
+          upload.reset();
           setFile(event.target.files?.[0] ?? null);
         }}
       />
