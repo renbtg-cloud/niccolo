@@ -7,6 +7,7 @@ These describe components or intended contracts. Source code and tests determine
 - [Discriminating-question scheduling](DISCRIMINATING_QUESTIONS_MVP.md)
 - [Source scope and missingness](SOURCE_SCOPE_MISSINGNESS_MVP.md)
 - [Collection provenance](COLLECTION_PROVENANCE_MVP.md)
+- [Decision readiness](DECISION_READINESS_MVP.md)
 - [Qualified temporal actor state](TEMPORAL_ACTOR_STATE_MVP.md)
 - [Server portability notes](MVP_SERVER_PORTABILITY.md)
 - [Historical V250 architecture checkpoint](../../dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md)
