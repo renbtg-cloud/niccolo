@@ -462,8 +462,7 @@ impl OpenAiCompatibleModel {
             .ok();
         tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
             .ok();
-        let mut raw = Vec::new();
-        if self.endpoint.scheme == "https" {
+        let raw = if self.endpoint.scheme == "https" {
             let roots =
                 rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
             let config = rustls::ClientConfig::builder()
@@ -477,18 +476,14 @@ impl OpenAiCompatibleModel {
             stream
                 .write_all(request_text.as_bytes())
                 .map_err(|e| ModelError::Provider(format!("write failed: {e}")))?;
-            stream
-                .read_to_end(&mut raw)
-                .map_err(|e| ModelError::Provider(format!("read failed: {e}")))?;
+            read_bounded(&mut stream)?
         } else {
             let mut stream = tcp;
             stream
                 .write_all(request_text.as_bytes())
                 .map_err(|e| ModelError::Provider(format!("write failed: {e}")))?;
-            stream
-                .read_to_end(&mut raw)
-                .map_err(|e| ModelError::Provider(format!("read failed: {e}")))?;
-        }
+            read_bounded(&mut stream)?
+        };
         let (status, _headers, payload) = parse_http_response(&raw)?;
         if !(200..300).contains(&status) {
             return Err(ModelError::Provider(format!(
@@ -576,6 +571,22 @@ fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, ModelError> {
     }
 }
 
+// Guard memory before decoding HTTP; a remote response must never grow the
+// local worker buffer without bound. Includes headers and transport framing.
+const MAX_HTTP_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
+
+fn read_bounded<R: Read>(reader: &mut R) -> Result<Vec<u8>, ModelError> {
+    let mut raw = Vec::new();
+    reader
+        .take(MAX_HTTP_RESPONSE_BYTES + 1)
+        .read_to_end(&mut raw)
+        .map_err(|e| ModelError::Provider(format!("read failed: {e}")))?;
+    if raw.len() as u64 > MAX_HTTP_RESPONSE_BYTES {
+        return Err(ModelError::Provider("provider response too large".into()));
+    }
+    Ok(raw)
+}
+
 impl ReasoningModel for OpenAiCompatibleModel {
     fn provider(&self) -> &str {
         &self.provider
@@ -607,5 +618,22 @@ impl ReasoningModel for UnavailableModel {
     }
     fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
         Box::pin(async { Err(ModelError::Provider("no reasoning model configured".into())) })
+    }
+}
+
+#[cfg(test)]
+mod bounded_response_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_small_http_body_without_modification() {
+        let expected = b"HTTP/1.1 200 OK\r\n\r\n{}";
+        assert_eq!(read_bounded(&mut &expected[..]).unwrap(), expected);
+    }
+
+    #[test]
+    fn rejects_response_above_maximum_before_unbounded_allocation() {
+        let source = vec![b'x'; MAX_HTTP_RESPONSE_BYTES as usize + 1];
+        assert!(matches!(read_bounded(&mut &source[..]), Err(ModelError::Provider(_))));
     }
 }
