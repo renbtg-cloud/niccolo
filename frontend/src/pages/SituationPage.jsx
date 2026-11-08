@@ -70,14 +70,14 @@ export function SituationPage(){
     onSuccess: refresh,
   });
   const downloadOriginal = useMutation({
-    mutationFn: async (document) => {
-      const blob = await client.downloadSourceOriginal(document.document_id);
-      const ext = document.format === 'EML' ? 'eml' : 'txt';
+    mutationFn: async (source) => {
+      const blob = await client.downloadSourceOriginal(source.document_id);
+      const ext = source.format === 'EML' ? 'eml' : 'txt';
       const url = URL.createObjectURL(blob);
       try {
         const link = document.createElement('a');
         link.href = url;
-        link.download = `niccolo-source-${document.document_id}.${ext}`;
+        link.download = `niccolo-source-${source.document_id}.${ext}`;
         document.body.append(link);
         link.click();
         link.remove();
