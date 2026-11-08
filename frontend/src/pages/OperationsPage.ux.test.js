@@ -16,5 +16,8 @@ describe('primary analysis path', () => {
     expect(operations).toContain("run.isPending?'Analyzing…':'Analyze this Situation'");
     expect(operations).toContain('Review reasoning, clarifications and next steps →');
     expect(operations).toContain('<summary>Technical execution details</summary>');
+    expect(operations).toContain("operation.state==='FAILED'");
+    expect(operations).toContain("operation.state==='CANCELLED'");
+    expect(operations).toContain('No answer was published. You can start another analysis.');
   });
 });
