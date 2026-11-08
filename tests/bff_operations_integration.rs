@@ -104,19 +104,23 @@ async fn concurrent_same_key_submissions_reuse_one_operation_and_queue_event() {
     let scopes = (0..10)
         .map(|_| op(s, Uuid::new_v4()))
         .collect::<Vec<_>>();
-    let results = futures::future::join_all(
-        scopes
-            .iter()
-            .copied()
-            .map(|scope| bff_operations::submit(&app, scope, &request)),
-    )
-    .await;
-    let winner = results[0].as_ref().unwrap().operation_id;
-    for result in results {
-        let operation = result.unwrap();
-        assert_eq!(operation.operation_id, winner);
+    let mut tasks = tokio::task::JoinSet::new();
+    for scope in scopes {
+        let pool = app.clone();
+        let submitted = request.clone();
+        tasks.spawn(async move { bff_operations::submit(&pool, scope, &submitted).await });
+    }
+    let mut winner = None;
+    while let Some(joined) = tasks.join_next().await {
+        let operation = joined.unwrap().unwrap();
+        if let Some(id) = winner {
+            assert_eq!(operation.operation_id, id);
+        } else {
+            winner = Some(operation.operation_id);
+        }
         assert_eq!(operation.state, "QUEUED");
     }
+    let winner = winner.unwrap();
 
     let count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.bff_operations          WHERE workspace_id=$1 AND situation_id=$2 AND idempotency_key='parallel-replay'"
