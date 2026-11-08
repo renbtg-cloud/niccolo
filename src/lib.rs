@@ -492,3 +492,5 @@ pub mod provenance_clusters;
 pub mod grounded_lineage_store;
 
 pub mod presentation_package;
+
+pub mod resource_observability;
