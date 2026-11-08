@@ -258,5 +258,49 @@ psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
   -c 'DROP DATABASE niccolo_ci_role_probe'
 echo 'PASS: preflight refuses reuse of cluster-global service role'
 
+# The MVP advertises up to 4 MiB per source. Verify real HTTP ingestion
+# accepts more than the default Axum 2 MiB body cap, without skipping
+# fragment-bound checks or byte-exact original retention.
+large_file=".niccolo-local/ci-large-chat.txt"
+node -e '
+const message="x".repeat(32000);
+for(let i=0;i<66;i++)
+  process.stdout.write("[08/11/2026, 10:00] Speaker"+i+": "+message+"\n");
+' > "$large_file"
+large_size="$(wc -c < "$large_file")"
+[[ "$large_size" -gt 2097152 && "$large_size" -lt 4194304 ]] || {
+  echo "Unexpected bounded large source size: $large_size" >&2
+  exit 1
+}
+large_id="$(node -p "require('node:crypto').randomUUID()")"
+large_path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${large_id}"
+large_result="$(curl --max-time 30 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-large-chat.txt' \
+  --data-binary @"$large_file" "$large_path")"
+printf '%s' "$large_result" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.replayed!==false||j.fragment_ids?.length!==66)process.exit(1);
+});'
+curl --max-time 30 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${large_path}/original" -o ".niccolo-local/ci-large-original.txt"
+cmp "$large_file" ".niccolo-local/ci-large-original.txt"
+oversize_file=".niccolo-local/ci-oversized-chat.txt"
+node -e 'process.stdout.write("x".repeat(4*1024*1024+1))' > "$oversize_file"
+oversize_id="$(node -p "require('node:crypto').randomUUID()")"
+oversize_status="$(curl --max-time 30 --silent --show-error \
+  --output /dev/null --write-out '%{http_code}' \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-oversized-chat.txt' \
+  --data-binary @"$oversize_file" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${oversize_id}")"
+[[ "$oversize_status" == 413 ]] || {
+  echo "Expected HTTP 413 for a source above 4 MiB, got $oversize_status" >&2
+  exit 1
+}
+echo 'PASS: HTTP source limit accepts 2–4 MiB, rejects >4 MiB, retains exact bytes'
+
 echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
 
