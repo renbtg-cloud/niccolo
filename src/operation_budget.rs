@@ -102,10 +102,10 @@ fn summarize(
     Ok(BudgetView {
         max_invocations,
         used_invocations,
-        remaining_invocations: max_invocations.saturating_sub(used_invocations),
+        remaining_invocations: (max_invocations - used_invocations).max(0),
         max_total_tokens,
         used_total_tokens,
-        remaining_total_tokens: max_total_tokens.saturating_sub(used_total_tokens),
+        remaining_total_tokens: (max_total_tokens - used_total_tokens).max(0),
         deadline_active: remaining_deadline_ms.is_some(),
         within_deadline,
         remaining_deadline_ms,
