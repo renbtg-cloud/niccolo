@@ -43,7 +43,7 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
           rustup default 1.99.1
       - name: Formatting
-        run: rustfmt --edition 2024 --check src/api.rs src/epistemic_weights.rs src/human_credence.rs src/epistemic_policy_store.rs src/reasoning_packet.rs src/grounded_claim_weights.rs src/grounded_lineage_store.rs src/provenance_clusters.rs src/presentation_package.rs src/operation_budget.rs tests/human_credence_integration.rs tests/grounded_claim_weights_integration.rs
+        run: rustfmt --edition 2024 --check src/api.rs src/epistemic_weights.rs src/human_credence.rs src/epistemic_policy_store.rs src/reasoning_packet.rs src/grounded_claim_weights.rs src/grounded_lineage_store.rs src/provenance_clusters.rs src/presentation_package.rs src/operation_budget.rs src/runtime_resources.rs tests/human_credence_integration.rs tests/grounded_claim_weights_integration.rs
       - name: Standalone Python export template tests
         run: python3 -m unittest discover -s tests -p "test_presentation_inspector.py" -v
       - name: Unit tests
