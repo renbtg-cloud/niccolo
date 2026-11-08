@@ -91,184 +91,184 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     // Model/artifact failures are handled here alongside pre-invocation errors.
     agentic_controller::start_step(pool, scope, step.step_id, actor).await?;
     let result: Result<(), RuntimeError> = async {
-    if step.requires_human || step.kind == "REQUEST_HUMAN_DECISION" {
-        agentic_controller::finish_step(
+        if step.requires_human || step.kind == "REQUEST_HUMAN_DECISION" {
+            agentic_controller::finish_step(
+                pool,
+                scope,
+                step.step_id,
+                actor,
+                "WAITING_FOR_HUMAN",
+                "explicit human decision required",
+            )
+            .await?;
+            return Ok(());
+        }
+        let op = bff_operations::get(pool, scope).await?;
+        let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
+        let analysis_scope = crate::analysis_structure::AnalysisScope {
+            workspace: scope.workspace,
+            situation: scope.situation,
+            analysis,
+        };
+        if step.kind == "CHECK_STOP_CONDITIONS" {
+            let signals =
+                agentic_policy::signals(pool, scope.workspace, scope.situation, analysis).await?;
+            agentic_controller::finish_step(
+                pool,
+                scope,
+                step.step_id,
+                actor,
+                "SUCCEEDED",
+                &format!(
+                    "deterministic stop-condition check: {} triggered",
+                    signals.triggered_stop_conditions
+                ),
+            )
+            .await?;
+            return Ok(());
+        }
+        if step.kind == "PREPARE_HANDOFF" {
+            let handoff = reasoning_handoff::bundle(pool, analysis_scope).await?;
+            let handoff_sha = reasoning_handoff::sha256(&handoff)?;
+            agentic_controller::finish_step(
+                pool,
+                scope,
+                step.step_id,
+                actor,
+                "SUCCEEDED",
+                &format!("deterministic handoff prepared: {handoff_sha}"),
+            )
+            .await?;
+            return Ok(());
+        }
+        let _operation_budget = operation_budget::require_available(pool, scope).await?;
+        let packet = reasoning_packet::build(pool, analysis_scope).await?;
+        let packet_sha = reasoning_packet::sha256(&packet)?;
+        let packet_evidence_ids = packet
+            .frozen_input
+            .source_fragments
+            .iter()
+            .map(|fragment| fragment.evidence_id)
+            .collect::<Vec<_>>();
+        let request = ModelRequest {
+            purpose: step.kind.clone(),
+            input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
+            output_contract: if step.kind == "SYNTHESIZE" {
+                json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","context_links","assumptions","alternatives","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
+            } else if matches!(
+                step.kind.as_str(),
+                "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" | "CHECK_ALTERNATIVES"
+            ) {
+                json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","candidate_interpretations","assumptions","evidence_gaps","clarifications"]},"niccolo_rules":{"human_context_is_not_evidence":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
+            } else if step.kind == "CHALLENGE_SYNTHESIS" {
+                json!({"type":"object","required":["purpose","status","niccolo_challenge"],"niccolo_challenge":{"required":["challenges"]},"niccolo_rules":{"seek_counterevidence":true,"seek_competing_interpretations":true,"challenge_is_not_truth":true,"do_not_execute_human_actions":true}})
+            } else {
+                json!({"type":"object","required":["purpose","status"],"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
+            },
+        };
+        let invocation = model_adapter::invoke_recorded(
             pool,
-            scope,
-            step.step_id,
+            InvocationScope {
+                operation: scope,
+                plan_revision,
+                step_id: step.step_id,
+            },
             actor,
-            "WAITING_FOR_HUMAN",
-            "explicit human decision required",
+            model,
+            &request,
         )
-        .await?;
-        return Ok(());
-    }
-    let op = bff_operations::get(pool, scope).await?;
-    let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
-    let analysis_scope = crate::analysis_structure::AnalysisScope {
-        workspace: scope.workspace,
-        situation: scope.situation,
-        analysis,
-    };
-    if step.kind == "CHECK_STOP_CONDITIONS" {
-        let signals =
-            agentic_policy::signals(pool, scope.workspace, scope.situation, analysis).await?;
-        agentic_controller::finish_step(
-            pool,
-            scope,
-            step.step_id,
-            actor,
-            "SUCCEEDED",
-            &format!(
-                "deterministic stop-condition check: {} triggered",
-                signals.triggered_stop_conditions
-            ),
-        )
-        .await?;
-        return Ok(());
-    }
-    if step.kind == "PREPARE_HANDOFF" {
-        let handoff = reasoning_handoff::bundle(pool, analysis_scope).await?;
-        let handoff_sha = reasoning_handoff::sha256(&handoff)?;
-        agentic_controller::finish_step(
-            pool,
-            scope,
-            step.step_id,
-            actor,
-            "SUCCEEDED",
-            &format!("deterministic handoff prepared: {handoff_sha}"),
-        )
-        .await?;
-        return Ok(());
-    }
-    let _operation_budget = operation_budget::require_available(pool, scope).await?;
-    let packet = reasoning_packet::build(pool, analysis_scope).await?;
-    let packet_sha = reasoning_packet::sha256(&packet)?;
-    let packet_evidence_ids = packet
-        .frozen_input
-        .source_fragments
-        .iter()
-        .map(|fragment| fragment.evidence_id)
-        .collect::<Vec<_>>();
-    let request = ModelRequest {
-        purpose: step.kind.clone(),
-        input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
-        output_contract: if step.kind == "SYNTHESIZE" {
-            json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","context_links","assumptions","alternatives","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
-        } else if matches!(
-            step.kind.as_str(),
-            "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" | "CHECK_ALTERNATIVES"
-        ) {
-            json!({"type":"object","required":["purpose","status","niccolo_update"],"niccolo_update":{"optional":["used_contribution_ids","candidate_interpretations","assumptions","evidence_gaps","clarifications"]},"niccolo_rules":{"human_context_is_not_evidence":true,"separate_evidence_from_inference":true,"do_not_execute_human_actions":true}})
-        } else if step.kind == "CHALLENGE_SYNTHESIS" {
-            json!({"type":"object","required":["purpose","status","niccolo_challenge"],"niccolo_challenge":{"required":["challenges"]},"niccolo_rules":{"seek_counterevidence":true,"seek_competing_interpretations":true,"challenge_is_not_truth":true,"do_not_execute_human_actions":true}})
-        } else {
-            json!({"type":"object","required":["purpose","status"],"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
-        },
-    };
-    let invocation = model_adapter::invoke_recorded(
-        pool,
-        InvocationScope {
-            operation: scope,
-            plan_revision,
-            step_id: step.step_id,
-        },
-        actor,
-        model,
-        &request,
-    )
-    .await;
-    match invocation {
-        Ok(v) => {
-            // Transport success does not establish that the provider returned
-            // a valid Niccolò artifact. Keep failed post-processing from
-            // stranding a durable step in STARTED indefinitely.
-            let applied: Result<(), RuntimeError> = async {
-                let response = v
-                    .response
-                    .as_ref()
-                    .expect("successful invocation has response");
-                if step.kind == "INSPECT_SOURCES" {
-                    analysis_coverage::record_many(
-                        pool,
-                        scope.workspace,
-                        actor,
-                        scope.situation,
-                        analysis,
-                        &packet_evidence_ids,
-                    )
-                    .await?;
-                }
-                if step.kind == "SYNTHESIZE" {
-                    let artifact = model_artifacts::parse(response)?
-                        .ok_or(model_artifacts::ArtifactError::Invalid)?;
-                    model_artifacts::apply(
-                        pool,
-                        crate::analysis_structure::AnalysisScope {
-                            workspace: scope.workspace,
-                            situation: scope.situation,
+        .await;
+        match invocation {
+            Ok(v) => {
+                // Transport success does not establish that the provider returned
+                // a valid Niccolò artifact. Keep failed post-processing from
+                // stranding a durable step in STARTED indefinitely.
+                let applied: Result<(), RuntimeError> = async {
+                    let response = v
+                        .response
+                        .as_ref()
+                        .expect("successful invocation has response");
+                    if step.kind == "INSPECT_SOURCES" {
+                        analysis_coverage::record_many(
+                            pool,
+                            scope.workspace,
+                            actor,
+                            scope.situation,
                             analysis,
-                        },
-                        actor,
-                        &artifact,
-                    )
-                    .await?;
-                } else if matches!(
-                    step.kind.as_str(),
-                    "ASSESS_CONTEXT"
-                        | "CHECK_ASSUMPTIONS"
-                        | "PROPOSE_CLARIFICATION"
-                        | "CHECK_ALTERNATIVES"
-                ) {
-                    let update = reasoning_updates::parse(response)?
-                        .ok_or(reasoning_updates::UpdateError::Invalid)?;
-                    reasoning_updates::apply(
-                        pool,
-                        crate::analysis_structure::AnalysisScope {
-                            workspace: scope.workspace,
-                            situation: scope.situation,
-                            analysis,
-                        },
-                        actor,
-                        &update,
-                    )
-                    .await?;
-                } else if step.kind == "CHALLENGE_SYNTHESIS" {
-                    let artifact = adversarial_challenge::parse(response)?
-                        .ok_or(adversarial_challenge::ChallengeError::Invalid)?;
-                    adversarial_challenge::apply(
-                        pool,
-                        crate::analysis_structure::AnalysisScope {
-                            workspace: scope.workspace,
-                            situation: scope.situation,
-                            analysis,
-                        },
-                        actor,
-                        &artifact,
-                    )
-                    .await?;
-                }
-                Ok(())
-            }
-            .await;
-            match applied {
-                Ok(()) => {
-                    agentic_controller::finish_step(
-                        pool,
-                        scope,
-                        step.step_id,
-                        actor,
-                        "SUCCEEDED",
-                        &format!("model invocation {} succeeded", v.invocation_id),
-                    )
-                    .await?;
+                            &packet_evidence_ids,
+                        )
+                        .await?;
+                    }
+                    if step.kind == "SYNTHESIZE" {
+                        let artifact = model_artifacts::parse(response)?
+                            .ok_or(model_artifacts::ArtifactError::Invalid)?;
+                        model_artifacts::apply(
+                            pool,
+                            crate::analysis_structure::AnalysisScope {
+                                workspace: scope.workspace,
+                                situation: scope.situation,
+                                analysis,
+                            },
+                            actor,
+                            &artifact,
+                        )
+                        .await?;
+                    } else if matches!(
+                        step.kind.as_str(),
+                        "ASSESS_CONTEXT"
+                            | "CHECK_ASSUMPTIONS"
+                            | "PROPOSE_CLARIFICATION"
+                            | "CHECK_ALTERNATIVES"
+                    ) {
+                        let update = reasoning_updates::parse(response)?
+                            .ok_or(reasoning_updates::UpdateError::Invalid)?;
+                        reasoning_updates::apply(
+                            pool,
+                            crate::analysis_structure::AnalysisScope {
+                                workspace: scope.workspace,
+                                situation: scope.situation,
+                                analysis,
+                            },
+                            actor,
+                            &update,
+                        )
+                        .await?;
+                    } else if step.kind == "CHALLENGE_SYNTHESIS" {
+                        let artifact = adversarial_challenge::parse(response)?
+                            .ok_or(adversarial_challenge::ChallengeError::Invalid)?;
+                        adversarial_challenge::apply(
+                            pool,
+                            crate::analysis_structure::AnalysisScope {
+                                workspace: scope.workspace,
+                                situation: scope.situation,
+                                analysis,
+                            },
+                            actor,
+                            &artifact,
+                        )
+                        .await?;
+                    }
                     Ok(())
                 }
-                Err(error) => Err(error),
+                .await;
+                match applied {
+                    Ok(()) => {
+                        agentic_controller::finish_step(
+                            pool,
+                            scope,
+                            step.step_id,
+                            actor,
+                            "SUCCEEDED",
+                            &format!("model invocation {} succeeded", v.invocation_id),
+                        )
+                        .await?;
+                        Ok(())
+                    }
+                    Err(error) => Err(error),
+                }
             }
+            Err(e) => Err(e.into()),
         }
-        Err(e) => Err(e.into()),
-    }
     }
     .await;
     if let Err(error) = &result {
