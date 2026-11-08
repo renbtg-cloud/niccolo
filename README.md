@@ -35,6 +35,10 @@ If new context arrives, the previous analysis remains associated with the eviden
 
 The same pattern applies to research, interpersonal communication, decision preparation, and other evidence-rich human situations. Niccolò is **not** a substitute for professional legal, clinical, or other regulated judgment.
 
+## Illustrative adversarial use case
+
+For a detailed example of Niccolò reasoning about humans under conflicting incentives, uncertain provenance, distrusted operators, politically sensitive context, and a consequential decision, see **[The Aurelius & Finch Bonus Review](docs/product/USE_CASE_LAW_FIRM_BONUS_REVIEW.md)**.
+
 ## Using the product
 
 The intended experience is organized around a Situation, rather than a single isolated prompt:
