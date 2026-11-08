@@ -704,6 +704,83 @@ pub async fn claim_next_in_workspace(
     }))
 }
 
+/// ARM-003 first scheduler slice: atomically claim one workspace operation only
+/// when the number of *currently leased* operations is below a local cap.
+///
+/// The workspace row lock serializes policy-aware admission within one tenant.
+/// Existing direct execution paths are intentionally unchanged, so this is not
+/// yet a global concurrency guarantee across every execution surface.
+pub async fn claim_next_in_workspace_with_limit(
+    pool: &PgPool,
+    workspace: Uuid,
+    owner: &str,
+    lease_ms: i64,
+    max_active_leases: u16,
+) -> Result<Option<OperationScope>, BffOperationError> {
+    if owner.trim().is_empty()
+        || owner.len() > 128
+        || !(1_000..=300_000).contains(&lease_ms)
+        || !(1..=512).contains(&max_active_leases)
+    {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+
+    let visible: Option<Uuid> = sqlx::query_scalar(
+        "SELECT workspace_id FROM niccolo.workspaces \
+         WHERE workspace_id=$1 FOR UPDATE",
+    )
+    .bind(workspace)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if visible.is_none() {
+        return Err(BffOperationError::Invisible);
+    }
+
+    let active: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.bff_operations \
+         WHERE workspace_id=$1 \
+           AND state IN ('QUEUED','RUNNING') \
+           AND execution_owner IS NOT NULL \
+           AND execution_lease_until >= clock_timestamp()",
+    )
+    .bind(workspace)
+    .fetch_one(&mut *tx)
+    .await?;
+    if active >= i64::from(max_active_leases) {
+        tx.commit().await?;
+        return Ok(None);
+    }
+
+    let claimed: Option<(Uuid, Uuid)> = sqlx::query_as(
+        "WITH candidate AS ( \
+           SELECT situation_id, operation_id FROM niccolo.bff_operations \
+           WHERE workspace_id=$1 AND state IN ('QUEUED','RUNNING') \
+             AND (execution_owner IS NULL OR execution_lease_until < clock_timestamp()) \
+           ORDER BY created_at, operation_id \
+           FOR UPDATE SKIP LOCKED LIMIT 1 \
+         ) \
+         UPDATE niccolo.bff_operations o \
+         SET execution_owner=$2, \
+             execution_lease_until=clock_timestamp()+($3::bigint * interval '1 millisecond'), \
+             execution_attempts=execution_attempts+1, updated_at=clock_timestamp() \
+         FROM candidate c \
+         WHERE o.workspace_id=$1 AND o.situation_id=c.situation_id AND o.operation_id=c.operation_id \
+         RETURNING o.situation_id,o.operation_id",
+    )
+    .bind(workspace)
+    .bind(owner)
+    .bind(lease_ms)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(claimed.map(|(situation, operation)| OperationScope {
+        workspace,
+        situation,
+        operation,
+    }))
+}
+
 pub async fn execution_owned_by(
     pool: &PgPool,
     scope: OperationScope,
