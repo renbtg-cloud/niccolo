@@ -2344,8 +2344,6 @@ async fn list_hypotheses(
     ))
 }
 
-
-
 impl From<TemporalStateError> for ApiError {
     fn from(error: TemporalStateError) -> Self {
         match error {
@@ -2451,9 +2449,10 @@ async fn list_temporal_state(
 impl From<HypothesisPortfolioError> for ApiError {
     fn from(error: HypothesisPortfolioError) -> Self {
         match error {
-            HypothesisPortfolioError::Invalid => {
-                Self(StatusCode::BAD_REQUEST, "invalid hypothesis portfolio input")
-            }
+            HypothesisPortfolioError::Invalid => Self(
+                StatusCode::BAD_REQUEST,
+                "invalid hypothesis portfolio input",
+            )
             HypothesisPortfolioError::Conflict => {
                 Self(StatusCode::CONFLICT, "hypothesis portfolio conflict")
             }
@@ -2496,7 +2495,13 @@ async fn get_hypothesis_portfolio(
 
 async fn record_hypothesis_portfolio_event(
     State(state): State<AppState>,
-    Path((workspace, situation, analysis, interpretation, event)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    Path((workspace, situation, analysis, interpretation, event)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
     headers: HeaderMap,
     Json(input): Json<HypothesisPortfolioEventRequest>,
 ) -> Result<Response, ApiError> {
