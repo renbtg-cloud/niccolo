@@ -53,6 +53,21 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
 
 
+  windows-native:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Check Windows library build
+        run: cargo check --locked --lib
+      - name: Test native resource observer contracts
+        run: cargo test --locked --lib runtime_resources::tests -- --nocapture
+
   database:
     needs: unit
     runs-on: ubuntu-latest
