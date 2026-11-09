@@ -33,6 +33,7 @@ jobs:
           python3 -m unittest discover -s tests -p "test_law_firm_fixture_inventory.py" -v
           python3 -m unittest discover -s tests -p "test_prepare_law_firm_fixture.py" -v
           python3 scripts/check-law-firm-mvp-acceptance.py fixtures/law-firm-mvp/acceptance.example.json
+          python3 scripts/check-law-firm-mvp-acceptance.py --require-complete fixtures/law-firm-mvp/acceptance.completed.json
           python3 scripts/check-doc-links.py
       - name: Validate local MVP shell syntax before compiling
         run: |
