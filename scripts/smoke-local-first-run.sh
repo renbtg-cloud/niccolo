@@ -26,6 +26,12 @@ prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
 grep -Fq "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
 grep -Fq "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
 ! grep -Fq "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
+if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example-model' NICCOLO_LLM_API_KEY='' \
+    bash scripts/start-local-mvp.sh --print-only > .niccolo-local/incomplete-model.log 2>&1; then
+  echo 'Start helper accepted an incomplete remote model configuration' >&2
+  exit 1
+fi
+grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' .niccolo-local/incomplete-model.log
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
 ./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
