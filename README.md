@@ -115,6 +115,11 @@ For a local OpenAI-compatible model runtime, configure
 on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
 Some local models require `NICCOLO_LLM_JSON_MODE=false`.
 
+For repeated local use, those exports may be kept in the ignored private file
+`.niccolo-local/model.env`; `scripts/start-local-mvp.sh` sources it
+automatically when present. Keep any API key in that private file, never in the
+prepared browser URL or repository.
+
 Start the already-bootstrapped local MVP with one command:
 
 ```bash
