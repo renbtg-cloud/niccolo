@@ -12,6 +12,9 @@ spec.loader.exec_module(mod)
 def fixture():
     return json.loads((ROOT / "fixtures" / "law-firm-mvp" / "acceptance.example.json").read_text())
 
+def completed():
+    return json.loads((ROOT / "fixtures" / "law-firm-mvp" / "acceptance.completed.json").read_text())
+
 class LawFirmMvpAcceptanceTest(unittest.TestCase):
     def test_example_is_structurally_complete(self):
         self.assertEqual(mod.validate(fixture()), [])
@@ -54,6 +57,21 @@ class LawFirmMvpAcceptanceTest(unittest.TestCase):
                 "reference": "tests/example.rs::case"
             }]
         self.assertEqual(mod.validate(doc, require_complete=True), [])
+
+    def test_completed_acceptance_resolves_all_verification_references(self):
+        self.assertEqual(
+            mod.validate(completed(), require_complete=True, repo_root=ROOT),
+            [],
+        )
+
+    def test_broken_automated_reference_is_rejected_when_repository_is_checked(self):
+        doc = completed()
+        doc["acceptance_cases"][0]["verification"] = [{
+            "kind": "AUTOMATED_TEST",
+            "reference": "tests/does-not-exist.rs::missing_test"
+        }]
+        errors = mod.validate(doc, require_complete=True, repo_root=ROOT)
+        self.assertTrue(any("verification target does not exist" in e for e in errors))
 
 if __name__ == "__main__":
     unittest.main()
