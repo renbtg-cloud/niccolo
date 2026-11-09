@@ -584,10 +584,13 @@ impl From<RepositoryError> for ApiError {
 impl From<ImportError> for ApiError {
     fn from(e: ImportError) -> Self {
         match e {
-            ImportError::Parse(_) | ImportError::Locator => {
+            ImportError::Parse(_) | ImportError::Locator | ImportError::OperationalEventInvalid => {
                 Self(StatusCode::BAD_REQUEST, "invalid source")
             }
             ImportError::DocumentConflict => Self(StatusCode::CONFLICT, "source document conflict"),
+            ImportError::OperationalEventConflict => {
+                Self(StatusCode::CONFLICT, "operational event identity conflict")
+            }
             ImportError::WorkspaceInvisible => Self(StatusCode::NOT_FOUND, "workspace unavailable"),
             _ => Self(StatusCode::INTERNAL_SERVER_ERROR, "source unavailable"),
         }
@@ -1457,6 +1460,8 @@ fn analysis_snapshot_json(snapshot: &analysis_snapshot::AnalysisInputSnapshot) -
         "identity_event_no_max": snapshot.identity_event_no_max,
         "actor_kind_event_no_max": snapshot.actor_kind_event_no_max,
         "actor_binding_event_no_max": snapshot.actor_binding_event_no_max,
+        "purpose_event_no_max": snapshot.purpose_event_no_max,
+        "declared_purpose": snapshot.declared_purpose,
         "goal": snapshot.goal,
         "requested_by_principal_id": snapshot.requested_by,
         "reanalysis_of": snapshot.reanalysis_of,
