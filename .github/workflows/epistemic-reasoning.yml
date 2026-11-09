@@ -32,6 +32,7 @@ jobs:
           python3 -m unittest discover -s tests -p "test_law_firm_mvp_acceptance.py" -v
           python3 -m unittest discover -s tests -p "test_law_firm_fixture_inventory.py" -v
           python3 -m unittest discover -s tests -p "test_prepare_law_firm_fixture.py" -v
+          python3 -m unittest discover -s tests -p "test_run_law_firm_canonical_demo.py" -v
           python3 scripts/check-law-firm-mvp-acceptance.py fixtures/law-firm-mvp/acceptance.example.json
           python3 scripts/check-law-firm-mvp-acceptance.py --require-complete fixtures/law-firm-mvp/acceptance.completed.json
           python3 scripts/check-doc-links.py
@@ -111,6 +112,18 @@ jobs:
         run: cargo test --locked --features pg-integration --test grounded_claim_weights_integration -- --nocapture
       - name: Run full PostgreSQL integration regression with bounded concurrency
         run: cargo test --locked --features pg-integration --tests -- --test-threads=2
+      - name: Run canonical Aurelius & Finch demonstration
+        run: |
+          rm -rf artifacts/law-firm-canonical
+          python3 scripts/run-law-firm-canonical-demo.py \
+            --output artifacts/law-firm-canonical \
+            --verify-rust
+      - name: Upload canonical law-firm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurelius-finch-canonical-${{ github.sha }}
+          path: artifacts/law-firm-canonical
+          if-no-files-found: error
 
 
   frontend:
