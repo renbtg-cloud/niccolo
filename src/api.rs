@@ -44,8 +44,8 @@ use crate::source_import::SourceFormat;
 use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
 use crate::{
-    agentic_controller, agentic_policy, bff_dashboard, bff_epistemic, bff_executor,
-    reasoning_handoff, reasoning_packet,
+    adversarial_dossier, agentic_controller, agentic_policy, bff_dashboard, bff_epistemic,
+    bff_executor, reasoning_handoff, reasoning_packet,
 };
 use axum::{
     Json, Router,
@@ -374,6 +374,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package",
             get(get_presentation_package),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
+            get(get_adversarial_dossier),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/dashboard",
@@ -4790,6 +4794,44 @@ async fn get_presentation_package(
             ),
         })?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+
+async fn get_adversarial_dossier(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let dossier = adversarial_dossier::build(&state.pool, scope)
+        .await
+        .map_err(|_| {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "adversarial dossier unavailable",
+            )
+        })?;
+    let dossier_sha256 = adversarial_dossier::sha256(&dossier).map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "adversarial dossier unavailable",
+        )
+    })?;
+    Ok(no_store(
+        json!({
+            "dossier": dossier,
+            "dossier_sha256": dossier_sha256,
+            "dossier_is_verdict": false,
+            "dossier_grants_authority": false,
+            "dossier_executes_actions": false
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn get_bff_operation_budget(
