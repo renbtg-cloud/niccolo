@@ -473,7 +473,7 @@ async fn v090_handoff_is_deterministic_and_grants_no_authority() {
         reasoning_handoff::sha256(&a).unwrap(),
         reasoning_handoff::sha256(&b).unwrap()
     );
-    assert_eq!(a.version, 2);
+    assert_eq!(a.version, 3);
     assert!(!a.handoff_grants_authority);
     assert!(!a.handoff_starts_analysis);
     assert!(!a.handoff_executes_actions);
