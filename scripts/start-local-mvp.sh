@@ -7,6 +7,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 env_file=".niccolo-local/local.env"
+model_env_file=".niccolo-local/model.env"
 ids_file=".niccolo-local/identifiers.txt"
 token_file=".niccolo-local/token.txt"
 url_file=".niccolo-local/prepared-url.txt"
@@ -22,6 +23,11 @@ done
 # Generated locally by bootstrap from UUIDs and shell-escaped values.
 # shellcheck disable=SC1091
 source "$env_file"
+if [[ -s "$model_env_file" ]]; then
+  # Optional locally-owned model configuration. Never generated with secrets by bootstrap.
+  # shellcheck disable=SC1091
+  source "$model_env_file"
+fi
 # shellcheck disable=SC1091
 source "$ids_file"
 
@@ -37,6 +43,13 @@ echo "Niccolo local session"
 echo "Open: $prepared_url"
 echo "Bearer token: $token_file"
 echo "Paste that token into the connection panel; it is intentionally not embedded in the URL."
+if [[ -n "${NICCOLO_LLM_BASE_URL:-}" && -n "${NICCOLO_LLM_MODEL:-}" ]]; then
+  echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
+else
+  echo "Reasoning model: NOT CONFIGURED"
+  echo "To enable Analyze, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting,"
+  echo "or store export commands in $model_env_file (keep API keys private)."
+fi
 
 if [[ "${1:-}" == "--print-only" ]]; then
   exit 0
