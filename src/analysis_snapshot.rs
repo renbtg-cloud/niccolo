@@ -411,6 +411,8 @@ pub async fn materialize(
             identity_event_no_max,
             actor_kind_event_no_max,
             actor_binding_event_no_max,
+            purpose_event_no_max,
+            declared_purpose,
             goal,
             requested_by,
             reanalysis_of,
