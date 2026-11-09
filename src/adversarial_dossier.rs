@@ -85,13 +85,3 @@ pub fn sha256(dossier: &AdversarialDossier) -> Result<String, DossierError> {
     Ok(format!("{:x}", Sha256::digest(canonical_json(dossier)?)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dossier_contract_never_claims_authority_or_truth_by_format() {
-        assert_eq!("niccolo.adversarial-dossier", "niccolo.adversarial-dossier");
-        assert_eq!(1_u32, 1);
-    }
-}
