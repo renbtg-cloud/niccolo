@@ -7,10 +7,8 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use niccolo_evidence::{
-    api, authz,
-    postgres_ingest::ingest_source_with_operational_id,
-    postgres_repository::load_workspace_graph,
-    source_import::SourceFormat,
+    api, authz, postgres_ingest::ingest_source_with_operational_id,
+    postgres_repository::load_workspace_graph, source_import::SourceFormat,
 };
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -153,20 +151,18 @@ same transport event";
         assert_eq!(duplicate.graph_revision, first.graph_revision);
     }
 
-    let documents: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1",
-    )
-    .bind(f.workspace)
-    .fetch_one(&f.admin)
-    .await
-    .unwrap();
-    let evidence: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.source_fragments WHERE workspace_id=$1",
-    )
-    .bind(f.workspace)
-    .fetch_one(&f.admin)
-    .await
-    .unwrap();
+    let documents: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1")
+            .bind(f.workspace)
+            .fetch_one(&f.admin)
+            .await
+            .unwrap();
+    let evidence: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.source_fragments WHERE workspace_id=$1")
+            .bind(f.workspace)
+            .fetch_one(&f.admin)
+            .await
+            .unwrap();
     let delivery_count: i64 = sqlx::query_scalar(
         "SELECT delivery_count FROM niccolo.source_operational_events
           WHERE workspace_id=$1 AND operational_event_id=$2",
@@ -206,13 +202,12 @@ identical words";
         roots.push(result.fragment_ids[0]);
     }
 
-    let documents: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1",
-    )
-    .bind(f.workspace)
-    .fetch_one(&f.admin)
-    .await
-    .unwrap();
+    let documents: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1")
+            .bind(f.workspace)
+            .fetch_one(&f.admin)
+            .await
+            .unwrap();
     assert_eq!(documents as usize, count);
 
     let graph = load_workspace_graph(&f.service, f.workspace).await.unwrap();
@@ -305,10 +300,7 @@ async fn changed_ceo_purpose_is_history_and_old_snapshot_keeps_old_purpose() {
         still_old["declared_purpose"],
         "Find what the available observations support."
     );
-    assert_eq!(
-        still_old["purpose_event_no_max"],
-        first_purpose["event_no"]
-    );
+    assert_eq!(still_old["purpose_event_no_max"], first_purpose["event_no"]);
 
     let a2 = Uuid::new_v4();
     let a2_path = format!(
@@ -321,7 +313,9 @@ async fn changed_ceo_purpose_is_history_and_old_snapshot_keeps_old_purpose() {
             "POST",
             a2_path,
             &f.writer,
-            Some(json!({"goal":"Assess whether termination is supported and what remains unknown."})),
+            Some(
+                json!({"goal":"Assess whether termination is supported and what remains unknown."}),
+            ),
             &[],
         ),
     )
@@ -340,8 +334,11 @@ async fn changed_ceo_purpose_is_history_and_old_snapshot_keeps_old_purpose() {
         "/v1/workspaces/{}/situations/{situation}/purpose",
         f.workspace
     );
-    let (status, history) =
-        call(f.router.clone(), req("GET", history_path, &f.writer, None, &[])).await;
+    let (status, history) = call(
+        f.router.clone(),
+        req("GET", history_path, &f.writer, None, &[]),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(history["events"].as_array().unwrap().len(), 2);
     assert_eq!(history["purpose_changes_rewrite_history"], false);
