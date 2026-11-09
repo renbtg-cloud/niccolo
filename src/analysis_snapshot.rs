@@ -1,5 +1,8 @@
 //! Immutable binding between a requested analysis and the exact Situation revision it may use.
-use crate::{purpose_history, situation_store::{self, SituationSnapshot}};
+use crate::{
+    purpose_history,
+    situation_store::{self, SituationSnapshot},
+};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -44,7 +47,18 @@ pub struct MaterializedAnalysisInput {
     pub input_is_current: bool,
 }
 
-type StoredAnalysisSnapshotRow = (i64, String, i64, i64, i64, i64, Option<String>, String, Uuid, Option<Uuid>);
+type StoredAnalysisSnapshotRow = (
+    i64,
+    String,
+    i64,
+    i64,
+    i64,
+    i64,
+    Option<String>,
+    String,
+    Uuid,
+    Option<Uuid>,
+);
 
 fn clean_goal(input: &str) -> Result<String, AnalysisSnapshotError> {
     let value = input.trim();
@@ -204,7 +218,9 @@ pub async fn begin(
         purpose_history::latest_in_tx(&mut tx, workspace, situation)
             .await
             .map_err(|error| match error {
-                purpose_history::PurposeError::Database(error) => AnalysisSnapshotError::Database(error),
+                purpose_history::PurposeError::Database(error) => {
+                    AnalysisSnapshotError::Database(error)
+                }
                 _ => AnalysisSnapshotError::Integrity,
             })?
             .map_or((0, None), |(event_no, purpose)| (event_no, Some(purpose)));
