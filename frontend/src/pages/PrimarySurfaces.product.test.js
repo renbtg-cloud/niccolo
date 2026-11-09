@@ -20,6 +20,7 @@ describe('buyer-facing primary surfaces', () => {
     expect(connect).toContain('Prepared Situation');
     expect(connect).toContain('<summary>Connection identifiers</summary>');
     expect(connect).toContain('Bearer tokens are never read from the URL or persisted.');
+    expect(connect).toContain('.niccolo-local/token.txt');
     expect(connect).toContain('Share prepared demo link');
     expect(connect).toContain('Send the bearer token separately.');
   });
@@ -30,6 +31,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('Analyze this Situation →');
     expect(situation).toContain('Connect this session first.');
     expect(situation).not.toContain('Connect to the BFF first.');
+  });
+
+  it('shows model readiness before the user enters Analyze', () => {
+    expect(situation).toContain("queryKey: ['mvp-runtime-readiness']");
+    expect(situation).toContain('A reasoning model is not configured yet.');
+    expect(situation).toContain('.niccolo-local/model.env');
   });
 
   it('remounts Situation-local drafts and cursors when the connection changes', () => {
