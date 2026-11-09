@@ -42,6 +42,8 @@ pub struct MaterializedAnalysisInput {
     pub input_is_current: bool,
 }
 
+type StoredAnalysisSnapshotRow = (i64, String, i64, i64, i64, String, Uuid, Option<Uuid>);
+
 fn clean_goal(input: &str) -> Result<String, AnalysisSnapshotError> {
     let value = input.trim();
     if value.is_empty() || value.len() > 4096 || value.chars().any(char::is_control) {
@@ -94,7 +96,7 @@ pub async fn begin(
     if reanalysis_of == Some(analysis) {
         return Err(AnalysisSnapshotError::Invalid);
     }
-    let stored: Option<(i64, String, i64, i64, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+    let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
         "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
@@ -215,7 +217,7 @@ pub async fn begin(
     if !inserted {
         // A concurrent identical request won the race. Re-read and apply the
         // same immutable replay contract instead of binding to a newer revision.
-        let stored: Option<(i64, String, i64, i64, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+        let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
             "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
              FROM niccolo.situation_analysis_snapshots \
              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
@@ -279,7 +281,7 @@ pub async fn get(
     analysis: Uuid,
 ) -> Result<AnalysisInputSnapshot, AnalysisSnapshotError> {
     let mut tx = scoped(pool, workspace, true).await?;
-    let stored: Option<(i64, String, i64, i64, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+    let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
         "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
@@ -325,7 +327,7 @@ pub async fn materialize(
     analysis: Uuid,
 ) -> Result<MaterializedAnalysisInput, AnalysisSnapshotError> {
     let mut tx = scoped(pool, workspace, true).await?;
-    let stored: Option<(i64, String, i64, i64, i64, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+    let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
         "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
