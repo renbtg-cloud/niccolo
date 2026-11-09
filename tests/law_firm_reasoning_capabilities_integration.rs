@@ -77,7 +77,13 @@ async fn seed(admin: &PgPool) -> Seed {
 }
 
 
-async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) -> (Uuid, Uuid) {
+async fn attach_source_with_speaker(
+    admin: &PgPool,
+    s: Seed,
+    locator: &str,
+    content: &str,
+    speaker_label: &str,
+) -> (Uuid, Uuid) {
     let document = Uuid::new_v4();
     let evidence = Uuid::new_v4();
     let bytes = content.as_bytes();
@@ -116,12 +122,13 @@ async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) ->
     .unwrap();
     sqlx::query(
         "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
-         VALUES($1,$2,0,$3,0,$4,'External operator')",
+         VALUES($1,$2,0,$3,0,$4,$5)",
     )
     .bind(s.workspace)
     .bind(document)
     .bind(evidence)
     .bind(i32::try_from(bytes.len()).unwrap())
+    .bind(speaker_label)
     .execute(admin)
     .await
     .unwrap();
@@ -147,6 +154,10 @@ async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) ->
     .await
     .unwrap();
     (document, evidence)
+}
+
+async fn attach_source(admin: &PgPool, s: Seed, locator: &str, content: &str) -> (Uuid, Uuid) {
+    attach_source_with_speaker(admin, s, locator, content, "External operator").await
 }
 
 #[tokio::test]
@@ -679,11 +690,12 @@ async fn verified_stored_bytes_do_not_upgrade_authenticity_or_completeness() {
 async fn old_niccolo_can_be_a_frozen_observable_actor_without_introspection() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
-    let (document, _) = attach_source(
+    let (document, _) = attach_source_with_speaker(
         &admin,
         s,
         "old-niccolo-transcript.txt",
         "01/01/2026, 00:00 - Historical Niccolo: Kessler appears commercially aggressive but not improper.",
+        "Historical Niccolo",
     )
     .await;
     let old_niccolo = Uuid::new_v4();
