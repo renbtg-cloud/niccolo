@@ -38,5 +38,22 @@ class LawFirmMvpAcceptanceTest(unittest.TestCase):
         errors = mod.validate(fixture(), require_complete=True)
         self.assertTrue(any("has not been executed" in e for e in errors))
 
+    def test_complete_acceptance_requires_verification_record(self):
+        doc = fixture()
+        for case in doc["acceptance_cases"]:
+            case["actual_output"] = "Executed behavior matched the acceptance expectation."
+        errors = mod.validate(doc, require_complete=True)
+        self.assertTrue(any("has no verification record" in e for e in errors))
+
+    def test_complete_acceptance_accepts_typed_verification_records(self):
+        doc = fixture()
+        for case in doc["acceptance_cases"]:
+            case["actual_output"] = "Executed behavior matched the acceptance expectation."
+            case["verification"] = [{
+                "kind": "AUTOMATED_TEST",
+                "reference": "tests/example.rs::case"
+            }]
+        self.assertEqual(mod.validate(doc, require_complete=True), [])
+
 if __name__ == "__main__":
     unittest.main()
