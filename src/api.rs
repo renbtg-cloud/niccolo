@@ -4796,7 +4796,6 @@ async fn get_presentation_package(
     Ok(no_store(json!(package), StatusCode::OK))
 }
 
-
 async fn get_adversarial_dossier(
     State(state): State<AppState>,
     Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
