@@ -2,9 +2,9 @@
 
 use niccolo_evidence::{
     analysis_structure::AnalysisScope,
-    actors, analysis_snapshot, authz, collection_provenance, decision_points, decision_readiness,
-    hypothesis_portfolio, integrity_scope, investigation_policy, reasoning_packet,
-    reasoning_updates, source_scope, temporal_state,
+    actors, adversarial_dossier, analysis_snapshot, authz, collection_provenance, decision_points,
+    decision_readiness, hypothesis_portfolio, integrity_scope, investigation_policy,
+    reasoning_packet, reasoning_updates, source_scope, temporal_state,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -764,6 +764,107 @@ async fn old_niccolo_can_be_a_frozen_observable_actor_without_introspection() {
         assert_eq!(binding.actor_kind.as_deref(), Some("SOFTWARE"));
         assert!(!binding.actor_kind_establishes_mind);
         assert!(!packet.frozen_input.actor_kind_is_investigation_gate);
+    })
+    .await;
+}
+
+
+#[tokio::test]
+async fn adversarial_dossier_packages_review_state_without_claiming_verdict() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let decision = Uuid::new_v4();
+
+    authz::with_auth_digest("law-firm-test".into(), async {
+        source_scope::record(
+            &app,
+            scope,
+            s.principal,
+            &source_scope::SourceScopeInput {
+                scope_id: Uuid::new_v4(),
+                source_family: "Personal mobile messages".into(),
+                collection_status: "EXPECTED_NOT_REQUESTED".into(),
+                scope_description: "Potentially relevant messages were outside the collected set.".into(),
+                reason: "The operator reports that this family was not requested.".into(),
+                collector_label: Some("Elias".into()),
+                date_scope: Some("2026-01-01..2026-05-31".into()),
+                assertion_kind: "HUMAN_ASSERTION".into(),
+                document_id: None,
+                supersedes_scope_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        decision_points::create(
+            &app,
+            scope,
+            decision,
+            "What consequence, if any, is justified for Kessler now?",
+            Some("Human decision after bounded adversarial review"),
+            s.principal,
+        )
+        .await
+        .unwrap();
+        decision_points::add_option(
+            &app,
+            scope,
+            decision,
+            &decision_points::DecisionOption {
+                option_id: Uuid::new_v4(),
+                ordinal: 1,
+                text: "Take no adverse action now".into(),
+                tradeoff_note: Some("Preserves the status quo while material uncertainty remains.".into()),
+            },
+            s.principal,
+        )
+        .await
+        .unwrap();
+        decision_readiness::record(
+            &app,
+            scope,
+            s.principal,
+            &decision_readiness::DecisionReadinessInput {
+                assessment_id: Uuid::new_v4(),
+                decision_id: decision,
+                subject_label: "Kessler".into(),
+                readiness: "READY".into(),
+                rationale: "The present record supports a bounded human decision, not omniscience.".into(),
+                unresolved_unknowns: "Personal mobile messages remain uncollected.".into(),
+                reversal_conditions: vec![decision_readiness::ReversalConditionInput {
+                    condition_id: Uuid::new_v4(),
+                    condition_text: "A contemporaneous authorization message is recovered.".into(),
+                    impact: "MAY_REVERSE".into(),
+                    acquisition_note: Some("Reanalyse before acting if recovered.".into()),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+        let dossier = adversarial_dossier::build(&app, scope).await.unwrap();
+        assert_eq!(dossier.format, "niccolo.adversarial-dossier");
+        assert_eq!(dossier.version, 1);
+        assert!(dossier.intended_for_adversarial_review);
+        assert!(!dossier.dossier_asserts_verdict);
+        assert!(!dossier.dossier_asserts_source_authenticity);
+        assert!(!dossier.dossier_asserts_collection_completeness);
+        assert!(!dossier.dossier_grants_authority);
+        assert!(!dossier.dossier_executes_actions);
+        assert_eq!(dossier.reasoning_packet.source_scope.len(), 1);
+        assert_eq!(dossier.human_handoff.source_scope.len(), 1);
+        assert_eq!(dossier.human_handoff.decision_readiness.len(), 1);
+        assert_eq!(dossier.human_handoff.decision_readiness[0].readiness, "READY");
+
+        let first = adversarial_dossier::sha256(&dossier).unwrap();
+        let second = adversarial_dossier::sha256(&dossier).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
     })
     .await;
 }
