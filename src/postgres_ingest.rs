@@ -100,9 +100,9 @@ pub async fn ingest_source_with_operational_id(
             return Err(ImportError::OperationalEventInvalid);
         }
         let lock_key = format!("{workspace}:{value}");
-        let _: i64 = sqlx::query_scalar("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(lock_key)
-            .fetch_one(&mut *tx)
+            .execute(&mut *tx)
             .await?;
         let prior: Option<(Uuid, String, i64, String)> = sqlx::query_as(
             "SELECT e.document_id,e.sha256,e.delivery_count,d.format
