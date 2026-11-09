@@ -20,6 +20,10 @@ pub enum ImportError {
     WorkspaceInvisible,
     #[error("existing source document differs or previously stored fragments are inconsistent")]
     DocumentConflict,
+    #[error("invalid operational event identity")]
+    OperationalEventInvalid,
+    #[error("operational event identity was reused for different content")]
+    OperationalEventConflict,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,6 +33,9 @@ pub struct ImportResult {
     pub fragment_ids: Vec<Uuid>,
     pub replayed: bool,
     pub graph_revision: i64,
+    pub operational_event_id: Option<String>,
+    pub operational_duplicate: bool,
+    pub delivery_count: i64,
 }
 
 /// Byte-exact document, fragments and original payload write path. All changes commit or roll back
@@ -41,6 +48,27 @@ pub async fn ingest_source(
     format: SourceFormat,
     locator: &str,
     raw: &[u8],
+) -> Result<ImportResult, ImportError> {
+    ingest_source_with_operational_id(
+        pool,
+        workspace,
+        document_id,
+        format,
+        locator,
+        raw,
+        None,
+    )
+    .await
+}
+
+pub async fn ingest_source_with_operational_id(
+    pool: &PgPool,
+    workspace: Uuid,
+    document_id: Uuid,
+    format: SourceFormat,
+    locator: &str,
+    raw: &[u8],
+    operational_event_id: Option<&str>,
 ) -> Result<ImportResult, ImportError> {
     if locator.is_empty() || locator.len() > 1024 || locator.chars().any(char::is_control) {
         return Err(ImportError::Locator);
@@ -69,6 +97,77 @@ pub async fn ingest_source(
     .await?;
     if visible.is_none() {
         return Err(ImportError::WorkspaceInvisible);
+    }
+
+    let operational_event_id = operational_event_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    if let Some(value) = &operational_event_id {
+        if value.len() > 512 || value.chars().any(char::is_control) {
+            return Err(ImportError::OperationalEventInvalid);
+        }
+        let lock_key = format!("{workspace}:{value}");
+        let _: i64 = sqlx::query_scalar(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+        )
+        .bind(lock_key)
+        .fetch_one(&mut *tx)
+        .await?;
+        let prior: Option<(Uuid, String, i64, String)> = sqlx::query_as(
+            "SELECT e.document_id,e.sha256,e.delivery_count,d.format
+               FROM niccolo.source_operational_events e
+               JOIN niccolo.source_documents d
+                 ON d.workspace_id=e.workspace_id AND d.document_id=e.document_id
+              WHERE e.workspace_id=$1 AND e.operational_event_id=$2
+              FOR UPDATE OF e",
+        )
+        .bind(workspace)
+        .bind(value)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some((stored_document, stored_sha, delivery_count, stored_format)) = prior {
+            if stored_sha != parsed.sha256 || stored_format != format.db_value() {
+                return Err(ImportError::OperationalEventConflict);
+            }
+            let fragment_ids: Vec<Uuid> = sqlx::query_scalar(
+                "SELECT evidence_id FROM niccolo.source_fragments
+                  WHERE workspace_id=$1 AND document_id=$2 ORDER BY ordinal",
+            )
+            .bind(workspace)
+            .bind(stored_document)
+            .fetch_all(&mut *tx)
+            .await?;
+            let next_count = delivery_count + 1;
+            sqlx::query(
+                "UPDATE niccolo.source_operational_events
+                    SET delivery_count=$3,last_seen_at=clock_timestamp()
+                  WHERE workspace_id=$1 AND operational_event_id=$2",
+            )
+            .bind(workspace)
+            .bind(value)
+            .bind(next_count)
+            .execute(&mut *tx)
+            .await?;
+            let graph_revision: i64 = sqlx::query_scalar(
+                "SELECT revision FROM niccolo.graph_revisions WHERE workspace_id=$1",
+            )
+            .bind(workspace)
+            .fetch_optional(&mut *tx)
+            .await?
+            .unwrap_or(0);
+            tx.commit().await?;
+            return Ok(ImportResult {
+                document_id: stored_document,
+                sha256: parsed.sha256,
+                fragment_ids,
+                replayed: true,
+                graph_revision,
+                operational_event_id: Some(value.clone()),
+                operational_duplicate: true,
+                delivery_count: next_count,
+            });
+        }
     }
 
     let inserted=sqlx::query(
@@ -134,6 +233,20 @@ pub async fn ingest_source(
             .fetch_optional(&mut *tx)
             .await?
             .unwrap_or(0);
+    if let Some(value) = &operational_event_id {
+        sqlx::query(
+            "INSERT INTO niccolo.source_operational_events
+             (workspace_id,operational_event_id,document_id,sha256)
+             VALUES($1,$2,$3,$4)",
+        )
+        .bind(workspace)
+        .bind(value)
+        .bind(document_id)
+        .bind(&parsed.sha256)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     tx.commit().await?;
     Ok(ImportResult {
         document_id,
@@ -141,6 +254,9 @@ pub async fn ingest_source(
         fragment_ids,
         replayed: !inserted,
         graph_revision,
+        operational_event_id,
+        operational_duplicate: false,
+        delivery_count: 1,
     })
 }
 
