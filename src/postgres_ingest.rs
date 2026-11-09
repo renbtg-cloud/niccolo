@@ -49,16 +49,8 @@ pub async fn ingest_source(
     locator: &str,
     raw: &[u8],
 ) -> Result<ImportResult, ImportError> {
-    ingest_source_with_operational_id(
-        pool,
-        workspace,
-        document_id,
-        format,
-        locator,
-        raw,
-        None,
-    )
-    .await
+    ingest_source_with_operational_id(pool, workspace, document_id, format, locator, raw, None)
+        .await
 }
 
 pub async fn ingest_source_with_operational_id(
@@ -108,12 +100,10 @@ pub async fn ingest_source_with_operational_id(
             return Err(ImportError::OperationalEventInvalid);
         }
         let lock_key = format!("{workspace}:{value}");
-        let _: i64 = sqlx::query_scalar(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
-        )
-        .bind(lock_key)
-        .fetch_one(&mut *tx)
-        .await?;
+        let _: i64 = sqlx::query_scalar("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(lock_key)
+            .fetch_one(&mut *tx)
+            .await?;
         let prior: Option<(Uuid, String, i64, String)> = sqlx::query_as(
             "SELECT e.document_id,e.sha256,e.delivery_count,d.format
                FROM niccolo.source_operational_events e
@@ -212,7 +202,8 @@ pub async fn ingest_source_with_operational_id(
     .bind(raw)
     .execute(&mut *tx)
     .await?
-    .rows_affected() == 1;
+    .rows_affected()
+        == 1;
     if !payload_inserted {
         let original: Option<Vec<u8>> = sqlx::query_scalar(
             "SELECT original_bytes FROM niccolo.source_payloads \
