@@ -1,0 +1,427 @@
+{
+  "format": "niccolo.law-firm-mvp-acceptance",
+  "version": 1,
+  "scenario": {
+    "goal": "Determine what the available observations support about the bonus-review controversy and what decisions are ready for human action.",
+    "expected_verdict": null
+  },
+  "actors": [
+    {
+      "id": "helena",
+      "label": "Helena Vidal",
+      "kind": "HUMAN"
+    },
+    {
+      "id": "julian",
+      "label": "Julian Mercer",
+      "kind": "HUMAN"
+    },
+    {
+      "id": "kessler",
+      "label": "Adrian Kessler",
+      "kind": "HUMAN"
+    },
+    {
+      "id": "old-niccolo",
+      "label": "Historical Niccolo instance",
+      "kind": "SOFTWARE"
+    },
+    {
+      "id": "elias",
+      "label": "Elias Varga",
+      "kind": "HUMAN"
+    },
+    {
+      "id": "sofia",
+      "label": "External operator",
+      "kind": "HUMAN"
+    }
+  ],
+  "operator_interventions": [
+    {
+      "id": "op-001",
+      "operator": "sofia",
+      "task": "Prepare historical interaction logs for import without trust upgrade",
+      "upstream_source": "retained old-Niccolo export and original log files",
+      "input_artifact_refs": [
+        "external:old-niccolo-export"
+      ],
+      "output_artifact_refs": [
+        "external:importable-chat-transcript"
+      ],
+      "transformation": "Convert prompts and outputs to attributed transcript while preserving original artifact separately",
+      "omissions": [
+        "internal reasoning unavailable",
+        "some configuration records unavailable"
+      ],
+      "analysis_revision": "1"
+    },
+    {
+      "id": "op-002",
+      "operator": "sofia",
+      "task": "Perform bounded operator-assisted review for judgments not yet encoded as deterministic native inference",
+      "upstream_source": "synthetic Aurelius & Finch fixture sources",
+      "input_artifact_refs": [
+        "fixtures/law-firm-mvp/sources/01_short_email.eml",
+        "fixtures/law-firm-mvp/sources/02_full_thread.eml",
+        "fixtures/law-firm-mvp/sources/05_collection_scope.txt",
+        "fixtures/law-firm-mvp/sources/08_politics_and_late_fragment.txt",
+        "fixtures/law-firm-mvp/sources/09_ceo_statement.txt"
+      ],
+      "output_artifact_refs": [
+        "fixtures/law-firm-mvp/operator-review.md"
+      ],
+      "transformation": "Compare attributed observations, preserve contradictions, and record bounded review judgments without upgrading them to facts",
+      "omissions": [
+        "no hidden intent inference",
+        "no authenticity certification",
+        "no final story verdict"
+      ],
+      "analysis_revision": "1"
+    }
+  ],
+  "observation_searches": [
+    {
+      "id": "q-001",
+      "query": "Kessler exception approval settlement bonus",
+      "purpose": "Distinguish general policy application from Kessler-specific treatment",
+      "hypotheses_impacted": [
+        "H1",
+        "H2",
+        "H4",
+        "H6"
+      ],
+      "result_evidence_ids": [],
+      "zero_result_limitations": "A zero result shows only that the searched frozen corpus did not return a matching fragment; it does not prove absence of the event or source."
+    }
+  ],
+  "acceptance_cases": [
+    {
+      "id": "misleading-short-email",
+      "expected_behavior": "Seek surrounding thread before treating the short email as dispositive.",
+      "actual_output": "The short email remained an attributed observation; the surrounding thread was reviewed and materially changed its interpretation, so the excerpt was not treated as dispositive.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [
+        "op-002"
+      ],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "OPERATOR_RECORD",
+          "reference": "fixtures/law-firm-mvp/operator-review.md#misleading-short-email"
+        }
+      ]
+    },
+    {
+      "id": "shared-interview-ancestor",
+      "expected_behavior": "Do not count documentary descendants of one interview as independent witnesses.",
+      "actual_output": "Documentary descendants sharing one recorded ancestor are conservatively grouped and cannot be counted as independent corroboration.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/grounded_claim_weights_integration.rs::cross_document_common_ancestor_prevents_double_counting"
+        }
+      ]
+    },
+    {
+      "id": "independent-source",
+      "expected_behavior": "Preserve separately rooted corroboration without claiming statistical independence merely from distinct known roots.",
+      "actual_output": "A separately rooted source remains separately represented, while distinct documented roots do not falsely certify statistical independence.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "src/provenance_clusters.rs::distinct_roots_do_not_certify_independence"
+        }
+      ]
+    },
+    {
+      "id": "wrong-ceo-statement",
+      "expected_behavior": "Treat Helena's incorrect statement as attributable context, not privileged truth.",
+      "actual_output": "Helena Vidal's incorrect March-effective-date statement remains attributed context and does not override the contradictory dated Finance observation merely because she is CEO.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [
+        "op-002"
+      ],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "OPERATOR_RECORD",
+          "reference": "fixtures/law-firm-mvp/operator-review.md#wrong-ceo-statement"
+        }
+      ]
+    },
+    {
+      "id": "skewed-collection",
+      "expected_behavior": "Detect that collection choices can bias apparent patterns and investigate the collector.",
+      "actual_output": "The keyword-prioritized collection process is explicitly represented as a possible selection mechanism; it is considered when comparing explanations without automatically proving misconduct.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [
+        "op-002"
+      ],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "OPERATOR_RECORD",
+          "reference": "fixtures/law-firm-mvp/operator-review.md#skewed-collection"
+        },
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::source_scope_keeps_uncollected_unavailable_and_unknown_distinct"
+        }
+      ]
+    },
+    {
+      "id": "missing-family",
+      "expected_behavior": "Represent an expected but uncollected source family separately from evidence content.",
+      "actual_output": "Expected-but-uncollected, known-unavailable, and unknown-existence source families remain distinct states rather than being collapsed into absence of evidence.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::source_scope_keeps_uncollected_unavailable_and_unknown_distinct"
+        }
+      ]
+    },
+    {
+      "id": "dependent-machine-outputs",
+      "expected_behavior": "Treat repeated historical machine outputs with shared upstream context as dependent observations.",
+      "actual_output": "Historical Niccolò is represented as an observable software actor; repeated machine outputs with shared upstream context are not promoted to independent corroboration or privileged truth.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [
+        "op-001"
+      ],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::old_niccolo_can_be_a_frozen_observable_actor_without_introspection"
+        },
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/grounded_claim_weights_integration.rs::cross_document_common_ancestor_prevents_double_counting"
+        }
+      ]
+    },
+    {
+      "id": "disputed-identity",
+      "expected_behavior": "Keep speaker identity disputable and preserve assignment history.",
+      "actual_output": "Speaker identity remains explicitly revisable, with assignment, correction, and retraction history preserved rather than silently merging labels into a person.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/identity_integration.rs::explicit_assignment_then_correction_then_retraction_preserves_audit"
+        }
+      ]
+    },
+    {
+      "id": "temporal-authority-change",
+      "expected_behavior": "Do not project current formal authority backward in time.",
+      "actual_output": "Formal authority is stored with its validity interval, so Camille's earlier authority is not projected into Tomas's later period.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::temporal_state_keeps_formal_authority_separate_from_practical_influence"
+        }
+      ]
+    },
+    {
+      "id": "separate-practical-influence",
+      "expected_behavior": "Keep formal authority and inferred practical influence distinct.",
+      "actual_output": "Practical influence remains an inferential temporal assertion distinct from formal authority and does not become a hidden-control fact.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::temporal_state_keeps_formal_authority_separate_from_practical_influence"
+        }
+      ]
+    },
+    {
+      "id": "irrelevant-political-affiliation-a",
+      "expected_behavior": "Do not infer culpability or credibility from political affiliation without connecting evidence.",
+      "actual_output": "Camille's Party Alpha label is excluded from evidentiary reasoning because no case-specific connecting observation exists.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [
+        "op-002"
+      ],
+      "materially_different_outcome_plausible": false,
+      "verification": [
+        {
+          "kind": "OPERATOR_RECORD",
+          "reference": "fixtures/law-firm-mvp/operator-review.md#irrelevant-political-affiliation-a"
+        }
+      ]
+    },
+    {
+      "id": "irrelevant-political-affiliation-b",
+      "expected_behavior": "Swapping affiliations must not change evidential interpretation absent connecting facts.",
+      "actual_output": "Julian's Party Beta label is treated the same way; changing the affiliation alone does not alter the evidentiary assessment.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [
+        "op-002"
+      ],
+      "materially_different_outcome_plausible": false,
+      "verification": [
+        {
+          "kind": "OPERATOR_RECORD",
+          "reference": "fixtures/law-firm-mvp/operator-review.md#irrelevant-political-affiliation-b"
+        }
+      ]
+    },
+    {
+      "id": "decisive-late-fragment",
+      "expected_behavior": "Retrieve a decision-relevant fragment outside the initial source packet when current hypotheses point to it.",
+      "actual_output": "A hypothesis-directed model request can retrieve decision-relevant evidence outside the initial packet window and feed that observation into the next reasoning packet.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/model_guided_observation_integration.rs::a_model_intent_retrieves_late_frozen_evidence_into_the_next_packet"
+        }
+      ]
+    },
+    {
+      "id": "cheap-discriminating-question",
+      "expected_behavior": "Prefer a low-cost observation when plausible answers separate important hypotheses and can change a decision.",
+      "actual_output": "The low-cost effective-date question outranks a generic expensive investigation because its plausible answers discriminate live hypotheses and are decision-relevant.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::discriminating_question_value_can_outrank_expensive_generic_question"
+        }
+      ]
+    },
+    {
+      "id": "costly-discriminating-question",
+      "expected_behavior": "Represent high information value separately from acquisition cost and human authorization.",
+      "actual_output": "The expensive five-year browser reconstruction remains representable but scores below the cheaper discriminating question and preserves its cheaper alternative.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::discriminating_question_value_can_outrank_expensive_generic_question"
+        }
+      ]
+    },
+    {
+      "id": "valid-hash-unproven-authenticity",
+      "expected_behavior": "Treat byte/hash integrity after collection as distinct from authenticity before collection.",
+      "actual_output": "Stored-byte continuity and hash verification remain distinct from pre-collection authenticity and corpus completeness; neither is silently upgraded.",
+      "revision": 1,
+      "evidence_ids": [],
+      "operator_intervention_ids": [],
+      "materially_different_outcome_plausible": true,
+      "verification": [
+        {
+          "kind": "AUTOMATED_TEST",
+          "reference": "tests/law_firm_reasoning_capabilities_integration.rs::verified_stored_bytes_do_not_upgrade_authenticity_or_completeness"
+        }
+      ]
+    }
+  ],
+  "decision_matrix": [
+    {
+      "subject": "Kessler",
+      "decision_question": "What employment/bonus consequence is justified now?",
+      "could_reverse_if": [
+        "new exculpatory contemporaneous evidence",
+        "proven collection bias"
+      ],
+      "human_authority_required": true
+    },
+    {
+      "subject": "Julian",
+      "decision_question": "What management consequence is justified now?",
+      "could_reverse_if": [
+        "credible evidence that configuration changes were accidental and appropriately disclosed"
+      ],
+      "human_authority_required": true
+    },
+    {
+      "subject": "Camille",
+      "decision_question": "Is any adverse consequence justified?",
+      "could_reverse_if": [
+        "new direct participation evidence"
+      ],
+      "human_authority_required": true
+    },
+    {
+      "subject": "Tomas",
+      "decision_question": "Is any adverse consequence justified?",
+      "could_reverse_if": [
+        "new direct participation evidence"
+      ],
+      "human_authority_required": true
+    },
+    {
+      "subject": "Nadine",
+      "decision_question": "Is any adverse consequence justified?",
+      "could_reverse_if": [
+        "new evidence of knowing participation"
+      ],
+      "human_authority_required": true
+    },
+    {
+      "subject": "bonus-system",
+      "decision_question": "Should Resolution Credit remain active?",
+      "could_reverse_if": [
+        "evidence the incentive does not create the observed risk under corrected controls"
+      ],
+      "human_authority_required": true
+    }
+  ],
+  "dossier": {
+    "assembled_by": "niccolo-native-adversarial-dossier",
+    "native_lf015_verified": false,
+    "categories": [
+      "observations",
+      "claims",
+      "counterevidence",
+      "unknowns",
+      "operator-interventions",
+      "decision-readiness"
+    ],
+    "endpoint": "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
+    "deterministic_sha256": true,
+    "asserts_verdict": false,
+    "grants_authority": false
+  }
+}
