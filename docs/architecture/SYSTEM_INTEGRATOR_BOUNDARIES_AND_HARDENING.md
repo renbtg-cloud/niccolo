@@ -140,7 +140,10 @@ The current Aurelius & Finch acceptance path already exercises the properties th
 - decision readiness with unresolved uncertainty;
 - adversarial dossier generation;
 - explicit human authority boundaries;
-- operator-assisted behavior with interventions recorded instead of hidden.
+- operator-assisted behavior with interventions recorded instead of hidden;
+- optional operational-event identity for defensive suppression of exact retry/replay duplicates;
+- per-event delivery-count diagnostics and an explicit warning that upstream deduplication remains preferred;
+- append-only Situation purpose history, with the current declared purpose frozen into each analysis snapshot so later purpose changes do not rewrite earlier analysis context.
 
 These are epistemic properties. They do not imply that arbitrary upstream transport behavior is efficient.
 
@@ -178,30 +181,23 @@ Reformatting, extraction, summarization, sampling, OCR, or conversion should lea
 
 A service account, administrator, CIO, or highly privileged integration process can establish operational provenance. It cannot make the transported statement true merely because it had authority to write it.
 
-## Near-term Niccolò hardening - planned, not implemented yet
+## Near-term Niccolò hardening still planned
 
-The following items are deliberately near-term hardening rather than MVP blockers.
+The MVP now suppresses exact operational retries when the integrator supplies a stable operational event identity, records the delivery count, and returns a per-delivery warning. It also persists append-only purpose history and freezes the current declared purpose into analysis snapshots.
 
-### Defensive obvious-duplicate suppression
+The following broader hardening remains deliberately outside the MVP freeze.
 
-Niccolò should gain a cheap defensive mechanism for obvious operational duplicates when reliable identity is available.
+### Aggregate redundancy diagnostics
 
-This is not intended to become semantic deduplication.
+Niccolò should add aggregate warnings or metrics for conditions such as:
 
-The preferred architecture remains upstream deduplication at the cheapest reliable boundary.
-
-### Redundancy diagnostics
-
-Niccolò should expose warnings or metrics for conditions such as:
-
-- repeated operational IDs;
-- suspicious duplicate ratios;
-- repeated identical payloads;
+- suspicious duplicate ratios across many operational IDs;
+- repeated identical payloads without a reliable operational identity;
 - ingestion amplification;
-- abnormal retry/replay patterns;
+- abnormal retry/replay patterns across a pipeline;
 - unusually high source fan-out.
 
-The goal is to identify an integration defect before it turns into avoidable cost or latency.
+The goal is to identify an integration defect before it turns into avoidable cost or latency. This is broader than the per-event duplicate diagnostic implemented now.
 
 ### Explicit upstream-processing declarations
 
@@ -217,17 +213,16 @@ An integration should be able to declare:
 
 These remain attributed metadata, not automatically trusted facts.
 
-### Purpose-history ledger
+### Richer purpose and downstream-use policy
 
-A deployment should preserve changes in:
+The MVP now preserves append-only declared-purpose events and freezes the current declared purpose into each analysis snapshot. Future hardening can extend this into richer policy around:
 
-- declared purpose;
-- desired outcome;
 - stopping criteria;
-- decision context;
-- downstream use.
+- downstream-use declarations;
+- explicit purpose compatibility checks;
+- warnings when an integration silently changes the intended use of retained material.
 
-If a CEO changes from "investigate what happened" to "find enough to terminate Kessler", or a deployment later becomes part of a commercial product, the new purpose should become explicit history rather than invisible context drift.
+If a CEO changes from "investigate what happened" to "find enough to terminate Kessler", the purpose change is now historical state rather than a rewrite of the earlier snapshot.
 
 ## Paranoid acceptance variations
 
