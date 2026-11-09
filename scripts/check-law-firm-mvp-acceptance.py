@@ -28,7 +28,7 @@ REQUIRED_DOSSIER_CATEGORIES = {
 def _nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
-def validate(doc, require_complete=False):
+def validate(doc, require_complete=False, repo_root=None):
     errors = []
     if doc.get("format") != "niccolo.law-firm-mvp-acceptance":
         errors.append("format must be niccolo.law-firm-mvp-acceptance")
@@ -81,6 +81,24 @@ def validate(doc, require_complete=False):
                         errors.append(f"case {cid} has invalid verification kind")
                     if not _nonempty(item.get("reference")):
                         errors.append(f"case {cid} verification reference is required")
+                    elif repo_root is not None:
+                        reference = item["reference"]
+                        path_part, sep, symbol = reference.partition("::")
+                        path_part = path_part.split("#", 1)[0]
+                        target = Path(repo_root) / path_part
+                        if not target.is_file():
+                            errors.append(f"case {cid} verification target does not exist: {path_part}")
+                        elif item.get("kind") == "AUTOMATED_TEST":
+                            if not sep or not symbol.strip():
+                                errors.append(f"case {cid} automated test reference must be path::symbol")
+                            else:
+                                try:
+                                    source = target.read_text(encoding="utf-8")
+                                except (OSError, UnicodeDecodeError):
+                                    errors.append(f"case {cid} automated test target is unreadable: {path_part}")
+                                else:
+                                    if symbol.strip() not in source:
+                                        errors.append(f"case {cid} automated test symbol not found: {symbol.strip()}")
 
     interventions = doc.get("operator_interventions") or []
     seen_interventions = set()
@@ -147,7 +165,7 @@ def main(argv):
     except (OSError, json.JSONDecodeError) as e:
         print(f"invalid acceptance file: {e}", file=sys.stderr)
         return 2
-    errors = validate(doc, require_complete=require_complete)
+    errors = validate(doc, require_complete=require_complete, repo_root=Path.cwd())
     if errors:
         for e in errors:
             print("FAIL:", e)
