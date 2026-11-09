@@ -82,6 +82,8 @@ Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](dev-fl
 
 ## First-time setup on one PC
 
+If you want only the shortest user path, follow the **[First-user MVP walkthrough](docs/product/FIRST_USER_MVP_WALKTHROUGH.md)**.
+
 For a **new, dedicated PostgreSQL 17 database**, the MVP provides a first-run
 bootstrap that builds the React UI and Rust server, applies SQL migrations,
 creates a restricted API login, and issues a 30-day private bearer token.
