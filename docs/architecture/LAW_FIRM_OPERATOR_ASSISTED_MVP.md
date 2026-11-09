@@ -21,6 +21,18 @@ Do not portray operator-prepared data as system-generated verified facts.
 Do not confuse intact export bytes with authentic source records, or
 corroborating reports with multiple independent witnesses.
 
+## System-integration boundary
+
+The operator-assisted law-firm demonstration also has a systems-integration boundary. Transport hygiene such as trivial operational deduplication, retries, idempotency, and replay control belongs primarily to the integrator. Niccolò remains responsible for preserving epistemic distinctions when material reaches the reasoning system.
+
+The rule is:
+
+> **The integrator is responsible for operational identity. Niccolò is responsible for epistemic dependence.**
+
+Current integration requirements and near-term hardening are defined in [System-integrator boundaries and near-term hardening](SYSTEM_INTEGRATOR_BOUNDARIES_AND_HARDENING.md).
+
+This distinction is important for scale tests: multiplying workers, retries, or deliveries must not be interpreted as multiplying evidence, but the MVP does not promise to absorb arbitrary avoidable duplication efficiently.
+
 ## Actor policy
 
 All named participants, including the old Niccolò, may be subjects of
