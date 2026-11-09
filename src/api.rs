@@ -34,6 +34,7 @@ use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
+use crate::purpose_history::{self, NewPurpose, PurposeError};
 use crate::presentation_package::{self, PresentationError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
@@ -290,6 +291,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/focus",
             post(set_situation_focus),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/purpose",
+            get(list_purpose_history),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/purpose/{event}",
+            post(record_purpose),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/sources/{document}",
@@ -894,13 +903,38 @@ async fn ingest(
         .get("x-source-locator")
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "missing source locator"))?;
-    let result =
-        postgres_ingest::ingest_source(&state.pool, workspace, document, format, locator, &body)
-            .await?;
+    let operational_event_id = headers
+        .get("x-operational-event-id")
+        .map(|v| v.to_str())
+        .transpose()
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid operational event id header"))?;
+    let result = postgres_ingest::ingest_source_with_operational_id(
+        &state.pool,
+        workspace,
+        document,
+        format,
+        locator,
+        &body,
+        operational_event_id,
+    )
+    .await?;
+    let warning = result.operational_duplicate.then_some(
+        "duplicate operational delivery suppressed; deduplicate retries upstream",
+    );
     Ok(no_store(
-        json!({"workspace_id":workspace,"document_id":document,
-        "sha256":result.sha256,"fragment_ids":result.fragment_ids,
-        "replayed":result.replayed,"revision":result.graph_revision}),
+        json!({
+            "workspace_id":workspace,
+            "document_id":result.document_id,
+            "sha256":result.sha256,
+            "fragment_ids":result.fragment_ids,
+            "replayed":result.replayed,
+            "revision":result.graph_revision,
+            "operational_event_id":result.operational_event_id,
+            "operational_duplicate":result.operational_duplicate,
+            "delivery_count":result.delivery_count,
+            "integration_warning":warning,
+            "upstream_deduplication_preferred":true
+        }),
         if result.replayed {
             StatusCode::OK
         } else {
@@ -2124,6 +2158,77 @@ async fn get_situation(
 #[serde(deny_unknown_fields)]
 struct SituationFocusRequest {
     focus: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PurposeRequest {
+    purpose_text: String,
+    reason: String,
+    downstream_use: Option<String>,
+}
+
+async fn record_purpose(
+    State(state): State<AppState>,
+    Path((workspace, situation, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(body): Json<PurposeRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let recorded = purpose_history::record(
+        &state.pool,
+        workspace,
+        situation,
+        event,
+        actor,
+        NewPurpose {
+            purpose_text: &body.purpose_text,
+            reason: &body.reason,
+            downstream_use: body.downstream_use.as_deref(),
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        PurposeError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid purpose input"),
+        PurposeError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
+        PurposeError::Conflict => ApiError(StatusCode::CONFLICT, "purpose event conflict"),
+        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "purpose history unavailable"),
+    })?;
+    Ok(no_store(
+        json!({
+            "event_id":recorded.event_id,
+            "event_no":recorded.event_no,
+            "purpose_text":recorded.purpose_text,
+            "reason":recorded.reason,
+            "downstream_use":recorded.downstream_use,
+            "recorded_by_principal_id":recorded.recorded_by,
+            "replayed":recorded.replayed,
+            "purpose_is_evidence":false
+        }),
+        if recorded.replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+async fn list_purpose_history(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let events = purpose_history::history(&state.pool, workspace, situation)
+        .await
+        .map_err(|error| match error {
+            PurposeError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
+            _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "purpose history unavailable"),
+        })?;
+    Ok(no_store(
+        json!({
+            "events":events,
+            "purpose_is_evidence":false,
+            "purpose_changes_rewrite_history":false
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn set_situation_focus(
