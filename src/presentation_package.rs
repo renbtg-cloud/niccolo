@@ -396,6 +396,8 @@ mod tests {
             input_revision: 7,
             input_fingerprint: "sha-256-example".into(),
             identity_event_no_max: 0,
+            actor_kind_event_no_max: 0,
+            actor_binding_event_no_max: 0,
             goal: "Determine what the sources actually support".into(),
             requested_by: Uuid::from_u128(4),
             reanalysis_of: None,
