@@ -21,7 +21,7 @@ export function ConnectPanel(){
     : <><input aria-label="Workspace" placeholder="Workspace UUID" {...register('workspace')}/><input aria-label="Situation" placeholder="Situation UUID" {...register('situation')}/></>}
    <input aria-label="Bearer token" type="password" placeholder="Bearer token" {...register('token')}/>
    <button type="submit">Connect</button>
-   <small>{prepared?'Paste the bearer token supplied separately.':'Workspace and Situation may be prefilled by a prepared demo link.'} Bearer tokens are never read from the URL or persisted.</small>
+   <small>{prepared?'Workspace and Situation are ready. Paste the bearer token from the separately supplied secret (for a local install: .niccolo-local/token.txt), then Connect.':'Workspace and Situation may be prefilled by a prepared demo link.'} Bearer tokens are never read from the URL or persisted.</small>
    {Object.keys(errors).length>0&&<span className="error">Check connection fields.</span>}
  </form>;
 }
