@@ -1330,3 +1330,89 @@ Helena did not need omniscience.
 She needed enough structured, challenged, provenance-aware understanding to make different decisions about different people - and to know what she was still betting on when she made them.
 
 That is human reasoning.
+
+---
+
+## 17. Integration boundary: what Niccolò expects from real systems
+
+The Aurelius & Finch case is also useful as a systems-integration test.
+
+A real Niccolò deployment may sit behind queues, ETL pipelines, document stores, identity systems, cloud workers, external models, and human operators. Niccolò should preserve the epistemic distinctions illustrated in this case, but it is not intended to replace ordinary transport and data-engineering infrastructure.
+
+The boundary is:
+
+> **The integrator is responsible for operational identity. Niccolò is responsible for epistemic dependence.**
+
+### Supported now
+
+The current MVP can preserve and expose distinctions that matter to an integrated deployment, including:
+
+- source provenance and known derivation;
+- repeated reports that share a documentary ancestor;
+- explicit source-scope and missingness;
+- human and software actors without making actor type an epistemic privilege;
+- formal authority vs inferred practical influence;
+- competing hypotheses;
+- hypothesis-directed retrieval across a frozen Situation revision;
+- discriminating questions and acquisition cost;
+- integrity continuity vs pre-collection authenticity;
+- bounded decision readiness with unresolved uncertainty;
+- adversarial dossier generation;
+- explicit human decision authority.
+
+These properties do **not** mean that arbitrary upstream transport behavior is efficient.
+
+### Integration requirement now
+
+Trivial transport-level duplication should be removed upstream when the integration has a reliable operational identity such as an immutable event ID, message ID, source-object ID, or idempotency key.
+
+If an integration sends 10,000 copies of the same known operational event, Niccolò may currently spend unnecessary storage, CPU, memory, indexing, retrieval, latency, and model-context resources processing material that could have been discarded cheaply at the source.
+
+That is an integration defect, even if Niccolò remains conservative about whether the repeated records represent independent evidence.
+
+The complementary rule is equally important:
+
+> **Deduplicate transport repetition. Preserve epistemically meaningful repetition.**
+
+Ten retries of one queue event should normally be collapsed upstream.
+
+Ten different people independently sending the same sentence should not be collapsed merely because their bytes match. Their authorship, timing, relationships, and provenance may matter.
+
+Upstream filters and transformations should also remain visible. A pipeline that forwards only records marked `relevant=true` has produced a selected subset, not proof that the omitted source universe contained nothing relevant.
+
+### Near-term Niccolò hardening - planned, not implemented yet
+
+Niccolò is expected to add defensive integration features that reduce the cost of imperfect integrations without turning the product into Kafka Streams, Flink, Beam, or a general ETL engine.
+
+Near-term hardening includes:
+
+- cheap suppression of obvious operational duplicates when reliable identity is available;
+- diagnostics for abnormal duplicate ratios, retry/replay amplification, repeated payloads, and source fan-out;
+- explicit declarations of upstream filtering, sampling, deduplication, aggregation, and transformation;
+- clearer resource-envelope diagnostics and limits;
+- a purpose-history ledger so a changed objective or downstream business purpose becomes explicit history rather than invisible context drift.
+
+Upstream deduplication will remain the preferred architecture even after defensive duplicate suppression exists inside Niccolò.
+
+### Future adversarial variations
+
+The same law-firm scenario can be made harsher without changing its core epistemic contract.
+
+Examples include:
+
+- Helena changes the goal from "find what the evidence supports" to "find enough to fire Kessler";
+- Helena instead asks Niccolò to find an innocent explanation because Kessler is a friend;
+- the objective changes midway through the investigation;
+- an integrator runs dozens or hundreds of ephemeral/preemptible workers;
+- retries cause enormous delivery amplification;
+- one hypothesis receives far more compute than another because of scheduler behavior;
+- different worker pools use different models;
+- an infrastructure operator can delay, retry, prioritize, or suppress parts of the workflow;
+- Helena later creates a business based on or strongly related to Niccolò and gains a commercial incentive to select impressive cases.
+
+Those variations test an invariant broader than this fictional law firm:
+
+> **More compute is not more evidence. More privilege is not more truth. A changed purpose is not a rewritten past.**
+
+The detailed integration contract and proposed hardening are documented in [System-integrator boundaries and near-term hardening](../architecture/SYSTEM_INTEGRATOR_BOUNDARIES_AND_HARDENING.md).
+
