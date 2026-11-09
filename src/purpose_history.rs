@@ -179,15 +179,19 @@ pub async fn history(
     tx.commit().await?;
     Ok(rows
         .into_iter()
-        .map(|(event_id, event_no, purpose_text, reason, downstream_use, recorded_by)| PurposeEvent {
-            event_id,
-            event_no,
-            purpose_text,
-            reason,
-            downstream_use,
-            recorded_by,
-            replayed: false,
-        })
+        .map(
+            |(event_id, event_no, purpose_text, reason, downstream_use, recorded_by)| {
+                PurposeEvent {
+                    event_id,
+                    event_no,
+                    purpose_text,
+                    reason,
+                    downstream_use,
+                    recorded_by,
+                    replayed: false,
+                }
+            },
+        )
         .collect())
 }
 
