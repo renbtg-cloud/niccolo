@@ -64,6 +64,13 @@ function ConnectedSituation({client}){
     enabled: !!client,
     queryFn: async () => (await client.sources(sourceCursor, 100)).value,
   });
+  const readiness = useQuery({
+    queryKey: ['mvp-runtime-readiness'],
+    enabled: !!client,
+    queryFn: async () => (await client.readiness()).value,
+    staleTime: 60000,
+    retry: false,
+  });
   const refresh = async () => Promise.all([
     qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
     qc.invalidateQueries({ queryKey: qk.sources(client.config) }),
@@ -254,7 +261,15 @@ function ConnectedSituation({client}){
     </article>
 
     <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.sourceCount}</strong> attached record(s)</li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add records or human context when they would make the reasoning better grounded.</p>}<small>This is a preparation summary, not a completeness score and not a gate.</small>{guide.sourceCount>0&&<p><Link to="/identities">Review who source labels refer to →</Link></p>}</article>
-    <article className="next-action"><h3>Ready to reason?</h3><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></article>
+    <article className="next-action"><h3>Ready to reason?</h3>
+      {readiness.isPending
+        ? <p>Checking reasoning readiness…</p>
+        : readiness.error
+          ? <p className="error">Niccolò cannot confirm reasoning readiness: {readiness.error.message}</p>
+          : readiness.data?.model_configured === false
+            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting, or use .niccolo-local/model.env.</small></>
+            : <><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></>}
+    </article>
 
     <details className="desktop-only">
       <summary>Raw Situation snapshot</summary>
