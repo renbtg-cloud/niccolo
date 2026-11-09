@@ -17,15 +17,15 @@ test -s .niccolo-local/local.env
 test -s .niccolo-local/identifiers.txt
 test -s .niccolo-local/token.txt
 test -s .niccolo-local/prepared-url.txt
-prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
-grep -q "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
-grep -q "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
-! grep -q "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
 # Both files are generated locally with UUIDs / shell-escaped values, never with arbitrary user input.
 # shellcheck disable=SC1091
 source .niccolo-local/local.env
 # shellcheck disable=SC1091
 source .niccolo-local/identifiers.txt
+prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
+grep -q "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
+grep -q "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
+! grep -q "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
 ./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
