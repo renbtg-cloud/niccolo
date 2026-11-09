@@ -398,6 +398,6 @@ one unsupported assertion",
     let assessment = graph.assess(&descendants).unwrap();
     assert_eq!(assessment.report_count, 100);
     assert_eq!(assessment.traceable_roots.len(), 1);
-    assert_eq!(assessment.traceable_roots[0], root);
+    assert!(assessment.traceable_roots.contains(&root));
     assert!(!assessment.independence_established);
 }
