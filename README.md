@@ -115,18 +115,22 @@ For a local OpenAI-compatible model runtime, configure
 on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
 Some local models require `NICCOLO_LLM_JSON_MODE=false`.
 
-Start the server from the repository root with the generated configuration:
+Start the already-bootstrapped local MVP with one command:
 
 ```bash
-source .niccolo-local/local.env
-./target/release/niccolo-api
+bash scripts/start-local-mvp.sh
 ```
 
-On Windows, append `.exe` to the executable name. Visit
-`http://127.0.0.1:38080`, enter the identifiers and token from the private
-files, and create the first Situation from its focus. This is a local
-single-PC workflow, **not** an Internet-facing or production-hardening guide.
-The setup currently assumes the user has installed PostgreSQL already.
+The helper prints a prepared loopback URL containing only the non-secret
+workspace and Situation identifiers. Open that URL, paste the bearer token from
+`.niccolo-local/token.txt`, and choose **Connect**. The token is deliberately
+never placed in the URL or printed by the start helper.
+
+The prepared URL is also stored in `.niccolo-local/prepared-url.txt`. The
+first Situation is then created from the web interface by entering its focus.
+This is a local single-PC workflow, **not** an Internet-facing or
+production-hardening guide. The setup currently assumes the user has installed
+PostgreSQL already.
 
 ## Run locally
 
