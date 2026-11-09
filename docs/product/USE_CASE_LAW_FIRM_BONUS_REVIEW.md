@@ -1358,7 +1358,9 @@ The current MVP can preserve and expose distinctions that matter to an integrate
 - integrity continuity vs pre-collection authenticity;
 - bounded decision readiness with unresolved uncertainty;
 - adversarial dossier generation;
-- explicit human decision authority.
+- explicit human decision authority;
+- optional operational-event identity that defensively suppresses exact retries/replays of the same known event while counting repeated deliveries;
+- append-only Situation purpose history, frozen into analysis snapshots so a later purpose change does not rewrite earlier analysis context.
 
 These properties do **not** mean that arbitrary upstream transport behavior is efficient.
 
@@ -1366,7 +1368,7 @@ These properties do **not** mean that arbitrary upstream transport behavior is e
 
 Trivial transport-level duplication should be removed upstream when the integration has a reliable operational identity such as an immutable event ID, message ID, source-object ID, or idempotency key.
 
-If an integration sends 10,000 copies of the same known operational event, Niccolò may currently spend unnecessary storage, CPU, memory, indexing, retrieval, latency, and model-context resources processing material that could have been discarded cheaply at the source.
+If an integration supplies a stable operational event identity, the current MVP can defensively suppress exact repeated deliveries of that event and report the delivery count. If the integration does not provide reliable operational identity, or sends redundancy that cannot be identified cheaply and safely, large duplicate floods can still waste storage, CPU, memory, indexing, retrieval, latency, and model-context resources.
 
 That is an integration defect, even if Niccolò remains conservative about whether the repeated records represent independent evidence.
 
@@ -1380,19 +1382,18 @@ Ten different people independently sending the same sentence should not be colla
 
 Upstream filters and transformations should also remain visible. A pipeline that forwards only records marked `relevant=true` has produced a selected subset, not proof that the omitted source universe contained nothing relevant.
 
-### Near-term Niccolò hardening - planned, not implemented yet
+### Near-term Niccolò hardening still planned
 
-Niccolò is expected to add defensive integration features that reduce the cost of imperfect integrations without turning the product into Kafka Streams, Flink, Beam, or a general ETL engine.
+Two previously planned protections are now in the MVP: exact operational retry suppression when a stable event identity is supplied, and append-only purpose history frozen into analysis snapshots.
 
-Near-term hardening includes:
+Near-term hardening still includes:
 
-- cheap suppression of obvious operational duplicates when reliable identity is available;
-- diagnostics for abnormal duplicate ratios, retry/replay amplification, repeated payloads, and source fan-out;
+- aggregate diagnostics for abnormal duplicate ratios, retry/replay amplification, repeated payloads without reliable operational identity, and source fan-out;
 - explicit declarations of upstream filtering, sampling, deduplication, aggregation, and transformation;
 - clearer resource-envelope diagnostics and limits;
-- a purpose-history ledger so a changed objective or downstream business purpose becomes explicit history rather than invisible context drift.
+- richer downstream-use and purpose-compatibility checks beyond the purpose history already recorded.
 
-Upstream deduplication will remain the preferred architecture even after defensive duplicate suppression exists inside Niccolò.
+Upstream deduplication remains the preferred architecture. Niccolò's defensive suppression is a safety net, not a replacement for ordinary integration hygiene.
 
 ### Future adversarial variations
 
