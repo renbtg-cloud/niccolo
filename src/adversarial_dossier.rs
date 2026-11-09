@@ -40,7 +40,10 @@ pub struct AdversarialDossier {
     pub intended_for_adversarial_review: bool,
 }
 
-pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<AdversarialDossier, DossierError> {
+pub async fn build(
+    pool: &PgPool,
+    scope: AnalysisScope,
+) -> Result<AdversarialDossier, DossierError> {
     let packet = reasoning_packet::build(
         pool,
         AnalysisScope {
@@ -84,4 +87,3 @@ pub fn canonical_json(dossier: &AdversarialDossier) -> Result<Vec<u8>, DossierEr
 pub fn sha256(dossier: &AdversarialDossier) -> Result<String, DossierError> {
     Ok(format!("{:x}", Sha256::digest(canonical_json(dossier)?)))
 }
-
