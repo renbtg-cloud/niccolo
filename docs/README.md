@@ -10,3 +10,8 @@ This directory is for material useful to understand or integrate the **current i
 - **[Development history](../dev-flow/README.md)** — milestone logs, checkpoint records and postponed work.
 
 When source code, migrations, CI and older documents disagree, do not infer implementation status from a document's filename; verify against executable code and tests.
+
+
+## First-user path
+
+- [First-user MVP walkthrough](product/FIRST_USER_MVP_WALKTHROUGH.md) — shortest supported local path from bootstrap to first useful result, plus a human usability-test checklist.
