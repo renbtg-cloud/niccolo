@@ -1,0 +1,9 @@
+CEO STATEMENT
+Speaker: Helena Vidal
+Date: 20 May 2026
+Statement: "Resolution Credit was already active throughout March, so any March settlement could have qualified."
+
+STATUS FOR REVIEW
+This is an attributed statement by the CEO, not privileged ground truth.
+The dated Finance message in sources/08_politics_and_late_fragment.txt says the rule's effective date was 1 April and that March settlements could not qualify under the new rule.
+The contradiction must remain visible; Helena's title does not resolve it in her favor.
