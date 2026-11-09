@@ -68,6 +68,19 @@ def validate(doc, require_complete=False):
             errors.append(f"case {cid} missing materially_different_outcome_plausible")
         if require_complete and str(c.get("actual_output", "")).strip().upper() in {"", "PENDING", "TODO", "NOT_RUN"}:
             errors.append(f"case {cid} has not been executed")
+        if require_complete:
+            verification = c.get("verification")
+            if not isinstance(verification, list) or not verification:
+                errors.append(f"case {cid} has no verification record")
+            else:
+                for item in verification:
+                    if not isinstance(item, dict):
+                        errors.append(f"case {cid} has invalid verification record")
+                        continue
+                    if item.get("kind") not in {"AUTOMATED_TEST", "OPERATOR_RECORD", "EXTERNAL_ARTIFACT", "HUMAN_REVIEW"}:
+                        errors.append(f"case {cid} has invalid verification kind")
+                    if not _nonempty(item.get("reference")):
+                        errors.append(f"case {cid} verification reference is required")
 
     interventions = doc.get("operator_interventions") or []
     seen_interventions = set()
