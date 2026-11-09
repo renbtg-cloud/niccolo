@@ -2237,9 +2237,9 @@ async fn list_purpose_history(
         .map_err(|error| match error {
             PurposeError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
             _ => ApiError(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "purpose history unavailable",
-        ),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "purpose history unavailable",
+            ),
         })?;
     Ok(no_store(
         json!({
