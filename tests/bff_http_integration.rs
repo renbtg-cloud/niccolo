@@ -937,7 +937,7 @@ async fn reasoning_handoff_read_model_survives_operation_and_preserves_non_autho
         invoke(s.router.clone(), req("GET", &route, &s.token, None, None)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
-    assert_eq!(view["handoff"]["version"], 2);
+    assert_eq!(view["handoff"]["version"], 3);
     assert_eq!(view["handoff_sha256"].as_str().unwrap().len(), 64);
     assert_eq!(
         view["handoff"]["candidate_interpretations"]
