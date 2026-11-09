@@ -34,8 +34,8 @@ use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
-use crate::purpose_history::{self, NewPurpose, PurposeError};
 use crate::presentation_package::{self, PresentationError};
+use crate::purpose_history::{self, NewPurpose, PurposeError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
@@ -910,7 +910,12 @@ async fn ingest(
         .get("x-operational-event-id")
         .map(|v| v.to_str())
         .transpose()
-        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid operational event id header"))?;
+        .map_err(|_| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                "invalid operational event id header",
+            )
+        })?;
     let result = postgres_ingest::ingest_source_with_operational_id(
         &state.pool,
         workspace,
@@ -921,9 +926,9 @@ async fn ingest(
         operational_event_id,
     )
     .await?;
-    let warning = result.operational_duplicate.then_some(
-        "duplicate operational delivery suppressed; deduplicate retries upstream",
-    );
+    let warning = result
+        .operational_duplicate
+        .then_some("duplicate operational delivery suppressed; deduplicate retries upstream");
     Ok(no_store(
         json!({
             "workspace_id":workspace,
@@ -2197,7 +2202,10 @@ async fn record_purpose(
         PurposeError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid purpose input"),
         PurposeError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
         PurposeError::Conflict => ApiError(StatusCode::CONFLICT, "purpose event conflict"),
-        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "purpose history unavailable"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "purpose history unavailable",
+        ),
     })?;
     Ok(no_store(
         json!({
@@ -2210,7 +2218,11 @@ async fn record_purpose(
             "replayed":recorded.replayed,
             "purpose_is_evidence":false
         }),
-        if recorded.replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
@@ -2224,7 +2236,10 @@ async fn list_purpose_history(
         .await
         .map_err(|error| match error {
             PurposeError::Invisible => ApiError(StatusCode::NOT_FOUND, "situation unavailable"),
-            _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "purpose history unavailable"),
+            _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "purpose history unavailable",
+        ),
         })?;
     Ok(no_store(
         json!({
