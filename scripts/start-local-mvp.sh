@@ -43,12 +43,23 @@ echo "Niccolo local session"
 echo "Open: $prepared_url"
 echo "Bearer token: $token_file"
 echo "Paste that token into the connection panel; it is intentionally not embedded in the URL."
-if [[ -n "${NICCOLO_LLM_BASE_URL:-}" && -n "${NICCOLO_LLM_MODEL:-}" ]]; then
-  echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
-else
+llm_base="${NICCOLO_LLM_BASE_URL:-}"
+llm_model="${NICCOLO_LLM_MODEL:-}"
+llm_key="${NICCOLO_LLM_API_KEY:-}"
+if [[ -z "$llm_base" && -z "$llm_model" && -z "$llm_key" ]]; then
   echo "Reasoning model: NOT CONFIGURED"
   echo "To enable Analyze, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting,"
   echo "or store export commands in $model_env_file (keep API keys private)."
+elif [[ -z "$llm_base" || -z "$llm_model" ]]; then
+  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
+  echo "Both NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL are required." >&2
+  exit 2
+elif [[ "$llm_base" == https://* && -z "$llm_key" ]]; then
+  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
+  echo "Remote HTTPS model providers require NICCOLO_LLM_API_KEY." >&2
+  exit 2
+else
+  echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
 fi
 
 if [[ "${1:-}" == "--print-only" ]]; then
