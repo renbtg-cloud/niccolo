@@ -29,6 +29,7 @@ class LawFirmFixtureInventoryTest(unittest.TestCase):
             "late decisive fragment",
             "effective date is 1 april",
             "pre_collection_authenticity",
+            "resolution credit was already active throughout march",
         ]
         # Integrity metadata is JSON outside sources.
         integrity = (FIXTURE / "integrity_manifest.json").read_text(encoding="utf-8").lower()
