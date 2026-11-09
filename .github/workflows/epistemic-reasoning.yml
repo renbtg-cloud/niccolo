@@ -25,7 +25,7 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
           rustup default 1.99.1
       - name: Formatting
-        run: rustfmt --edition 2024 --check src/api.rs src/adversarial_dossier.rs src/epistemic_weights.rs src/human_credence.rs src/epistemic_policy_store.rs src/reasoning_packet.rs src/grounded_claim_weights.rs src/grounded_lineage_store.rs src/provenance_clusters.rs src/presentation_package.rs src/operation_budget.rs src/runtime_resources.rs src/resource_policy.rs src/bff_operations.rs src/bff_executor.rs src/bff_intent.rs tests/bff_operations_integration.rs tests/human_credence_integration.rs tests/grounded_claim_weights_integration.rs tests/law_firm_reasoning_capabilities_integration.rs
+        run: rustfmt --edition 2024 --check src/api.rs src/adversarial_dossier.rs src/epistemic_weights.rs src/human_credence.rs src/epistemic_policy_store.rs src/reasoning_packet.rs src/grounded_claim_weights.rs src/grounded_lineage_store.rs src/provenance_clusters.rs src/presentation_package.rs src/operation_budget.rs src/runtime_resources.rs src/resource_policy.rs src/bff_operations.rs src/bff_executor.rs src/bff_intent.rs tests/bff_operations_integration.rs tests/human_credence_integration.rs tests/grounded_claim_weights_integration.rs
       - name: Verify Markdown navigation and root layout
         run: |
           python3 -m unittest discover -s tests -p "test_check_doc_links.py" -v
