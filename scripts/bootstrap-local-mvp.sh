@@ -72,16 +72,18 @@ process.stdout.write(u.toString());
 ')"
 printf 'export NICCOLO_PG_SECURE_URL=%q\n' "$runtime_url" > .niccolo-local/local.env
 printf 'export NICCOLO_API_PORT=38080\n' >> .niccolo-local/local.env
-printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' "$workspace" \
-  "$(node -p "require('node:crypto').randomUUID()")" > .niccolo-local/identifiers.txt
+SITUATION_UUID="$(node -p "require('node:crypto').randomUUID()")"
+printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/identifiers.txt
+printf 'http://127.0.0.1:38080/?workspace=%s&situation=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/prepared-url.txt
 provision_bin="./target/release/niccolo-provision${ext}"
 token="$("$provision_bin" mint "$workspace" "$principal" write 30)"
 printf '%s\n' "$token" > .niccolo-local/token.txt
-chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt 2>/dev/null || true
+chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt .niccolo-local/prepared-url.txt 2>/dev/null || true
 
 echo 'Local setup complete. Credentials are in .niccolo-local/ (never commit or share).'
 echo 'Set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL to enable local inference.'
-echo "Start: source .niccolo-local/local.env && ./target/release/niccolo-api${ext}"
-echo 'Open: http://127.0.0.1:38080'
-echo 'Use workspace and Situation UUIDs from identifiers.txt and bearer from token.txt.'
+echo 'Start: bash scripts/start-local-mvp.sh'
+echo 'Prepared browser URL: .niccolo-local/prepared-url.txt'
+echo 'Bearer token: .niccolo-local/token.txt'
+echo 'The prepared URL fills workspace and Situation identifiers; paste the bearer token separately.'
 echo 'The first Situation is created through the web UI, not automatically here.'
