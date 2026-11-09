@@ -32,8 +32,8 @@ CREATE TABLE niccolo.situation_analysis_temporal_assertions (
     REFERENCES niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id),
   FOREIGN KEY (workspace_id,evidence_id)
     REFERENCES niccolo.evidence(workspace_id,evidence_id),
-  FOREIGN KEY (workspace_id,contribution_id)
-    REFERENCES niccolo.situation_contributions(workspace_id,contribution_id),
+  FOREIGN KEY (workspace_id,situation_id,contribution_id)
+    REFERENCES niccolo.situation_contributions(workspace_id,situation_id,contribution_id),
   CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from),
   CHECK (NOT (evidence_id IS NOT NULL AND contribution_id IS NOT NULL))
 );
