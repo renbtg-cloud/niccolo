@@ -1,5 +1,5 @@
 //! Immutable binding between a requested analysis and the exact Situation revision it may use.
-use crate::situation_store::{self, SituationSnapshot};
+use crate::{purpose_history, situation_store::{self, SituationSnapshot}};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -28,6 +28,8 @@ pub struct AnalysisInputSnapshot {
     pub identity_event_no_max: i64,
     pub actor_kind_event_no_max: i64,
     pub actor_binding_event_no_max: i64,
+    pub purpose_event_no_max: i64,
+    pub declared_purpose: Option<String>,
     pub goal: String,
     pub requested_by: Uuid,
     pub reanalysis_of: Option<Uuid>,
@@ -42,7 +44,7 @@ pub struct MaterializedAnalysisInput {
     pub input_is_current: bool,
 }
 
-type StoredAnalysisSnapshotRow = (i64, String, i64, i64, i64, String, Uuid, Option<Uuid>);
+type StoredAnalysisSnapshotRow = (i64, String, i64, i64, i64, i64, Option<String>, String, Uuid, Option<Uuid>);
 
 fn clean_goal(input: &str) -> Result<String, AnalysisSnapshotError> {
     let value = input.trim();
@@ -97,7 +99,7 @@ pub async fn begin(
         return Err(AnalysisSnapshotError::Invalid);
     }
     let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
-        "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
+        "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
@@ -112,6 +114,8 @@ pub async fn begin(
         identity_event_no_max,
         actor_kind_event_no_max,
         actor_binding_event_no_max,
+        purpose_event_no_max,
+        declared_purpose,
         stored_goal,
         requested_by,
         stored_reanalysis_of,
@@ -129,6 +133,8 @@ pub async fn begin(
             identity_event_no_max,
             actor_kind_event_no_max,
             actor_binding_event_no_max,
+            purpose_event_no_max,
+            declared_purpose,
             goal: stored_goal,
             requested_by,
             reanalysis_of: stored_reanalysis_of,
@@ -194,10 +200,18 @@ pub async fn begin(
     .bind(workspace)
     .fetch_one(&mut *tx)
     .await?;
+    let (purpose_event_no_max, declared_purpose) =
+        purpose_history::latest_in_tx(&mut tx, workspace, situation)
+            .await
+            .map_err(|error| match error {
+                purpose_history::PurposeError::Database(error) => AnalysisSnapshotError::Database(error),
+                _ => AnalysisSnapshotError::Integrity,
+            })?
+            .map_or((0, None), |(event_no, purpose)| (event_no, Some(purpose)));
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_snapshots \
-         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
+         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of) \
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
     )
     .bind(workspace)
     .bind(situation)
@@ -207,6 +221,8 @@ pub async fn begin(
     .bind(identity_event_no_max)
     .bind(actor_kind_event_no_max)
     .bind(actor_binding_event_no_max)
+    .bind(purpose_event_no_max)
+    .bind(&declared_purpose)
     .bind(&goal)
     .bind(actor)
     .bind(reanalysis_of)
@@ -218,7 +234,7 @@ pub async fn begin(
         // A concurrent identical request won the race. Re-read and apply the
         // same immutable replay contract instead of binding to a newer revision.
         let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
-            "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
+            "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of \
              FROM niccolo.situation_analysis_snapshots \
              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
         )
@@ -233,6 +249,8 @@ pub async fn begin(
             stored_identity_event_no_max,
             stored_actor_kind_event_no_max,
             stored_actor_binding_event_no_max,
+            stored_purpose_event_no_max,
+            stored_declared_purpose,
             stored_goal,
             requested_by,
             stored_reanalysis_of,
@@ -252,6 +270,8 @@ pub async fn begin(
             identity_event_no_max: stored_identity_event_no_max,
             actor_kind_event_no_max: stored_actor_kind_event_no_max,
             actor_binding_event_no_max: stored_actor_binding_event_no_max,
+            purpose_event_no_max: stored_purpose_event_no_max,
+            declared_purpose: stored_declared_purpose,
             goal: stored_goal,
             requested_by,
             reanalysis_of: stored_reanalysis_of,
@@ -267,6 +287,8 @@ pub async fn begin(
         identity_event_no_max,
         actor_kind_event_no_max,
         actor_binding_event_no_max,
+        purpose_event_no_max,
+        declared_purpose,
         goal,
         requested_by: actor,
         reanalysis_of,
@@ -282,7 +304,7 @@ pub async fn get(
 ) -> Result<AnalysisInputSnapshot, AnalysisSnapshotError> {
     let mut tx = scoped(pool, workspace, true).await?;
     let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
-        "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
+        "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
@@ -297,6 +319,8 @@ pub async fn get(
         identity_event_no_max,
         actor_kind_event_no_max,
         actor_binding_event_no_max,
+        purpose_event_no_max,
+        declared_purpose,
         goal,
         requested_by,
         reanalysis_of,
@@ -313,6 +337,8 @@ pub async fn get(
         identity_event_no_max,
         actor_kind_event_no_max,
         actor_binding_event_no_max,
+        purpose_event_no_max,
+        declared_purpose,
         goal,
         requested_by,
         reanalysis_of,
@@ -328,7 +354,7 @@ pub async fn materialize(
 ) -> Result<MaterializedAnalysisInput, AnalysisSnapshotError> {
     let mut tx = scoped(pool, workspace, true).await?;
     let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
-        "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,goal,requested_by_principal_id,reanalysis_of \
+        "SELECT input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of \
          FROM niccolo.situation_analysis_snapshots \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
@@ -343,6 +369,8 @@ pub async fn materialize(
         identity_event_no_max,
         actor_kind_event_no_max,
         actor_binding_event_no_max,
+        purpose_event_no_max,
+        declared_purpose,
         goal,
         requested_by,
         reanalysis_of,
