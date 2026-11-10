@@ -292,7 +292,8 @@ printf '%s' "$human_result" | node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
  const j=JSON.parse(s);
  if(j.resolution?.operation_state!=="RUNNING"||j.resolution?.human_response_persisted!==true||
-    j.resolution?.system_inferred_consent!==false)process.exit(1);
+    j.resolution?.system_inferred_consent!==false||
+    j.resolution?.executor_resume_required!==true)process.exit(1);
 });'
 
 # Human-response submission itself must resume execution; the client does not
@@ -344,7 +345,8 @@ node -e '
 const fs=require("fs"),j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
 if(j.resolution?.operation_state!=="SUCCEEDED"||
    j.resolution?.human_response_persisted!==true||
-   j.resolution?.system_inferred_consent!==false)process.exit(1);
+   j.resolution?.system_inferred_consent!==false||
+   j.resolution?.executor_resume_required!==false)process.exit(1);
 ' "$replay_file"
 events_after_replay="$(psql -X -qAt -v ON_ERROR_STOP=1 \
   -v workspace="$WORKSPACE_UUID" -v operation="$operation_id" -v step="$waiting_step" \

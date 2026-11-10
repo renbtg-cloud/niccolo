@@ -337,6 +337,7 @@ pub struct HumanBoundaryResolution {
     pub step_id: Uuid,
     pub human_response_persisted: bool,
     pub system_inferred_consent: bool,
+    pub executor_resume_required: bool,
 }
 fn human_boundary_input_valid(decision: &str, response_text: &str) -> bool {
     matches!(decision, "CONTINUE" | "STOP" | "REPLAN")
@@ -409,6 +410,7 @@ pub async fn resolve_human_boundary(
                 step_id: step,
                 human_response_persisted: true,
                 system_inferred_consent: false,
+                executor_resume_required: false,
             });
         }
     } else {
@@ -467,6 +469,7 @@ pub async fn resolve_human_boundary(
                     step_id: step,
                     human_response_persisted: true,
                     system_inferred_consent: false,
+                    executor_resume_required: false,
                 });
             }
         }
@@ -489,6 +492,7 @@ pub async fn resolve_human_boundary(
             step_id: step,
             human_response_persisted: true,
             system_inferred_consent: false,
+            executor_resume_required: false,
         });
     }
     if op.state == "WAITING_FOR_HUMAN" {
@@ -514,6 +518,7 @@ pub async fn resolve_human_boundary(
         step_id: step,
         human_response_persisted: true,
         system_inferred_consent: false,
+        executor_resume_required: true,
     })
 }
 

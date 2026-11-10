@@ -416,6 +416,7 @@ async fn exact_stop_replay_is_idempotent_after_operation_is_cancelled() {
     assert_eq!(first.operation_state, "CANCELLED");
     assert!(first.human_response_persisted);
     assert!(!first.system_inferred_consent);
+    assert!(!first.executor_resume_required);
 
     let events_before: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
@@ -440,6 +441,7 @@ async fn exact_stop_replay_is_idempotent_after_operation_is_cancelled() {
     .await
     .unwrap();
     assert_eq!(replay.operation_state, "CANCELLED");
+    assert!(!replay.executor_resume_required);
 
     let events_after: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
@@ -511,6 +513,7 @@ async fn exact_replan_replay_does_not_create_another_plan_revision() {
     .unwrap();
     assert_eq!(first.operation_state, "RUNNING");
     assert!(first.plan_revision > original_revision);
+    assert!(first.executor_resume_required);
     let replanned_revision = first.plan_revision;
 
     let replay = agentic_controller::resolve_human_boundary(
@@ -525,6 +528,7 @@ async fn exact_replan_replay_does_not_create_another_plan_revision() {
     .await
     .unwrap();
     assert_eq!(replay.operation_state, "RUNNING");
+    assert!(!replay.executor_resume_required);
     assert_eq!(replay.plan_revision, replanned_revision);
     assert_eq!(
         agentic_controller::view(&app, scope)

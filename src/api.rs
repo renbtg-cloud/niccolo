@@ -4406,7 +4406,10 @@ async fn resolve_agentic_human_boundary(
                 "agentic plan unavailable",
             )
         })?;
-    if resolved.operation_state == "RUNNING" && !controller.waiting_for_human {
+    if resolved.executor_resume_required
+        && resolved.operation_state == "RUNNING"
+        && !controller.waiting_for_human
+    {
         let pool = state.pool.clone();
         let model = state.model.clone();
         tokio::spawn(async move {
