@@ -2,7 +2,9 @@
 use niccolo_evidence::{
     agentic_controller::{self, StepInput},
     agentic_runtime,
+    analysis_structure::AnalysisScope,
     bff_operations::{self, NewOperation, OperationScope},
+    human_agency::{self, EvidenceGapInput},
     model_adapter::{self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel},
     model_adapter::DeterministicModel,
     operation_budget::{self, BudgetError},
@@ -1080,6 +1082,120 @@ async fn exact_replan_replay_does_not_create_another_plan_revision() {
         conflicting,
         Err(agentic_controller::ControllerError::StateConflict)
     ));
+}
+
+#[tokio::test]
+async fn prior_human_review_survives_plan_revision_changes() {
+    let (_admin, app) = pools().await;
+    let s = seed(&_admin).await;
+    let scope = op(&app, s, 16).await;
+
+    let human = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+    agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "CONTINUE",
+        "Continue, but keep the unresolved gap explicit.",
+    )
+    .await
+    .unwrap();
+
+    let analysis_scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    human_agency::record_evidence_gap(
+        &app,
+        analysis_scope,
+        &EvidenceGapInput {
+            gap_id: Uuid::new_v4(),
+            claim_id: None,
+            description: "A material uncertainty remains open.".into(),
+            requested_source_kind: None,
+            recorded_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+
+    let deterministic = Uuid::new_v4();
+    let (revision_after_review, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(
+            deterministic,
+            1,
+            "CHECK_STOP_CONDITIONS",
+            false,
+            vec![],
+        )],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, deterministic, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        deterministic,
+        s.principal,
+        "SUCCEEDED",
+        "deterministic follow-up finished",
+    )
+    .await
+    .unwrap();
+
+    assert!(agentic_controller::human_review_occurred(&app, scope)
+        .await
+        .unwrap());
+
+    let outcome = agentic_runtime::run_until_boundary(
+        &app,
+        scope,
+        s.principal,
+        &DeterministicModel,
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.state, "SUCCEEDED");
+    assert!(outcome.terminal);
+
+    let final_view = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(final_view.plan_revision, revision_after_review);
+    assert!(!final_view.waiting_for_human);
+
+    let operation = bff_operations::get(&app, scope).await.unwrap();
+    assert_eq!(
+        operation.result.unwrap()["explicit_human_review_occurred"],
+        true
+    );
 }
 
 #[tokio::test]

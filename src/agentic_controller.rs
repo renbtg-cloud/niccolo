@@ -347,6 +347,27 @@ pub struct HumanSteeringView {
     pub frozen_input_unchanged: bool,
 }
 
+pub async fn human_review_occurred(
+    pool: &PgPool,
+    scope: OperationScope,
+) -> Result<bool, ControllerError> {
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let occurred: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+             SELECT 1
+             FROM niccolo.agentic_human_responses
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+         )",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(occurred)
+}
+
 pub async fn human_steering(
     pool: &PgPool,
     scope: OperationScope,

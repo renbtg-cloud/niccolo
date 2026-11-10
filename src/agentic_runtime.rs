@@ -340,10 +340,8 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
                 },
             )
             .await?;
-            let already_had_human_review = view
-                .steps
-                .iter()
-                .any(|s| s.kind == "REQUEST_HUMAN_DECISION");
+            let already_had_human_review =
+                agentic_controller::human_review_occurred(pool, scope).await?;
             if quality.human_attention_recommended && !already_had_human_review {
                 let reason = format!(
                     "{} open evidence gap(s), {} clarification(s), {} material adversarial challenge(s)",
