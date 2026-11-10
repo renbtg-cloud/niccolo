@@ -34,6 +34,14 @@ fi
 grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' .niccolo-local/incomplete-model.log
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
+probe_principal="$(node -p "require('node:crypto').randomUUID()")"
+if NICCOLO_PG_ADMIN_URL="$NICCOLO_PG_SECURE_URL" \
+    ./target/release/niccolo-provision mint "$WORKSPACE_UUID" "$probe_principal" read 1 \
+    > .niccolo-local/runtime-provision.log 2>&1; then
+  echo 'Restricted runtime login unexpectedly provisioned a bearer token' >&2
+  exit 1
+fi
+grep -Fq 'database-owner or BYPASSRLS login' .niccolo-local/runtime-provision.log
 ./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
 pid=$!
 cleanup(){ kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }

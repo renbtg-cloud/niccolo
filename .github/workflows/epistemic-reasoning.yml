@@ -166,11 +166,21 @@ jobs:
           --health-timeout 5s
           --health-retries 15
     env:
-      NICCOLO_PG_ADMIN_URL: postgres://postgres:ephemeral_ci_password@localhost:5432/niccolo
+      NICCOLO_PG_ADMIN_URL: postgres://niccolo_bootstrap_admin:ephemeral_ci_admin_password@localhost:5432/niccolo_first_run
       NICCOLO_PG_SECURE_PASSWORD: ephemeral_ci_service_password
       CARGO_BUILD_JOBS: "2"
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare non-superuser first-run database owner
+        env:
+          PGPASSWORD: ephemeral_ci_password
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -U postgres -h localhost -d postgres <<'SQL'
+          CREATE ROLE niccolo_bootstrap_admin LOGIN CREATEROLE CREATEDB PASSWORD 'ephemeral_ci_admin_password';
+          CREATE DATABASE niccolo_first_run OWNER niccolo_bootstrap_admin;
+          SQL
+          test "$(psql -X -At "$NICCOLO_PG_ADMIN_URL" -c "SELECT rolsuper FROM pg_roles WHERE rolname=current_user")" = f
       - name: Install pinned Rust toolchain
         run: |
           rustup toolchain install 1.99.1 --profile minimal

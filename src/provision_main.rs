@@ -16,12 +16,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect(&admin)
         .await?;
     let privileged: bool = sqlx::query_scalar(
-        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+        "SELECT r.rolsuper OR r.rolbypassrls OR EXISTS (
+             SELECT 1
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid=c.relnamespace
+             WHERE n.nspname='niccolo_auth' AND c.relname='tokens'
+               AND pg_has_role(current_user,c.relowner,'MEMBER')
+         )
+         FROM pg_roles r WHERE r.rolname=current_user",
     )
     .fetch_one(&pool)
     .await?;
     if !privileged {
-        return Err("provisioning requires a separate privileged database login".into());
+        return Err("provisioning requires a separate database-owner or BYPASSRLS login".into());
     }
     match args[1].as_str() {
         "mint" if args.len() == 6 => {

@@ -58,8 +58,11 @@ SQL
 workspace="$(node -p "require('node:crypto').randomUUID()")"
 principal="$(node -p "require('node:crypto').randomUUID()")"
 psql -X -q -v ON_ERROR_STOP=1 -v workspace="$workspace" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+BEGIN;
+SELECT set_config('niccolo.workspace_id', :'workspace', true);
 INSERT INTO niccolo.workspaces(workspace_id,label)
   VALUES (:'workspace'::uuid, 'Local Niccolo MVP');
+COMMIT;
 SQL
 
 echo '[4/4] Issue private workspace token and write local runtime configuration'
