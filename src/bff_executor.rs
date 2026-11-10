@@ -139,13 +139,8 @@ async fn run_with_owned_lease(
         work,
         Duration::from_millis(EXECUTION_HEARTBEAT_MS),
         || async {
-            match bff_operations::heartbeat_execution(
-                pool,
-                scope,
-                lease_owner,
-                EXECUTION_LEASE_MS,
-            )
-            .await
+            match bff_operations::heartbeat_execution(pool, scope, lease_owner, EXECUTION_LEASE_MS)
+                .await
             {
                 Ok(true) => Ok(LeaseHeartbeatState::Alive),
                 Ok(false) => {
@@ -201,7 +196,8 @@ pub async fn worker_once(
     model: &(dyn ReasoningModel + Send + Sync),
 ) -> Result<Option<WorkerRun>, BffExecutionError> {
     let Some(scope) =
-        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, EXECUTION_LEASE_MS).await?
+        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, EXECUTION_LEASE_MS)
+            .await?
     else {
         return Ok(None);
     };
@@ -242,7 +238,8 @@ pub async fn worker_once_adaptive(
         )
         .await?
     } else {
-        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, EXECUTION_LEASE_MS).await?
+        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, EXECUTION_LEASE_MS)
+            .await?
     };
     let run = match scope {
         Some(scope) => {
@@ -289,12 +286,11 @@ mod stalled_outcome_tests {
         assert!(!agentic_outcome_is_stalled("SUCCEEDED"));
     }
 
-
     #[tokio::test]
     async fn supervisor_renews_while_work_is_pending() {
         use std::sync::{
-            atomic::{AtomicUsize, Ordering},
             Arc,
+            atomic::{AtomicUsize, Ordering},
         };
 
         let heartbeats = Arc::new(AtomicUsize::new(0));
