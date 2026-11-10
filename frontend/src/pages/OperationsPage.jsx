@@ -48,7 +48,7 @@ export function OperationsPage(){
  const pendingLaunch=useRef(null);
  const pendingHumanResponse=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
- const observed=useOperationObserver(active); const plan=useAgenticPlan(active); const output=useAnalysisOutput(analysis,observed.operation);
+ const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const output=useAnalysisOutput(analysis,observed.operation);
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32}});
  const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:{decision:'CONTINUE',responseText:''}});
  const run=useMutation({mutationFn:async(v)=>{

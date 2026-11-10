@@ -37,4 +37,8 @@ describe('primary analysis path', () => {
     expect(operations).toContain('pendingHumanResponse.current?.signature!==signature');
     expect(operations).toContain('response_id:pendingHumanResponse.current.responseId');
   });
+
+  it('keeps observing a transiently complete plan until the durable operation settles', () => {
+    expect(operations).toContain('useAgenticPlan(active,observed.operation?.state)');
+  });
 });
