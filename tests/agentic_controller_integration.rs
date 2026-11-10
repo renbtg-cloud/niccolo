@@ -505,6 +505,77 @@ async fn concurrent_exact_human_response_is_serialized_without_duplicate_events(
 }
 
 #[tokio::test]
+async fn exhausted_step_budget_rejects_new_replan_without_consuming_human_choice() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 1).await;
+    let human = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+
+    let rejected = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "REPLAN",
+        "Try a different reasoning path.",
+    )
+    .await;
+    assert!(matches!(
+        rejected,
+        Err(agentic_controller::ControllerError::BudgetExhausted)
+    ));
+    let still_waiting = agentic_controller::view(&app, scope).await.unwrap();
+    assert!(still_waiting.waiting_for_human);
+    assert_eq!(still_waiting.budget_used, 1);
+    let response_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(human)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(response_count, 0);
+
+    let stopped = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "STOP",
+        "",
+    )
+    .await
+    .unwrap();
+    assert_eq!(stopped.operation_state, "CANCELLED");
+}
+
+#[tokio::test]
 async fn step_budget_remains_operation_wide_across_replans() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

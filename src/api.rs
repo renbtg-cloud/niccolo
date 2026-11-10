@@ -4396,6 +4396,10 @@ async fn resolve_agentic_human_boundary(
         agentic_controller::ControllerError::Invisible => {
             ApiError(StatusCode::NOT_FOUND, "agentic step not found")
         }
+        agentic_controller::ControllerError::BudgetExhausted => ApiError(
+            StatusCode::CONFLICT,
+            "agentic step budget exhausted; stop or start another analysis",
+        ),
         _ => ApiError(StatusCode::BAD_REQUEST, "invalid agentic human response"),
     })?;
     let controller = agentic_controller::view(&state.pool, scope)

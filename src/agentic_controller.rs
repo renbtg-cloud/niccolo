@@ -502,6 +502,9 @@ pub async fn resolve_human_boundary(
         if step_state != Some("WAITING_FOR_HUMAN") {
             return Err(ControllerError::StateConflict);
         }
+        if decision == "REPLAN" && before.budget_used >= i64::from(before.budget_total) {
+            return Err(ControllerError::BudgetExhausted);
+        }
 
         let mut tx = scoped(pool, scope.workspace, false).await?;
         let inserted = sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
