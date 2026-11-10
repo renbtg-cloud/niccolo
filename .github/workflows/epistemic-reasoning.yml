@@ -197,6 +197,7 @@ jobs:
           for script in scripts/smoke-local-first-run.sh scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh; do
             bash -n "$script"
           done
+          node --check scripts/ci-openai-compatible-mock.mjs
       - name: Fail early when bootstrap owner cannot create the runtime login
         env:
           PGPASSWORD: ephemeral_ci_password
@@ -220,5 +221,22 @@ jobs:
           DROP DATABASE niccolo_no_createrole;
           DROP ROLE niccolo_no_createrole;
           SQL
-      - name: Fresh MVP bootstrap and authenticated first Situation
-        run: bash scripts/smoke-local-first-run.sh
+      - name: Fresh MVP bootstrap, authenticated first Situation, and Analyze wiring
+        run: |
+          set -euo pipefail
+          node scripts/ci-openai-compatible-mock.mjs > /tmp/niccolo-ci-model.log 2>&1 &
+          model_pid=$!
+          cleanup_model(){ kill "$model_pid" 2>/dev/null || true; wait "$model_pid" 2>/dev/null || true; }
+          trap cleanup_model EXIT
+          for _ in $(seq 1 40); do
+            if curl --max-time 2 --silent --fail http://127.0.0.1:18080/healthz >/dev/null; then break; fi
+            if ! kill -0 "$model_pid" 2>/dev/null; then
+              cat /tmp/niccolo-ci-model.log >&2
+              exit 1
+            fi
+            sleep .25
+          done
+          export NICCOLO_LLM_BASE_URL='http://127.0.0.1:18080/v1'
+          export NICCOLO_LLM_MODEL='niccolo-ci-protocol-smoke'
+          export NICCOLO_LLM_PROVIDER='ci-protocol-smoke'
+          bash scripts/smoke-local-first-run.sh

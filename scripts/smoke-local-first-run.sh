@@ -247,6 +247,62 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
 });'
 echo 'PASS: context provenance, idempotent replay, correction, frozen history, retraction'
 
+# With the CI-only OpenAI-compatible fixture configured, prove the same Analyze
+# path used by the React UI: intent -> bounded plan -> model ledger -> published output.
+readiness="$(curl --max-time 10 --silent --show-error --fail http://127.0.0.1:38080/readyz)"
+printf '%s' "$readiness" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);if(j.status!=="ready"||j.model_configured!==true)process.exit(1);
+});'
+operation_id="$(node -p "require('node:crypto').randomUUID()")"
+analysis_id="$(node -p "require('node:crypto').randomUUID()")"
+intent_body="$(OPERATION_ID="$operation_id" ANALYSIS_ID="$analysis_id" node -e '
+process.stdout.write(JSON.stringify({
+ analysis_id:process.env.ANALYSIS_ID,intent:"UNDERSTAND",
+ goal:"What can we conclude from the attached records, and what remains uncertain?",
+ reanalysis_of:null,idempotency_key:`ci-intent-${process.env.OPERATION_ID}`,step_budget:32,
+ context:{surface:"ci-first-run",human_owns_project:true}
+}));')"
+intent_result="$(curl --max-time 60 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "$intent_body" "${path}/bff/intents/${operation_id}/sync")"
+ANALYSIS_ID="$analysis_id" OPERATION_ID="$operation_id" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.analysis_id!==process.env.ANALYSIS_ID||j.operation?.operation_id!==process.env.OPERATION_ID||
+    j.operation?.state!=="SUCCEEDED"||j.operation?.terminal!==true||
+    j.operation?.result?.agentic!==true||j.operation?.result?.budget_used!==8)process.exit(1);
+});' <<< "$intent_result"
+analysis_output="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" "${path}/analysis-snapshots/${analysis_id}/output")"
+printf '%s' "$analysis_output" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.answer_text!=="Deterministic CI protocol smoke synthesis. No truth claim."||
+    j.coverage_note!=="Protocol/wiring validation only; not a quality evaluation."||
+    j.input_is_current!==true||j.historical_output_preserved!==true)process.exit(1);
+});'
+ledger_summary="$(psql -X -qAt -v ON_ERROR_STOP=1 \
+  -v workspace="$WORKSPACE_UUID" -v operation="$operation_id" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+BEGIN;
+SELECT set_config('niccolo.workspace_id', :'workspace', true) \gset
+SELECT concat_ws('|',
+  count(*),
+  count(*) FILTER (WHERE status='SUCCEEDED'),
+  count(*) FILTER (WHERE response_sha256 IS NOT NULL),
+  count(DISTINCT (request_json::jsonb)->>'purpose'))
+FROM niccolo.model_invocations
+WHERE operation_id=:'operation'::uuid;
+ROLLBACK;
+SQL
+)"
+[[ "$ledger_summary" == '6|6|6|6' ]] || {
+  echo "Unexpected model invocation ledger summary: $ledger_summary" >&2
+  exit 1
+}
+echo 'PASS: OpenAI-compatible Analyze path, invocation ledger, and published output'
+
+
 # A second, empty database on the SAME PostgreSQL cluster must not
 # trigger password rotation for the already-provisioned service role.
 psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
@@ -350,5 +406,5 @@ psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
   -c 'DROP DATABASE niccolo_ci_populated_probe'
 echo 'PASS: unrelated application data is protected from first-run migrations'
 
-echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
+echo 'PASS: bootstrap, embedded UI, Situation lifecycle, auth isolation, and Analyze protocol wiring'
 
