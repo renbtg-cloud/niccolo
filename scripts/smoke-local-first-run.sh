@@ -283,9 +283,10 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
  process.stdout.write(step.step_id);
 });')"
 response_id="$(node -p "require('node:crypto').randomUUID()")"
+human_body="$(RESPONSE_ID="$response_id" node -e 'process.stdout.write(JSON.stringify({response_id:process.env.RESPONSE_ID,decision:"CONTINUE",response_text:"Continue, but preserve the unresolved explanation and material coverage challenge."}))')"
 human_result="$(curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
-  --data "{\"response_id\":\"${response_id}\",\"decision\":\"CONTINUE\",\"response_text\":\"Continue, but preserve the unresolved explanation and material coverage challenge.\"}" \
+  --data-binary "$human_body" \
   "${path}/bff/operations/${operation_id}/agentic/steps/${waiting_step}/human-response")"
 printf '%s' "$human_result" | node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
@@ -319,6 +320,59 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
     q?.provisional!==true||q?.human_attention_recommended!==true)process.exit(1);
 });'
 
+events_before_replay="$(psql -X -qAt -v ON_ERROR_STOP=1 \
+  -v workspace="$WORKSPACE_UUID" -v operation="$operation_id" -v step="$waiting_step" \
+  "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+BEGIN;
+SELECT set_config('niccolo.workspace_id', :'workspace', true) \gset
+SELECT count(*) FROM niccolo.agentic_step_events
+WHERE operation_id=:'operation'::uuid AND step_id=:'step'::uuid;
+ROLLBACK;
+SQL
+)"
+replay_file="$(mktemp)"
+replay_status="$(curl --max-time 10 --silent --show-error -o "$replay_file" -w '%{http_code}' \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "$human_body" \
+  "${path}/bff/operations/${operation_id}/agentic/steps/${waiting_step}/human-response")"
+[[ "$replay_status" == "200" ]] || {
+  echo "Expected exact human-response replay HTTP 200, got $replay_status" >&2
+  cat "$replay_file" >&2
+  exit 1
+}
+node -e '
+const fs=require("fs"),j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+if(j.resolution?.operation_state!=="SUCCEEDED"||
+   j.resolution?.human_response_persisted!==true||
+   j.resolution?.system_inferred_consent!==false)process.exit(1);
+' "$replay_file"
+events_after_replay="$(psql -X -qAt -v ON_ERROR_STOP=1 \
+  -v workspace="$WORKSPACE_UUID" -v operation="$operation_id" -v step="$waiting_step" \
+  "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+BEGIN;
+SELECT set_config('niccolo.workspace_id', :'workspace', true) \gset
+SELECT count(*) FROM niccolo.agentic_step_events
+WHERE operation_id=:'operation'::uuid AND step_id=:'step'::uuid;
+ROLLBACK;
+SQL
+)"
+[[ "$events_before_replay" == "$events_after_replay" ]] || {
+  echo "Exact human-response replay duplicated step events: $events_before_replay -> $events_after_replay" >&2
+  exit 1
+}
+different_response_id="$(node -p "require('node:crypto').randomUUID()")"
+different_body="$(RESPONSE_ID="$different_response_id" node -e 'process.stdout.write(JSON.stringify({response_id:process.env.RESPONSE_ID,decision:"CONTINUE",response_text:"Continue, but preserve the unresolved explanation and material coverage challenge."}))')"
+different_status="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "$different_body" \
+  "${path}/bff/operations/${operation_id}/agentic/steps/${waiting_step}/human-response")"
+[[ "$different_status" == "409" ]] || {
+  echo "Expected different human response_id to conflict, got $different_status" >&2
+  exit 1
+}
+rm -f "$replay_file"
+echo 'PASS: human response replay is exact-idempotent and side-effect free'
+
 analysis_output="$(curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" "${path}/analysis-snapshots/${analysis_id}/output")"
 printf '%s' "$analysis_output" | node -e '
@@ -328,6 +382,21 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
     j.coverage_note!=="Protocol validation used the frozen imported records; unverified context remains explicitly unresolved."||
     j.input_is_current!==true||j.historical_output_preserved!==true)process.exit(1);
 });'
+
+coverage="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" "${path}/analysis-snapshots/${analysis_id}/coverage")"
+printf '%s' "$coverage" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s),docs=j.documents??[];
+ if(j.coverage_scope!=="FROZEN_ANALYSIS_INPUT"||docs.length!==2||
+    j.source_present_does_not_mean_examined!==true||
+    j.all_catalogued_fragments_examined_does_not_prove_unsupported_media_examined!==true||
+    docs.some(d=>!(d.catalogued_fragment_count>0)||
+                 d.examined_fragment_count!==d.catalogued_fragment_count||
+                 d.all_catalogued_fragments_examined!==true||
+                 d.proves_full_source_examined!==false))process.exit(1);
+});'
+echo 'PASS: frozen-input coverage distinguishes examined fragments from whole-source proof'
 
 handoff="$(curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" "${path}/analysis-snapshots/${analysis_id}/bff/handoff")"

@@ -356,22 +356,119 @@ pub async fn resolve_human_boundary(
     if !human_boundary_input_valid(decision, response_text) {
         return Err(ControllerError::Invalid);
     }
+    let response_text = response_text.trim();
     let before = view(pool, scope).await?;
-    let s = before
+    let step_state = before
         .steps
         .iter()
-        .find(|x| x.step_id == step)
-        .ok_or(ControllerError::Invisible)?;
-    if s.state != "WAITING_FOR_HUMAN" {
-        return Err(ControllerError::StateConflict);
-    }
+        .find(|candidate| candidate.step_id == step)
+        .map(|candidate| candidate.state.as_str());
+
+    // Human responses are client-generated idempotent commands. If an HTTP
+    // response is lost after persistence, an exact retry must not become a
+    // conflict just because the step has already advanced. Conversely, an
+    // already-persisted response with different content remains a conflict.
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_id).bind(decision).bind(response_text.trim()).bind(actor).execute(&mut *tx).await?;
-    let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).fetch_optional(&mut *tx).await?;
-    if row != Some((decision.into(), response_text.trim().into(), actor)) {
-        return Err(ControllerError::StateConflict);
-    }
+    let existing: Option<(i64, Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT plan_revision,response_id,decision,response_text,actor_principal_id \
+         FROM niccolo.agentic_human_responses \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4 \
+         ORDER BY plan_revision DESC LIMIT 1",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(step)
+    .fetch_optional(&mut *tx)
+    .await?;
     tx.commit().await?;
+
+    if let Some((stored_revision, stored_id, stored_decision, stored_text, stored_actor)) = existing
+    {
+        if stored_id != response_id
+            || stored_decision != decision
+            || stored_text != response_text
+            || stored_actor != actor
+        {
+            return Err(ControllerError::StateConflict);
+        }
+
+        // If the exact response was persisted but the process died before the
+        // WAITING step advanced, continue the original transition. Once the
+        // step has advanced (or a REPLAN created a newer revision), replay is
+        // side-effect free and reports the operation's current state.
+        if stored_revision != before.plan_revision || step_state != Some("WAITING_FOR_HUMAN") {
+            let operation = bff_operations::get(pool, scope).await?;
+            return Ok(HumanBoundaryResolution {
+                decision: decision.into(),
+                operation_state: operation.state,
+                plan_revision: before.plan_revision,
+                step_id: step,
+                human_response_persisted: true,
+                system_inferred_consent: false,
+            });
+        }
+    } else {
+        if step_state.is_none() {
+            return Err(ControllerError::Invisible);
+        }
+        if step_state != Some("WAITING_FOR_HUMAN") {
+            return Err(ControllerError::StateConflict);
+        }
+
+        let mut tx = scoped(pool, scope.workspace, false).await?;
+        let inserted = sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.operation)
+            .bind(before.plan_revision)
+            .bind(step)
+            .bind(response_id)
+            .bind(decision)
+            .bind(response_text)
+            .bind(actor)
+            .execute(&mut *tx)
+            .await?;
+        let row: Option<(Uuid, String, String, Uuid)> = sqlx::query_as("SELECT response_id,decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5")
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.operation)
+            .bind(before.plan_revision)
+            .bind(step)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if row != Some((response_id, decision.into(), response_text.into(), actor)) {
+            return Err(ControllerError::StateConflict);
+        }
+        tx.commit().await?;
+
+        // If an identical concurrent request won the insert race, refresh the
+        // plan. If it already advanced, this request is a side-effect-free
+        // replay. If it has not advanced yet, operation state-version checks
+        // still gate the actual resume.
+        if inserted.rows_affected() == 0 {
+            let refreshed = view(pool, scope).await?;
+            let refreshed_state = refreshed
+                .steps
+                .iter()
+                .find(|candidate| candidate.step_id == step)
+                .map(|candidate| candidate.state.as_str());
+            if refreshed.plan_revision != before.plan_revision
+                || refreshed_state != Some("WAITING_FOR_HUMAN")
+            {
+                let operation = bff_operations::get(pool, scope).await?;
+                return Ok(HumanBoundaryResolution {
+                    decision: decision.into(),
+                    operation_state: operation.state,
+                    plan_revision: refreshed.plan_revision,
+                    step_id: step,
+                    human_response_persisted: true,
+                    system_inferred_consent: false,
+                });
+            }
+        }
+    }
+
     let op = bff_operations::get(pool, scope).await?;
     if decision == "STOP" {
         let v = bff_operations::cancel(
