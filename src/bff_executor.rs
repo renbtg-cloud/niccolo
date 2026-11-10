@@ -159,32 +159,40 @@ async fn run_with_owned_lease(
     )
     .await;
 
-    let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
-    if let Err(error) = result {
-        if matches!(
-            &error,
-            BffExecutionError::ExecutionLeaseLost | BffExecutionError::LeaseHeartbeat(_)
-        ) {
-            // Do not fail the durable operation after losing supervision. A
-            // replacement worker may already own it, or may reclaim it when
-            // the old lease expires.
-            return Err(error);
+    match result {
+        Ok(()) => {
+            let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
+            Ok(bff_operations::get(pool, scope).await?)
         }
-        let code = match &error {
-            BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
-            BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
-            BffExecutionError::Operation(_)
-            | BffExecutionError::Resources(_)
-            | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
-            BffExecutionError::ExecutionLeaseLost | BffExecutionError::LeaseHeartbeat(_) => {
-                unreachable!("lease supervision errors return before durable failure handling")
-            }
-        };
-        let message = error.to_string();
-        mark_failed_best_effort(pool, scope, actor, code, &message).await;
-        return Err(error);
+        Err(BffExecutionError::ExecutionLeaseLost) => {
+            // Losing ownership is a delivery handoff, not a domain failure.
+            // Another worker may already be executing the same durable operation.
+            // Returning the durable view lets synchronous callers poll normally.
+            Ok(bff_operations::get(pool, scope).await?)
+        }
+        Err(error @ BffExecutionError::LeaseHeartbeat(_)) => {
+            // A transient database failure makes lease ownership unknowable.
+            // Do not clear the lease early: letting its existing TTL expire gives
+            // stale-step recovery time to become safe before another worker claims it.
+            Err(error)
+        }
+        Err(error) => {
+            let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
+            let code = match &error {
+                BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
+                BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
+                BffExecutionError::Operation(_)
+                | BffExecutionError::Resources(_)
+                | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
+                BffExecutionError::ExecutionLeaseLost | BffExecutionError::LeaseHeartbeat(_) => {
+                    unreachable!("lease supervision errors handled above")
+                }
+            };
+            let message = error.to_string();
+            mark_failed_best_effort(pool, scope, actor, code, &message).await;
+            Err(error)
+        }
     }
-    Ok(bff_operations::get(pool, scope).await?)
 }
 
 /// Execute at most one queued/recoverable operation in an already-authorized workspace.
