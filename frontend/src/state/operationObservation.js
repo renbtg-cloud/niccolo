@@ -44,3 +44,12 @@ export function operationPhase(observation, transport = {}) {
   if (transport.fetching) return 'observing';
   return 'active';
 }
+
+
+export function completedAnalysisOutputRefreshId(previous, current) {
+  const before = previous?.operation;
+  const after = current?.operation;
+  if (!before || before.state === 'SUCCEEDED') return null;
+  if (after?.state !== 'SUCCEEDED') return null;
+  return after.target_analysis_id ?? null;
+}

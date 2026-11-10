@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeOperationObservation, operationPhase, observationPollDelay } from './operationObservation.js';
+import { completedAnalysisOutputRefreshId, mergeOperationObservation, operationPhase, observationPollDelay } from './operationObservation.js';
 
 describe('operation observation state', () => {
   it('never regresses operation version and deduplicates events', () => {
@@ -70,6 +70,16 @@ describe('operation observation state', () => {
     for (const state of ['SUCCEEDED', 'FAILED', 'CANCELLED']) {
       expect(observationPollDelay(state)).toBe(false);
     }
+  });
+
+  it('requests one final output refresh when a live analysis succeeds', () => {
+    const analysis = '33333333-3333-4333-8333-333333333333';
+    const previous = { operation: { state: 'RUNNING', state_version: 7, target_analysis_id: analysis } };
+    const succeeded = { operation: { state: 'SUCCEEDED', state_version: 8, target_analysis_id: analysis } };
+    expect(completedAnalysisOutputRefreshId(previous, succeeded)).toBe(analysis);
+    expect(completedAnalysisOutputRefreshId(succeeded, succeeded)).toBe(null);
+    expect(completedAnalysisOutputRefreshId(null, succeeded)).toBe(null);
+    expect(completedAnalysisOutputRefreshId(previous, { operation: { state: 'WAITING_FOR_HUMAN', target_analysis_id: analysis } })).toBe(null);
   });
 
   it('reports transport and terminal phases explicitly', () => {
