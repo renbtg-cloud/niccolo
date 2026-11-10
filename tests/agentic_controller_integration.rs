@@ -505,6 +505,65 @@ async fn concurrent_exact_human_response_is_serialized_without_duplicate_events(
 }
 
 #[tokio::test]
+async fn step_budget_remains_operation_wide_across_replans() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 2).await;
+    let human = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+    assert_eq!(agentic_controller::view(&app, scope).await.unwrap().budget_used, 1);
+
+    agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "REPLAN",
+        "Use the same evidence but reconsider the interpretation.",
+    )
+    .await
+    .unwrap();
+    let replanned = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(replanned.budget_used, 1);
+    assert_eq!(replanned.budget_total, 2);
+    let first = *replanned.ready_step_ids.first().expect("replanned work is ready");
+    agentic_controller::start_step(&app, scope, first, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(&app, scope, first, s.principal, "SUCCEEDED", "done")
+        .await
+        .unwrap();
+    let after = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(after.budget_used, 2);
+    let next = *after.ready_step_ids.first().expect("another replanned step is ready");
+    assert!(matches!(
+        agentic_controller::start_step(&app, scope, next, s.principal).await,
+        Err(agentic_controller::ControllerError::BudgetExhausted)
+    ));
+}
+
+#[tokio::test]
 async fn replan_preserves_the_original_human_intent_and_its_required_boundary() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
