@@ -505,6 +505,78 @@ async fn concurrent_exact_human_response_is_serialized_without_duplicate_events(
 }
 
 #[tokio::test]
+async fn replan_preserves_the_original_human_intent_and_its_required_boundary() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = OperationScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        operation: Uuid::new_v4(),
+    };
+    bff_operations::submit(
+        &app,
+        scope,
+        &NewOperation {
+            kind: "AGENTIC_ANALYSIS".into(),
+            target_analysis_id: Some(s.analysis),
+            parent_operation_id: None,
+            idempotency_key: None,
+            input: json!({"human_intent":"ABOUT_TO_ACT_OR_SAY"}),
+            deadline_at: None,
+            step_budget: 32,
+            requested_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+
+    let human = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+
+    let resolution = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "REPLAN",
+        "Reconsider the evidence before I decide what to say.",
+    )
+    .await
+    .unwrap();
+    assert!(resolution.executor_resume_required);
+
+    let replanned = agentic_controller::view(&app, scope).await.unwrap();
+    let human_step = replanned
+        .steps
+        .iter()
+        .find(|candidate| candidate.kind == "REQUEST_HUMAN_DECISION")
+        .expect("ABOUT_TO_ACT_OR_SAY keeps an explicit human boundary after replan");
+    assert!(human_step.requires_human);
+    assert!(human_step.label.contains("before action"));
+}
+
+#[tokio::test]
 async fn bounded_human_steering_keeps_the_newest_responses_in_chronological_order() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

@@ -586,10 +586,20 @@ pub async fn resolve_human_boundary(
     if decision == "REPLAN" {
         let op = bff_operations::get(pool, scope).await?;
         let analysis = op.target_analysis_id.ok_or(ControllerError::Invalid)?;
-        let steps =
-            crate::agentic_policy::default_plan(pool, scope.workspace, scope.situation, analysis)
-                .await
-                .map_err(|_| ControllerError::Invalid)?;
+        let input = bff_operations::input(pool, scope).await?;
+        let intent = input
+            .get("human_intent")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok());
+        let steps = crate::agentic_policy::plan_for_intent(
+            pool,
+            scope.workspace,
+            scope.situation,
+            analysis,
+            intent,
+        )
+        .await
+        .map_err(|_| ControllerError::Invalid)?;
         let _ = create_plan(pool, scope, actor, &steps).await?;
     }
     let op = bff_operations::get(pool, scope).await?;
