@@ -476,8 +476,10 @@ async fn concurrent_exact_human_response_is_serialized_without_duplicate_events(
     let second = second.unwrap();
     assert_eq!(first.operation_state, "RUNNING");
     assert_eq!(second.operation_state, "RUNNING");
-    let resume_flags = [first.executor_resume_required, second.executor_resume_required];
-    assert_eq!(resume_flags.iter().filter(|&&flag| flag).count(), 1);
+    // Exact retries may both ask the API to ensure execution. The durable
+    // execution lease makes duplicate spawns harmless.
+    assert!(first.executor_resume_required);
+    assert!(second.executor_resume_required);
 
     let response_count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
@@ -853,6 +855,102 @@ async fn exact_stop_replay_is_idempotent_after_operation_is_cancelled() {
 }
 
 #[tokio::test]
+async fn replan_replay_recovers_when_new_plan_was_not_persisted() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 32).await;
+    let human = Uuid::new_v4();
+    let (original_revision, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+
+    let response_id = Uuid::new_v4();
+    let response_text = "Replan after the simulated crash.";
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_human_responses(
+            workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,
+            decision,response_text,actor_principal_id
+         ) VALUES($1,$2,$3,$4,$5,$6,'REPLAN',$7,$8)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(original_revision)
+    .bind(human)
+    .bind(response_id)
+    .bind(response_text)
+    .bind(s.principal)
+    .execute(&admin)
+    .await
+    .unwrap();
+
+    let waiting_operation = bff_operations::get(&app, scope).await.unwrap();
+    assert_eq!(waiting_operation.state, "WAITING_FOR_HUMAN");
+    bff_operations::resume(&app, scope, waiting_operation.state_version, s.principal)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_step_events(
+            workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id
+         ) VALUES
+            ($1,$2,$3,$4,$5,'RESUMED',$6,$7),
+            ($1,$2,$3,$4,$5,'SUCCEEDED','human requested replanning',$7)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(original_revision)
+    .bind(human)
+    .bind(response_text)
+    .bind(s.principal)
+    .execute(&admin)
+    .await
+    .unwrap();
+
+    let stranded = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(stranded.plan_revision, original_revision);
+    assert!(stranded.complete);
+    assert!(!stranded.waiting_for_human);
+
+    let recovered = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "REPLAN",
+        response_text,
+    )
+    .await
+    .unwrap();
+    assert_eq!(recovered.operation_state, "RUNNING");
+    assert!(recovered.plan_revision > original_revision);
+    assert!(recovered.executor_resume_required);
+    let replanned = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(replanned.plan_revision, recovered.plan_revision);
+    assert!(!replanned.complete);
+    assert!(!replanned.waiting_for_human);
+}
+
+#[tokio::test]
 async fn exact_replan_replay_does_not_create_another_plan_revision() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -909,7 +1007,7 @@ async fn exact_replan_replay_does_not_create_another_plan_revision() {
     .await
     .unwrap();
     assert_eq!(replay.operation_state, "RUNNING");
-    assert!(!replay.executor_resume_required);
+    assert!(replay.executor_resume_required);
     assert_eq!(replay.plan_revision, replanned_revision);
     assert_eq!(
         agentic_controller::view(&app, scope)

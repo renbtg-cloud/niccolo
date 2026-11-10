@@ -426,6 +426,38 @@ async fn human_boundary_serialization_guard(
     Ok(tx)
 }
 
+async fn replan_steps(
+    pool: &PgPool,
+    scope: OperationScope,
+) -> Result<Vec<StepInput>, ControllerError> {
+    let op = bff_operations::get(pool, scope).await?;
+    let analysis = op.target_analysis_id.ok_or(ControllerError::Invalid)?;
+    let input = bff_operations::input(pool, scope).await?;
+    let intent = input
+        .get("human_intent")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok());
+    crate::agentic_policy::plan_for_intent(
+        pool,
+        scope.workspace,
+        scope.situation,
+        analysis,
+        intent,
+    )
+    .await
+    .map_err(|_| ControllerError::Invalid)
+}
+
+// This flag means "ensure autonomous execution is running", not "this HTTP
+// response was fresh". Exact retries may return true while work remains;
+// the BFF execution lease prevents duplicate actual execution.
+fn executor_should_resume(
+    operation: &bff_operations::OperationView,
+    controller: &ControllerView,
+) -> bool {
+    operation.state == "RUNNING" && !operation.terminal && !controller.waiting_for_human
+}
+
 pub async fn resolve_human_boundary(
     pool: &PgPool,
     scope: OperationScope,
@@ -446,6 +478,8 @@ pub async fn resolve_human_boundary(
         .iter()
         .find(|candidate| candidate.step_id == step)
         .map(|candidate| candidate.state.as_str());
+
+    let mut preplanned_replan: Option<Vec<StepInput>> = None;
 
     // Human responses are client-generated idempotent commands. If an HTTP
     // response is lost after persistence, an exact retry must not become a
@@ -476,23 +510,40 @@ pub async fn resolve_human_boundary(
             return Err(ControllerError::StateConflict);
         }
 
-        // If the exact response was persisted but the process died before the
-        // WAITING step advanced, continue the original transition. Once the
-        // step has advanced (or a REPLAN created a newer revision), replay is
-        // side-effect free and reports the operation's current state.
+        // Exact retry is also crash recovery. If REPLAN was recorded and the old
+        // boundary step reached SUCCEEDED but the next plan was never persisted,
+        // reconstruct that missing plan from the original operation intent.
         let operation = bff_operations::get(pool, scope).await?;
+        if decision == "REPLAN"
+            && stored_revision == before.plan_revision
+            && step_state == Some("SUCCEEDED")
+            && !operation.terminal
+        {
+            let steps = replan_steps(pool, scope).await?;
+            let _ = create_plan(pool, scope, actor, &steps).await?;
+            let refreshed = view(pool, scope).await?;
+            return Ok(HumanBoundaryResolution {
+                decision: decision.into(),
+                operation_state: operation.state.clone(),
+                plan_revision: refreshed.plan_revision,
+                step_id: step,
+                human_response_persisted: true,
+                system_inferred_consent: false,
+                executor_resume_required: executor_should_resume(&operation, &refreshed),
+            });
+        }
         if stored_revision != before.plan_revision
             || step_state != Some("WAITING_FOR_HUMAN")
             || operation.terminal
         {
             return Ok(HumanBoundaryResolution {
                 decision: decision.into(),
-                operation_state: operation.state,
+                operation_state: operation.state.clone(),
                 plan_revision: before.plan_revision,
                 step_id: step,
                 human_response_persisted: true,
                 system_inferred_consent: false,
-                executor_resume_required: false,
+                executor_resume_required: executor_should_resume(&operation, &before),
             });
         }
     } else {
@@ -504,6 +555,10 @@ pub async fn resolve_human_boundary(
         }
         if decision == "REPLAN" && before.budget_used >= i64::from(before.budget_total) {
             return Err(ControllerError::BudgetExhausted);
+        }
+        if decision == "REPLAN" {
+            // Validate policy construction before consuming the human command.
+            preplanned_replan = Some(replan_steps(pool, scope).await?);
         }
 
         let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -549,12 +604,12 @@ pub async fn resolve_human_boundary(
                 let operation = bff_operations::get(pool, scope).await?;
                 return Ok(HumanBoundaryResolution {
                     decision: decision.into(),
-                    operation_state: operation.state,
+                    operation_state: operation.state.clone(),
                     plan_revision: refreshed.plan_revision,
                     step_id: step,
                     human_response_persisted: true,
                     system_inferred_consent: false,
-                    executor_resume_required: false,
+                    executor_resume_required: executor_should_resume(&operation, &refreshed),
                 });
             }
         }
@@ -587,33 +642,22 @@ pub async fn resolve_human_boundary(
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7),($1,$2,$3,$4,$5,'SUCCEEDED',$8,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_text.trim()).bind(actor).bind(if decision=="REPLAN"{"human requested replanning"}else{"human explicitly continued"}).execute(&mut *tx).await?;
     tx.commit().await?;
     if decision == "REPLAN" {
-        let op = bff_operations::get(pool, scope).await?;
-        let analysis = op.target_analysis_id.ok_or(ControllerError::Invalid)?;
-        let input = bff_operations::input(pool, scope).await?;
-        let intent = input
-            .get("human_intent")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok());
-        let steps = crate::agentic_policy::plan_for_intent(
-            pool,
-            scope.workspace,
-            scope.situation,
-            analysis,
-            intent,
-        )
-        .await
-        .map_err(|_| ControllerError::Invalid)?;
+        let steps = match preplanned_replan {
+            Some(steps) => steps,
+            None => replan_steps(pool, scope).await?,
+        };
         let _ = create_plan(pool, scope, actor, &steps).await?;
     }
     let op = bff_operations::get(pool, scope).await?;
+    let controller = view(pool, scope).await?;
     Ok(HumanBoundaryResolution {
         decision: decision.into(),
-        operation_state: op.state,
-        plan_revision: view(pool, scope).await?.plan_revision,
+        operation_state: op.state.clone(),
+        plan_revision: controller.plan_revision,
         step_id: step,
         human_response_persisted: true,
         system_inferred_consent: false,
-        executor_resume_required: true,
+        executor_resume_required: executor_should_resume(&op, &controller),
     })
 }
 
