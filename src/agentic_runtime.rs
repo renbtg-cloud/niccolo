@@ -148,6 +148,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         let _operation_budget = operation_budget::require_available(pool, scope).await?;
         let packet = reasoning_packet::build(pool, analysis_scope).await?;
         let packet_sha = reasoning_packet::sha256(&packet)?;
+        let human_steering = agentic_controller::human_steering(pool, scope, 32).await?;
         let packet_evidence_ids = packet
             .frozen_input
             .source_fragments
@@ -156,7 +157,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             .collect::<Vec<_>>();
         let request = ModelRequest {
             purpose: step.kind.clone(),
-            input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
+            input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet,"human_steering":human_steering}),
             output_contract: if step.kind == "SYNTHESIZE" {
                 json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","context_links","assumptions","alternatives","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
             } else if matches!(

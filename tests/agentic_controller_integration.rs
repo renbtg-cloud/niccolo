@@ -109,6 +109,48 @@ impl ReasoningModel for OverBudgetModel {
     }
 }
 
+struct HumanSteeringAssertingModel {
+    expected_text: &'static str,
+}
+
+impl ReasoningModel for HumanSteeringAssertingModel {
+    fn provider(&self) -> &str {
+        "human-steering-fixture"
+    }
+    fn model(&self) -> &str {
+        "static-response"
+    }
+    fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
+        let steering = request
+            .input
+            .get("human_steering")
+            .expect("model request carries human steering");
+        assert_eq!(steering["scope"], "THIS_OPERATION_ONLY");
+        assert_eq!(steering["responses_are_evidence"], false);
+        assert_eq!(steering["responses_are_facts"], false);
+        assert_eq!(steering["frozen_input_unchanged"], true);
+        assert_eq!(steering["truncated"], false);
+        let responses = steering["responses"]
+            .as_array()
+            .expect("human steering responses are an array");
+        assert!(responses.iter().any(|response| {
+            response["decision"] == "REPLAN"
+                && response["response_text"] == self.expected_text
+        }));
+        let purpose = request.purpose.clone();
+        Box::pin(async move {
+            Ok(ModelResponse {
+                value: json!({"purpose":purpose,"status":"ok"}),
+                prompt_tokens: Some(8),
+                completion_tokens: Some(4),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
 struct NoUsageModel;
 impl ReasoningModel for NoUsageModel {
     fn provider(&self) -> &str { "usage-omitting-fixture" }
@@ -629,6 +671,43 @@ async fn exact_replan_replay_does_not_create_another_plan_revision() {
     .await
     .unwrap();
     assert_eq!(response_count, 1);
+
+    let steering = agentic_controller::human_steering(&app, scope, 32)
+        .await
+        .unwrap();
+    assert_eq!(steering.scope, "THIS_OPERATION_ONLY");
+    assert!(!steering.responses_are_evidence);
+    assert!(!steering.responses_are_facts);
+    assert!(steering.frozen_input_unchanged);
+    assert!(!steering.truncated);
+    assert_eq!(steering.responses.len(), 1);
+    assert_eq!(steering.responses[0].decision, "REPLAN");
+    assert_eq!(
+        steering.responses[0].response_text,
+        "Replan using the evidence already available."
+    );
+
+    let inspect = Uuid::new_v4();
+    let (steering_revision, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(inspect, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    assert!(steering_revision > replanned_revision);
+    let outcome = agentic_runtime::run_until_boundary(
+        &app,
+        scope,
+        s.principal,
+        &HumanSteeringAssertingModel {
+            expected_text: "Replan using the evidence already available.",
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.state, "SUCCEEDED");
 
     let conflicting = agentic_controller::resolve_human_boundary(
         &app,

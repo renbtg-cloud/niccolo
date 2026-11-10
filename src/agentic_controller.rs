@@ -330,6 +330,67 @@ pub async fn resume_step(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HumanSteeringEntry {
+    pub plan_revision: i64,
+    pub step_id: Uuid,
+    pub decision: String,
+    pub response_text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HumanSteeringView {
+    pub scope: String,
+    pub responses: Vec<HumanSteeringEntry>,
+    pub truncated: bool,
+    pub responses_are_evidence: bool,
+    pub responses_are_facts: bool,
+    pub frozen_input_unchanged: bool,
+}
+
+pub async fn human_steering(
+    pool: &PgPool,
+    scope: OperationScope,
+    limit: i64,
+) -> Result<HumanSteeringView, ControllerError> {
+    if !(1..=64).contains(&limit) {
+        return Err(ControllerError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let rows: Vec<(i64, Uuid, String, String)> = sqlx::query_as(
+        "SELECT plan_revision,step_id,decision,response_text \
+         FROM niccolo.agentic_human_responses \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+         ORDER BY plan_revision,created_at,response_id LIMIT $4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let truncated = rows.len() as i64 > limit;
+    let responses = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|(plan_revision, step_id, decision, response_text)| HumanSteeringEntry {
+            plan_revision,
+            step_id,
+            decision,
+            response_text,
+        })
+        .collect();
+    Ok(HumanSteeringView {
+        scope: "THIS_OPERATION_ONLY".into(),
+        responses,
+        truncated,
+        responses_are_evidence: false,
+        responses_are_facts: false,
+        frozen_input_unchanged: true,
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HumanBoundaryResolution {
     pub decision: String,
     pub operation_state: String,
