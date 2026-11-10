@@ -181,6 +181,9 @@ async fn run_with_owned_lease(
             BffExecutionError::Operation(_)
             | BffExecutionError::Resources(_)
             | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
+            BffExecutionError::ExecutionLeaseLost | BffExecutionError::LeaseHeartbeat(_) => {
+                unreachable!("lease supervision errors return before durable failure handling")
+            }
         };
         let message = error.to_string();
         mark_failed_best_effort(pool, scope, actor, code, &message).await;
