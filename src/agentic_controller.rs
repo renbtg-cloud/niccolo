@@ -360,7 +360,7 @@ pub async fn human_steering(
         "SELECT plan_revision,step_id,decision,response_text \
          FROM niccolo.agentic_human_responses \
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
-         ORDER BY plan_revision,created_at,response_id LIMIT $4",
+         ORDER BY plan_revision DESC,created_at DESC,response_id DESC LIMIT $4",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
@@ -370,7 +370,9 @@ pub async fn human_steering(
     .await?;
     tx.commit().await?;
     let truncated = rows.len() as i64 > limit;
-    let responses = rows
+    // Keep the newest bounded steering while presenting it chronologically.
+    // Otherwise a long-running operation could silently drop the human's latest instruction.
+    let mut responses = rows
         .into_iter()
         .take(limit as usize)
         .map(|(plan_revision, step_id, decision, response_text)| HumanSteeringEntry {
@@ -379,7 +381,8 @@ pub async fn human_steering(
             decision,
             response_text,
         })
-        .collect();
+        .collect::<Vec<_>>();
+    responses.reverse();
     Ok(HumanSteeringView {
         scope: "THIS_OPERATION_ONLY".into(),
         responses,

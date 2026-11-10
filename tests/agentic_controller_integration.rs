@@ -505,6 +505,54 @@ async fn concurrent_exact_human_response_is_serialized_without_duplicate_events(
 }
 
 #[tokio::test]
+async fn bounded_human_steering_keeps_the_newest_responses_in_chronological_order() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 64).await;
+
+    for index in 1..=33 {
+        let human = Uuid::new_v4();
+        let (revision, _) = agentic_controller::create_plan(
+            &app,
+            scope,
+            s.principal,
+            &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO niccolo.agentic_human_responses(
+                workspace_id,situation_id,operation_id,plan_revision,step_id,
+                response_id,decision,response_text,actor_principal_id
+             ) VALUES($1,$2,$3,$4,$5,$6,'REPLAN',$7,$8)",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .bind(revision)
+        .bind(human)
+        .bind(Uuid::new_v4())
+        .bind(format!("response-{index:02}"))
+        .bind(s.principal)
+        .execute(&admin)
+        .await
+        .unwrap();
+    }
+
+    let steering = agentic_controller::human_steering(&app, scope, 32)
+        .await
+        .unwrap();
+    assert!(steering.truncated);
+    assert_eq!(steering.responses.len(), 32);
+    assert_eq!(steering.responses.first().unwrap().response_text, "response-02");
+    assert_eq!(steering.responses.last().unwrap().response_text, "response-33");
+    assert!(steering
+        .responses
+        .windows(2)
+        .all(|pair| pair[0].plan_revision < pair[1].plan_revision));
+}
+
+#[tokio::test]
 async fn exact_stop_replay_is_idempotent_after_operation_is_cancelled() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
