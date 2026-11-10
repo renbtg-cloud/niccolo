@@ -4,7 +4,11 @@ use crate::bff_operations::{self, OperationScope, OperationView};
 use crate::model_adapter::ReasoningModel;
 use crate::{agentic_runtime, reanalysis_runtime, resource_policy, runtime_resources};
 use sqlx::PgPool;
+use std::{future::Future, time::Duration};
 use uuid::Uuid;
+
+const EXECUTION_LEASE_MS: i64 = 300_000;
+const EXECUTION_HEARTBEAT_MS: u64 = 60_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BffExecutionError {
@@ -18,6 +22,10 @@ pub enum BffExecutionError {
     Resources(#[from] runtime_resources::ResourceError),
     #[error("runtime resource policy failed: {0}")]
     ResourcePolicy(#[from] resource_policy::ResourcePolicyError),
+    #[error("execution lease lost")]
+    ExecutionLeaseLost,
+    #[error("execution lease heartbeat failed: {0}")]
+    LeaseHeartbeat(String),
 }
 
 async fn mark_failed_best_effort(
@@ -45,6 +53,43 @@ pub struct WorkerRun {
     pub view: OperationView,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LeaseHeartbeatState {
+    Alive,
+    BoundaryReached,
+    Lost,
+}
+
+async fn supervise_execution<F, H, HFut>(
+    work: F,
+    heartbeat_every: Duration,
+    mut heartbeat: H,
+) -> Result<(), BffExecutionError>
+where
+    F: Future<Output = Result<(), BffExecutionError>>,
+    H: FnMut() -> HFut,
+    HFut: Future<Output = Result<LeaseHeartbeatState, BffExecutionError>>,
+{
+    debug_assert!(!heartbeat_every.is_zero());
+    tokio::pin!(work);
+    let mut ticker = tokio::time::interval(heartbeat_every);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // Tokio intervals tick immediately once. Consume that tick so the first
+    // renewal happens after a real fraction of the lease has elapsed.
+    ticker.tick().await;
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut work => return result,
+            _ = ticker.tick() => match heartbeat().await? {
+                LeaseHeartbeatState::Alive => {}
+                LeaseHeartbeatState::BoundaryReached => return Ok(()),
+                LeaseHeartbeatState::Lost => return Err(BffExecutionError::ExecutionLeaseLost),
+            }
+        }
+    }
+}
+
 async fn run_with_owned_lease(
     pool: &PgPool,
     scope: OperationScope,
@@ -56,7 +101,7 @@ async fn run_with_owned_lease(
         return Ok(bff_operations::get(pool, scope).await?);
     }
 
-    let result = async {
+    let work = async {
         let current = bff_operations::get(pool, scope).await?;
         let running = if current.state == "QUEUED" {
             bff_operations::start(pool, scope, current.state_version, actor).await?
@@ -88,11 +133,48 @@ async fn run_with_owned_lease(
                 .map(|_| ())
                 .map_err(BffExecutionError::from),
         }
-    }
+    };
+
+    let result = supervise_execution(
+        work,
+        Duration::from_millis(EXECUTION_HEARTBEAT_MS),
+        || async {
+            match bff_operations::heartbeat_execution(
+                pool,
+                scope,
+                lease_owner,
+                EXECUTION_LEASE_MS,
+            )
+            .await
+            {
+                Ok(true) => Ok(LeaseHeartbeatState::Alive),
+                Ok(false) => {
+                    let current = bff_operations::get(pool, scope)
+                        .await
+                        .map_err(|error| BffExecutionError::LeaseHeartbeat(error.to_string()))?;
+                    if current.terminal || current.state == "WAITING_FOR_HUMAN" {
+                        Ok(LeaseHeartbeatState::BoundaryReached)
+                    } else {
+                        Ok(LeaseHeartbeatState::Lost)
+                    }
+                }
+                Err(error) => Err(BffExecutionError::LeaseHeartbeat(error.to_string())),
+            }
+        },
+    )
     .await;
 
     let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
     if let Err(error) = result {
+        if matches!(
+            &error,
+            BffExecutionError::ExecutionLeaseLost | BffExecutionError::LeaseHeartbeat(_)
+        ) {
+            // Do not fail the durable operation after losing supervision. A
+            // replacement worker may already own it, or may reclaim it when
+            // the old lease expires.
+            return Err(error);
+        }
         let code = match &error {
             BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
             BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
@@ -116,7 +198,7 @@ pub async fn worker_once(
     model: &(dyn ReasoningModel + Send + Sync),
 ) -> Result<Option<WorkerRun>, BffExecutionError> {
     let Some(scope) =
-        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, 300_000).await?
+        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, EXECUTION_LEASE_MS).await?
     else {
         return Ok(None);
     };
@@ -152,12 +234,12 @@ pub async fn worker_once_adaptive(
             pool,
             workspace,
             worker_id,
-            300_000,
+            EXECUTION_LEASE_MS,
             advice.recommended_parallel_operations,
         )
         .await?
     } else {
-        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, 300_000).await?
+        bff_operations::claim_next_in_workspace(pool, workspace, worker_id, EXECUTION_LEASE_MS).await?
     };
     let run = match scope {
         Some(scope) => {
@@ -186,7 +268,7 @@ pub async fn execute(
         return Ok(current);
     }
     let lease_owner = format!("exec-{}", Uuid::new_v4());
-    if !bff_operations::claim_execution(pool, scope, &lease_owner, 300_000).await? {
+    if !bff_operations::claim_execution(pool, scope, &lease_owner, EXECUTION_LEASE_MS).await? {
         return Ok(bff_operations::get(pool, scope).await?);
     }
     run_with_owned_lease(pool, scope, actor, model, &lease_owner).await
@@ -202,5 +284,65 @@ mod stalled_outcome_tests {
         assert!(agentic_outcome_is_stalled("IDLE"));
         assert!(!agentic_outcome_is_stalled("WAITING_FOR_HUMAN"));
         assert!(!agentic_outcome_is_stalled("SUCCEEDED"));
+    }
+
+
+    #[tokio::test]
+    async fn supervisor_renews_while_work_is_pending() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let heartbeats = Arc::new(AtomicUsize::new(0));
+        let observed = heartbeats.clone();
+        let result = supervise_execution(
+            async {
+                tokio::time::sleep(Duration::from_millis(55)).await;
+                Ok(())
+            },
+            Duration::from_millis(10),
+            move || {
+                let observed = observed.clone();
+                async move {
+                    observed.fetch_add(1, Ordering::SeqCst);
+                    Ok(LeaseHeartbeatState::Alive)
+                }
+            },
+        )
+        .await;
+
+        assert!(result.is_ok());
+        assert!(heartbeats.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[tokio::test]
+    async fn supervisor_stops_without_failing_domain_work_when_lease_is_lost() {
+        let result = supervise_execution(
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                Ok(())
+            },
+            Duration::from_millis(5),
+            || async { Ok(LeaseHeartbeatState::Lost) },
+        )
+        .await;
+
+        assert!(matches!(result, Err(BffExecutionError::ExecutionLeaseLost)));
+    }
+
+    #[tokio::test]
+    async fn supervisor_accepts_a_boundary_that_completed_between_heartbeats() {
+        let result = supervise_execution(
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                Ok(())
+            },
+            Duration::from_millis(5),
+            || async { Ok(LeaseHeartbeatState::BoundaryReached) },
+        )
+        .await;
+
+        assert!(result.is_ok());
     }
 }
