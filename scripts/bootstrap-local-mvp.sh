@@ -38,6 +38,11 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT EXIST
   exit 1
 fi
 
+if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname=current_user")" != "t" ]]; then
+  echo 'Bootstrap database owner must have CREATEROLE so Niccolo can create its restricted runtime login; SUPERUSER is not required.' >&2
+  exit 1
+fi
+
 echo '[1/4] Build MVP before changing the database'
 bash scripts/build-mvp.sh
 ext=''

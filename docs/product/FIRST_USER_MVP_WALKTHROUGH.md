@@ -6,7 +6,11 @@ It is intentionally not an architecture guide.
 
 ## 1. Bootstrap once
 
-Use a new dedicated PostgreSQL 17 database and set the two required setup variables:
+Use a new dedicated PostgreSQL 17 database. The setup login should own that database and have
+`CREATEROLE` so bootstrap can create the dedicated restricted runtime login. It does **not** need
+`SUPERUSER` or `BYPASSRLS`.
+
+Set the two required setup variables:
 
     export NICCOLO_PG_ADMIN_URL='...'
     export NICCOLO_PG_SECURE_PASSWORD='...'

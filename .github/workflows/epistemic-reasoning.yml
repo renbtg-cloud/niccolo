@@ -197,5 +197,28 @@ jobs:
           for script in scripts/smoke-local-first-run.sh scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh; do
             bash -n "$script"
           done
+      - name: Fail early when bootstrap owner cannot create the runtime login
+        env:
+          PGPASSWORD: ephemeral_ci_password
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -U postgres -h localhost -d postgres <<'SQL'
+          CREATE ROLE niccolo_no_createrole LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS PASSWORD 'ephemeral_no_createrole_password';
+          CREATE DATABASE niccolo_no_createrole OWNER niccolo_no_createrole;
+          SQL
+          log="$(mktemp)"
+          trap 'rm -f "$log"' EXIT
+          if NICCOLO_PG_ADMIN_URL='postgres://niccolo_no_createrole:ephemeral_no_createrole_password@localhost:5432/niccolo_no_createrole' \
+             NICCOLO_PG_SECURE_PASSWORD='unused_runtime_password' \
+             bash scripts/bootstrap-local-mvp.sh >"$log" 2>&1; then
+            echo 'Bootstrap unexpectedly accepted a database owner without CREATEROLE' >&2
+            exit 1
+          fi
+          grep -Fq 'must have CREATEROLE' "$log"
+          ! grep -Fq '[1/4] Build MVP' "$log"
+          psql -X -v ON_ERROR_STOP=1 -U postgres -h localhost -d postgres <<'SQL'
+          DROP DATABASE niccolo_no_createrole;
+          DROP ROLE niccolo_no_createrole;
+          SQL
       - name: Fresh MVP bootstrap and authenticated first Situation
         run: bash scripts/smoke-local-first-run.sh
