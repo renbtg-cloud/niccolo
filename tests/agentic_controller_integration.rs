@@ -130,6 +130,15 @@ impl ReasoningModel for HumanSteeringAssertingModel {
         assert_eq!(steering["responses_are_facts"], false);
         assert_eq!(steering["frozen_input_unchanged"], true);
         assert_eq!(steering["truncated"], false);
+        assert_eq!(
+            request.output_contract["niccolo_rules"]["human_steering_is_not_evidence"],
+            true
+        );
+        assert_eq!(
+            request.output_contract["niccolo_rules"]
+                ["human_steering_does_not_rewrite_frozen_input"],
+            true
+        );
         let responses = steering["responses"]
             .as_array()
             .expect("human steering responses are an array");
