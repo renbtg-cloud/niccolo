@@ -397,8 +397,11 @@ pub async fn resolve_human_boundary(
         // WAITING step advanced, continue the original transition. Once the
         // step has advanced (or a REPLAN created a newer revision), replay is
         // side-effect free and reports the operation's current state.
-        if stored_revision != before.plan_revision || step_state != Some("WAITING_FOR_HUMAN") {
-            let operation = bff_operations::get(pool, scope).await?;
+        let operation = bff_operations::get(pool, scope).await?;
+        if stored_revision != before.plan_revision
+            || step_state != Some("WAITING_FOR_HUMAN")
+            || operation.terminal
+        {
             return Ok(HumanBoundaryResolution {
                 decision: decision.into(),
                 operation_state: operation.state,

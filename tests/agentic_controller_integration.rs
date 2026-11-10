@@ -374,6 +374,195 @@ async fn v219_v222_human_gate_pauses_and_resumes_same_operation() {
     assert_eq!(bff_operations::get(&p, sc).await.unwrap().state, "RUNNING");
 }
 #[tokio::test]
+async fn exact_stop_replay_is_idempotent_after_operation_is_cancelled() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let human = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+
+    let response_id = Uuid::new_v4();
+    let first = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "STOP",
+        "",
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.operation_state, "CANCELLED");
+    assert!(first.human_response_persisted);
+    assert!(!first.system_inferred_consent);
+
+    let events_before: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(human)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+
+    let replay = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "STOP",
+        "",
+    )
+    .await
+    .unwrap();
+    assert_eq!(replay.operation_state, "CANCELLED");
+
+    let events_after: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(human)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(events_before, events_after);
+
+    let conflicting = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "STOP",
+        "",
+    )
+    .await;
+    assert!(matches!(
+        conflicting,
+        Err(agentic_controller::ControllerError::StateConflict)
+    ));
+}
+
+#[tokio::test]
+async fn exact_replan_replay_does_not_create_another_plan_revision() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 32).await;
+    let human = Uuid::new_v4();
+    let (original_revision, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+
+    let response_id = Uuid::new_v4();
+    let first = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "REPLAN",
+        "Replan using the evidence already available.",
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.operation_state, "RUNNING");
+    assert!(first.plan_revision > original_revision);
+    let replanned_revision = first.plan_revision;
+
+    let replay = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "REPLAN",
+        "Replan using the evidence already available.",
+    )
+    .await
+    .unwrap();
+    assert_eq!(replay.operation_state, "RUNNING");
+    assert_eq!(replay.plan_revision, replanned_revision);
+    assert_eq!(
+        agentic_controller::view(&app, scope)
+            .await
+            .unwrap()
+            .plan_revision,
+        replanned_revision
+    );
+
+    let response_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(human)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(response_count, 1);
+
+    let conflicting = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        Uuid::new_v4(),
+        s.principal,
+        "REPLAN",
+        "Replan using the evidence already available.",
+    )
+    .await;
+    assert!(matches!(
+        conflicting,
+        Err(agentic_controller::ControllerError::StateConflict)
+    ));
+}
+
+#[tokio::test]
 async fn v223_v225_step_budget_is_hard_and_inspectable() {
     let (a, p) = pools().await;
     let s = seed(&a).await;
