@@ -1176,11 +1176,13 @@ async fn prior_human_review_survives_plan_revision_changes() {
         .await
         .unwrap());
 
+    let model = DeterministicModel::new("human-review-regression", "deterministic")
+        .unwrap();
     let outcome = agentic_runtime::run_until_boundary(
         &app,
         scope,
         s.principal,
-        &DeterministicModel,
+        &model,
     )
     .await
     .unwrap();
