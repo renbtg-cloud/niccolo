@@ -248,7 +248,8 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
 echo 'PASS: context provenance, idempotent replay, correction, frozen history, retraction'
 
 # With the CI-only OpenAI-compatible fixture configured, prove the same Analyze
-# path used by the React UI: intent -> bounded plan -> model ledger -> published output.
+# path used by the React UI: structured updates -> synthesis -> material challenge ->
+# explicit human boundary -> automatic continuation -> provenance-bearing handoff.
 readiness="$(curl --max-time 10 --silent --show-error --fail http://127.0.0.1:38080/readyz)"
 printf '%s' "$readiness" | node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
@@ -259,7 +260,7 @@ analysis_id="$(node -p "require('node:crypto').randomUUID()")"
 intent_body="$(OPERATION_ID="$operation_id" ANALYSIS_ID="$analysis_id" node -e '
 process.stdout.write(JSON.stringify({
  analysis_id:process.env.ANALYSIS_ID,intent:"UNDERSTAND",
- goal:"What can we conclude from the attached records, and what remains uncertain?",
+ goal:"What do the imported records establish, what remains uncertain, and which ordinary alternative should stay alive?",
  reanalysis_of:null,idempotency_key:`ci-intent-${process.env.OPERATION_ID}`,step_budget:32,
  context:{surface:"ci-first-run",human_owns_project:true}
 }));')"
@@ -270,38 +271,104 @@ ANALYSIS_ID="$analysis_id" OPERATION_ID="$operation_id" node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
  const j=JSON.parse(s);
  if(j.analysis_id!==process.env.ANALYSIS_ID||j.operation?.operation_id!==process.env.OPERATION_ID||
-    j.operation?.state!=="SUCCEEDED"||j.operation?.terminal!==true||
-    j.operation?.result?.agentic!==true||j.operation?.result?.budget_used!==8)process.exit(1);
+    j.operation?.state!=="WAITING_FOR_HUMAN"||j.operation?.terminal!==false)process.exit(1);
 });' <<< "$intent_result"
+
+controller="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" "${path}/bff/operations/${operation_id}/agentic")"
+waiting_step="$(printf '%s' "$controller" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s),step=j.steps?.find(x=>x.state==="WAITING_FOR_HUMAN");
+ if(!j.waiting_for_human||!step||step.kind!=="REQUEST_HUMAN_DECISION")process.exit(1);
+ process.stdout.write(step.step_id);
+});')"
+response_id="$(node -p "require('node:crypto').randomUUID()")"
+human_result="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data "{\"response_id\":\"${response_id}\",\"decision\":\"CONTINUE\",\"response_text\":\"Continue, but preserve the unresolved explanation and material coverage challenge.\"}" \
+  "${path}/bff/operations/${operation_id}/agentic/steps/${waiting_step}/human-response")"
+printf '%s' "$human_result" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.resolution?.operation_state!=="RUNNING"||j.resolution?.human_response_persisted!==true||
+    j.resolution?.system_inferred_consent!==false)process.exit(1);
+});'
+
+# Human-response submission itself must resume execution; the client does not
+# make a hidden second "run" request.
+operation_state=""
+for _ in $(seq 1 80); do
+  operation_json="$(curl --max-time 10 --silent --show-error --fail \
+    -H "Authorization: Bearer ${token}" "${path}/bff/operations/${operation_id}")"
+  operation_state="$(printf '%s' "$operation_json" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).state));')"
+  [[ "$operation_state" == "SUCCEEDED" || "$operation_state" == "FAILED" ]] && break
+  sleep .125
+done
+[[ "$operation_state" == "SUCCEEDED" ]] || {
+  echo "Expected automatic post-human continuation to SUCCEEDED, got $operation_state" >&2
+  exit 1
+}
+printf '%s' "$operation_json" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s),q=j.result?.quality;
+ if(j.terminal!==true||j.result?.explicit_human_review_occurred!==true||
+    q?.claim_count!==1||q?.alternative_count!==1||q?.assumption_count!==2||
+    q?.clarification_count!==1||q?.open_evidence_gap_count!==1||
+    q?.adversarial_challenge_count!==1||q?.open_material_challenge_count!==1||
+    q?.provisional!==true||q?.human_attention_recommended!==true)process.exit(1);
+});'
+
 analysis_output="$(curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" "${path}/analysis-snapshots/${analysis_id}/output")"
 printf '%s' "$analysis_output" | node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
  const j=JSON.parse(s);
- if(j.answer_text!=="Deterministic CI protocol smoke synthesis. No truth claim."||
-    j.coverage_note!=="Protocol/wiring validation only; not a quality evaluation."||
+ if(j.answer_text!=="The imported records contain attributed statements, but this fixture does not infer motive or truth beyond those records."||
+    j.coverage_note!=="Protocol validation used the frozen imported records; unverified context remains explicitly unresolved."||
     j.input_is_current!==true||j.historical_output_preserved!==true)process.exit(1);
 });'
+
+handoff="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" "${path}/analysis-snapshots/${analysis_id}/bff/handoff")"
+printf '%s' "$handoff" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s).handoff;
+ if(!j||j.candidate_interpretations?.length!==1||j.claims?.length!==1||
+    j.clarifications?.length!==1||j.hypothesis_portfolio?.hypotheses?.length!==1||
+    j.candidate_interpretations[0].is_fact!==false||
+    j.hypothesis_portfolio.portfolio_establishes_truth!==false||
+    j.decisions?.human_owns_decision!==true||j.handoff_executes_actions!==false)process.exit(1);
+});'
+
 ledger_summary="$(psql -X -qAt -v ON_ERROR_STOP=1 \
-  -v workspace="$WORKSPACE_UUID" -v operation="$operation_id" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+  -v workspace="$WORKSPACE_UUID" -v operation="$operation_id" -v analysis="$analysis_id" \
+  "$NICCOLO_PG_ADMIN_URL" <<'SQL'
 BEGIN;
 SELECT set_config('niccolo.workspace_id', :'workspace', true) \gset
 SELECT concat_ws('|',
-  count(*),
-  count(*) FILTER (WHERE status='SUCCEEDED'),
-  count(*) FILTER (WHERE response_sha256 IS NOT NULL),
-  count(DISTINCT (request_json::jsonb)->>'purpose'))
-FROM niccolo.model_invocations
-WHERE operation_id=:'operation'::uuid;
+  (SELECT count(*) FROM niccolo.model_invocations WHERE operation_id=:'operation'::uuid),
+  (SELECT count(*) FROM niccolo.model_invocations WHERE operation_id=:'operation'::uuid AND status='SUCCEEDED'),
+  (SELECT count(*) FROM niccolo.model_invocations WHERE operation_id=:'operation'::uuid AND response_sha256 IS NOT NULL),
+  (SELECT count(DISTINCT (request_json::jsonb)->>'purpose') FROM niccolo.model_invocations WHERE operation_id=:'operation'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_claims WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_claim_fragments WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_assumptions WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_candidate_interpretations WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_hypothesis_evidence WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_evidence_gaps WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_clarification_questions WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.situation_analysis_challenges WHERE analysis_id=:'analysis'::uuid),
+  (SELECT count(*) FROM niccolo.agentic_human_responses WHERE operation_id=:'operation'::uuid)
+);
 ROLLBACK;
 SQL
 )"
-[[ "$ledger_summary" == '6|6|6|6' ]] || {
-  echo "Unexpected model invocation ledger summary: $ledger_summary" >&2
+[[ "$ledger_summary" == '6|6|6|6|1|1|2|1|1|1|1|1|1' ]] || {
+  echo "Unexpected rich Analyze persistence summary: $ledger_summary" >&2
   exit 1
 }
-echo 'PASS: OpenAI-compatible Analyze path, invocation ledger, and published output'
-
+echo 'PASS: rich Analyze provenance, human boundary, automatic resume, and handoff'
 
 # A second, empty database on the SAME PostgreSQL cluster must not
 # trigger password rotation for the already-provisioned service role.
@@ -406,5 +473,5 @@ psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
   -c 'DROP DATABASE niccolo_ci_populated_probe'
 echo 'PASS: unrelated application data is protected from first-run migrations'
 
-echo 'PASS: bootstrap, embedded UI, Situation lifecycle, auth isolation, and Analyze protocol wiring'
+echo 'PASS: bootstrap, embedded UI, Situation lifecycle, auth isolation, rich Analyze, and human-boundary resume'
 

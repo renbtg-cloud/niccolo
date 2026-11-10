@@ -4371,6 +4371,9 @@ async fn resolve_agentic_human_boundary(
     Json(request): Json<AgenticHumanResponseRequest>,
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let digest = unique_bearer(&headers)
+        .and_then(|token| authz::credential_digest(token).ok())
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
     let scope = OperationScope {
         workspace,
         situation,
@@ -4403,6 +4406,16 @@ async fn resolve_agentic_human_boundary(
                 "agentic plan unavailable",
             )
         })?;
+    if resolved.operation_state == "RUNNING" && !controller.waiting_for_human {
+        let pool = state.pool.clone();
+        let model = state.model.clone();
+        tokio::spawn(async move {
+            authz::with_auth_digest(digest, async move {
+                let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
+            })
+            .await;
+        });
+    }
     Ok(no_store(
         json!({"resolution":resolved,"controller":controller}),
         StatusCode::OK,
