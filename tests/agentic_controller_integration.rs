@@ -374,6 +374,86 @@ async fn v219_v222_human_gate_pauses_and_resumes_same_operation() {
     assert_eq!(bff_operations::get(&p, sc).await.unwrap().state, "RUNNING");
 }
 #[tokio::test]
+async fn concurrent_exact_human_response_is_serialized_without_duplicate_events() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let human = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(human, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, human, s.principal)
+        .await
+        .unwrap();
+    agentic_controller::finish_step(
+        &app,
+        scope,
+        human,
+        s.principal,
+        "WAITING_FOR_HUMAN",
+        "need explicit human choice",
+    )
+    .await
+    .unwrap();
+
+    let response_id = Uuid::new_v4();
+    let first = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "CONTINUE",
+        "Continue with the current evidence boundaries.",
+    );
+    let second = agentic_controller::resolve_human_boundary(
+        &app,
+        scope,
+        human,
+        response_id,
+        s.principal,
+        "CONTINUE",
+        "Continue with the current evidence boundaries.",
+    );
+    let (first, second) = tokio::join!(first, second);
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert_eq!(first.operation_state, "RUNNING");
+    assert_eq!(second.operation_state, "RUNNING");
+    let resume_flags = [first.executor_resume_required, second.executor_resume_required];
+    assert_eq!(resume_flags.iter().filter(|&&flag| flag).count(), 1);
+
+    let response_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(human)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(response_count, 1);
+
+    let (resumed, succeeded): (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE event_kind='RESUMED'), count(*) FILTER (WHERE event_kind='SUCCEEDED') FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(human)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!((resumed, succeeded), (1, 1));
+}
+
+#[tokio::test]
 async fn exact_stop_replay_is_idempotent_after_operation_is_cancelled() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

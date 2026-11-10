@@ -345,6 +345,23 @@ fn human_boundary_input_valid(decision: &str, response_text: &str) -> bool {
         && response_text.len() <= 4096
 }
 
+async fn human_boundary_serialization_guard(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+) -> Result<Transaction<'_, Postgres>, ControllerError> {
+    let mut tx = pool.begin().await?;
+    let key = format!(
+        "niccolo:agentic-human-boundary:{}:{}:{}",
+        scope.workspace, scope.operation, step
+    );
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(key)
+        .execute(&mut *tx)
+        .await?;
+    Ok(tx)
+}
+
 pub async fn resolve_human_boundary(
     pool: &PgPool,
     scope: OperationScope,
@@ -357,6 +374,7 @@ pub async fn resolve_human_boundary(
     if !human_boundary_input_valid(decision, response_text) {
         return Err(ControllerError::Invalid);
     }
+    let _serialization_guard = human_boundary_serialization_guard(pool, scope, step).await?;
     let response_text = response_text.trim();
     let before = view(pool, scope).await?;
     let step_state = before
