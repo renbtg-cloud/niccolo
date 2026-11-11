@@ -320,6 +320,37 @@ type BatchRow = (
     i64,
 );
 
+type StoredBatchRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    i32,
+    Uuid,
+    Uuid,
+    String,
+    String,
+    String,
+    Uuid,
+    String,
+    i64,
+);
+
+type ImportItemRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    i64,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<Uuid>,
+    bool,
+    bool,
+);
+
+
 fn replay_view(
     row: BatchRow,
     prepared: &PreparedUntrustedImport,
@@ -484,21 +515,7 @@ pub async fn get_batch(
         return Err(ForensicImportError::Invalid);
     }
     let mut tx = scoped(pool, workspace).await?;
-    let row: Option<(
-        Uuid,
-        String,
-        String,
-        String,
-        i32,
-        Uuid,
-        Uuid,
-        String,
-        String,
-        String,
-        Uuid,
-        String,
-        i64,
-    )> = sqlx::query_as(
+    let row: Option<StoredBatchRow> = sqlx::query_as(
         "SELECT b.import_batch_id,b.source_package_sha256,b.source_manifest_sha256,
                 b.source_format,b.source_format_version,b.source_workspace_id,b.source_situation_id,
                 b.declared_origin,b.verification_status,b.import_mode,b.imported_by_principal_id,
@@ -562,19 +579,7 @@ pub async fn list_items(
     if !visible {
         return Err(ForensicImportError::Invisible);
     }
-    let rows: Vec<(
-        Uuid,
-        String,
-        String,
-        String,
-        i64,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<Uuid>,
-        bool,
-        bool,
-    )> = sqlx::query_as(
+    let rows: Vec<ImportItemRow> = sqlx::query_as(
         "SELECT item_id,source_path,source_kind,source_sha256,source_byte_length,
                 origin_class,source_table,source_row_index,original_document_id,
                 current_credentials_establish_truth,documentary_evidence
