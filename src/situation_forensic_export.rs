@@ -11,6 +11,11 @@ use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+const MAX_SOURCE_DOCUMENTS: usize = 64;
+const MAX_ROWS_PER_TABLE: i64 = 100_000;
+const MAX_TOTAL_LOGICAL_ROWS: usize = 200_000;
+const MAX_DECLARED_SOURCE_BYTES: i64 = 32 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ForensicExportError {
     #[error("database unavailable: {0}")]
@@ -27,6 +32,8 @@ pub enum ForensicExportError {
     CorruptOriginal,
     #[error("unexpected database identifier in catalog")]
     InvalidCatalogIdentifier,
+    #[error("forensic export exceeds bounded in-memory package limits: {0}")]
+    TooLarge(&'static str),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,13 +116,17 @@ async fn rows_for_situation(
     let table = safe_ident(table)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
-         WHERE workspace_id=$1 AND situation_id=$2 ORDER BY to_jsonb(t)::text"
+         WHERE workspace_id=$1 AND situation_id=$2 ORDER BY to_jsonb(t)::text LIMIT $3"
     );
     let rows: Vec<String> = sqlx::query_scalar(&sql)
         .bind(workspace)
         .bind(situation)
+        .bind(MAX_ROWS_PER_TABLE + 1)
         .fetch_all(&mut **tx)
         .await?;
+    if rows.len() as i64 > MAX_ROWS_PER_TABLE {
+        return Err(ForensicExportError::TooLarge("per-table logical row budget"));
+    }
     rows.into_iter()
         .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
         .collect()
@@ -133,13 +144,17 @@ async fn rows_for_documents(
     let table = safe_ident(table)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
-         WHERE workspace_id=$1 AND document_id=ANY($2::uuid[]) ORDER BY to_jsonb(t)::text"
+         WHERE workspace_id=$1 AND document_id=ANY($2::uuid[]) ORDER BY to_jsonb(t)::text LIMIT $3"
     );
     let rows: Vec<String> = sqlx::query_scalar(&sql)
         .bind(workspace)
         .bind(documents)
+        .bind(MAX_ROWS_PER_TABLE + 1)
         .fetch_all(&mut **tx)
         .await?;
+    if rows.len() as i64 > MAX_ROWS_PER_TABLE {
+        return Err(ForensicExportError::TooLarge("per-table logical row budget"));
+    }
     rows.into_iter()
         .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
         .collect()
@@ -157,13 +172,17 @@ async fn rows_for_people(
     let table = safe_ident(table)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
-         WHERE workspace_id=$1 AND person_id=ANY($2::uuid[]) ORDER BY to_jsonb(t)::text"
+         WHERE workspace_id=$1 AND person_id=ANY($2::uuid[]) ORDER BY to_jsonb(t)::text LIMIT $3"
     );
     let rows: Vec<String> = sqlx::query_scalar(&sql)
         .bind(workspace)
         .bind(people)
+        .bind(MAX_ROWS_PER_TABLE + 1)
         .fetch_all(&mut **tx)
         .await?;
+    if rows.len() as i64 > MAX_ROWS_PER_TABLE {
+        return Err(ForensicExportError::TooLarge("per-table logical row budget"));
+    }
     rows.into_iter()
         .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
         .collect()
@@ -191,11 +210,12 @@ async fn evidence_rows(
          ) \
          SELECT to_jsonb(e)::text FROM niccolo.evidence e \
          WHERE e.workspace_id=$1 AND e.evidence_id IN (SELECT evidence_id FROM closure) \
-         ORDER BY to_jsonb(e)::text",
+         ORDER BY to_jsonb(e)::text LIMIT $4",
     )
     .bind(workspace)
     .bind(documents)
     .bind(situation)
+    .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -217,11 +237,12 @@ async fn evidence_rows(
          WHERE d.workspace_id=$1 \
            AND d.child_id IN (SELECT evidence_id FROM closure) \
            AND d.parent_id IN (SELECT evidence_id FROM closure) \
-         ORDER BY to_jsonb(d)::text",
+         ORDER BY to_jsonb(d)::text LIMIT $4",
     )
     .bind(workspace)
     .bind(documents)
     .bind(situation)
+    .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -240,11 +261,12 @@ async fn evidence_rows(
          ) \
          SELECT to_jsonb(pe)::text FROM niccolo.proposition_evidence pe \
          WHERE pe.workspace_id=$1 AND pe.evidence_id IN (SELECT evidence_id FROM closure) \
-         ORDER BY to_jsonb(pe)::text",
+         ORDER BY to_jsonb(pe)::text LIMIT $4",
     )
     .bind(workspace)
     .bind(documents)
     .bind(situation)
+    .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -266,13 +288,20 @@ async fn evidence_rows(
          ) \
          SELECT to_jsonb(p)::text FROM niccolo.propositions p \
          WHERE p.workspace_id=$1 AND p.proposition_id IN (SELECT proposition_id FROM proposition_ids) \
-         ORDER BY to_jsonb(p)::text",
+         ORDER BY to_jsonb(p)::text LIMIT $4",
     )
     .bind(workspace)
     .bind(documents)
     .bind(situation)
+    .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
+
+    for rows in [&evidence, &derivation, &proposition_links, &propositions] {
+        if rows.len() as i64 > MAX_ROWS_PER_TABLE {
+            return Err(ForensicExportError::TooLarge("per-table evidence row budget"));
+        }
+    }
 
     let parse = |rows: Vec<String>| -> Result<Vec<Value>, ForensicExportError> {
         rows.into_iter()
@@ -285,6 +314,25 @@ async fn evidence_rows(
         parse(proposition_links)?,
         parse(propositions)?,
     ))
+}
+
+fn insert_logical_rows(
+    logical: &mut BTreeMap<String, Vec<Value>>,
+    total_rows: &mut usize,
+    table: String,
+    rows: Vec<Value>,
+) -> Result<(), ForensicExportError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    *total_rows = total_rows
+        .checked_add(rows.len())
+        .ok_or(ForensicExportError::TooLarge("total logical row budget"))?;
+    if *total_rows > MAX_TOTAL_LOGICAL_ROWS {
+        return Err(ForensicExportError::TooLarge("total logical row budget"));
+    }
+    logical.insert(table, rows);
+    Ok(())
 }
 
 fn build_manifest(
@@ -379,11 +427,10 @@ pub async fn build(
     .await?;
 
     let mut logical = BTreeMap::new();
+    let mut logical_row_count = 0usize;
     for table in situation_tables {
         let rows = rows_for_situation(&mut tx, &table, workspace, situation).await?;
-        if !rows.is_empty() {
-            logical.insert(table, rows);
-        }
+        insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
     }
 
     let documents: Vec<Uuid> = sqlx::query_scalar(
@@ -391,12 +438,16 @@ pub async fn build(
            SELECT document_id FROM niccolo.situation_sources WHERE workspace_id=$1 AND situation_id=$2 \
            UNION \
            SELECT document_id FROM niccolo.situation_revision_sources WHERE workspace_id=$1 AND situation_id=$2 \
-         ) d ORDER BY document_id",
+         ) d ORDER BY document_id LIMIT $3",
     )
     .bind(workspace)
     .bind(situation)
+    .bind((MAX_SOURCE_DOCUMENTS + 1) as i64)
     .fetch_all(&mut *tx)
     .await?;
+    if documents.len() > MAX_SOURCE_DOCUMENTS {
+        return Err(ForensicExportError::TooLarge("attached source-document budget"));
+    }
 
     if !documents.is_empty() {
         let document_tables: Vec<String> = sqlx::query_scalar(
@@ -411,9 +462,7 @@ pub async fn build(
         .await?;
         for table in document_tables {
             let rows = rows_for_documents(&mut tx, &table, workspace, &documents).await?;
-            if !rows.is_empty() {
-                logical.insert(table, rows);
-            }
+            insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
         }
     }
 
@@ -432,9 +481,12 @@ pub async fn build(
     };
     let identity_subjects =
         rows_for_people(&mut tx, "identity_subjects", workspace, &people).await?;
-    if !identity_subjects.is_empty() {
-        logical.insert("identity_subjects".into(), identity_subjects);
-    }
+    insert_logical_rows(
+        &mut logical,
+        &mut logical_row_count,
+        "identity_subjects".into(),
+        identity_subjects,
+    )?;
 
     let (evidence, derivation, proposition_links, propositions) =
         evidence_rows(&mut tx, workspace, &documents, situation).await?;
@@ -444,9 +496,23 @@ pub async fn build(
         ("proposition_evidence", proposition_links),
         ("propositions", propositions),
     ] {
-        if !rows.is_empty() {
-            logical.insert(name.into(), rows);
-        }
+        insert_logical_rows(&mut logical, &mut logical_row_count, name.into(), rows)?;
+    }
+
+    let declared_source_bytes: i64 = if documents.is_empty() {
+        0
+    } else {
+        sqlx::query_scalar(
+            "SELECT COALESCE(sum(byte_length),0)::bigint FROM niccolo.source_documents \
+             WHERE workspace_id=$1 AND document_id=ANY($2::uuid[])",
+        )
+        .bind(workspace)
+        .bind(&documents)
+        .fetch_one(&mut *tx)
+        .await?
+    };
+    if declared_source_bytes > MAX_DECLARED_SOURCE_BYTES {
+        return Err(ForensicExportError::TooLarge("retained source-byte budget"));
     }
 
     let payload_rows: Vec<(Uuid, String, String, String, i64, Vec<u8>)> = if documents.is_empty() {
