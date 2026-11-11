@@ -266,6 +266,57 @@ async fn scoped(
 
 type BatchRow = (Uuid, String, String, Uuid, Uuid, String, String, String, i64);
 
+fn replay_view(
+    row: BatchRow,
+    prepared: &PreparedUntrustedImport,
+    declared_origin: &str,
+) -> Result<ImportBatchView, ForensicImportError> {
+    if row.2 != prepared.source_manifest_sha256
+        || row.3 != prepared.source_workspace_id
+        || row.4 != prepared.source_situation_id
+        || row.5 != declared_origin
+        || row.6 != "STRUCTURALLY_VERIFIED"
+        || row.7 != "UNTRUSTED"
+    {
+        return Err(ForensicImportError::Conflict);
+    }
+    Ok(ImportBatchView {
+        import_batch_id: row.0,
+        source_package_sha256: row.1,
+        source_manifest_sha256: row.2,
+        source_workspace_id: row.3,
+        source_situation_id: row.4,
+        declared_origin: row.5,
+        verification_status: row.6,
+        import_mode: row.7,
+        item_count: row.8 as u64,
+        replayed: true,
+        structural_validity_establishes_truth: false,
+        current_credentials_upgrade_imported_statements: false,
+        imported_model_output_is_documentary_evidence: false,
+    })
+}
+
+async fn existing_batch(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    source_package_sha256: &str,
+) -> Result<Option<BatchRow>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT import_batch_id,source_package_sha256,source_manifest_sha256,
+                source_workspace_id,source_situation_id,declared_origin,
+                verification_status,import_mode,
+                (SELECT count(*)::bigint FROM niccolo.forensic_import_items i
+                  WHERE i.workspace_id=b.workspace_id AND i.import_batch_id=b.import_batch_id)
+           FROM niccolo.forensic_import_batches b
+          WHERE workspace_id=$1 AND source_package_sha256=$2",
+    )
+    .bind(workspace)
+    .bind(source_package_sha256)
+    .fetch_optional(&mut **tx)
+    .await
+}
+
 pub async fn import_untrusted(
     pool: &PgPool,
     workspace: Uuid,
@@ -289,53 +340,21 @@ pub async fn import_untrusted(
         return Err(ForensicImportError::Invalid);
     }
 
-    let existing: Option<BatchRow> = sqlx::query_as(
-        "SELECT import_batch_id,source_package_sha256,source_manifest_sha256,
-                source_workspace_id,source_situation_id,declared_origin,
-                verification_status,import_mode,
-                (SELECT count(*)::bigint FROM niccolo.forensic_import_items i
-                  WHERE i.workspace_id=b.workspace_id AND i.import_batch_id=b.import_batch_id)
-           FROM niccolo.forensic_import_batches b
-          WHERE workspace_id=$1 AND source_package_sha256=$2",
-    )
-    .bind(workspace)
-    .bind(&prepared.source_package_sha256)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if let Some(row) = existing {
-        if row.2 != prepared.source_manifest_sha256
-            || row.3 != prepared.source_workspace_id
-            || row.4 != prepared.source_situation_id
-            || row.5 != request.declared_origin.trim()
-            || row.6 != "STRUCTURALLY_VERIFIED"
-            || row.7 != "UNTRUSTED"
-        {
-            return Err(ForensicImportError::Conflict);
-        }
+    if let Some(row) =
+        existing_batch(&mut tx, workspace, &prepared.source_package_sha256).await?
+    {
+        let view = replay_view(row, &prepared, request.declared_origin.trim())?;
         tx.commit().await?;
-        return Ok(ImportBatchView {
-            import_batch_id: row.0,
-            source_package_sha256: row.1,
-            source_manifest_sha256: row.2,
-            source_workspace_id: row.3,
-            source_situation_id: row.4,
-            declared_origin: row.5,
-            verification_status: row.6,
-            import_mode: row.7,
-            item_count: row.8 as u64,
-            replayed: true,
-            structural_validity_establishes_truth: false,
-            current_credentials_upgrade_imported_statements: false,
-            imported_model_output_is_documentary_evidence: false,
-        });
+        return Ok(view);
     }
 
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO niccolo.forensic_import_batches
          (workspace_id,import_batch_id,source_package_sha256,source_manifest_sha256,
           source_format,source_format_version,source_workspace_id,source_situation_id,
           declared_origin,verification_status,import_mode,imported_by_principal_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'STRUCTURALLY_VERIFIED','UNTRUSTED',$10)",
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'STRUCTURALLY_VERIFIED','UNTRUSTED',$10)
+         ON CONFLICT (workspace_id,source_package_sha256) DO NOTHING",
     )
     .bind(workspace)
     .bind(request.import_batch_id)
@@ -348,7 +367,18 @@ pub async fn import_untrusted(
     .bind(request.declared_origin.trim())
     .bind(actor)
     .execute(&mut *tx)
-    .await?;
+    .await?
+    .rows_affected()
+        == 1;
+
+    if !inserted {
+        let row = existing_batch(&mut tx, workspace, &prepared.source_package_sha256)
+            .await?
+            .ok_or(ForensicImportError::Conflict)?;
+        let view = replay_view(row, &prepared, request.declared_origin.trim())?;
+        tx.commit().await?;
+        return Ok(view);
+    }
 
     for item in &prepared.items {
         sqlx::query(
