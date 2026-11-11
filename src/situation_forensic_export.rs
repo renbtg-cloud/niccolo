@@ -128,7 +128,11 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, ForensicExportError> {
 }
 
 fn safe_ident(value: &str) -> Result<&str, ForensicExportError> {
+    // PostgreSQL identifiers are limited to NAMEDATALEN-1 bytes (63 in the
+    // builds we support). Re-imported packages must not be able to smuggle an
+    // arbitrarily large logical table name into manifest/path construction.
     if !value.is_empty()
+        && value.len() <= 63
         && value
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
@@ -1129,6 +1133,20 @@ pub async fn build(
             "absence from this package is not evidence that a record never existed outside retained Niccolo state".into(),
         ],
     })
+}
+
+#[cfg(test)]
+mod forensic_identifier_bound_tests {
+    use super::*;
+
+    #[test]
+    fn imported_logical_table_names_cannot_exceed_postgres_identifier_width() {
+        assert!(safe_ident(&"a".repeat(63)).is_ok());
+        assert!(matches!(
+            safe_ident(&"a".repeat(64)),
+            Err(ForensicExportError::InvalidCatalogIdentifier)
+        ));
+    }
 }
 
 #[cfg(test)]
