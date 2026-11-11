@@ -864,15 +864,22 @@ pub async fn build(
     let people: Vec<Uuid> = if documents.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_scalar(
+        let people: Vec<Uuid> = sqlx::query_scalar(
             "SELECT DISTINCT person_id FROM niccolo.identity_events \
              WHERE workspace_id=$1 AND document_id=ANY($2::uuid[]) AND person_id IS NOT NULL \
-             ORDER BY person_id",
+             ORDER BY person_id LIMIT $3",
         )
         .bind(workspace)
         .bind(&documents)
+        .bind(MAX_ROWS_PER_TABLE + 1)
         .fetch_all(&mut *tx)
-        .await?
+        .await?;
+        if people.len() as i64 > MAX_ROWS_PER_TABLE {
+            return Err(ForensicExportError::TooLarge(
+                "identity subject reference budget",
+            ));
+        }
+        people
     };
     let identity_subjects =
         rows_for_people(&mut tx, "identity_subjects", workspace, &people).await?;
