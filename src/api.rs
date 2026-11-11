@@ -41,6 +41,7 @@ use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
+use crate::situation_forensic_export::{self, ForensicExportError};
 use crate::source_import::SourceFormat;
 use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
@@ -327,6 +328,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-history",
             get(list_analysis_history),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/forensic-export",
+            get(get_situation_forensic_export),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/sync",
@@ -1408,6 +1413,34 @@ async fn list_analysis_history(
         }),
         StatusCode::OK,
     ))
+}
+
+async fn get_situation_forensic_export(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let package = situation_forensic_export::build(&state.pool, workspace, situation)
+        .await
+        .map_err(|error| match error {
+            ForensicExportError::Invisible => {
+                ApiError(StatusCode::NOT_FOUND, "situation unavailable")
+            }
+            ForensicExportError::TooLarge(_) => ApiError(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "forensic export exceeds local package limits",
+            ),
+            ForensicExportError::CorruptOriginal => ApiError(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "retained source payload failed integrity validation",
+            ),
+            _ => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "forensic export unavailable",
+            ),
+        })?;
+    Ok(no_store(json!(package), StatusCode::OK))
 }
 
 #[derive(Deserialize)]

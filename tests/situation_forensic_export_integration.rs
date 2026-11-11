@@ -1,7 +1,13 @@
 #![cfg(feature = "pg-integration")]
-use niccolo_evidence::{authz, situation_forensic_export};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use http_body_util::BodyExt;
+use niccolo_evidence::{api, authz, situation_forensic_export};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use tower::ServiceExt;
 use uuid::Uuid;
 
 async fn pools() -> (PgPool, PgPool) {
@@ -114,6 +120,28 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     .unwrap();
 
     assert_eq!(first, second);
+
+    let response = api::router(secure.clone())
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/workspaces/{workspace}/situations/{situation}/forensic-export"
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let http_export: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        http_export["manifest"]["root_sha256"],
+        first.manifest.root_sha256
+    );
+    assert_eq!(http_export["structural_validity_establishes_truth"], false);
     assert_eq!(first.format, "niccolo.situation-forensic-export");
     assert_eq!(first.format_version, 1);
     assert!(!first.structural_validity_establishes_truth);
