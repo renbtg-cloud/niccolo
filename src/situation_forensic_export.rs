@@ -237,6 +237,82 @@ async fn situation_evidence_ids(
     Ok(ids.into_iter().collect())
 }
 
+async fn situation_question_ids(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<Uuid>, ForensicExportError> {
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
+         WHERE n.nspname='niccolo' AND c.relkind='r' \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='workspace_id' AND NOT a.attisdropped) \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='situation_id' AND NOT a.attisdropped) \
+           AND EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_type t ON t.oid=a.atttypid \
+                      WHERE a.attrelid=c.oid AND a.attname='question_id' AND NOT a.attisdropped AND t.typname='uuid') \
+         ORDER BY c.relname",
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut ids = BTreeSet::new();
+    for table in tables {
+        let table = safe_ident(&table)?;
+        let sql = format!(
+            "SELECT DISTINCT question_id FROM niccolo.{table} \
+             WHERE workspace_id=$1 AND situation_id=$2 AND question_id IS NOT NULL \
+             ORDER BY question_id LIMIT $3"
+        );
+        let found: Vec<Uuid> = sqlx::query_scalar(&sql)
+            .bind(workspace)
+            .bind(situation)
+            .bind(MAX_ROWS_PER_TABLE + 1)
+            .fetch_all(&mut **tx)
+            .await?;
+        if found.len() as i64 > MAX_ROWS_PER_TABLE {
+            return Err(ForensicExportError::TooLarge(
+                "per-table question-reference budget",
+            ));
+        }
+        ids.extend(found);
+        if ids.len() > MAX_TOTAL_LOGICAL_ROWS {
+            return Err(ForensicExportError::TooLarge(
+                "total question-reference budget",
+            ));
+        }
+    }
+    Ok(ids.into_iter().collect())
+}
+
+async fn rows_for_questions(
+    tx: &mut Transaction<'_, Postgres>,
+    table: &str,
+    workspace: Uuid,
+    questions: &[Uuid],
+) -> Result<Vec<Value>, ForensicExportError> {
+    if questions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let table = safe_ident(table)?;
+    let sql = format!(
+        "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
+         WHERE workspace_id=$1 AND question_id=ANY($2::uuid[]) \
+         ORDER BY to_jsonb(t)::text LIMIT $3"
+    );
+    let rows: Vec<String> = sqlx::query_scalar(&sql)
+        .bind(workspace)
+        .bind(questions)
+        .bind(MAX_ROWS_PER_TABLE + 1)
+        .fetch_all(&mut **tx)
+        .await?;
+    if rows.len() as i64 > MAX_ROWS_PER_TABLE {
+        return Err(ForensicExportError::TooLarge(
+            "per-table question row budget",
+        ));
+    }
+    rows.into_iter()
+        .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
+        .collect()
+}
+
 async fn situation_document_ids(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
@@ -328,6 +404,25 @@ async fn expand_source_scope(
         .await?
         .into_iter()
         .collect::<BTreeSet<_>>();
+    let question_ids = situation_question_ids(tx, workspace, situation).await?;
+    if !question_ids.is_empty() {
+        let question_evidence: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT DISTINCT evidence_id FROM niccolo.question_evidence_references \
+             WHERE workspace_id=$1 AND question_id=ANY($2::uuid[]) \
+             ORDER BY evidence_id LIMIT $3",
+        )
+        .bind(workspace)
+        .bind(&question_ids)
+        .bind((MAX_TOTAL_LOGICAL_ROWS + 1) as i64)
+        .fetch_all(&mut **tx)
+        .await?;
+        if question_evidence.len() > MAX_TOTAL_LOGICAL_ROWS {
+            return Err(ForensicExportError::TooLarge(
+                "question evidence-reference budget",
+            ));
+        }
+        evidence.extend(question_evidence);
+    }
 
     loop {
         let before = (documents.len(), evidence.len());
@@ -612,6 +707,16 @@ pub async fn build(
     for table in situation_tables {
         let rows = rows_for_situation(&mut tx, &table, workspace, situation).await?;
         insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
+    }
+
+    let question_ids = situation_question_ids(&mut tx, workspace, situation).await?;
+    for table in [
+        "investigative_questions",
+        "question_feedback_events",
+        "question_evidence_references",
+    ] {
+        let rows = rows_for_questions(&mut tx, table, workspace, &question_ids).await?;
+        insert_logical_rows(&mut logical, &mut logical_row_count, table.into(), rows)?;
     }
 
     let (documents, evidence_seed) =
