@@ -14,6 +14,8 @@ use uuid::Uuid;
 const MAX_SOURCE_DOCUMENTS: usize = 64;
 const MAX_ROWS_PER_TABLE: i64 = 100_000;
 const MAX_TOTAL_LOGICAL_ROWS: usize = 200_000;
+const MAX_LOGICAL_TABLE_BYTES: i64 = 16 * 1024 * 1024;
+const MAX_TOTAL_LOGICAL_BYTES: usize = 32 * 1024 * 1024;
 const MAX_DECLARED_SOURCE_BYTES: i64 = 32 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
@@ -107,6 +109,20 @@ fn safe_ident(value: &str) -> Result<&str, ForensicExportError> {
     }
 }
 
+fn check_table_budget(rows: i64, bytes: i64) -> Result<(), ForensicExportError> {
+    if rows > MAX_ROWS_PER_TABLE {
+        return Err(ForensicExportError::TooLarge(
+            "per-table logical row budget",
+        ));
+    }
+    if bytes > MAX_LOGICAL_TABLE_BYTES {
+        return Err(ForensicExportError::TooLarge(
+            "per-table logical byte budget",
+        ));
+    }
+    Ok(())
+}
+
 async fn rows_for_situation(
     tx: &mut Transaction<'_, Postgres>,
     table: &str,
@@ -114,6 +130,16 @@ async fn rows_for_situation(
     situation: Uuid,
 ) -> Result<Vec<Value>, ForensicExportError> {
     let table = safe_ident(table)?;
+    let budget_sql = format!(
+        "SELECT count(*)::bigint, COALESCE(sum(octet_length(to_jsonb(t)::text)),0)::bigint \
+         FROM niccolo.{table} t WHERE workspace_id=$1 AND situation_id=$2"
+    );
+    let (row_count, byte_count): (i64, i64) = sqlx::query_as(&budget_sql)
+        .bind(workspace)
+        .bind(situation)
+        .fetch_one(&mut **tx)
+        .await?;
+    check_table_budget(row_count, byte_count)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
          WHERE workspace_id=$1 AND situation_id=$2 ORDER BY to_jsonb(t)::text LIMIT $3"
@@ -142,6 +168,16 @@ async fn rows_for_documents(
         return Ok(Vec::new());
     }
     let table = safe_ident(table)?;
+    let budget_sql = format!(
+        "SELECT count(*)::bigint, COALESCE(sum(octet_length(to_jsonb(t)::text)),0)::bigint \
+         FROM niccolo.{table} t WHERE workspace_id=$1 AND document_id=ANY($2::uuid[])"
+    );
+    let (row_count, byte_count): (i64, i64) = sqlx::query_as(&budget_sql)
+        .bind(workspace)
+        .bind(documents)
+        .fetch_one(&mut **tx)
+        .await?;
+    check_table_budget(row_count, byte_count)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
          WHERE workspace_id=$1 AND document_id=ANY($2::uuid[]) ORDER BY to_jsonb(t)::text LIMIT $3"
@@ -170,6 +206,16 @@ async fn rows_for_people(
         return Ok(Vec::new());
     }
     let table = safe_ident(table)?;
+    let budget_sql = format!(
+        "SELECT count(*)::bigint, COALESCE(sum(octet_length(to_jsonb(t)::text)),0)::bigint \
+         FROM niccolo.{table} t WHERE workspace_id=$1 AND person_id=ANY($2::uuid[])"
+    );
+    let (row_count, byte_count): (i64, i64) = sqlx::query_as(&budget_sql)
+        .bind(workspace)
+        .bind(people)
+        .fetch_one(&mut **tx)
+        .await?;
+    check_table_budget(row_count, byte_count)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
          WHERE workspace_id=$1 AND person_id=ANY($2::uuid[]) ORDER BY to_jsonb(t)::text LIMIT $3"
@@ -292,6 +338,16 @@ async fn rows_for_questions(
         return Ok(Vec::new());
     }
     let table = safe_ident(table)?;
+    let budget_sql = format!(
+        "SELECT count(*)::bigint, COALESCE(sum(octet_length(to_jsonb(t)::text)),0)::bigint \
+         FROM niccolo.{table} t WHERE workspace_id=$1 AND question_id=ANY($2::uuid[])"
+    );
+    let (row_count, byte_count): (i64, i64) = sqlx::query_as(&budget_sql)
+        .bind(workspace)
+        .bind(questions)
+        .fetch_one(&mut **tx)
+        .await?;
+    check_table_budget(row_count, byte_count)?;
     let sql = format!(
         "SELECT to_jsonb(t)::text FROM niccolo.{table} t \
          WHERE workspace_id=$1 AND question_id=ANY($2::uuid[]) \
@@ -595,6 +651,7 @@ async fn evidence_rows(
 fn insert_logical_rows(
     logical: &mut BTreeMap<String, Vec<Value>>,
     total_rows: &mut usize,
+    total_bytes: &mut usize,
     table: String,
     rows: Vec<Value>,
 ) -> Result<(), ForensicExportError> {
@@ -606,6 +663,17 @@ fn insert_logical_rows(
         .ok_or(ForensicExportError::TooLarge("total logical row budget"))?;
     if *total_rows > MAX_TOTAL_LOGICAL_ROWS {
         return Err(ForensicExportError::TooLarge("total logical row budget"));
+    }
+    let added_bytes = rows.iter().try_fold(0usize, |sum, row| {
+        let bytes = serde_json::to_vec(row)?.len();
+        sum.checked_add(bytes)
+            .ok_or(ForensicExportError::TooLarge("total logical byte budget"))
+    })?;
+    *total_bytes = total_bytes
+        .checked_add(added_bytes)
+        .ok_or(ForensicExportError::TooLarge("total logical byte budget"))?;
+    if *total_bytes > MAX_TOTAL_LOGICAL_BYTES {
+        return Err(ForensicExportError::TooLarge("total logical byte budget"));
     }
     logical.insert(table, rows);
     Ok(())
@@ -704,9 +772,16 @@ pub async fn build(
 
     let mut logical = BTreeMap::new();
     let mut logical_row_count = 0usize;
+    let mut logical_byte_count = 0usize;
     for table in situation_tables {
         let rows = rows_for_situation(&mut tx, &table, workspace, situation).await?;
-        insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
+        insert_logical_rows(
+            &mut logical,
+            &mut logical_row_count,
+            &mut logical_byte_count,
+            table,
+            rows,
+        )?;
     }
 
     let question_ids = situation_question_ids(&mut tx, workspace, situation).await?;
@@ -716,7 +791,13 @@ pub async fn build(
         "question_evidence_references",
     ] {
         let rows = rows_for_questions(&mut tx, table, workspace, &question_ids).await?;
-        insert_logical_rows(&mut logical, &mut logical_row_count, table.into(), rows)?;
+        insert_logical_rows(
+            &mut logical,
+            &mut logical_row_count,
+            &mut logical_byte_count,
+            table.into(),
+            rows,
+        )?;
     }
 
     let (documents, evidence_seed) =
@@ -735,7 +816,13 @@ pub async fn build(
         .await?;
         for table in document_tables {
             let rows = rows_for_documents(&mut tx, &table, workspace, &documents).await?;
-            insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
+            insert_logical_rows(
+            &mut logical,
+            &mut logical_row_count,
+            &mut logical_byte_count,
+            table,
+            rows,
+        )?;
         }
     }
 
@@ -757,6 +844,7 @@ pub async fn build(
     insert_logical_rows(
         &mut logical,
         &mut logical_row_count,
+        &mut logical_byte_count,
         "identity_subjects".into(),
         identity_subjects,
     )?;
@@ -769,7 +857,13 @@ pub async fn build(
         ("proposition_evidence", proposition_links),
         ("propositions", propositions),
     ] {
-        insert_logical_rows(&mut logical, &mut logical_row_count, name.into(), rows)?;
+        insert_logical_rows(
+            &mut logical,
+            &mut logical_row_count,
+            &mut logical_byte_count,
+            name.into(),
+            rows,
+        )?;
     }
 
     let declared_source_bytes: i64 = if documents.is_empty() {
