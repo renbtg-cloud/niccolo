@@ -22,6 +22,7 @@ use crate::decision_readiness::{
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::forensic_import::{self, ForensicImportError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
@@ -39,7 +40,9 @@ use crate::purpose_history::{self, NewPurpose, PurposeError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
-use crate::situation_forensic_export::{self, ForensicExportError};
+use crate::situation_forensic_export::{
+    self, ForensicExportError, ForensicSituationExport,
+};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
@@ -332,6 +335,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/forensic-export",
             get(get_situation_forensic_export),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/forensic-imports/{batch}",
+            post(import_forensic_package),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/sync",
@@ -1445,6 +1452,75 @@ async fn get_situation_forensic_export(
             ),
         })?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForensicImportHttpRequest {
+    declared_origin: String,
+    package: ForensicSituationExport,
+}
+
+fn forensic_import_error(error: ForensicImportError) -> ApiError {
+    match error {
+        ForensicImportError::Invalid | ForensicImportError::ManifestIncomplete => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid forensic import package")
+        }
+        ForensicImportError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "forensic import provenance conflict")
+        }
+        ForensicImportError::Structure(ForensicExportError::TooLarge(_)) => ApiError(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "forensic import exceeds local package limits",
+        ),
+        ForensicImportError::Structure(
+            ForensicExportError::CorruptOriginal
+            | ForensicExportError::ManifestMismatch
+            | ForensicExportError::InvalidPackage(_)
+            | ForensicExportError::InvalidCatalogIdentifier,
+        ) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "forensic import failed structural verification",
+        ),
+        ForensicImportError::Structure(_) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "forensic import package unavailable",
+        ),
+        ForensicImportError::Privileged
+        | ForensicImportError::InsecureRole
+        | ForensicImportError::Database(_) => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "forensic import unavailable",
+        ),
+    }
+}
+
+async fn import_forensic_package(
+    State(state): State<AppState>,
+    Path((workspace, batch)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<ForensicImportHttpRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let input = forensic_import::ImportRequest {
+        import_batch_id: batch,
+        declared_origin: request.declared_origin,
+    };
+    let imported = forensic_import::import_untrusted(
+        &state.pool,
+        workspace,
+        actor,
+        &input,
+        &request.package,
+    )
+    .await
+    .map_err(forensic_import_error)?;
+    let status = if imported.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!(imported), status))
 }
 
 #[derive(Deserialize)]
