@@ -226,6 +226,38 @@ async fn http_import_requires_write_and_preserves_quarantine_flags() {
 }
 
 #[tokio::test]
+async fn forensic_import_route_accepts_valid_packages_larger_than_global_json_limit() {
+    let f = fixture().await;
+    let package = exported(&f).await;
+    let batch = Uuid::new_v4();
+    let package_json = serde_json::to_string(&package).unwrap();
+    let padding = " ".repeat(5 * 1024 * 1024);
+    let body = format!(
+        "{{\"declared_origin\":\"fixture://large-http\",\"package\":{padding}{package_json}}}"
+    );
+    assert!(body.len() > 4 * 1024 * 1024);
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_token),
+        )
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body))
+        .unwrap();
+
+    let (status, imported) = call(f.router.clone(), request).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(imported["import_batch_id"], batch.to_string());
+    assert_eq!(imported["import_mode"], "UNTRUSTED");
+}
+
+#[tokio::test]
 async fn untrusted_import_is_quarantined_and_exact_replay_is_idempotent() {
     let f = fixture().await;
     let package = exported(&f).await;

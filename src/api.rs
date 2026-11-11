@@ -64,6 +64,8 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+const FORENSIC_IMPORT_HTTP_BODY_LIMIT: usize = 192 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
@@ -336,7 +338,8 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route(
             "/v1/workspaces/{workspace}/forensic-imports/{batch}",
-            post(import_forensic_package),
+            post(import_forensic_package)
+                .layer(DefaultBodyLimit::max(FORENSIC_IMPORT_HTTP_BODY_LIMIT)),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/sync",
