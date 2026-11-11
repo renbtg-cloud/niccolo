@@ -22,6 +22,7 @@ use crate::decision_readiness::{
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::forensic_context::{self, ForensicContextError};
 use crate::forensic_import::{self, ForensicImportError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
@@ -450,6 +451,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/input",
             get(get_analysis_input),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/forensic-context",
+            get(list_analysis_forensic_context),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/forensic-context/{binding}",
+            post(bind_analysis_forensic_context),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/output",
@@ -1699,6 +1708,98 @@ async fn get_analysis_input(
             "current_situation_revision": materialized.current_revision,
             "input_is_current": materialized.input_is_current,
             "future_context_included": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+fn forensic_context_error(error: ForensicContextError) -> ApiError {
+    match error {
+        ForensicContextError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid forensic context binding")
+        }
+        ForensicContextError::Invisible => {
+            ApiError(StatusCode::NOT_FOUND, "forensic context unavailable")
+        }
+        ForensicContextError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "forensic context binding conflict")
+        }
+        ForensicContextError::TooMany => {
+            ApiError(StatusCode::CONFLICT, "forensic context binding limit reached")
+        }
+        ForensicContextError::Privileged
+        | ForensicContextError::InsecureRole
+        | ForensicContextError::Database(_) => {
+            ApiError(StatusCode::INTERNAL_SERVER_ERROR, "forensic context unavailable")
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForensicContextBindingRequest {
+    import_batch_id: Uuid,
+    item_id: Uuid,
+    note: Option<String>,
+}
+
+async fn bind_analysis_forensic_context(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, binding)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<ForensicContextBindingRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let result = forensic_context::bind(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+        actor,
+        &forensic_context::BindingInput {
+            binding_id: binding,
+            import_batch_id: request.import_batch_id,
+            item_id: request.item_id,
+            note: request.note,
+        },
+    )
+    .await
+    .map_err(forensic_context_error)?;
+    Ok(no_store(
+        json!(result),
+        if result.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_analysis_forensic_context(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let items = forensic_context::list(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await
+    .map_err(forensic_context_error)?;
+    Ok(no_store(
+        json!({
+            "items": items,
+            "quarantine_provenance": true,
+            "items_are_documentary_evidence": false,
+            "current_credentials_upgrade_imported_statements": false,
+            "part_of_frozen_analysis_input": false
         }),
         StatusCode::OK,
     ))

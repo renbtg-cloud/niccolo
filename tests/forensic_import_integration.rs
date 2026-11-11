@@ -7,9 +7,11 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use niccolo_evidence::{
-    api, authz,
+    analysis_snapshot,
+    analysis_structure::AnalysisScope,
+    api, authz, forensic_context,
     forensic_import::{self, ForensicImportError, ImportRequest},
-    situation_forensic_export,
+    reasoning_packet, situation_forensic_export,
 };
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -523,6 +525,196 @@ async fn reused_batch_id_for_a_different_package_fails_as_provenance_conflict() 
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn selected_quarantined_item_reaches_reasoning_as_current_non_evidence_context() {
+    let f = fixture().await;
+    let package = exported(&f).await;
+    let batch = Uuid::new_v4();
+    let (created_status, _) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            batch,
+            &f.destination_token,
+            "fixture://reasoning-context",
+            &package,
+        ),
+    )
+    .await;
+    assert_eq!(created_status, StatusCode::CREATED);
+
+    let digest = authz::credential_digest(&f.destination_token).unwrap();
+    let page = authz::with_auth_digest(digest.clone(), async {
+        forensic_import::list_items(&f.secure, f.destination_workspace, batch, None, 50)
+            .await
+            .unwrap()
+    })
+    .await;
+    let imported_item = page
+        .items
+        .iter()
+        .find(|item| item.source_kind == "LOGICAL_ROW")
+        .expect("logical imported item")
+        .item_id;
+
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.situations
+         (workspace_id,situation_id,focus,created_by_principal_id,current_revision)
+         VALUES($1,$2,'Reconsider old Niccolo material',$3,1)",
+    )
+    .bind(f.destination_workspace)
+    .bind(situation)
+    .bind(f.destination_principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_revisions
+         (workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause)
+         VALUES($1,$2,1,'Reconsider old Niccolo material',$3,$4,'CREATED')",
+    )
+    .bind(f.destination_workspace)
+    .bind(situation)
+    .bind("c".repeat(64))
+    .bind(f.destination_principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    authz::with_auth_digest(digest.clone(), async {
+        analysis_snapshot::begin(
+            &f.secure,
+            f.destination_workspace,
+            f.destination_principal,
+            situation,
+            analysis,
+            "Compare the old reasoning with a fresh analysis",
+            None,
+        )
+        .await
+        .unwrap();
+    })
+    .await;
+
+    let binding = Uuid::new_v4();
+    let bind_request = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}/forensic-context/{binding}",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_token),
+        )
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "import_batch_id": batch,
+                "item_id": imported_item,
+                "note": "Compare this imported historical item; do not treat it as fact."
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let (bind_status, bound) = call(f.router.clone(), bind_request).await;
+    assert_eq!(bind_status, StatusCode::CREATED);
+    assert_eq!(bound["item"]["binding_id"], binding.to_string());
+    assert_eq!(bound["item"]["quarantine_provenance"], true);
+    assert_eq!(bound["item"]["establishes_truth"], false);
+    assert_eq!(bound["item"]["documentary_evidence"], false);
+
+    let read_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}/forensic-context",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (read_status, context) = call(f.router.clone(), read_request).await;
+    assert_eq!(read_status, StatusCode::OK);
+    assert_eq!(context["items"].as_array().unwrap().len(), 1);
+    assert_eq!(context["items_are_documentary_evidence"], false);
+    assert_eq!(context["part_of_frozen_analysis_input"], false);
+
+    let scope = AnalysisScope {
+        workspace: f.destination_workspace,
+        situation,
+        analysis,
+    };
+    let packet = authz::with_auth_digest(digest.clone(), async {
+        reasoning_packet::build(&f.secure, scope).await.unwrap()
+    })
+    .await;
+    assert_eq!(packet.current_human_control.imported_context.len(), 1);
+    let imported = &packet.current_human_control.imported_context[0];
+    assert_eq!(imported.binding_id, binding);
+    assert!(imported.quarantine_provenance);
+    assert!(!imported.establishes_truth);
+    assert!(!imported.documentary_evidence);
+    assert!(!imported.current_credentials_upgrade_imported_statement);
+    assert!(
+        imported.payload_json.is_some(),
+        "bounded logical historical state should be available to fresh reasoning"
+    );
+    assert!(!packet.current_human_control.imported_context_was_part_of_frozen_input);
+    assert!(!packet.current_human_control.imported_context_is_documentary_evidence);
+
+    let native_evidence: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.evidence WHERE workspace_id=$1")
+            .bind(f.destination_workspace)
+            .fetch_one(&f.admin)
+            .await
+            .unwrap();
+    assert_eq!(native_evidence, 0);
+
+    let replay = authz::with_auth_digest(digest.clone(), async {
+        forensic_context::bind(
+            &f.secure,
+            scope,
+            f.destination_principal,
+            &forensic_context::BindingInput {
+                binding_id: binding,
+                import_batch_id: batch,
+                item_id: imported_item,
+                note: Some(
+                    "Compare this imported historical item; do not treat it as fact.".into(),
+                ),
+            },
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+    assert!(replay.replayed);
+
+    let conflict = authz::with_auth_digest(digest, async {
+        forensic_context::bind(
+            &f.secure,
+            scope,
+            f.destination_principal,
+            &forensic_context::BindingInput {
+                binding_id: binding,
+                import_batch_id: batch,
+                item_id: imported_item,
+                note: Some("Change the recorded rationale retroactively.".into()),
+            },
+        )
+        .await
+    })
+    .await;
+    assert!(matches!(
+        conflict,
+        Err(forensic_context::ForensicContextError::Conflict)
+    ));
 }
 
 #[tokio::test]
