@@ -1,0 +1,20 @@
+name: VM source export
+on:
+  push:
+    branches: [ci/vm-source-export]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Pack current source
+        run: git archive --format=tar.gz --output=niccolo-vm-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-vm-source
+          path: niccolo-vm-source.tar.gz
+          retention-days: 1
