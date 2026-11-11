@@ -312,6 +312,61 @@ async fn untrusted_import_is_quarantined_and_exact_replay_is_idempotent() {
 }
 
 #[tokio::test]
+async fn reused_batch_id_for_a_different_package_fails_as_provenance_conflict() {
+    let f = fixture().await;
+    let first_package = exported(&f).await;
+    let batch = Uuid::new_v4();
+    let digest = authz::credential_digest(&f.destination_token).unwrap();
+    let first = ImportRequest {
+        import_batch_id: batch,
+        declared_origin: "fixture://stable-batch".into(),
+    };
+    authz::with_auth_digest(digest.clone(), async {
+        forensic_import::import_untrusted(
+            &f.secure,
+            f.destination_workspace,
+            f.destination_principal,
+            &first,
+            &first_package,
+        )
+        .await
+        .unwrap();
+    })
+    .await;
+
+    let mut different_package = first_package.clone();
+    different_package
+        .omissions
+        .push("different transport package metadata".into());
+
+    let direct = authz::with_auth_digest(digest, async {
+        forensic_import::import_untrusted(
+            &f.secure,
+            f.destination_workspace,
+            f.destination_principal,
+            &first,
+            &different_package,
+        )
+        .await
+    })
+    .await;
+    assert!(matches!(direct, Err(ForensicImportError::Conflict)));
+
+    let (status, _) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            batch,
+            &f.destination_token,
+            "fixture://stable-batch",
+            &different_package,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
 async fn same_package_with_conflicting_declared_origin_fails_closed() {
     let f = fixture().await;
     let package = exported(&f).await;

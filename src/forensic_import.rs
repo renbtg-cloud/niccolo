@@ -354,7 +354,7 @@ pub async fn import_untrusted(
           source_format,source_format_version,source_workspace_id,source_situation_id,
           declared_origin,verification_status,import_mode,imported_by_principal_id)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'STRUCTURALLY_VERIFIED','UNTRUSTED',$10)
-         ON CONFLICT (workspace_id,source_package_sha256) DO NOTHING",
+         ON CONFLICT DO NOTHING",
     )
     .bind(workspace)
     .bind(request.import_batch_id)
