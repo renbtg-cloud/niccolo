@@ -516,4 +516,6 @@ pub mod adversarial_dossier;
 
 pub mod runtime_resources;
 
-pub mod resource_policy;\n\npub mod situation_forensic_export;\n
+pub mod resource_policy;
+
+pub mod situation_forensic_export;

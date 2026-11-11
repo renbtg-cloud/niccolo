@@ -193,23 +193,28 @@ async fn situation_evidence_ids(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<Vec<Uuid>, ForensicExportError> {
-    let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
+    let references: Vec<(String, String)> = sqlx::query_as(
+        "SELECT c.relname, e.attname \
+         FROM pg_class c \
+         JOIN pg_namespace n ON n.oid=c.relnamespace \
+         JOIN pg_attribute e ON e.attrelid=c.oid \
+         JOIN pg_type et ON et.oid=e.atttypid \
          WHERE n.nspname='niccolo' AND c.relkind='r' \
            AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='workspace_id' AND NOT a.attisdropped) \
            AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='situation_id' AND NOT a.attisdropped) \
-           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='evidence_id' AND NOT a.attisdropped) \
-         ORDER BY c.relname",
+           AND e.attname LIKE '%evidence_id' AND NOT e.attisdropped AND et.typname='uuid' \
+         ORDER BY c.relname,e.attname",
     )
     .fetch_all(&mut **tx)
     .await?;
     let mut ids = BTreeSet::new();
-    for table in tables {
+    for (table, column) in references {
         let table = safe_ident(&table)?;
+        let column = safe_ident(&column)?;
         let sql = format!(
-            "SELECT DISTINCT evidence_id FROM niccolo.{table} \
-             WHERE workspace_id=$1 AND situation_id=$2 AND evidence_id IS NOT NULL \
-             ORDER BY evidence_id LIMIT $3"
+            "SELECT DISTINCT {column} FROM niccolo.{table} \
+             WHERE workspace_id=$1 AND situation_id=$2 AND {column} IS NOT NULL \
+             ORDER BY {column} LIMIT $3"
         );
         let found: Vec<Uuid> = sqlx::query_scalar(&sql)
             .bind(workspace)
@@ -226,6 +231,55 @@ async fn situation_evidence_ids(
         if ids.len() > MAX_TOTAL_LOGICAL_ROWS {
             return Err(ForensicExportError::TooLarge(
                 "total evidence-reference budget",
+            ));
+        }
+    }
+    Ok(ids.into_iter().collect())
+}
+
+async fn situation_document_ids(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<Uuid>, ForensicExportError> {
+    let references: Vec<(String, String)> = sqlx::query_as(
+        "SELECT c.relname, d.attname \
+         FROM pg_class c \
+         JOIN pg_namespace n ON n.oid=c.relnamespace \
+         JOIN pg_attribute d ON d.attrelid=c.oid \
+         JOIN pg_type dt ON dt.oid=d.atttypid \
+         WHERE n.nspname='niccolo' AND c.relkind='r' \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='workspace_id' AND NOT a.attisdropped) \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='situation_id' AND NOT a.attisdropped) \
+           AND d.attname LIKE '%document_id' AND NOT d.attisdropped AND dt.typname='uuid' \
+         ORDER BY c.relname,d.attname",
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut ids = BTreeSet::new();
+    for (table, column) in references {
+        let table = safe_ident(&table)?;
+        let column = safe_ident(&column)?;
+        let sql = format!(
+            "SELECT DISTINCT {column} FROM niccolo.{table} \
+             WHERE workspace_id=$1 AND situation_id=$2 AND {column} IS NOT NULL \
+             ORDER BY {column} LIMIT $3"
+        );
+        let found: Vec<Uuid> = sqlx::query_scalar(&sql)
+            .bind(workspace)
+            .bind(situation)
+            .bind((MAX_SOURCE_DOCUMENTS + 1) as i64)
+            .fetch_all(&mut **tx)
+            .await?;
+        if found.len() > MAX_SOURCE_DOCUMENTS {
+            return Err(ForensicExportError::TooLarge(
+                "per-table source-document reference budget",
+            ));
+        }
+        ids.extend(found);
+        if ids.len() > MAX_SOURCE_DOCUMENTS {
+            return Err(ForensicExportError::TooLarge(
+                "Situation-linked source-document budget",
             ));
         }
     }
@@ -451,23 +505,7 @@ pub async fn build(
         insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
     }
 
-    let direct_documents: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT document_id FROM ( \
-           SELECT document_id FROM niccolo.situation_sources WHERE workspace_id=$1 AND situation_id=$2 \
-           UNION \
-           SELECT document_id FROM niccolo.situation_revision_sources WHERE workspace_id=$1 AND situation_id=$2 \
-         ) d ORDER BY document_id LIMIT $3",
-    )
-    .bind(workspace)
-    .bind(situation)
-    .bind((MAX_SOURCE_DOCUMENTS + 1) as i64)
-    .fetch_all(&mut *tx)
-    .await?;
-    if direct_documents.len() > MAX_SOURCE_DOCUMENTS {
-        return Err(ForensicExportError::TooLarge(
-            "attached source-document budget",
-        ));
-    }
+    let direct_documents = situation_document_ids(&mut tx, workspace, situation).await?;
 
     let referenced_evidence = situation_evidence_ids(&mut tx, workspace, situation).await?;
     let referenced_documents: Vec<Uuid> = if referenced_evidence.is_empty() {

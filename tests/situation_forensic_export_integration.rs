@@ -37,14 +37,22 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     let doc = Uuid::new_v4();
     let missing_doc = Uuid::new_v4();
     let referenced_doc = Uuid::new_v4();
+    let collection_doc = Uuid::new_v4();
+    let document_only_doc = Uuid::new_v4();
     let evidence = Uuid::new_v4();
     let missing_evidence = Uuid::new_v4();
     let referenced_evidence = Uuid::new_v4();
+    let collection_evidence = Uuid::new_v4();
     let analysis = Uuid::new_v4();
     let person = Uuid::new_v4();
     let original = b"Alice: exact retained forensic bytes\n".to_vec();
     let missing_original_declared = b"Bob: metadata exists but retained bytes are unavailable\n";
-    let referenced_original = b"Carol: source used by analysis but not directly attached\n".to_vec();
+    let referenced_original =
+        b"Carol: source used by analysis but not directly attached\n".to_vec();
+    let collection_original =
+        b"Dana: source referenced only through collection provenance\n".to_vec();
+    let document_only_original =
+        b"Eve: document referenced by collection provenance without a fragment\n".to_vec();
 
     sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'forensic-export')")
         .bind(workspace)
@@ -95,6 +103,22 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
         .bind(workspace).bind(situation).bind(analysis).bind("a".repeat(64)).bind(principal).execute(&admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.situation_analysis_examined_fragments(workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5)")
         .bind(workspace).bind(situation).bind(analysis).bind(referenced_evidence).bind(principal).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'WHATSAPP_EXPORT','fixture://collection-provenance-only',$3,$4)")
+        .bind(workspace).bind(collection_doc).bind(sha(&collection_original)).bind(collection_original.len() as i64).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class,admissible) VALUES($1,$2,'fixture://collection-provenance-only',$3,'DIRECT_OBSERVATION',true)")
+        .bind(workspace).bind(collection_evidence).bind(String::from_utf8_lossy(&collection_original).to_string()).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) VALUES($1,$2,0,$3,0,$4,'Dana')")
+        .bind(workspace).bind(collection_doc).bind(collection_evidence).bind(collection_original.len() as i32).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) VALUES($1,$2,$3)")
+        .bind(workspace).bind(collection_doc).bind(&collection_original).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_collection_events(workspace_id,situation_id,analysis_id,event_id,actor_label,actor_role,operation,input_evidence_id,method,assertion_kind,qualification,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,'CI collector','COLLECTOR','Referenced evidence during collection',$5,'fixture collection event','DOCUMENTARY_OBSERVATION','OBSERVED','Exercises noncanonical evidence-id column discovery',$6)")
+        .bind(workspace).bind(situation).bind(analysis).bind(Uuid::new_v4()).bind(collection_evidence).bind(principal).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'WHATSAPP_EXPORT','fixture://collection-document-only',$3,$4)")
+        .bind(workspace).bind(document_only_doc).bind(sha(&document_only_original)).bind(document_only_original.len() as i64).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) VALUES($1,$2,$3)")
+        .bind(workspace).bind(document_only_doc).bind(&document_only_original).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_collection_events(workspace_id,situation_id,analysis_id,event_id,actor_label,actor_role,operation,input_document_id,method,assertion_kind,qualification,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,'CI collector','COLLECTOR','Referenced document during collection',$5,'fixture document collection event','DOCUMENTARY_OBSERVATION','OBSERVED','Exercises noncanonical document-id column discovery',$6)")
+        .bind(workspace).bind(situation).bind(analysis).bind(Uuid::new_v4()).bind(document_only_doc).bind(principal).execute(&admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.identity_subjects(workspace_id,person_id,display_label) VALUES($1,$2,'Alice Example')")
         .bind(workspace).bind(person).execute(&admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.identity_events(workspace_id,event_id,document_id,speaker_label,operation,person_id,human_reason,actor_principal_id) VALUES($1,$2,$3,'Alice','ASSIGN',$4,'Human explicitly mapped this label',$5)")
@@ -163,7 +187,7 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     assert!(!first.structural_validity_establishes_truth);
     assert!(!first.included_model_output_is_documentary_evidence);
     assert!(!first.imported_state_should_be_trusted_automatically);
-    assert_eq!(first.original_source_payloads.len(), 2);
+    assert_eq!(first.original_source_payloads.len(), 4);
     let retained = first
         .original_source_payloads
         .iter()
@@ -184,6 +208,20 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
             .any(|p| p.document_id == referenced_doc
                 && p.declared_sha256 == sha(&referenced_original))
     );
+    assert!(
+        first
+            .original_source_payloads
+            .iter()
+            .any(|p| p.document_id == collection_doc
+                && p.declared_sha256 == sha(&collection_original))
+    );
+    assert!(
+        first
+            .original_source_payloads
+            .iter()
+            .any(|p| p.document_id == document_only_doc
+                && p.declared_sha256 == sha(&document_only_original))
+    );
     assert_eq!(first.missing_original_document_ids, vec![missing_doc]);
     assert!(
         first
@@ -201,7 +239,7 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
         first
             .logical_tables
             .get("evidence")
-            .is_some_and(|rows| rows.len() == 3)
+            .is_some_and(|rows| rows.len() == 4)
     );
     assert!(
         first
@@ -213,6 +251,8 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     );
     let serialized = serde_json::to_string(&first).unwrap();
     assert!(serialized.contains("fixture://analysis-referenced"));
+    assert!(serialized.contains("fixture://collection-provenance-only"));
+    assert!(serialized.contains("fixture://collection-document-only"));
     assert!(!serialized.contains("CROSS_WORKSPACE_SECRET_SENTINEL"));
 
     let no_digest = situation_forensic_export::build(&secure, workspace, situation).await;
