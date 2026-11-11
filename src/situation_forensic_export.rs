@@ -17,6 +17,10 @@ const MAX_TOTAL_LOGICAL_ROWS: usize = 200_000;
 const MAX_LOGICAL_TABLE_BYTES: i64 = 16 * 1024 * 1024;
 const MAX_TOTAL_LOGICAL_BYTES: usize = 32 * 1024 * 1024;
 const MAX_DECLARED_SOURCE_BYTES: i64 = 32 * 1024 * 1024;
+const MAX_SOURCE_FORMAT_BYTES: usize = 128;
+const MAX_SOURCE_LOCATOR_BYTES: usize = 8192;
+const MAX_OMISSIONS: usize = 256;
+const MAX_OMISSION_BYTES: usize = 4096;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ForensicExportError {
@@ -820,9 +824,38 @@ pub fn verify_structure(package: &ForensicSituationExport) -> Result<(), Forensi
         }
     }
 
+    if package.original_source_payloads.len() > MAX_SOURCE_DOCUMENTS
+        || package.missing_original_document_ids.len() > MAX_SOURCE_DOCUMENTS
+        || package.original_source_payloads.len() + package.missing_original_document_ids.len()
+            > MAX_SOURCE_DOCUMENTS
+    {
+        return Err(ForensicExportError::TooLarge(
+            "source-document package budget",
+        ));
+    }
+    if package.omissions.len() > MAX_OMISSIONS
+        || package
+            .omissions
+            .iter()
+            .any(|value| value.len() > MAX_OMISSION_BYTES || value.contains('\0'))
+    {
+        return Err(ForensicExportError::TooLarge("package omission metadata budget"));
+    }
+
     let mut payload_documents = BTreeSet::new();
     let mut payload_bytes = 0usize;
     for payload in &package.original_source_payloads {
+        if payload.format.is_empty()
+            || payload.format.len() > MAX_SOURCE_FORMAT_BYTES
+            || payload.locator.is_empty()
+            || payload.locator.len() > MAX_SOURCE_LOCATOR_BYTES
+            || payload.format.contains('\0')
+            || payload.locator.contains('\0')
+        {
+            return Err(ForensicExportError::InvalidPackage(
+                "source payload metadata",
+            ));
+        }
         if !payload_documents.insert(payload.document_id) {
             return Err(ForensicExportError::InvalidPackage(
                 "duplicate source payload document",
@@ -837,6 +870,14 @@ pub fn verify_structure(package: &ForensicSituationExport) -> Result<(), Forensi
             return Err(ForensicExportError::InvalidPackage(
                 "source payload sha256 encoding",
             ));
+        }
+        let expected_hex_len = payload
+            .byte_length
+            .checked_mul(2)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or(ForensicExportError::TooLarge("retained source-byte budget"))?;
+        if payload.bytes_hex.len() != expected_hex_len {
+            return Err(ForensicExportError::CorruptOriginal);
         }
         let bytes = decode_hex(&payload.bytes_hex)?;
         if bytes.len() as u64 != payload.byte_length || digest(&bytes) != payload.declared_sha256 {
@@ -1157,6 +1198,30 @@ mod forensic_verification_tests {
         assert!(matches!(
             verify_structure(&package),
             Err(ForensicExportError::CorruptOriginal)
+        ));
+    }
+
+    #[test]
+    fn too_many_source_document_entries_are_rejected_before_import() {
+        let mut package = package();
+        package.missing_original_document_ids = (100..=164).map(Uuid::from_u128).collect();
+        assert!(matches!(
+            verify_structure(&package),
+            Err(ForensicExportError::TooLarge(
+                "source-document package budget"
+            ))
+        ));
+    }
+
+    #[test]
+    fn unbounded_source_metadata_is_rejected() {
+        let mut package = package();
+        package.original_source_payloads[0].locator = "x".repeat(MAX_SOURCE_LOCATOR_BYTES + 1);
+        assert!(matches!(
+            verify_structure(&package),
+            Err(ForensicExportError::InvalidPackage(
+                "source payload metadata"
+            ))
         ));
     }
 
