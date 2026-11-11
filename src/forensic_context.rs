@@ -126,9 +126,9 @@ async fn scoped(
 fn view_from_row(row: BindingRow, mut remaining_bytes: i64) -> (ForensicContextItem, i64) {
     let payload_bytes = row.13.max(0);
     let candidate_payload = row.12;
-    let include_payload = candidate_payload.is_some()
-        && payload_bytes <= MAX_ITEM_JSON_BYTES
-        && payload_bytes <= remaining_bytes;
+    let had_payload = candidate_payload.is_some();
+    let include_payload =
+        had_payload && payload_bytes <= MAX_ITEM_JSON_BYTES && payload_bytes <= remaining_bytes;
     let payload_json = if include_payload { candidate_payload } else { None };
     if include_payload {
         remaining_bytes -= payload_bytes;
@@ -149,7 +149,7 @@ fn view_from_row(row: BindingRow, mut remaining_bytes: i64) -> (ForensicContextI
             bound_by_principal_id: row.11,
             payload_json,
             payload_json_bytes: payload_bytes as u64,
-            payload_omitted_due_to_size: candidate_payload.is_some() && !include_payload,
+            payload_omitted_due_to_size: had_payload && !include_payload,
             original_bytes_retained: row.14,
             quarantine_provenance: true,
             establishes_truth: false,
