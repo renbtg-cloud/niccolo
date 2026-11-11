@@ -229,6 +229,105 @@ async fn http_import_requires_write_and_preserves_quarantine_flags() {
 }
 
 #[tokio::test]
+async fn quarantined_import_is_readable_as_bounded_metadata_without_payload_promotion() {
+    let f = fixture().await;
+    let package = exported(&f).await;
+    let batch = Uuid::new_v4();
+
+    let (created_status, created) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            batch,
+            &f.destination_token,
+            "fixture://inspectable-import",
+            &package,
+        ),
+    )
+    .await;
+    assert_eq!(created_status, StatusCode::CREATED);
+    assert!(created["item_count"].as_u64().unwrap() > 1);
+
+    let batch_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (batch_status, stored) = call(f.router.clone(), batch_request).await;
+    assert_eq!(batch_status, StatusCode::OK);
+    assert_eq!(stored["import_batch_id"], batch.to_string());
+    assert_eq!(stored["structural_validity_establishes_truth"], false);
+    assert_eq!(stored["current_credentials_upgrade_imported_statements"], false);
+    assert_eq!(stored["imported_model_output_is_documentary_evidence"], false);
+
+    let first_page_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}/items?limit=1",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (first_status, first_page) = call(f.router.clone(), first_page_request).await;
+    assert_eq!(first_status, StatusCode::OK);
+    assert_eq!(first_page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(first_page["items"][0]["current_credentials_establish_truth"], false);
+    assert_eq!(first_page["items"][0]["documentary_evidence"], false);
+    assert!(first_page["items"][0].get("payload_json").is_none());
+    assert!(first_page["items"][0].get("payload_bytes").is_none());
+
+    let cursor = first_page["next_after_source_path"]
+        .as_str()
+        .expect("more than one quarantined item");
+    let second_page_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}/items?limit=1&after={}",
+            f.destination_workspace,
+            cursor
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (second_status, second_page) = call(f.router.clone(), second_page_request).await;
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
+    assert_ne!(
+        first_page["items"][0]["source_path"],
+        second_page["items"][0]["source_path"]
+    );
+
+    let wrong_workspace_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.source_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (wrong_status, _) = call(f.router.clone(), wrong_workspace_request).await;
+    assert_eq!(wrong_status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn forensic_import_route_accepts_valid_packages_larger_than_global_json_limit() {
     let f = fixture().await;
     let package = exported(&f).await;

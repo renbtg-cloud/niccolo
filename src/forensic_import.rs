@@ -27,6 +27,8 @@ pub enum ForensicImportError {
     Conflict,
     #[error("forensic import package manifest is incomplete")]
     ManifestIncomplete,
+    #[error("forensic import batch unavailable")]
+    Invisible,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,6 +106,47 @@ pub struct ImportBatchView {
     pub structural_validity_establishes_truth: bool,
     pub current_credentials_upgrade_imported_statements: bool,
     pub imported_model_output_is_documentary_evidence: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredImportBatchView {
+    pub import_batch_id: Uuid,
+    pub source_package_sha256: String,
+    pub source_manifest_sha256: String,
+    pub source_format: String,
+    pub source_format_version: u32,
+    pub source_workspace_id: Uuid,
+    pub source_situation_id: Uuid,
+    pub declared_origin: String,
+    pub verification_status: String,
+    pub import_mode: String,
+    pub imported_by_principal_id: Uuid,
+    pub imported_at: String,
+    pub item_count: u64,
+    pub structural_validity_establishes_truth: bool,
+    pub current_credentials_upgrade_imported_statements: bool,
+    pub imported_model_output_is_documentary_evidence: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportItemSummary {
+    pub item_id: Uuid,
+    pub source_path: String,
+    pub source_kind: String,
+    pub source_sha256: String,
+    pub source_byte_length: u64,
+    pub origin_class: String,
+    pub source_table: Option<String>,
+    pub source_row_index: Option<u64>,
+    pub original_document_id: Option<Uuid>,
+    pub current_credentials_establish_truth: bool,
+    pub documentary_evidence: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportItemPage {
+    pub items: Vec<ImportItemSummary>,
+    pub next_after_source_path: Option<String>,
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -429,6 +472,150 @@ pub async fn import_untrusted(
         structural_validity_establishes_truth: false,
         current_credentials_upgrade_imported_statements: false,
         imported_model_output_is_documentary_evidence: false,
+    })
+}
+
+pub async fn get_batch(
+    pool: &PgPool,
+    workspace: Uuid,
+    batch: Uuid,
+) -> Result<StoredImportBatchView, ForensicImportError> {
+    if batch.is_nil() {
+        return Err(ForensicImportError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let row: Option<(
+        Uuid,
+        String,
+        String,
+        String,
+        i32,
+        Uuid,
+        Uuid,
+        String,
+        String,
+        String,
+        Uuid,
+        String,
+        i64,
+    )> = sqlx::query_as(
+        "SELECT b.import_batch_id,b.source_package_sha256,b.source_manifest_sha256,
+                b.source_format,b.source_format_version,b.source_workspace_id,b.source_situation_id,
+                b.declared_origin,b.verification_status,b.import_mode,b.imported_by_principal_id,
+                b.imported_at::text,
+                (SELECT count(*)::bigint FROM niccolo.forensic_import_items i
+                  WHERE i.workspace_id=b.workspace_id AND i.import_batch_id=b.import_batch_id)
+           FROM niccolo.forensic_import_batches b
+          WHERE b.workspace_id=$1 AND b.import_batch_id=$2",
+    )
+    .bind(workspace)
+    .bind(batch)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let row = row.ok_or(ForensicImportError::Invisible)?;
+    Ok(StoredImportBatchView {
+        import_batch_id: row.0,
+        source_package_sha256: row.1,
+        source_manifest_sha256: row.2,
+        source_format: row.3,
+        source_format_version: row.4 as u32,
+        source_workspace_id: row.5,
+        source_situation_id: row.6,
+        declared_origin: row.7,
+        verification_status: row.8,
+        import_mode: row.9,
+        imported_by_principal_id: row.10,
+        imported_at: row.11,
+        item_count: row.12 as u64,
+        structural_validity_establishes_truth: false,
+        current_credentials_upgrade_imported_statements: false,
+        imported_model_output_is_documentary_evidence: false,
+    })
+}
+
+pub async fn list_items(
+    pool: &PgPool,
+    workspace: Uuid,
+    batch: Uuid,
+    after_source_path: Option<&str>,
+    limit: i64,
+) -> Result<ImportItemPage, ForensicImportError> {
+    if batch.is_nil()
+        || !(1..=200).contains(&limit)
+        || after_source_path
+            .is_some_and(|value| value.len() > 2048 || value.contains('\0'))
+    {
+        return Err(ForensicImportError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+             SELECT 1 FROM niccolo.forensic_import_batches
+             WHERE workspace_id=$1 AND import_batch_id=$2
+         )",
+    )
+    .bind(workspace)
+    .bind(batch)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !visible {
+        return Err(ForensicImportError::Invisible);
+    }
+    let rows: Vec<(
+        Uuid,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<Uuid>,
+        bool,
+        bool,
+    )> = sqlx::query_as(
+        "SELECT item_id,source_path,source_kind,source_sha256,source_byte_length,
+                origin_class,source_table,source_row_index,original_document_id,
+                current_credentials_establish_truth,documentary_evidence
+           FROM niccolo.forensic_import_items
+          WHERE workspace_id=$1 AND import_batch_id=$2
+            AND ($3::text IS NULL OR source_path>$3)
+          ORDER BY source_path
+          LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(batch)
+    .bind(after_source_path)
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let has_more = rows.len() as i64 > limit;
+    let mut items = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|row| ImportItemSummary {
+            item_id: row.0,
+            source_path: row.1,
+            source_kind: row.2,
+            source_sha256: row.3,
+            source_byte_length: row.4 as u64,
+            origin_class: row.5,
+            source_table: row.6,
+            source_row_index: row.7.map(|value| value as u64),
+            original_document_id: row.8,
+            current_credentials_establish_truth: row.9,
+            documentary_evidence: row.10,
+        })
+        .collect::<Vec<_>>();
+    let next_after_source_path = has_more
+        .then(|| items.last().map(|item| item.source_path.clone()))
+        .flatten();
+    Ok(ImportItemPage {
+        items: std::mem::take(&mut items),
+        next_after_source_path,
     })
 }
 

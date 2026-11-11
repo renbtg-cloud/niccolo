@@ -338,8 +338,13 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route(
             "/v1/workspaces/{workspace}/forensic-imports/{batch}",
-            post(import_forensic_package)
+            get(get_forensic_import_batch)
+                .post(import_forensic_package)
                 .layer(DefaultBodyLimit::max(FORENSIC_IMPORT_HTTP_BODY_LIMIT)),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/forensic-imports/{batch}/items",
+            get(list_forensic_import_items),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/sync",
@@ -1470,6 +1475,9 @@ fn forensic_import_error(error: ForensicImportError) -> ApiError {
         ForensicImportError::Conflict => {
             ApiError(StatusCode::CONFLICT, "forensic import provenance conflict")
         }
+        ForensicImportError::Invisible => {
+            ApiError(StatusCode::NOT_FOUND, "forensic import unavailable")
+        }
         ForensicImportError::Structure(ForensicExportError::TooLarge(_)) => ApiError(
             StatusCode::PAYLOAD_TOO_LARGE,
             "forensic import exceeds local package limits",
@@ -1517,6 +1525,44 @@ async fn import_forensic_package(
         StatusCode::CREATED
     };
     Ok(no_store(json!(imported), status))
+}
+
+async fn get_forensic_import_batch(
+    State(state): State<AppState>,
+    Path((workspace, batch)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let view = forensic_import::get_batch(&state.pool, workspace, batch)
+        .await
+        .map_err(forensic_import_error)?;
+    Ok(no_store(json!(view), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForensicImportItemsQuery {
+    after: Option<String>,
+    limit: Option<i64>,
+}
+
+async fn list_forensic_import_items(
+    State(state): State<AppState>,
+    Path((workspace, batch)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<ForensicImportItemsQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = forensic_import::list_items(
+        &state.pool,
+        workspace,
+        batch,
+        query.after.as_deref(),
+        query.limit.unwrap_or(50),
+    )
+    .await
+    .map_err(forensic_import_error)?;
+    Ok(no_store(json!(page), StatusCode::OK))
 }
 
 #[derive(Deserialize)]
