@@ -6,8 +6,8 @@ use crate::{
     actors, agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot,
     clarification, collection_provenance, decision_points, decision_readiness,
     epistemic_policy_store, forensic_context, human_agency, human_control, human_credence,
-    hypothesis_portfolio,
-    integrity_scope, observation_query_ledger, proactive_briefing, source_scope, temporal_state,
+    hypothesis_portfolio, integrity_scope, observation_query_ledger, proactive_briefing,
+    source_scope, temporal_state,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
