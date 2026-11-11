@@ -78,7 +78,7 @@ describe('operation observation state', () => {
     const succeeded = { operation: { state: 'SUCCEEDED', state_version: 8, target_analysis_id: analysis } };
     expect(completedAnalysisOutputRefreshId(previous, succeeded)).toBe(analysis);
     expect(completedAnalysisOutputRefreshId(succeeded, succeeded)).toBe(null);
-    expect(completedAnalysisOutputRefreshId(null, succeeded)).toBe(null);
+    expect(completedAnalysisOutputRefreshId(null, succeeded)).toBe(analysis);
     expect(completedAnalysisOutputRefreshId(previous, { operation: { state: 'WAITING_FOR_HUMAN', target_analysis_id: analysis } })).toBe(null);
   });
 
