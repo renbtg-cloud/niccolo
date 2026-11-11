@@ -897,9 +897,13 @@ async fn ingest(
     let format = match headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
     {
-        Some("message/rfc822") => SourceFormat::Eml,
-        Some("text/plain") => SourceFormat::WhatsappExport,
+        Some(media_type) if media_type.eq_ignore_ascii_case("message/rfc822") => SourceFormat::Eml,
+        Some(media_type) if media_type.eq_ignore_ascii_case("text/plain") => {
+            SourceFormat::WhatsappExport
+        }
         _ => {
             return Err(ApiError(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,

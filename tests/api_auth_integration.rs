@@ -354,6 +354,26 @@ async fn unauthorized_assessment_is_rejected_before_graph_loading() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 #[tokio::test]
+async fn source_upload_accepts_standard_content_type_parameters() {
+    let (_admin, _app, w, _, token, router) = setup().await;
+    let document = Uuid::new_v4();
+    let (status, data) = invoke(
+        router,
+        request(
+            "POST",
+            &source(w, document),
+            Some(&token),
+            Some("Text/Plain; charset=utf-8"),
+            Some("fixture://content-type-parameter"),
+            CHAT,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(data["document_id"], document.to_string());
+}
+
+#[tokio::test]
 async fn wrong_content_type_and_missing_locator_do_not_write() {
     let (_admin, _app, w, _, token, router) = setup().await;
     let doc = source(w, Uuid::new_v4());
