@@ -287,6 +287,32 @@ async fn quarantined_import_is_readable_as_bounded_metadata_without_payload_prom
     assert!(first_page["items"][0].get("payload_json").is_none());
     assert!(first_page["items"][0].get("payload_bytes").is_none());
 
+    let first_item = first_page["items"][0]["item_id"]
+        .as_str()
+        .expect("item id");
+    let detail_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}/items/{first_item}",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (detail_status, detail) = call(f.router.clone(), detail_request).await;
+    assert_eq!(detail_status, StatusCode::OK);
+    assert_eq!(detail["item"]["item_id"], first_item);
+    assert_eq!(detail["item"]["current_credentials_establish_truth"], false);
+    assert_eq!(detail["item"]["documentary_evidence"], false);
+    assert!(
+        detail["payload_json"].is_object(),
+        "logical imported state should remain reviewable as quarantined JSON"
+    );
+    assert_eq!(detail["original_bytes_retained"], false);
+
     let cursor = first_page["next_after_source_path"]
         .as_str()
         .expect("more than one quarantined item");

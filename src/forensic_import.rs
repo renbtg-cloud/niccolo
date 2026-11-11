@@ -149,6 +149,14 @@ pub struct ImportItemPage {
     pub next_after_source_path: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ImportItemDetail {
+    pub item: ImportItemSummary,
+    pub payload_json: Option<Value>,
+    pub original_bytes_retained: bool,
+}
+
+
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -640,6 +648,64 @@ pub async fn list_items(
     Ok(ImportItemPage {
         items: std::mem::take(&mut items),
         next_after_source_path,
+    })
+}
+
+pub async fn get_item(
+    pool: &PgPool,
+    workspace: Uuid,
+    batch: Uuid,
+    item: Uuid,
+) -> Result<ImportItemDetail, ForensicImportError> {
+    if batch.is_nil() || item.is_nil() {
+        return Err(ForensicImportError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let row: Option<(
+        Uuid,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<Uuid>,
+        bool,
+        bool,
+        Option<Value>,
+        bool,
+    )> = sqlx::query_as(
+        "SELECT item_id,source_path,source_kind,source_sha256,source_byte_length,
+                origin_class,source_table,source_row_index,original_document_id,
+                current_credentials_establish_truth,documentary_evidence,payload_json,
+                payload_bytes IS NOT NULL
+           FROM niccolo.forensic_import_items
+          WHERE workspace_id=$1 AND import_batch_id=$2 AND item_id=$3",
+    )
+    .bind(workspace)
+    .bind(batch)
+    .bind(item)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let row = row.ok_or(ForensicImportError::Invisible)?;
+    Ok(ImportItemDetail {
+        item: ImportItemSummary {
+            item_id: row.0,
+            source_path: row.1,
+            source_kind: row.2,
+            source_sha256: row.3,
+            source_byte_length: row.4 as u64,
+            origin_class: row.5,
+            source_table: row.6,
+            source_row_index: row.7.map(|value| value as u64),
+            original_document_id: row.8,
+            current_credentials_establish_truth: row.9,
+            documentary_evidence: row.10,
+        },
+        payload_json: row.11,
+        original_bytes_retained: row.12,
     })
 }
 
