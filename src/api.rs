@@ -40,9 +40,7 @@ use crate::purpose_history::{self, NewPurpose, PurposeError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
-use crate::situation_forensic_export::{
-    self, ForensicExportError, ForensicSituationExport,
-};
+use crate::situation_forensic_export::{self, ForensicExportError, ForensicSituationExport};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
 use crate::source_import::SourceFormat;
@@ -1506,15 +1504,10 @@ async fn import_forensic_package(
         import_batch_id: batch,
         declared_origin: request.declared_origin,
     };
-    let imported = forensic_import::import_untrusted(
-        &state.pool,
-        workspace,
-        actor,
-        &input,
-        &request.package,
-    )
-    .await
-    .map_err(forensic_import_error)?;
+    let imported =
+        forensic_import::import_untrusted(&state.pool, workspace, actor, &input, &request.package)
+            .await
+            .map_err(forensic_import_error)?;
     let status = if imported.replayed {
         StatusCode::OK
     } else {
