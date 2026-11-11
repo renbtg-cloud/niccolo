@@ -19,8 +19,6 @@ pub enum ForensicContextError {
     Database(#[from] sqlx::Error),
     #[error("privileged SQL login prohibited")]
     Privileged,
-    #[error("dedicated secure API role required")]
-    InsecureRole,
     #[error("invalid forensic context binding")]
     Invalid,
     #[error("analysis or forensic item unavailable")]
@@ -109,17 +107,13 @@ async fn scoped(
             .execute(&mut *tx)
             .await?;
     }
-    let (privileged, secure): (bool, bool) = sqlx::query_as(
-        "SELECT rolsuper OR rolbypassrls, pg_has_role(current_user,'niccolo_api','member')
-           FROM pg_roles WHERE rolname=current_user",
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
     )
     .fetch_one(&mut *tx)
     .await?;
     if privileged {
         return Err(ForensicContextError::Privileged);
-    }
-    if !secure {
-        return Err(ForensicContextError::InsecureRole);
     }
     let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
         .bind(workspace.to_string())

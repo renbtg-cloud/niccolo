@@ -1727,9 +1727,7 @@ fn forensic_context_error(error: ForensicContextError) -> ApiError {
         ForensicContextError::TooMany => {
             ApiError(StatusCode::CONFLICT, "forensic context binding limit reached")
         }
-        ForensicContextError::Privileged
-        | ForensicContextError::InsecureRole
-        | ForensicContextError::Database(_) => {
+        ForensicContextError::Privileged | ForensicContextError::Database(_) => {
             ApiError(StatusCode::INTERNAL_SERVER_ERROR, "forensic context unavailable")
         }
     }
