@@ -5,7 +5,8 @@ use crate::analysis_structure::AnalysisScope;
 use crate::{
     actors, agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot,
     clarification, collection_provenance, decision_points, decision_readiness,
-    epistemic_policy_store, human_agency, human_control, human_credence, hypothesis_portfolio,
+    epistemic_policy_store, forensic_context, human_agency, human_control, human_credence,
+    hypothesis_portfolio,
     integrity_scope, observation_query_ledger, proactive_briefing, source_scope, temporal_state,
 };
 use serde::{Deserialize, Serialize};
@@ -93,6 +94,10 @@ pub struct CurrentHumanControl {
     pub claim_credence: Vec<human_credence::HumanCredenceView>,
     /// Current user-configured heuristics; not retroactive documentary evidence.
     pub epistemic_policy: epistemic_policy_store::PolicyView,
+    /// Human-selected quarantined history. This is current context, never frozen evidence.
+    pub imported_context: Vec<forensic_context::ForensicContextItem>,
+    pub imported_context_was_part_of_frozen_input: bool,
+    pub imported_context_is_documentary_evidence: bool,
     pub current_control_was_part_of_frozen_input: bool,
     pub system_owns_project: bool,
     pub system_may_execute_proposed_steps_without_human: bool,
@@ -402,6 +407,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         epistemic_policy_store::effective(pool, scope.workspace, Some(scope.situation))
             .await
             .map_err(dep)?;
+    let imported_context = forensic_context::list(pool, scope).await.map_err(dep)?;
     let priorities = human_control::priorities(pool, scope.workspace, scope.situation)
         .await
         .map_err(dep)?;
@@ -495,6 +501,9 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             proposed_next_steps,
             claim_credence,
             epistemic_policy,
+            imported_context,
+            imported_context_was_part_of_frozen_input: false,
+            imported_context_is_documentary_evidence: false,
             current_control_was_part_of_frozen_input: false,
             system_owns_project: false,
             system_may_execute_proposed_steps_without_human: false,
