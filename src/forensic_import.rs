@@ -377,6 +377,23 @@ type ImportItemRow = (
     bool,
 );
 
+type ImportItemDetailRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    i64,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<Uuid>,
+    bool,
+    bool,
+    Option<Value>,
+    bool,
+);
+
+
 
 fn replay_view(
     row: BatchRow,
@@ -661,21 +678,7 @@ pub async fn get_item(
         return Err(ForensicImportError::Invalid);
     }
     let mut tx = scoped(pool, workspace).await?;
-    let row: Option<(
-        Uuid,
-        String,
-        String,
-        String,
-        i64,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<Uuid>,
-        bool,
-        bool,
-        Option<Value>,
-        bool,
-    )> = sqlx::query_as(
+    let row: Option<ImportItemDetailRow> = sqlx::query_as(
         "SELECT item_id,source_path,source_kind,source_sha256,source_byte_length,
                 origin_class,source_table,source_row_index,original_document_id,
                 current_credentials_establish_truth,documentary_evidence,payload_json,
