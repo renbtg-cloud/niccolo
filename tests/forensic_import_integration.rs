@@ -205,7 +205,10 @@ async fn http_import_requires_write_and_preserves_quarantine_flags() {
     assert_eq!(body["import_mode"], "UNTRUSTED");
     assert_eq!(body["verification_status"], "STRUCTURALLY_VERIFIED");
     assert_eq!(body["structural_validity_establishes_truth"], false);
-    assert_eq!(body["current_credentials_upgrade_imported_statements"], false);
+    assert_eq!(
+        body["current_credentials_upgrade_imported_statements"],
+        false
+    );
     assert_eq!(body["imported_model_output_is_documentary_evidence"], false);
 
     let second_batch = Uuid::new_v4();
@@ -286,13 +289,12 @@ async fn untrusted_import_is_quarantined_and_exact_replay_is_idempotent() {
     assert!(!first.imported_model_output_is_documentary_evidence);
     assert!(first.item_count > 0);
 
-    let native_situations: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.situations WHERE workspace_id=$1",
-    )
-    .bind(f.destination_workspace)
-    .fetch_one(&f.admin)
-    .await
-    .unwrap();
+    let native_situations: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.situations WHERE workspace_id=$1")
+            .bind(f.destination_workspace)
+            .fetch_one(&f.admin)
+            .await
+            .unwrap();
     assert_eq!(native_situations, 0);
 
     let quarantined: (i64, bool, bool) = sqlx::query_as(

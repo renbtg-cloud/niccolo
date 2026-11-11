@@ -185,7 +185,9 @@ async fn rows_for_situation(
         .fetch_all(&mut **tx)
         .await?;
     if rows.len() as i64 > MAX_ROWS_PER_TABLE {
-        return Err(ForensicExportError::TooLarge("per-table logical row budget"));
+        return Err(ForensicExportError::TooLarge(
+            "per-table logical row budget",
+        ));
     }
     rows.into_iter()
         .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
@@ -223,7 +225,9 @@ async fn rows_for_documents(
         .fetch_all(&mut **tx)
         .await?;
     if rows.len() as i64 > MAX_ROWS_PER_TABLE {
-        return Err(ForensicExportError::TooLarge("per-table logical row budget"));
+        return Err(ForensicExportError::TooLarge(
+            "per-table logical row budget",
+        ));
     }
     rows.into_iter()
         .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
@@ -261,7 +265,9 @@ async fn rows_for_people(
         .fetch_all(&mut **tx)
         .await?;
     if rows.len() as i64 > MAX_ROWS_PER_TABLE {
-        return Err(ForensicExportError::TooLarge("per-table logical row budget"));
+        return Err(ForensicExportError::TooLarge(
+            "per-table logical row budget",
+        ));
     }
     rows.into_iter()
         .map(|row| serde_json::from_str(&row).map_err(ForensicExportError::from))
@@ -557,9 +563,7 @@ async fn evidence_ancestor_ids(
     .fetch_all(&mut **tx)
     .await?;
     if ids.len() > MAX_TOTAL_LOGICAL_ROWS {
-        return Err(ForensicExportError::TooLarge(
-            "evidence ancestry budget",
-        ));
+        return Err(ForensicExportError::TooLarge("evidence ancestry budget"));
     }
     Ok(ids)
 }
@@ -843,7 +847,9 @@ pub fn verify_structure(package: &ForensicSituationExport) -> Result<(), Forensi
             .iter()
             .any(|value| value.len() > MAX_OMISSION_BYTES || value.contains('\0'))
     {
-        return Err(ForensicExportError::TooLarge("package omission metadata budget"));
+        return Err(ForensicExportError::TooLarge(
+            "package omission metadata budget",
+        ));
     }
 
     let mut payload_documents = BTreeSet::new();
@@ -989,8 +995,7 @@ pub async fn build(
         )?;
     }
 
-    let (documents, evidence_seed) =
-        expand_source_scope(&mut tx, workspace, situation).await?;
+    let (documents, evidence_seed) = expand_source_scope(&mut tx, workspace, situation).await?;
 
     if !documents.is_empty() {
         let document_tables: Vec<String> = sqlx::query_scalar(
@@ -1006,12 +1011,12 @@ pub async fn build(
         for table in document_tables {
             let rows = rows_for_documents(&mut tx, &table, workspace, &documents).await?;
             insert_logical_rows(
-            &mut logical,
-            &mut logical_row_count,
-            &mut logical_byte_count,
-            table,
-            rows,
-        )?;
+                &mut logical,
+                &mut logical_row_count,
+                &mut logical_byte_count,
+                table,
+                rows,
+            )?;
         }
     }
 

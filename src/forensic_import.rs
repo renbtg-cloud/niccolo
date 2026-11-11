@@ -134,9 +134,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, ForensicImportError> {
 }
 
 fn classify_table(table: &str) -> ImportedOriginClass {
-    if matches!(table, "identity_events" | "identity_subjects")
-        || table.starts_with("identity_")
-    {
+    if matches!(table, "identity_events" | "identity_subjects") || table.starts_with("identity_") {
         ImportedOriginClass::ImportedIdentityAssertion
     } else if table.contains("model_invocation")
         || table.contains("model_output")
@@ -154,7 +152,10 @@ fn classify_table(table: &str) -> ImportedOriginClass {
         || table.contains("manual_hypoth")
     {
         ImportedOriginClass::ImportedHumanAssertion
-    } else if matches!(table, "source_documents" | "source_fragments" | "source_payloads") {
+    } else if matches!(
+        table,
+        "source_documents" | "source_fragments" | "source_payloads"
+    ) {
         ImportedOriginClass::ImportedSourceArtifact
     } else {
         ImportedOriginClass::ImportedHistoricalState
@@ -264,7 +265,17 @@ async fn scoped(
     Ok(tx)
 }
 
-type BatchRow = (Uuid, String, String, Uuid, Uuid, String, String, String, i64);
+type BatchRow = (
+    Uuid,
+    String,
+    String,
+    Uuid,
+    Uuid,
+    String,
+    String,
+    String,
+    i64,
+);
 
 fn replay_view(
     row: BatchRow,
@@ -330,19 +341,16 @@ pub async fn import_untrusted(
     let prepared = prepare_untrusted(package)?;
     let mut tx = scoped(pool, workspace).await?;
 
-    let visible: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM niccolo.workspaces WHERE workspace_id=$1)",
-    )
-    .bind(workspace)
-    .fetch_one(&mut *tx)
-    .await?;
+    let visible: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.workspaces WHERE workspace_id=$1)")
+            .bind(workspace)
+            .fetch_one(&mut *tx)
+            .await?;
     if !visible {
         return Err(ForensicImportError::Invalid);
     }
 
-    if let Some(row) =
-        existing_batch(&mut tx, workspace, &prepared.source_package_sha256).await?
-    {
+    if let Some(row) = existing_batch(&mut tx, workspace, &prepared.source_package_sha256).await? {
         let view = replay_view(row, &prepared, request.declared_origin.trim())?;
         tx.commit().await?;
         return Ok(view);
@@ -441,8 +449,14 @@ mod tests {
         let row_bytes = serde_json::to_vec(&row).unwrap();
         let logical_tables = BTreeMap::from([
             ("situation_contributions".into(), vec![row]),
-            ("model_invocations".into(), vec![json!({"response":"repeated machine claim"})]),
-            ("identity_events".into(), vec![json!({"person_id":"00000000-0000-0000-0000-00000000000a"})]),
+            (
+                "model_invocations".into(),
+                vec![json!({"response":"repeated machine claim"})],
+            ),
+            (
+                "identity_events".into(),
+                vec![json!({"person_id":"00000000-0000-0000-0000-00000000000a"})],
+            ),
         ]);
         let payload = OriginalSourcePayload {
             document_id: document,
