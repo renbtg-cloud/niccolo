@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 const EXECUTION_LEASE_MS: i64 = 300_000;
 const EXECUTION_HEARTBEAT_MS: u64 = 60_000;
+const EXECUTION_HEARTBEAT_TIMEOUT_MS: u64 = 15_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BffExecutionError {
@@ -63,6 +64,7 @@ enum LeaseHeartbeatState {
 async fn supervise_execution<F, H, HFut>(
     work: F,
     heartbeat_every: Duration,
+    heartbeat_timeout: Duration,
     mut heartbeat: H,
 ) -> Result<(), BffExecutionError>
 where
@@ -71,6 +73,7 @@ where
     HFut: Future<Output = Result<LeaseHeartbeatState, BffExecutionError>>,
 {
     debug_assert!(!heartbeat_every.is_zero());
+    debug_assert!(!heartbeat_timeout.is_zero());
     tokio::pin!(work);
     let mut ticker = tokio::time::interval(heartbeat_every);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -87,7 +90,16 @@ where
                 let state = tokio::select! {
                     biased;
                     result = &mut work => return result,
-                    state = &mut heartbeat_future => state?,
+                    state = tokio::time::timeout(heartbeat_timeout, &mut heartbeat_future) => {
+                        match state {
+                            Ok(state) => state?,
+                            Err(_) => {
+                                return Err(BffExecutionError::LeaseHeartbeat(
+                                    "execution lease heartbeat timed out".into(),
+                                ));
+                            }
+                        }
+                    },
                 };
                 match state {
                     LeaseHeartbeatState::Alive => {}
@@ -147,6 +159,7 @@ async fn run_with_owned_lease(
     let result = supervise_execution(
         work,
         Duration::from_millis(EXECUTION_HEARTBEAT_MS),
+        Duration::from_millis(EXECUTION_HEARTBEAT_TIMEOUT_MS),
         || async {
             match bff_operations::heartbeat_execution(pool, scope, lease_owner, EXECUTION_LEASE_MS)
                 .await
@@ -318,6 +331,7 @@ mod stalled_outcome_tests {
                 Ok(())
             },
             Duration::from_millis(10),
+            Duration::from_millis(50),
             move || {
                 let observed = observed.clone();
                 async move {
@@ -333,6 +347,28 @@ mod stalled_outcome_tests {
     }
 
     #[tokio::test]
+    async fn stalled_heartbeat_aborts_supervision_before_lease_can_drift() {
+        let result = supervise_execution(
+            async {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(())
+            },
+            Duration::from_millis(5),
+            Duration::from_millis(15),
+            || async {
+                std::future::pending::<Result<LeaseHeartbeatState, BffExecutionError>>().await
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(BffExecutionError::LeaseHeartbeat(message))
+                if message == "execution lease heartbeat timed out"
+        ));
+    }
+
+    #[tokio::test]
     async fn slow_heartbeat_does_not_block_work_completion() {
         let supervised = supervise_execution(
             async {
@@ -340,6 +376,7 @@ mod stalled_outcome_tests {
                 Ok(())
             },
             Duration::from_millis(5),
+            Duration::from_millis(50),
             || async {
                 std::future::pending::<Result<LeaseHeartbeatState, BffExecutionError>>().await
             },
@@ -359,6 +396,7 @@ mod stalled_outcome_tests {
                 Ok(())
             },
             Duration::from_millis(5),
+            Duration::from_millis(50),
             || async { Ok(LeaseHeartbeatState::Lost) },
         )
         .await;
@@ -374,6 +412,7 @@ mod stalled_outcome_tests {
                 Ok(())
             },
             Duration::from_millis(5),
+            Duration::from_millis(50),
             || async { Ok(LeaseHeartbeatState::BoundaryReached) },
         )
         .await;
