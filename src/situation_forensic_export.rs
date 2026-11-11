@@ -36,6 +36,10 @@ pub enum ForensicExportError {
     InvalidCatalogIdentifier,
     #[error("forensic export exceeds bounded in-memory package limits: {0}")]
     TooLarge(&'static str),
+    #[error("invalid forensic export package: {0}")]
+    InvalidPackage(&'static str),
+    #[error("forensic export manifest mismatch")]
+    ManifestMismatch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +99,28 @@ fn hex(bytes: &[u8]) -> String {
         out.push(HEX[(b & 0x0f) as usize] as char);
     }
     out
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, ForensicExportError> {
+    if !value.len().is_multiple_of(2) {
+        return Err(ForensicExportError::InvalidPackage(
+            "source payload hex length",
+        ));
+    }
+    let mut out = Vec::with_capacity(value.len() / 2);
+    for pair in value.as_bytes().as_chunks::<2>().0 {
+        let nibble = |byte: u8| -> Result<u8, ForensicExportError> {
+            match byte {
+                b'0'..=b'9' => Ok(byte - b'0'),
+                b'a'..=b'f' => Ok(byte - b'a' + 10),
+                _ => Err(ForensicExportError::InvalidPackage(
+                    "source payload hex encoding",
+                )),
+            }
+        };
+        out.push((nibble(pair[0])? << 4) | nibble(pair[1])?);
+    }
+    Ok(out)
 }
 
 fn safe_ident(value: &str) -> Result<&str, ForensicExportError> {
@@ -757,6 +783,89 @@ fn build_manifest(
     })
 }
 
+/// Verify only the internal structure and byte integrity of an exported package.
+///
+/// Success deliberately does not establish truth, authenticity before export,
+/// completeness, independence, or credibility. Importers must preserve that
+/// epistemic distinction even when this check succeeds.
+pub fn verify_structure(package: &ForensicSituationExport) -> Result<(), ForensicExportError> {
+    if package.format != "niccolo.situation-forensic-export" || package.format_version != 1 {
+        return Err(ForensicExportError::InvalidPackage(
+            "unsupported forensic export format",
+        ));
+    }
+
+    let mut logical_rows = 0usize;
+    let mut logical_bytes = 0usize;
+    for (table, rows) in &package.logical_tables {
+        safe_ident(table)?;
+        check_table_budget(rows.len() as i64, 0)?;
+        logical_rows = logical_rows
+            .checked_add(rows.len())
+            .ok_or(ForensicExportError::TooLarge("total logical row budget"))?;
+        if logical_rows > MAX_TOTAL_LOGICAL_ROWS {
+            return Err(ForensicExportError::TooLarge("total logical row budget"));
+        }
+        let table_bytes = rows.iter().try_fold(0usize, |sum, row| {
+            let bytes = serde_json::to_vec(row)?.len();
+            sum.checked_add(bytes)
+                .ok_or(ForensicExportError::TooLarge("total logical byte budget"))
+        })?;
+        check_table_budget(rows.len() as i64, table_bytes as i64)?;
+        logical_bytes = logical_bytes
+            .checked_add(table_bytes)
+            .ok_or(ForensicExportError::TooLarge("total logical byte budget"))?;
+        if logical_bytes > MAX_TOTAL_LOGICAL_BYTES {
+            return Err(ForensicExportError::TooLarge("total logical byte budget"));
+        }
+    }
+
+    let mut payload_documents = BTreeSet::new();
+    let mut payload_bytes = 0usize;
+    for payload in &package.original_source_payloads {
+        if !payload_documents.insert(payload.document_id) {
+            return Err(ForensicExportError::InvalidPackage(
+                "duplicate source payload document",
+            ));
+        }
+        if payload.declared_sha256.len() != 64
+            || !payload
+                .declared_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ForensicExportError::InvalidPackage(
+                "source payload sha256 encoding",
+            ));
+        }
+        let bytes = decode_hex(&payload.bytes_hex)?;
+        if bytes.len() as u64 != payload.byte_length || digest(&bytes) != payload.declared_sha256 {
+            return Err(ForensicExportError::CorruptOriginal);
+        }
+        payload_bytes = payload_bytes
+            .checked_add(bytes.len())
+            .ok_or(ForensicExportError::TooLarge("retained source-byte budget"))?;
+        if payload_bytes as i64 > MAX_DECLARED_SOURCE_BYTES {
+            return Err(ForensicExportError::TooLarge("retained source-byte budget"));
+        }
+    }
+
+    let mut missing = BTreeSet::new();
+    for document_id in &package.missing_original_document_ids {
+        if payload_documents.contains(document_id) || !missing.insert(*document_id) {
+            return Err(ForensicExportError::InvalidPackage(
+                "invalid missing-original source set",
+            ));
+        }
+    }
+
+    let expected = build_manifest(&package.logical_tables, &package.original_source_payloads)?;
+    if package.manifest != expected {
+        return Err(ForensicExportError::ManifestMismatch);
+    }
+    Ok(())
+}
+
 pub async fn build(
     pool: &PgPool,
     workspace: Uuid,
@@ -979,4 +1088,88 @@ pub async fn build(
             "absence from this package is not evidence that a record never existed outside retained Niccolo state".into(),
         ],
     })
+}
+
+#[cfg(test)]
+mod forensic_verification_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn package() -> ForensicSituationExport {
+        let document_id = Uuid::from_u128(7);
+        let bytes = b"exact source".to_vec();
+        let payload = OriginalSourcePayload {
+            document_id,
+            format: "WHATSAPP_EXPORT".into(),
+            locator: "fixture://source".into(),
+            declared_sha256: digest(&bytes),
+            byte_length: bytes.len() as u64,
+            bytes_hex: hex(&bytes),
+        };
+        let logical_tables = BTreeMap::from([(
+            "situation_contributions".into(),
+            vec![
+                json!({"contribution_id":"00000000-0000-0000-0000-000000000001","text":"historical assertion"}),
+            ],
+        )]);
+        let manifest = build_manifest(&logical_tables, std::slice::from_ref(&payload)).unwrap();
+        ForensicSituationExport {
+            format: "niccolo.situation-forensic-export".into(),
+            format_version: 1,
+            workspace_id: Uuid::from_u128(1),
+            situation_id: Uuid::from_u128(2),
+            logical_tables,
+            original_source_payloads: vec![payload],
+            missing_original_document_ids: vec![Uuid::from_u128(8)],
+            manifest,
+            structural_validity_establishes_truth: false,
+            included_model_output_is_documentary_evidence: false,
+            imported_state_should_be_trusted_automatically: false,
+            omissions: vec!["fixture omission".into()],
+        }
+    }
+
+    #[test]
+    fn valid_export_structure_verifies_without_claiming_truth() {
+        let mut package = package();
+        package.structural_validity_establishes_truth = true;
+        assert!(verify_structure(&package).is_ok());
+        assert!(package.structural_validity_establishes_truth);
+    }
+
+    #[test]
+    fn tampered_logical_row_breaks_manifest() {
+        let mut package = package();
+        package
+            .logical_tables
+            .get_mut("situation_contributions")
+            .unwrap()[0]["text"] = json!("tampered");
+        assert!(matches!(
+            verify_structure(&package),
+            Err(ForensicExportError::ManifestMismatch)
+        ));
+    }
+
+    #[test]
+    fn tampered_source_bytes_fail_even_if_manifest_metadata_is_unchanged() {
+        let mut package = package();
+        package.original_source_payloads[0].bytes_hex = hex(b"different source");
+        assert!(matches!(
+            verify_structure(&package),
+            Err(ForensicExportError::CorruptOriginal)
+        ));
+    }
+
+    #[test]
+    fn missing_original_set_cannot_overlap_retained_payloads() {
+        let mut package = package();
+        package.missing_original_document_ids =
+            vec![package.original_source_payloads[0].document_id];
+        assert!(matches!(
+            verify_structure(&package),
+            Err(ForensicExportError::InvalidPackage(
+                "invalid missing-original source set"
+            ))
+        ));
+    }
 }
