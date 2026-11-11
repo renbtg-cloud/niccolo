@@ -519,3 +519,4 @@ pub mod runtime_resources;
 pub mod resource_policy;
 
 pub mod situation_forensic_export;
+pub mod forensic_import;
