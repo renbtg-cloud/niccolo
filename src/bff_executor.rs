@@ -81,10 +81,19 @@ where
         tokio::select! {
             biased;
             result = &mut work => return result,
-            _ = ticker.tick() => match heartbeat().await? {
-                LeaseHeartbeatState::Alive => {}
-                LeaseHeartbeatState::BoundaryReached => return Ok(()),
-                LeaseHeartbeatState::Lost => return Err(BffExecutionError::ExecutionLeaseLost),
+            _ = ticker.tick() => {
+                let heartbeat_future = heartbeat();
+                tokio::pin!(heartbeat_future);
+                let state = tokio::select! {
+                    biased;
+                    result = &mut work => return result,
+                    state = &mut heartbeat_future => state?,
+                };
+                match state {
+                    LeaseHeartbeatState::Alive => {}
+                    LeaseHeartbeatState::BoundaryReached => return Ok(()),
+                    LeaseHeartbeatState::Lost => return Err(BffExecutionError::ExecutionLeaseLost),
+                }
             }
         }
     }
@@ -321,6 +330,25 @@ mod stalled_outcome_tests {
 
         assert!(result.is_ok());
         assert!(heartbeats.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[tokio::test]
+    async fn slow_heartbeat_does_not_block_work_completion() {
+        let supervised = supervise_execution(
+            async {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                Ok(())
+            },
+            Duration::from_millis(5),
+            || async {
+                std::future::pending::<Result<LeaseHeartbeatState, BffExecutionError>>().await
+            },
+        );
+
+        let result = tokio::time::timeout(Duration::from_secs(1), supervised)
+            .await
+            .expect("completed work must outrun a stuck heartbeat");
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
