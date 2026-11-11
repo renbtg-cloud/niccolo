@@ -1,11 +1,19 @@
 #![cfg(feature = "pg-integration")]
 
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use http_body_util::BodyExt;
 use niccolo_evidence::{
-    authz,
+    api, authz,
     forensic_import::{self, ForensicImportError, ImportRequest},
     situation_forensic_export,
 };
+use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use tower::ServiceExt;
 use uuid::Uuid;
 
 struct Fixture {
@@ -17,6 +25,8 @@ struct Fixture {
     destination_workspace: Uuid,
     destination_principal: Uuid,
     destination_token: String,
+    destination_read_token: String,
+    router: Router,
 }
 
 async fn fixture() -> Fixture {
@@ -93,6 +103,17 @@ async fn fixture() -> Fixture {
     )
     .await
     .unwrap();
+    let destination_read_token = authz::provision_token(
+        &admin,
+        Uuid::new_v4(),
+        destination_workspace,
+        true,
+        false,
+        1,
+    )
+    .await
+    .unwrap();
+    let router = api::router(secure.clone());
 
     Fixture {
         admin,
@@ -103,6 +124,8 @@ async fn fixture() -> Fixture {
         destination_workspace,
         destination_principal,
         destination_token,
+        destination_read_token,
+        router,
     }
 }
 
@@ -114,6 +137,92 @@ async fn exported(f: &Fixture) -> situation_forensic_export::ForensicSituationEx
             .unwrap()
     })
     .await
+}
+
+async fn call(router: Router, request: Request<Body>) -> (StatusCode, Value) {
+    let response = router.oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({})),
+    )
+}
+
+fn import_request(
+    f: &Fixture,
+    batch: Uuid,
+    token: &str,
+    origin: &str,
+    package: &situation_forensic_export::ForensicSituationExport,
+) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}",
+            f.destination_workspace
+        ))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({"declared_origin":origin,"package":package}).to_string(),
+        ))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn http_import_requires_write_and_preserves_quarantine_flags() {
+    let f = fixture().await;
+    let package = exported(&f).await;
+    let batch = Uuid::new_v4();
+
+    let (read_only_status, _) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            batch,
+            &f.destination_read_token,
+            "fixture://http-import",
+            &package,
+        ),
+    )
+    .await;
+    assert_eq!(read_only_status, StatusCode::FORBIDDEN);
+
+    let (status, body) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            batch,
+            &f.destination_token,
+            "fixture://http-import",
+            &package,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["import_batch_id"], batch.to_string());
+    assert_eq!(body["import_mode"], "UNTRUSTED");
+    assert_eq!(body["verification_status"], "STRUCTURALLY_VERIFIED");
+    assert_eq!(body["structural_validity_establishes_truth"], false);
+    assert_eq!(body["current_credentials_upgrade_imported_statements"], false);
+    assert_eq!(body["imported_model_output_is_documentary_evidence"], false);
+
+    let second_batch = Uuid::new_v4();
+    let (replay_status, replay) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            second_batch,
+            &f.destination_token,
+            "fixture://http-import",
+            &package,
+        ),
+    )
+    .await;
+    assert_eq!(replay_status, StatusCode::OK);
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["import_batch_id"], batch.to_string());
 }
 
 #[tokio::test]
