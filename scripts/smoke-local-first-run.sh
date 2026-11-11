@@ -458,8 +458,8 @@ if (cd "$probe_root" && NICCOLO_PG_ADMIN_URL="$probe_url" \
   echo 'Bootstrapping a second DB unexpectedly reused a cluster-global service role' >&2
   exit 1
 fi
-grep -q 'role niccolo_secure already exists' "$probe_root/bootstrap-probe.log" || {
-  echo 'Role conflict was not the explicit reason for refusing second bootstrap' >&2
+grep -q 'Niccolo cluster role(s) already exist:' "$probe_root/bootstrap-probe.log" || {
+  echo 'Cluster-role conflict was not the explicit reason for refusing second bootstrap' >&2
   exit 1
 }
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$probe_url" \
@@ -469,7 +469,7 @@ grep -q 'role niccolo_secure already exists' "$probe_root/bootstrap-probe.log" |
 }
 psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
   -c 'DROP DATABASE niccolo_ci_role_probe'
-echo 'PASS: preflight refuses reuse of cluster-global service role'
+echo 'PASS: preflight refuses reuse of cluster-global Niccolo roles'
 
 # The MVP advertises up to 4 MiB per source. Verify real HTTP ingestion
 # accepts more than the default Axum 2 MiB body cap, without skipping

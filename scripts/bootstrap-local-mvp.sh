@@ -31,10 +31,15 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT NOT E
   exit 1
 fi
 
-# PostgreSQL roles are cluster-global, not per-database. Overwriting an
-# existing niccolo_secure password could break an unrelated installation.
-if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='niccolo_secure')")" != "f" ]]; then
-  echo 'PostgreSQL role niccolo_secure already exists; refusing to change its password. Use a dedicated cluster or a supported migration.' >&2
+# PostgreSQL roles are cluster-global, not per-database. A fresh bootstrap
+# creates niccolo_app/niccolo_api in migrations and niccolo_secure afterward.
+# Reusing any of them can fail halfway through migrations or, worse, couple
+# two installations through shared grants/passwords. Refuse before the build.
+cluster_role_conflicts="$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c \
+  "SELECT COALESCE(string_agg(rolname,',' ORDER BY rolname),'') FROM pg_roles WHERE rolname IN ('niccolo_app','niccolo_api','niccolo_secure')")"
+if [[ -n "$cluster_role_conflicts" ]]; then
+  printf 'PostgreSQL Niccolo cluster role(s) already exist: %s; use a dedicated cluster or a supported migration.\n' \
+    "$cluster_role_conflicts" >&2
   exit 1
 fi
 
