@@ -36,11 +36,15 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     let principal = Uuid::new_v4();
     let doc = Uuid::new_v4();
     let missing_doc = Uuid::new_v4();
+    let referenced_doc = Uuid::new_v4();
     let evidence = Uuid::new_v4();
     let missing_evidence = Uuid::new_v4();
+    let referenced_evidence = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
     let person = Uuid::new_v4();
     let original = b"Alice: exact retained forensic bytes\n".to_vec();
     let missing_original_declared = b"Bob: metadata exists but retained bytes are unavailable\n";
+    let referenced_original = b"Carol: source used by analysis but not directly attached\n".to_vec();
 
     sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'forensic-export')")
         .bind(workspace)
@@ -79,6 +83,18 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     }
     sqlx::query("INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) VALUES($1,$2,$3)")
         .bind(workspace).bind(doc).bind(&original).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) VALUES($1,$2,'WHATSAPP_EXPORT','fixture://analysis-referenced',$3,$4)")
+        .bind(workspace).bind(referenced_doc).bind(sha(&referenced_original)).bind(referenced_original.len() as i64).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class,admissible) VALUES($1,$2,'fixture://analysis-referenced',$3,'DIRECT_OBSERVATION',true)")
+        .bind(workspace).bind(referenced_evidence).bind(String::from_utf8_lossy(&referenced_original).to_string()).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) VALUES($1,$2,0,$3,0,$4,'Carol')")
+        .bind(workspace).bind(referenced_doc).bind(referenced_evidence).bind(referenced_original.len() as i32).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) VALUES($1,$2,$3)")
+        .bind(workspace).bind(referenced_doc).bind(&referenced_original).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id) VALUES($1,$2,$3,1,$4,'Forensic export completeness',$5)")
+        .bind(workspace).bind(situation).bind(analysis).bind("a".repeat(64)).bind(principal).execute(&admin).await.unwrap();
+    sqlx::query("INSERT INTO niccolo.situation_analysis_examined_fragments(workspace_id,situation_id,analysis_id,evidence_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5)")
+        .bind(workspace).bind(situation).bind(analysis).bind(referenced_evidence).bind(principal).execute(&admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.identity_subjects(workspace_id,person_id,display_label) VALUES($1,$2,'Alice Example')")
         .bind(workspace).bind(person).execute(&admin).await.unwrap();
     sqlx::query("INSERT INTO niccolo.identity_events(workspace_id,event_id,document_id,speaker_label,operation,person_id,human_reason,actor_principal_id) VALUES($1,$2,$3,'Alice','ASSIGN',$4,'Human explicitly mapped this label',$5)")
@@ -147,18 +163,26 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
     assert!(!first.structural_validity_establishes_truth);
     assert!(!first.included_model_output_is_documentary_evidence);
     assert!(!first.imported_state_should_be_trusted_automatically);
-    assert_eq!(first.original_source_payloads.len(), 1);
-    assert_eq!(first.original_source_payloads[0].document_id, doc);
+    assert_eq!(first.original_source_payloads.len(), 2);
+    let retained = first
+        .original_source_payloads
+        .iter()
+        .find(|p| p.document_id == doc)
+        .unwrap();
+    assert_eq!(retained.declared_sha256, sha(&original));
     assert_eq!(
-        first.original_source_payloads[0].declared_sha256,
-        sha(&original)
-    );
-    assert_eq!(
-        first.original_source_payloads[0].bytes_hex,
+        retained.bytes_hex,
         original
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>()
+    );
+    assert!(
+        first
+            .original_source_payloads
+            .iter()
+            .any(|p| p.document_id == referenced_doc
+                && p.declared_sha256 == sha(&referenced_original))
     );
     assert_eq!(first.missing_original_document_ids, vec![missing_doc]);
     assert!(
@@ -177,7 +201,7 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
         first
             .logical_tables
             .get("evidence")
-            .is_some_and(|rows| rows.len() == 2)
+            .is_some_and(|rows| rows.len() == 3)
     );
     assert!(
         first
@@ -188,6 +212,7 @@ async fn forensic_export_is_deterministic_scoped_and_preserves_original_bytes() 
                 && entry.sha256 == sha(&original))
     );
     let serialized = serde_json::to_string(&first).unwrap();
+    assert!(serialized.contains("fixture://analysis-referenced"));
     assert!(!serialized.contains("CROSS_WORKSPACE_SECRET_SENTINEL"));
 
     let no_digest = situation_forensic_export::build(&secure, workspace, situation).await;

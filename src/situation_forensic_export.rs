@@ -188,97 +188,114 @@ async fn rows_for_people(
         .collect()
 }
 
+async fn situation_evidence_ids(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<Uuid>, ForensicExportError> {
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
+         WHERE n.nspname='niccolo' AND c.relkind='r' \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='workspace_id' AND NOT a.attisdropped) \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='situation_id' AND NOT a.attisdropped) \
+           AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='evidence_id' AND NOT a.attisdropped) \
+         ORDER BY c.relname",
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut ids = BTreeSet::new();
+    for table in tables {
+        let table = safe_ident(&table)?;
+        let sql = format!(
+            "SELECT DISTINCT evidence_id FROM niccolo.{table} \
+             WHERE workspace_id=$1 AND situation_id=$2 AND evidence_id IS NOT NULL \
+             ORDER BY evidence_id LIMIT $3"
+        );
+        let found: Vec<Uuid> = sqlx::query_scalar(&sql)
+            .bind(workspace)
+            .bind(situation)
+            .bind(MAX_ROWS_PER_TABLE + 1)
+            .fetch_all(&mut **tx)
+            .await?;
+        if found.len() as i64 > MAX_ROWS_PER_TABLE {
+            return Err(ForensicExportError::TooLarge(
+                "per-table evidence-reference budget",
+            ));
+        }
+        ids.extend(found);
+        if ids.len() > MAX_TOTAL_LOGICAL_ROWS {
+            return Err(ForensicExportError::TooLarge(
+                "total evidence-reference budget",
+            ));
+        }
+    }
+    Ok(ids.into_iter().collect())
+}
+
 async fn evidence_rows(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
-    documents: &[Uuid],
-    situation: Uuid,
+    seed_evidence: &[Uuid],
 ) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>, Vec<Value>), ForensicExportError> {
+    if seed_evidence.is_empty() {
+        return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new()));
+    }
     let evidence: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE seed(evidence_id) AS ( \
-           SELECT f.evidence_id FROM niccolo.source_fragments f \
-             WHERE f.workspace_id=$1 AND f.document_id=ANY($2::uuid[]) \
-           UNION \
-           SELECT cf.evidence_id FROM niccolo.situation_analysis_claim_fragments cf \
-             WHERE cf.workspace_id=$1 AND cf.situation_id=$3 \
-         ), closure(evidence_id) AS ( \
-           SELECT evidence_id FROM seed \
+        "WITH RECURSIVE closure(evidence_id) AS ( \
+           SELECT unnest($2::uuid[]) \
            UNION \
            SELECT d.parent_id FROM niccolo.evidence_derivation d \
-             JOIN closure c ON c.evidence_id=d.child_id \
-             WHERE d.workspace_id=$1 \
+             JOIN closure c ON c.evidence_id=d.child_id WHERE d.workspace_id=$1 \
          ) \
          SELECT to_jsonb(e)::text FROM niccolo.evidence e \
          WHERE e.workspace_id=$1 AND e.evidence_id IN (SELECT evidence_id FROM closure) \
-         ORDER BY to_jsonb(e)::text LIMIT $4",
+         ORDER BY to_jsonb(e)::text LIMIT $3",
     )
     .bind(workspace)
-    .bind(documents)
-    .bind(situation)
+    .bind(seed_evidence)
     .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
     let derivation: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE seed(evidence_id) AS ( \
-           SELECT f.evidence_id FROM niccolo.source_fragments f \
-             WHERE f.workspace_id=$1 AND f.document_id=ANY($2::uuid[]) \
-           UNION \
-           SELECT cf.evidence_id FROM niccolo.situation_analysis_claim_fragments cf \
-             WHERE cf.workspace_id=$1 AND cf.situation_id=$3 \
-         ), closure(evidence_id) AS ( \
-           SELECT evidence_id FROM seed \
+        "WITH RECURSIVE closure(evidence_id) AS ( \
+           SELECT unnest($2::uuid[]) \
            UNION \
            SELECT d.parent_id FROM niccolo.evidence_derivation d \
-             JOIN closure c ON c.evidence_id=d.child_id \
-             WHERE d.workspace_id=$1 \
+             JOIN closure c ON c.evidence_id=d.child_id WHERE d.workspace_id=$1 \
          ) \
          SELECT to_jsonb(d)::text FROM niccolo.evidence_derivation d \
          WHERE d.workspace_id=$1 \
            AND d.child_id IN (SELECT evidence_id FROM closure) \
            AND d.parent_id IN (SELECT evidence_id FROM closure) \
-         ORDER BY to_jsonb(d)::text LIMIT $4",
+         ORDER BY to_jsonb(d)::text LIMIT $3",
     )
     .bind(workspace)
-    .bind(documents)
-    .bind(situation)
+    .bind(seed_evidence)
     .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
     let proposition_links: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE seed(evidence_id) AS ( \
-           SELECT f.evidence_id FROM niccolo.source_fragments f \
-             WHERE f.workspace_id=$1 AND f.document_id=ANY($2::uuid[]) \
-           UNION \
-           SELECT cf.evidence_id FROM niccolo.situation_analysis_claim_fragments cf \
-             WHERE cf.workspace_id=$1 AND cf.situation_id=$3 \
-         ), closure(evidence_id) AS ( \
-           SELECT evidence_id FROM seed \
+        "WITH RECURSIVE closure(evidence_id) AS ( \
+           SELECT unnest($2::uuid[]) \
            UNION \
            SELECT d.parent_id FROM niccolo.evidence_derivation d \
              JOIN closure c ON c.evidence_id=d.child_id WHERE d.workspace_id=$1 \
          ) \
          SELECT to_jsonb(pe)::text FROM niccolo.proposition_evidence pe \
          WHERE pe.workspace_id=$1 AND pe.evidence_id IN (SELECT evidence_id FROM closure) \
-         ORDER BY to_jsonb(pe)::text LIMIT $4",
+         ORDER BY to_jsonb(pe)::text LIMIT $3",
     )
     .bind(workspace)
-    .bind(documents)
-    .bind(situation)
+    .bind(seed_evidence)
     .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
     let propositions: Vec<String> = sqlx::query_scalar(
-        "WITH RECURSIVE seed(evidence_id) AS ( \
-           SELECT f.evidence_id FROM niccolo.source_fragments f \
-             WHERE f.workspace_id=$1 AND f.document_id=ANY($2::uuid[]) \
-           UNION \
-           SELECT cf.evidence_id FROM niccolo.situation_analysis_claim_fragments cf \
-             WHERE cf.workspace_id=$1 AND cf.situation_id=$3 \
-         ), closure(evidence_id) AS ( \
-           SELECT evidence_id FROM seed \
+        "WITH RECURSIVE closure(evidence_id) AS ( \
+           SELECT unnest($2::uuid[]) \
            UNION \
            SELECT d.parent_id FROM niccolo.evidence_derivation d \
              JOIN closure c ON c.evidence_id=d.child_id WHERE d.workspace_id=$1 \
@@ -288,18 +305,19 @@ async fn evidence_rows(
          ) \
          SELECT to_jsonb(p)::text FROM niccolo.propositions p \
          WHERE p.workspace_id=$1 AND p.proposition_id IN (SELECT proposition_id FROM proposition_ids) \
-         ORDER BY to_jsonb(p)::text LIMIT $4",
+         ORDER BY to_jsonb(p)::text LIMIT $3",
     )
     .bind(workspace)
-    .bind(documents)
-    .bind(situation)
+    .bind(seed_evidence)
     .bind(MAX_ROWS_PER_TABLE + 1)
     .fetch_all(&mut **tx)
     .await?;
 
     for rows in [&evidence, &derivation, &proposition_links, &propositions] {
         if rows.len() as i64 > MAX_ROWS_PER_TABLE {
-            return Err(ForensicExportError::TooLarge("per-table evidence row budget"));
+            return Err(ForensicExportError::TooLarge(
+                "per-table evidence row budget",
+            ));
         }
     }
 
@@ -433,7 +451,7 @@ pub async fn build(
         insert_logical_rows(&mut logical, &mut logical_row_count, table, rows)?;
     }
 
-    let documents: Vec<Uuid> = sqlx::query_scalar(
+    let direct_documents: Vec<Uuid> = sqlx::query_scalar(
         "SELECT document_id FROM ( \
            SELECT document_id FROM niccolo.situation_sources WHERE workspace_id=$1 AND situation_id=$2 \
            UNION \
@@ -445,9 +463,35 @@ pub async fn build(
     .bind((MAX_SOURCE_DOCUMENTS + 1) as i64)
     .fetch_all(&mut *tx)
     .await?;
-    if documents.len() > MAX_SOURCE_DOCUMENTS {
-        return Err(ForensicExportError::TooLarge("attached source-document budget"));
+    if direct_documents.len() > MAX_SOURCE_DOCUMENTS {
+        return Err(ForensicExportError::TooLarge(
+            "attached source-document budget",
+        ));
     }
+
+    let referenced_evidence = situation_evidence_ids(&mut tx, workspace, situation).await?;
+    let referenced_documents: Vec<Uuid> = if referenced_evidence.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_scalar(
+            "SELECT DISTINCT document_id FROM niccolo.source_fragments \
+             WHERE workspace_id=$1 AND evidence_id=ANY($2::uuid[]) \
+             ORDER BY document_id LIMIT $3",
+        )
+        .bind(workspace)
+        .bind(&referenced_evidence)
+        .bind((MAX_SOURCE_DOCUMENTS + 1) as i64)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+    let mut document_set = direct_documents.into_iter().collect::<BTreeSet<_>>();
+    document_set.extend(referenced_documents);
+    if document_set.len() > MAX_SOURCE_DOCUMENTS {
+        return Err(ForensicExportError::TooLarge(
+            "Situation-linked source-document budget",
+        ));
+    }
+    let documents = document_set.into_iter().collect::<Vec<_>>();
 
     if !documents.is_empty() {
         let document_tables: Vec<String> = sqlx::query_scalar(
@@ -488,8 +532,26 @@ pub async fn build(
         identity_subjects,
     )?;
 
+    let source_evidence: Vec<Uuid> = if documents.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_scalar(
+            "SELECT DISTINCT evidence_id FROM niccolo.source_fragments \
+             WHERE workspace_id=$1 AND document_id=ANY($2::uuid[]) ORDER BY evidence_id",
+        )
+        .bind(workspace)
+        .bind(&documents)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+    let mut evidence_seed = referenced_evidence.into_iter().collect::<BTreeSet<_>>();
+    evidence_seed.extend(source_evidence);
+    if evidence_seed.len() > MAX_TOTAL_LOGICAL_ROWS {
+        return Err(ForensicExportError::TooLarge("evidence seed budget"));
+    }
+    let evidence_seed = evidence_seed.into_iter().collect::<Vec<_>>();
     let (evidence, derivation, proposition_links, propositions) =
-        evidence_rows(&mut tx, workspace, &documents, situation).await?;
+        evidence_rows(&mut tx, workspace, &evidence_seed).await?;
     for (name, rows) in [
         ("evidence", evidence),
         ("evidence_derivation", derivation),
