@@ -1,0 +1,27 @@
+name: VM Cargo vendor export
+on:
+  push:
+    branches: [ci/vm-source-export]
+permissions:
+  contents: read
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Vendor exact locked Cargo graph
+        run: |
+          set -euo pipefail
+          mkdir -p vm-cargo
+          cargo vendor --locked vm-cargo/vendor > vm-cargo/config.toml
+          cp Cargo.lock vm-cargo/Cargo.lock
+          tar -czf niccolo-current-cargo-vendor.tar.gz vm-cargo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-current-cargo-vendor
+          path: niccolo-current-cargo-vendor.tar.gz
+          retention-days: 1
