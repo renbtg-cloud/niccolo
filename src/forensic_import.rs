@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, io::Write};
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -153,6 +153,27 @@ fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+struct Sha256Writer(Sha256);
+
+impl Write for Sha256Writer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn package_sha256(package: &ForensicSituationExport) -> Result<String, ForensicImportError> {
+    let mut writer = Sha256Writer(Sha256::new());
+    serde_json::to_writer(&mut writer, package)
+        .map_err(situation_forensic_export::ForensicExportError::from)?;
+    Ok(format!("{:x}", writer.0.finalize()))
+}
+
+
 fn valid_text(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
     !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
@@ -209,8 +230,6 @@ pub fn prepare_untrusted(
     package: &ForensicSituationExport,
 ) -> Result<PreparedUntrustedImport, ForensicImportError> {
     situation_forensic_export::verify_structure(package)?;
-    let package_bytes = serde_json::to_vec(package)
-        .map_err(situation_forensic_export::ForensicExportError::from)?;
     let manifest: BTreeMap<&str, _> = package
         .manifest
         .entries
@@ -267,7 +286,7 @@ pub fn prepare_untrusted(
     items.sort_by(|a, b| a.source_path.cmp(&b.source_path));
 
     Ok(PreparedUntrustedImport {
-        source_package_sha256: sha256(&package_bytes),
+        source_package_sha256: package_sha256(package)?,
         source_manifest_sha256: package.manifest.root_sha256.clone(),
         source_workspace_id: package.workspace_id,
         source_situation_id: package.situation_id,
@@ -727,6 +746,13 @@ mod tests {
             item.origin_class == ImportedOriginClass::ImportedIdentityAssertion
                 && !item.current_credentials_establish_truth
         }));
+    }
+
+    #[test]
+    fn streamed_package_digest_matches_canonical_json_bytes_without_a_second_package_copy() {
+        let package = package();
+        let bytes = serde_json::to_vec(&package).unwrap();
+        assert_eq!(package_sha256(&package).unwrap(), sha256(&bytes));
     }
 
     #[test]
