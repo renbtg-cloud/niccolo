@@ -6,6 +6,10 @@ set -Eeuo pipefail
 prepared_url="${1:-}"
 port="${2:-}"
 
+# This helper never needs Niccolò/provider/database credentials. Strip the known
+# secret-bearing variables even when the helper is invoked directly.
+unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_SECURE_PASSWORD NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL PGPASSWORD
+
 [[ "$prepared_url" == http://127.0.0.1:* ]] || {
   echo 'Refusing to open a non-loopback Niccolò URL.' >&2
   exit 2
