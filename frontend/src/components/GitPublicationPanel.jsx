@@ -71,7 +71,13 @@ export function GitPublicationPanel() {
     onSuccess: async (value) => {
       const targetId = value.target.target_id;
       pendingTarget.current = null;
+      pendingIntent.current = null;
+      pendingPublish.current = null;
       setSelectedTarget(targetId);
+      setSelectedPublication('');
+      setVerificationToken('');
+      setGithubToken('');
+      setPublishConfirmed(false);
       await qc.invalidateQueries({ queryKey: qk.gitPublicationTargets(client.config) });
     },
   });
@@ -152,6 +158,18 @@ export function GitPublicationPanel() {
   });
 
   if (!client || !analysis) return null;
+  const selectTarget = (targetId) => {
+    pendingIntent.current = null;
+    pendingPublish.current = null;
+    plan.reset();
+    verifyTarget.reset();
+    publish.reset();
+    setVerificationToken('');
+    setGithubToken('');
+    setPublishConfirmed(false);
+    setSelectedPublication('');
+    setSelectedTarget(targetId);
+  };
   const rows = targets.data?.targets ?? [];
   const history = intents.data?.intents ?? [];
   const canRegister = owner.trim() && repository.trim() && refName.trim();
@@ -185,7 +203,7 @@ export function GitPublicationPanel() {
     </details>
 
     <label>Publication target
-      <select value={selectedTarget} onChange={(event) => { pendingIntent.current=null; plan.reset(); setSelectedTarget(event.target.value); }}>
+      <select value={selectedTarget} onChange={(event) => selectTarget(event.target.value)}>
         <option value="">Select a recorded target</option>
         {rows.map((target) => <option key={target.target_id} value={target.target_id}>
           {target.repository_owner}/{target.repository_name} → {target.ref_name}

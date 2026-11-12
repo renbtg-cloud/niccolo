@@ -50,6 +50,15 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('last_failure_class');
   });
 
+  it('clears publication and transient authorization state when target changes', () => {
+    expect(source).toContain("const selectTarget = (targetId) =>");
+    expect(source).toContain("setSelectedPublication('')");
+    expect(source).toContain("setVerificationToken('')");
+    expect(source).toContain("setGithubToken('')");
+    expect(source).toContain("setPublishConfirmed(false)");
+    expect(source).toContain("onChange={(event) => selectTarget(event.target.value)}");
+  });
+
   it('reuses IDs for interrupted target and intent responses', () => {
     expect(source).toContain('pendingTarget.current?.signature !== signature');
     expect(source).toContain('pendingIntent.current?.signature !== signature');
