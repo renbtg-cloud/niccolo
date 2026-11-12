@@ -234,8 +234,31 @@ pub fn publish_standard_package<T: GitHubTransport>(
     }
 
     let ref_path = format!("{repo_path}/git/ref/heads/{branch}");
-    let current_ref = transport.json("GET", &ref_path, token, None)?;
-    let base_commit_sha = response_string(&current_ref, "/object/sha")?.to_owned();
+    let (base_commit_sha, create_requested_ref) =
+        match transport.json("GET", &ref_path, token, None) {
+            Ok(current_ref) => (
+                response_string(&current_ref, "/object/sha")?.to_owned(),
+                false,
+            ),
+            Err(GitHubPublishError::ProviderRejected(404)) => {
+                let default_branch = response_string(&repo, "/default_branch")?;
+                let default_branch = branch_name(default_branch)?;
+                if default_branch == branch {
+                    return Err(GitHubPublishError::InvalidProviderResponse);
+                }
+                let default_ref = transport.json(
+                    "GET",
+                    &format!("{repo_path}/git/ref/heads/{default_branch}"),
+                    token,
+                    None,
+                )?;
+                (
+                    response_string(&default_ref, "/object/sha")?.to_owned(),
+                    true,
+                )
+            }
+            Err(error) => return Err(error),
+        };
     let base_commit = transport.json(
         "GET",
         &format!("{repo_path}/git/commits/{base_commit_sha}"),
@@ -281,7 +304,7 @@ pub fn publish_standard_package<T: GitHubTransport>(
     // PostgreSQL could record verification. Recreating blobs/tree is harmless;
     // if the current head already has the exact tree+message, do not make a
     // duplicate commit.
-    if tree_sha == base_tree_sha && base_message == commit_message {
+    if !create_requested_ref && tree_sha == base_tree_sha && base_message == commit_message {
         return Ok(VerifiedGitHubPublication {
             commit_sha: base_commit_sha,
             ref_name: branch,
@@ -306,12 +329,21 @@ pub fn publish_standard_package<T: GitHubTransport>(
         return Err(GitHubPublishError::InvalidProviderResponse);
     }
 
-    let updated = transport.json(
-        "PATCH",
-        &format!("{repo_path}/git/refs/heads/{branch}"),
-        token,
-        Some(&json!({"sha":commit_sha,"force":false})),
-    )?;
+    let updated = if create_requested_ref {
+        transport.json(
+            "POST",
+            &format!("{repo_path}/git/refs"),
+            token,
+            Some(&json!({"ref":format!("refs/heads/{branch}"),"sha":commit_sha})),
+        )?
+    } else {
+        transport.json(
+            "PATCH",
+            &format!("{repo_path}/git/refs/heads/{branch}"),
+            token,
+            Some(&json!({"sha":commit_sha,"force":false})),
+        )?
+    };
     if response_string(&updated, "/object/sha")? != commit_sha {
         return Err(GitHubPublishError::VerificationMismatch);
     }
@@ -670,6 +702,86 @@ mod tests {
                     })
                 })
         }));
+    }
+
+    #[test]
+    fn missing_requested_branch_is_created_from_default_branch_without_force() {
+        let package = package();
+        let mut target = target();
+        target.ref_name = "niccolo-history".into();
+        let mut intent = intent(&package);
+        intent.requested_ref = target.ref_name.clone();
+        let transport = ScriptedTransport::new(vec![
+            json!({"full_name":"owner/history","private":true,"default_branch":"main"}),
+            // Requested branch is absent.
+            // Scripted transport can represent a provider error only through a dedicated transport,
+            // so exercise the branch-creation shape below with the focused transport.
+        ]);
+        struct MissingBranchTransport {
+            calls: Mutex<Vec<(String, String, Option<Value>)>>,
+            responses: Mutex<VecDeque<Value>>,
+        }
+        impl GitHubTransport for MissingBranchTransport {
+            fn json(
+                &self,
+                method: &str,
+                path: &str,
+                token: &str,
+                body: Option<&Value>,
+            ) -> Result<Value, GitHubPublishError> {
+                assert_eq!(token, "test-secret-token");
+                self.calls.lock().unwrap().push((method.into(), path.into(), body.cloned()));
+                if path.ends_with("/git/ref/heads/niccolo-history")
+                    && self.calls.lock().unwrap().iter().filter(|call| call.1 == path).count() == 1
+                {
+                    return Err(GitHubPublishError::ProviderRejected(404));
+                }
+                self.responses
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .ok_or(GitHubPublishError::Transport)
+            }
+        }
+        drop(transport);
+        let transport = MissingBranchTransport {
+            calls: Mutex::new(Vec::new()),
+            responses: Mutex::new(
+                vec![
+                    json!({"full_name":"owner/history","private":true,"default_branch":"main"}),
+                    json!({"object":{"sha":"1".repeat(40)}}),
+                    json!({"tree":{"sha":"2".repeat(40)},"message":"older"}),
+                    json!({"sha":"3".repeat(40)}),
+                    json!({"sha":"4".repeat(40)}),
+                    json!({"sha":"5".repeat(40)}),
+                    json!({"sha":"6".repeat(40)}),
+                    json!({"object":{"sha":"6".repeat(40)}}),
+                    json!({"object":{"sha":"6".repeat(40)}}),
+                    json!({"tree":{"sha":"5".repeat(40)},"message":expected_commit_message(&intent)}),
+                ]
+                .into(),
+            ),
+        };
+        let verified = publish_standard_package(
+            &transport,
+            &target,
+            &intent,
+            &package,
+            "test-secret-token",
+        )
+        .unwrap();
+        assert_eq!(verified.ref_name, "niccolo-history");
+        let calls = transport.calls.lock().unwrap();
+        let create_ref = calls
+            .iter()
+            .find(|call| call.0 == "POST" && call.1.ends_with("/git/refs"))
+            .unwrap();
+        assert_eq!(
+            create_ref.2.as_ref().unwrap()["ref"],
+            "refs/heads/niccolo-history"
+        );
+        assert_eq!(create_ref.2.as_ref().unwrap()["sha"], "6".repeat(40));
+        assert!(!calls.iter().any(|call| call.0 == "PATCH"));
     }
 
     #[test]
