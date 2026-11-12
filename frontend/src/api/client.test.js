@@ -102,6 +102,20 @@ describe('BFF client',()=>{
    expect(JSON.parse(calls[4][1].body)).toEqual({target_id:'target'});
  });
 
+ it('sends transient GitHub authorization only in the dedicated publish request header',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{remote_publish_verified:true,status:{state:'VERIFIED_PUBLISHED'}});});
+   await x.gitPublicationRemoteStatus('analysis','publication');
+   await x.publishGitPublicationIntent('analysis','publication','attempt','ghp_transient_only');
+   expect(calls[0][0]).toContain('/git-publication-intents/publication/remote-status');
+   expect(calls[0][1].headers['X-Niccolo-GitHub-Authorization']).toBeUndefined();
+   expect(calls[1][0]).toContain('/git-publication-intents/publication/publish');
+   expect(calls[1][0]).not.toContain('ghp_transient_only');
+   expect(calls[1][1].headers['X-Niccolo-GitHub-Authorization']).toBe('Bearer ghp_transient_only');
+   expect(JSON.parse(calls[1][1].body)).toEqual({attempt_id:'attempt',confirmation:'PUBLISH_STANDARD_PRESENTATION_TO_GITHUB'});
+   expect(calls[1][1].cache).toBe('no-store');
+ });
+
  it('separates standard analysis export from explicitly authorized examined-source export',async()=>{
    const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.presentation-package',files:{'README.md':'x'},published_to_git:false});});
    await x.presentationPackage('a');
