@@ -1,0 +1,27 @@
+name: Apply GIT-003 milestone patch
+on:
+  push:
+    branches: [tmp/git003-milestone-apply-20261112]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/git003-milestone-apply-20261112
+          fetch-depth: 0
+      - name: Apply verified milestone declaration slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d dev-flow/patches/git003-milestone-20261112.patch.b64 > /tmp/git003-milestone.patch
+          echo 'f3232d4dabc4574a7901ccec158653ed9cdec09158adb10fc0e01251f55c33bf  /tmp/git003-milestone.patch' | sha256sum -c -
+          git fetch origin ci/mvp-checkpoint
+          test "$(git rev-parse origin/ci/mvp-checkpoint)" = 'b267d188eb8d613bb2225fb79f6b6765eb7ec953'
+          git checkout -B feat/git003-milestone-declaration-20261112 origin/ci/mvp-checkpoint
+          git config user.name 'ChatGPT autonomous worker'
+          git config user.email 'chatgpt-local@invalid'
+          git am /tmp/git003-milestone.patch
+          git push --force-with-lease origin HEAD:refs/heads/feat/git003-milestone-declaration-20261112
