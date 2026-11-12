@@ -548,6 +548,56 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
 });' <<< "$bound_context"
 echo 'PASS: forensic export round-trip stays quarantined and requires explicit non-evidence binding'
 
+# Publication planning must be durable and exact without contacting GitHub or
+# accepting a provider secret. The first network-capable publisher is a later
+# boundary; this smoke proves we do not confuse intent with remote success.
+git_target="$(node -p "require('node:crypto').randomUUID()")"
+git_target_body='{"repository_owner":"niccolo-ci-owner","repository_name":"history","ref_name":"main","repository_visibility":"PRIVATE","sensitive_exports_allowed":false}'
+git_target_result="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "$git_target_body" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/git-publication-targets/${git_target}")"
+node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.target?.provider!=="GITHUB"||j.provider_connection_verified!==false||
+    j.provider_secret_stored!==false||j.registration_publishes_nothing!==true)process.exit(1);
+});' <<< "$git_target_result"
+git_preview="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${path}/analysis-snapshots/${analysis_id}/git-publication-preview?target_id=${git_target}")"
+GIT_TARGET="$git_target" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.target?.target_id!==process.env.GIT_TARGET||j.scope_kind!=="STANDARD_PRESENTATION"||
+    j.package_sha256?.length!==64||!(j.file_count>0)||!(j.total_text_bytes>0)||
+    j.includes_examined_source_text!==false||j.includes_original_uploads!==false||
+    j.remote_publish_performed!==false||j.requires_transient_provider_authorization!==true||
+    j.ready_for_remote_publish!==false)process.exit(1);
+});' <<< "$git_preview"
+git_publication="$(node -p "require('node:crypto').randomUUID()")"
+git_intent="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "{\"target_id\":\"${git_target}\"}" \
+  "${path}/analysis-snapshots/${analysis_id}/git-publication-intents/${git_publication}")"
+GIT_PUBLICATION="$git_publication" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.intent?.publication_id!==process.env.GIT_PUBLICATION||
+    j.intent?.publication_state!=="AWAITING_REMOTE_AUTHORIZATION"||
+    j.remote_publish_performed!==false||
+    j.requires_provider_authorization_before_publish!==true)process.exit(1);
+});' <<< "$git_intent"
+git_intent_replay="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "{\"target_id\":\"${git_target}\"}" \
+  "${path}/analysis-snapshots/${analysis_id}/git-publication-intents/${git_publication}")"
+node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);if(j.replayed!==true||j.remote_publish_performed!==false)process.exit(1);
+});' <<< "$git_intent_replay"
+echo 'PASS: GitHub publication target, exact scope preview, and intent remain local and un-published'
+
 # A second, empty database on the SAME PostgreSQL cluster must not
 # trigger password rotation for the already-provisioned service role.
 psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
