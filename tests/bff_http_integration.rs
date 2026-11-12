@@ -333,6 +333,87 @@ async fn v301_v315_agentic_sync_async_and_pull_share_one_operation_semantics() {
 }
 
 #[tokio::test]
+async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoints() {
+    let s = setup().await;
+    let id = Uuid::new_v4();
+    let mut bounded = body(&s, "AGENTIC_ANALYSIS");
+    bounded["input"] = json!({
+        "model_budget": {
+            "max_invocations": 1,
+            "max_total_tokens": 200000
+        }
+    });
+    let (status, _, operation) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &path(&s, id, "/sync"),
+            &s.token,
+            Some(bounded),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(operation["state"], "SUCCEEDED");
+    assert_eq!(operation["terminal"], true);
+    assert_eq!(
+        operation["result"]["completion_status"],
+        "PARTIAL_BUDGET_BOUNDARY"
+    );
+    assert_eq!(operation["result"]["provisional"], true);
+    assert_eq!(operation["result"]["stop_reason"], "INVOCATION_LIMIT");
+    assert_eq!(
+        operation["result"]["partial_result_establishes_truth"],
+        false
+    );
+    assert_eq!(
+        operation["result"]["partial_result_proves_completeness"],
+        false
+    );
+    assert_eq!(
+        operation["result"]["human_owns_consequential_decisions"],
+        true
+    );
+
+    let (status, _, page) = invoke(
+        s.router.clone(),
+        req(
+            "GET",
+            &format!("{}?after=0&limit=50", path(&s, id, "/checkpoints")),
+            &s.token,
+            None,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let checkpoints = page["checkpoints"].as_array().unwrap();
+    assert!(
+        checkpoints
+            .iter()
+            .any(|checkpoint| checkpoint["checkpoint_kind"] == "STEP_COMPLETED")
+    );
+    let boundary = checkpoints
+        .iter()
+        .find(|checkpoint| checkpoint["checkpoint_kind"] == "BUDGET_BOUNDARY")
+        .expect("budget boundary checkpoint");
+    assert_eq!(boundary["provisional"], true);
+    assert_eq!(boundary["terminal"], true);
+    assert_eq!(boundary["establishes_truth"], false);
+    assert_eq!(boundary["proves_completeness"], false);
+    assert_eq!(boundary["authorizes_real_world_action"], false);
+    assert_eq!(
+        boundary["summary"]["stop_reason"],
+        "INVOCATION_LIMIT"
+    );
+    assert_eq!(
+        boundary["summary"]["provisional"],
+        true
+    );
+}
+
+#[tokio::test]
 async fn v316_v325_agentic_plan_is_inspectable_through_bff() {
     let s = setup().await;
     let id = Uuid::new_v4();
