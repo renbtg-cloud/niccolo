@@ -21,6 +21,8 @@ jobs:
           git fetch origin ci/mvp-checkpoint
           git checkout -B push-local FETCH_HEAD
           test "$(git rev-parse HEAD^{tree})" = aa03acea6ad37e0a0e7514defb48baddb30ebda8
+          git config user.name "ChatGPT autonomous worker"
+          git config user.email "chatgpt-local@invalid"
           git am /tmp/local.mbox
           test "$(git rev-parse HEAD^{tree})" = 0451dea6fcb017fe7dab309dccc359c94c1e963e
           git push origin HEAD:ci/mvp-checkpoint
