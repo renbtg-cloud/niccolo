@@ -1,0 +1,716 @@
+From 845c93db0acac8e28fd3cbe076c6c86c7c975aea Mon Sep 17 00:00:00 2001
+From: ChatGPT autonomous worker <chatgpt-local@invalid>
+Date: Thu, 12 Nov 2026 17:10:41 +0000
+Subject: [PATCH] feat(git): record immutable checkpoint publication intents
+
+---
+ .../MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md   |   4 +-
+ ...105_checkpoint_git_publication_intents.sql |  63 ++++
+ src/api.rs                                    | 134 +++++++
+ src/checkpoint_git_publication.rs             | 331 ++++++++++++++++++
+ src/lib.rs                                    |   1 +
+ tests/bff_http_integration.rs                 |  88 +++++
+ 6 files changed, 619 insertions(+), 2 deletions(-)
+ create mode 100644 sql/0105_checkpoint_git_publication_intents.sql
+ create mode 100644 src/checkpoint_git_publication.rs
+
+diff --git a/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md b/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md
+index 8975a4a..9fb5080 100644
+--- a/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md
++++ b/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md
+@@ -43,7 +43,7 @@ The portable package now also exports the recorded epistemic-policy history rele
+ 
+ An explicit write-authorized grounded claim evaluation can now be recorded as an immutable, retry-safe artifact. The record freezes the selected policy, human-declared confidence (if any), declared evidence strengths, database-validated grounded result, source-graph revision and SHA-256 of the deterministic result. The portable package exports those stored artifacts verbatim plus a compact CSV summary. A stored score remains a heuristic balance: it is not a probability of truth, proof, documentary evidence or a mutation of the published analysis.
+ 
+-The human review UI now separates a live grounded-weight preview from the explicit immutable score record and refuses to record a stale draft after its preview changes. Git publication now has a verified bounded network slice: a user records a GitHub owner/repository/ref, inspects the exact standard presentation-package digest and bounded scope, and records an immutable local publication intent before any network side effect. An optional read-only preflight and the explicit publish action accept provider authorization only as transient request input; no provider secret is stored. Publication uses non-force Git-data updates, re-reads the remote ref, and records append-only secret-free success/failure observations. Niccolò reports a package as published only after the observed ref points at the exact commit built from the recorded package. A durable operation checkpoint can now also be exported as a deterministic bounded local ZIP package whose manifest preserves its provisional/terminal status and explicitly states that export is not truth, completeness, authority, or remote publication. Remote publication of intake/provisional checkpoints and milestone-state semantics remain separate unfinished work.
++The human review UI now separates a live grounded-weight preview from the explicit immutable score record and refuses to record a stale draft after its preview changes. Git publication now has a verified bounded network slice: a user records a GitHub owner/repository/ref, inspects the exact standard presentation-package digest and bounded scope, and records an immutable local publication intent before any network side effect. An optional read-only preflight and the explicit publish action accept provider authorization only as transient request input; no provider secret is stored. Publication uses non-force Git-data updates, re-reads the remote ref, and records append-only secret-free success/failure observations. Niccolò reports a package as published only after the observed ref points at the exact commit built from the recorded package. A durable operation checkpoint can now also be exported as a deterministic bounded local ZIP package whose manifest preserves its provisional/terminal status and explicitly states that export is not truth, completeness, authority, or remote publication. A checkpoint can additionally be bound to an immutable local Git publication intent that records the exact package digest, target/ref, checkpoint sequence/kind and provisional/terminal state before any provider request. That intent stores no provider credential and still reports remote publication as false. The actual transient-authorized remote checkpoint push/confirmation and broader milestone-state semantics remain unfinished work.
+ 
+ ## Adaptive execution + bounded investigation time
+ 
+@@ -65,7 +65,7 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
+ | REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
+ | REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Verified bounded slices: examined source text export, Situation policy history, analysis human credence, and immutable explicitly recorded grounded-score artifacts; original uploaded document bytes remain omitted |
+ | GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Verified bounded GitHub slice: target/ref metadata, exact standard-package scope/digest preview, immutable local intent, transient read-only preflight/publish authorization, non-force publication, remote ref verification and append-only event history; no provider secret is stored |
+-| GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Partial infrastructure: durable operation checkpoints have a deterministic bounded local export package, and standard analysis packages have retry-safe remote publication/verification; remote checkpoint publication/confirmation is not implemented |
++| GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Partial infrastructure: durable operation checkpoints have a deterministic bounded local export package plus an immutable exact-digest local Git publication intent; standard analysis packages have retry-safe remote publication/verification; remote checkpoint publication/confirmation is not implemented |
+ | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
+ | ARM-001 | Observe effective Linux process/container resources; portable adapter boundary | Verified Linux first slice (PR #26) |
+ | ARM-002 | Self-managed/delegated modes; bounded budgets and visible degradation | Partial verified slice: self/external/hybrid policy advice, resource-aware atomic worker admission and operation-wide invocation/token/deadline enforcement; HTTP-spawned execution and quality-degradation scheduling are not yet adaptive |
+diff --git a/sql/0105_checkpoint_git_publication_intents.sql b/sql/0105_checkpoint_git_publication_intents.sql
+new file mode 100644
+index 0000000..7189d5d
+--- /dev/null
++++ b/sql/0105_checkpoint_git_publication_intents.sql
+@@ -0,0 +1,63 @@
++-- GIT-002 bounded slice: immutable local publication intents for one exact
++-- operation-checkpoint package. This migration records intent only; it stores no
++-- provider credential and makes no claim that a remote publication occurred.
++BEGIN;
++
++CREATE TABLE niccolo.checkpoint_git_publication_intents (
++  workspace_id UUID NOT NULL,
++  publication_id UUID NOT NULL,
++  target_id UUID NOT NULL,
++  situation_id UUID NOT NULL,
++  operation_id UUID NOT NULL,
++  checkpoint_id UUID NOT NULL,
++  checkpoint_seq BIGINT NOT NULL CHECK(checkpoint_seq > 0),
++  checkpoint_kind TEXT NOT NULL CHECK(
++    checkpoint_kind IN ('STEP_COMPLETED','HUMAN_BOUNDARY','BUDGET_BOUNDARY','FINAL')
++  ),
++  provisional BOOLEAN NOT NULL,
++  terminal BOOLEAN NOT NULL,
++  checkpoint_summary_sha256 CHAR(64) NOT NULL CHECK(checkpoint_summary_sha256 ~ '^[a-f0-9]{64}$'),
++  package_sha256 CHAR(64) NOT NULL CHECK(package_sha256 ~ '^[a-f0-9]{64}$'),
++  file_count INTEGER NOT NULL CHECK(file_count BETWEEN 1 AND 32),
++  total_text_bytes BIGINT NOT NULL CHECK(total_text_bytes BETWEEN 1 AND 524288),
++  requested_ref TEXT NOT NULL CHECK(length(requested_ref) BETWEEN 1 AND 244),
++  scope_kind TEXT NOT NULL DEFAULT 'OPERATION_CHECKPOINT' CHECK(scope_kind='OPERATION_CHECKPOINT'),
++  includes_examined_source_text BOOLEAN NOT NULL DEFAULT FALSE CHECK(includes_examined_source_text=FALSE),
++  includes_original_uploads BOOLEAN NOT NULL DEFAULT FALSE CHECK(includes_original_uploads=FALSE),
++  publication_state TEXT NOT NULL DEFAULT 'AWAITING_REMOTE_AUTHORIZATION'
++    CHECK(publication_state='AWAITING_REMOTE_AUTHORIZATION'),
++  requested_by_principal_id UUID NOT NULL REFERENCES niccolo_auth.principals(principal_id),
++  created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
++  PRIMARY KEY(workspace_id,publication_id),
++  FOREIGN KEY(workspace_id,target_id)
++    REFERENCES niccolo.git_publication_targets(workspace_id,target_id),
++  FOREIGN KEY(workspace_id,situation_id,operation_id,checkpoint_id)
++    REFERENCES niccolo.bff_operation_checkpoints(workspace_id,situation_id,operation_id,checkpoint_id),
++  CHECK (
++    (checkpoint_kind='FINAL' AND terminal AND NOT provisional)
++    OR (checkpoint_kind='BUDGET_BOUNDARY' AND terminal AND provisional)
++    OR (checkpoint_kind IN ('STEP_COMPLETED','HUMAN_BOUNDARY') AND NOT terminal AND provisional)
++  )
++);
++CREATE INDEX checkpoint_git_publication_intents_by_checkpoint
++  ON niccolo.checkpoint_git_publication_intents(
++    workspace_id,situation_id,operation_id,checkpoint_seq,created_at DESC,publication_id
++  );
++
++GRANT SELECT,INSERT ON niccolo.checkpoint_git_publication_intents TO niccolo_app;
++ALTER TABLE niccolo.checkpoint_git_publication_intents ENABLE ROW LEVEL SECURITY;
++ALTER TABLE niccolo.checkpoint_git_publication_intents FORCE ROW LEVEL SECURITY;
++CREATE POLICY workspace_filter ON niccolo.checkpoint_git_publication_intents
++  USING (workspace_id=NULLIF(current_setting('niccolo.workspace_id',true),'')::uuid)
++  WITH CHECK (workspace_id=NULLIF(current_setting('niccolo.workspace_id',true),'')::uuid);
++CREATE POLICY api_read_gate ON niccolo.checkpoint_git_publication_intents AS RESTRICTIVE
++  FOR SELECT TO niccolo_api USING (niccolo_auth.rls_credential_allows(workspace_id,'read'));
++CREATE POLICY api_write_insert_gate ON niccolo.checkpoint_git_publication_intents AS RESTRICTIVE
++  FOR INSERT TO niccolo_api WITH CHECK (niccolo_auth.rls_credential_allows(workspace_id,'write'));
++CREATE POLICY api_write_update_gate ON niccolo.checkpoint_git_publication_intents AS RESTRICTIVE
++  FOR UPDATE TO niccolo_api USING (niccolo_auth.rls_credential_allows(workspace_id,'write'))
++  WITH CHECK (niccolo_auth.rls_credential_allows(workspace_id,'write'));
++CREATE POLICY api_write_delete_gate ON niccolo.checkpoint_git_publication_intents AS RESTRICTIVE
++  FOR DELETE TO niccolo_api USING (niccolo_auth.rls_credential_allows(workspace_id,'write'));
++
++COMMIT;
+diff --git a/src/api.rs b/src/api.rs
+index 70ccc5e..fc36f2a 100644
+--- a/src/api.rs
++++ b/src/api.rs
+@@ -12,6 +12,7 @@ use crate::analysis_snapshot::{self, AnalysisSnapshotError};
+ use crate::authz::{self, AuthError, Capability};
+ use crate::bff_intent::{self, IntentError, IntentRequest};
+ use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
++use crate::checkpoint_git_publication::{self, CheckpointGitPublicationError};
+ use crate::checkpoint_package::{self, CheckpointPackageError};
+ use crate::clarification::{self, ClarificationError};
+ use crate::clarification_answer::{self, ClarificationAnswerError};
+@@ -408,6 +409,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
+             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/package",
+             get(get_bff_operation_checkpoint_package),
+         )
++        .route(
++            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-preview",
++            get(get_bff_operation_checkpoint_git_publication_preview),
++        )
++        .route(
++            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}",
++            post(record_bff_operation_checkpoint_git_publication_intent),
++        )
+         .route(
+             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
+             get(wait_bff_operation),
+@@ -4801,6 +4810,131 @@ async fn get_bff_operation_checkpoint_package(
+     Ok(no_store(json!(package), StatusCode::OK))
+ }
+ 
++fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> ApiError {
++    match error {
++        CheckpointGitPublicationError::Invalid => ApiError(
++            StatusCode::BAD_REQUEST,
++            "invalid checkpoint git publication request",
++        ),
++        CheckpointGitPublicationError::Conflict => ApiError(
++            StatusCode::CONFLICT,
++            "checkpoint git publication identity conflict",
++        ),
++        CheckpointGitPublicationError::Checkpoint(CheckpointError::Invisible) => {
++            ApiError(StatusCode::NOT_FOUND, "checkpoint unavailable")
++        }
++        CheckpointGitPublicationError::Git(GitPublicationError::Invisible) => {
++            ApiError(StatusCode::NOT_FOUND, "git publication target unavailable")
++        }
++        CheckpointGitPublicationError::Checkpoint(CheckpointError::Invalid)
++        | CheckpointGitPublicationError::Git(GitPublicationError::Invalid)
++        | CheckpointGitPublicationError::Package(CheckpointPackageError::Invalid) => ApiError(
++            StatusCode::BAD_REQUEST,
++            "invalid checkpoint git publication request",
++        ),
++        CheckpointGitPublicationError::Checkpoint(CheckpointError::Conflict)
++        | CheckpointGitPublicationError::Package(CheckpointPackageError::Integrity)
++        | CheckpointGitPublicationError::Git(GitPublicationError::Conflict)
++        | CheckpointGitPublicationError::Git(GitPublicationError::Stale) => ApiError(
++            StatusCode::CONFLICT,
++            "checkpoint git publication source is inconsistent",
++        ),
++        CheckpointGitPublicationError::Package(CheckpointPackageError::TooLarge) => ApiError(
++            StatusCode::UNPROCESSABLE_ENTITY,
++            "checkpoint package exceeds publication limit",
++        ),
++        CheckpointGitPublicationError::Database(_)
++        | CheckpointGitPublicationError::Privileged
++        | CheckpointGitPublicationError::Checkpoint(_)
++        | CheckpointGitPublicationError::Package(_)
++        | CheckpointGitPublicationError::Git(_) => ApiError(
++            StatusCode::INTERNAL_SERVER_ERROR,
++            "checkpoint git publication planning unavailable",
++        ),
++    }
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct CheckpointGitPublicationPreviewQuery {
++    target_id: Uuid,
++}
++
++async fn get_bff_operation_checkpoint_git_publication_preview(
++    State(state): State<AppState>,
++    Path((workspace, situation, operation, checkpoint)): Path<(Uuid, Uuid, Uuid, Uuid)>,
++    headers: HeaderMap,
++    Query(query): Query<CheckpointGitPublicationPreviewQuery>,
++) -> Result<Response, ApiError> {
++    guard(&state, &headers, workspace, Capability::Read).await?;
++    let preview = checkpoint_git_publication::preview(
++        &state.pool,
++        OperationScope {
++            workspace,
++            situation,
++            operation,
++        },
++        checkpoint,
++        query.target_id,
++    )
++    .await
++    .map_err(checkpoint_git_publication_error)?;
++    Ok(no_store(json!(preview), StatusCode::OK))
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct CheckpointGitPublicationIntentRequest {
++    target_id: Uuid,
++}
++
++async fn record_bff_operation_checkpoint_git_publication_intent(
++    State(state): State<AppState>,
++    Path((workspace, situation, operation, checkpoint, publication)): Path<(
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++    )>,
++    headers: HeaderMap,
++    Json(request): Json<CheckpointGitPublicationIntentRequest>,
++) -> Result<Response, ApiError> {
++    guard(&state, &headers, workspace, Capability::Read).await?;
++    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
++    let (intent, replayed) = checkpoint_git_publication::record_intent(
++        &state.pool,
++        OperationScope {
++            workspace,
++            situation,
++            operation,
++        },
++        checkpoint,
++        actor,
++        publication,
++        request.target_id,
++    )
++    .await
++    .map_err(checkpoint_git_publication_error)?;
++    Ok(no_store(
++        json!({
++            "intent": intent,
++            "replayed": replayed,
++            "remote_publish_performed": false,
++            "requires_provider_authorization_before_publish": true,
++            "checkpoint_status_preserved": true,
++            "establishes_truth": false,
++            "proves_completeness": false,
++            "authorizes_real_world_action": false
++        }),
++        if replayed {
++            StatusCode::OK
++        } else {
++            StatusCode::CREATED
++        },
++    ))
++}
++
+ async fn wait_bff_operation(
+     State(state): State<AppState>,
+     Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+diff --git a/src/checkpoint_git_publication.rs b/src/checkpoint_git_publication.rs
+new file mode 100644
+index 0000000..a7481a5
+--- /dev/null
++++ b/src/checkpoint_git_publication.rs
+@@ -0,0 +1,331 @@
++//! Immutable local publication planning for exact operation-checkpoint packages.
++//!
++//! This GIT-002 slice deliberately performs no provider request. It binds an
++//! immutable checkpoint package digest to a user-owned Git target and requested
++//! ref so a later explicit publisher can retry without ambiguity.
++use crate::{
++    authz,
++    bff_operations::OperationScope,
++    checkpoint_package::{self, CheckpointPackageError},
++    git_publication::{self, GitPublicationError, TargetView},
++    operation_checkpoint::{self, CheckpointError},
++};
++use serde::{Deserialize, Serialize};
++use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
++use uuid::Uuid;
++
++#[derive(Debug, thiserror::Error)]
++pub enum CheckpointGitPublicationError {
++    #[error("database unavailable: {0}")]
++    Database(#[from] sqlx::Error),
++    #[error("checkpoint unavailable: {0}")]
++    Checkpoint(#[from] CheckpointError),
++    #[error("checkpoint package unavailable: {0}")]
++    Package(#[from] CheckpointPackageError),
++    #[error("git target unavailable: {0}")]
++    Git(#[from] GitPublicationError),
++    #[error("invalid checkpoint publication request")]
++    Invalid,
++    #[error("checkpoint publication identity conflicts with recorded scope")]
++    Conflict,
++    #[error("privileged SQL login prohibited")]
++    Privileged,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct CheckpointPublicationPreview {
++    pub target: TargetView,
++    pub workspace_id: Uuid,
++    pub situation_id: Uuid,
++    pub operation_id: Uuid,
++    pub checkpoint_id: Uuid,
++    pub checkpoint_seq: i64,
++    pub checkpoint_kind: String,
++    pub provisional: bool,
++    pub terminal: bool,
++    pub checkpoint_summary_sha256: String,
++    pub scope_kind: String,
++    pub package_sha256: String,
++    pub file_count: u32,
++    pub total_text_bytes: u64,
++    pub requested_ref: String,
++    pub includes_examined_source_text: bool,
++    pub includes_original_uploads: bool,
++    pub remote_publish_performed: bool,
++    pub requires_transient_provider_authorization: bool,
++    pub ready_for_remote_publish: bool,
++    pub establishes_truth: bool,
++    pub proves_completeness: bool,
++    pub authorizes_real_world_action: bool,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct CheckpointPublicationIntentView {
++    pub publication_id: Uuid,
++    pub target_id: Uuid,
++    pub situation_id: Uuid,
++    pub operation_id: Uuid,
++    pub checkpoint_id: Uuid,
++    pub checkpoint_seq: i64,
++    pub checkpoint_kind: String,
++    pub provisional: bool,
++    pub terminal: bool,
++    pub checkpoint_summary_sha256: String,
++    pub package_sha256: String,
++    pub file_count: u32,
++    pub total_text_bytes: u64,
++    pub requested_ref: String,
++    pub scope_kind: String,
++    pub includes_examined_source_text: bool,
++    pub includes_original_uploads: bool,
++    pub publication_state: String,
++    pub requested_by_principal_id: Uuid,
++    pub created_at: String,
++    pub remote_publish_performed: bool,
++}
++
++async fn scoped(
++    pool: &PgPool,
++    workspace: Uuid,
++) -> Result<Transaction<'_, Postgres>, CheckpointGitPublicationError> {
++    let mut tx = pool.begin().await?;
++    let privileged: bool = sqlx::query_scalar(
++        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
++    )
++    .fetch_one(&mut *tx)
++    .await?;
++    if privileged {
++        return Err(CheckpointGitPublicationError::Privileged);
++    }
++    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
++        .bind(workspace.to_string())
++        .fetch_one(&mut *tx)
++        .await?;
++    authz::bind_auth_digest(&mut tx).await?;
++    Ok(tx)
++}
++
++fn package_shape(
++    package: &checkpoint_package::CheckpointPackage,
++) -> Result<(u32, u64), CheckpointGitPublicationError> {
++    let file_count =
++        u32::try_from(package.files.len()).map_err(|_| CheckpointGitPublicationError::Invalid)?;
++    let total_text_bytes = package.files.values().try_fold(0_u64, |total, value| {
++        total
++            .checked_add(value.len() as u64)
++            .ok_or(CheckpointGitPublicationError::Invalid)
++    })?;
++    if file_count == 0 || file_count > 32 || total_text_bytes == 0 || total_text_bytes > 524_288 {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    Ok((file_count, total_text_bytes))
++}
++
++pub async fn preview(
++    pool: &PgPool,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    target_id: Uuid,
++) -> Result<CheckpointPublicationPreview, CheckpointGitPublicationError> {
++    if checkpoint_id.is_nil() || target_id.is_nil() {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    let checkpoint = operation_checkpoint::get(pool, scope, checkpoint_id).await?;
++    let package = checkpoint_package::build(scope, &checkpoint)?;
++    let target = git_publication::get_target(pool, scope.workspace, target_id).await?;
++    let (file_count, total_text_bytes) = package_shape(&package)?;
++    Ok(CheckpointPublicationPreview {
++        requested_ref: target.ref_name.clone(),
++        target,
++        workspace_id: scope.workspace,
++        situation_id: scope.situation,
++        operation_id: scope.operation,
++        checkpoint_id,
++        checkpoint_seq: checkpoint.checkpoint_seq,
++        checkpoint_kind: checkpoint.checkpoint_kind,
++        provisional: checkpoint.provisional,
++        terminal: checkpoint.terminal,
++        checkpoint_summary_sha256: checkpoint.summary_sha256,
++        scope_kind: "OPERATION_CHECKPOINT".into(),
++        package_sha256: checkpoint_package::package_sha256(&package),
++        file_count,
++        total_text_bytes,
++        includes_examined_source_text: false,
++        includes_original_uploads: false,
++        remote_publish_performed: false,
++        requires_transient_provider_authorization: true,
++        ready_for_remote_publish: false,
++        establishes_truth: false,
++        proves_completeness: false,
++        authorizes_real_world_action: false,
++    })
++}
++
++struct IntentRow {
++    publication_id: Uuid,
++    target_id: Uuid,
++    situation_id: Uuid,
++    operation_id: Uuid,
++    checkpoint_id: Uuid,
++    checkpoint_seq: i64,
++    checkpoint_kind: String,
++    provisional: bool,
++    terminal: bool,
++    checkpoint_summary_sha256: String,
++    package_sha256: String,
++    file_count: i32,
++    total_text_bytes: i64,
++    requested_ref: String,
++    scope_kind: String,
++    includes_examined_source_text: bool,
++    includes_original_uploads: bool,
++    publication_state: String,
++    requested_by_principal_id: Uuid,
++    created_at: String,
++}
++
++fn decode_intent_row(row: PgRow) -> Result<IntentRow, sqlx::Error> {
++    Ok(IntentRow {
++        publication_id: row.try_get("publication_id")?,
++        target_id: row.try_get("target_id")?,
++        situation_id: row.try_get("situation_id")?,
++        operation_id: row.try_get("operation_id")?,
++        checkpoint_id: row.try_get("checkpoint_id")?,
++        checkpoint_seq: row.try_get("checkpoint_seq")?,
++        checkpoint_kind: row.try_get("checkpoint_kind")?,
++        provisional: row.try_get("provisional")?,
++        terminal: row.try_get("terminal")?,
++        checkpoint_summary_sha256: row.try_get("checkpoint_summary_sha256")?,
++        package_sha256: row.try_get("package_sha256")?,
++        file_count: row.try_get("file_count")?,
++        total_text_bytes: row.try_get("total_text_bytes")?,
++        requested_ref: row.try_get("requested_ref")?,
++        scope_kind: row.try_get("scope_kind")?,
++        includes_examined_source_text: row.try_get("includes_examined_source_text")?,
++        includes_original_uploads: row.try_get("includes_original_uploads")?,
++        publication_state: row.try_get("publication_state")?,
++        requested_by_principal_id: row.try_get("requested_by_principal_id")?,
++        created_at: row.try_get("created_at")?,
++    })
++}
++
++fn intent_from_row(
++    row: IntentRow,
++) -> Result<CheckpointPublicationIntentView, CheckpointGitPublicationError> {
++    Ok(CheckpointPublicationIntentView {
++        publication_id: row.publication_id,
++        target_id: row.target_id,
++        situation_id: row.situation_id,
++        operation_id: row.operation_id,
++        checkpoint_id: row.checkpoint_id,
++        checkpoint_seq: row.checkpoint_seq,
++        checkpoint_kind: row.checkpoint_kind,
++        provisional: row.provisional,
++        terminal: row.terminal,
++        checkpoint_summary_sha256: row.checkpoint_summary_sha256,
++        package_sha256: row.package_sha256,
++        file_count: u32::try_from(row.file_count)
++            .map_err(|_| CheckpointGitPublicationError::Conflict)?,
++        total_text_bytes: u64::try_from(row.total_text_bytes)
++            .map_err(|_| CheckpointGitPublicationError::Conflict)?,
++        requested_ref: row.requested_ref,
++        scope_kind: row.scope_kind,
++        includes_examined_source_text: row.includes_examined_source_text,
++        includes_original_uploads: row.includes_original_uploads,
++        publication_state: row.publication_state,
++        requested_by_principal_id: row.requested_by_principal_id,
++        created_at: row.created_at,
++        remote_publish_performed: false,
++    })
++}
++
++pub async fn record_intent(
++    pool: &PgPool,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    actor: Uuid,
++    publication_id: Uuid,
++    target_id: Uuid,
++) -> Result<(CheckpointPublicationIntentView, bool), CheckpointGitPublicationError> {
++    if actor.is_nil() || publication_id.is_nil() || target_id.is_nil() || checkpoint_id.is_nil() {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    let preview = preview(pool, scope, checkpoint_id, target_id).await?;
++    let mut tx = scoped(pool, scope.workspace).await?;
++    let inserted = sqlx::query(
++        "INSERT INTO niccolo.checkpoint_git_publication_intents
++         (workspace_id,publication_id,target_id,situation_id,operation_id,checkpoint_id,
++          checkpoint_seq,checkpoint_kind,provisional,terminal,checkpoint_summary_sha256,
++          package_sha256,file_count,total_text_bytes,requested_ref,requested_by_principal_id)
++         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
++         ON CONFLICT DO NOTHING",
++    )
++    .bind(scope.workspace)
++    .bind(publication_id)
++    .bind(target_id)
++    .bind(scope.situation)
++    .bind(scope.operation)
++    .bind(checkpoint_id)
++    .bind(preview.checkpoint_seq)
++    .bind(&preview.checkpoint_kind)
++    .bind(preview.provisional)
++    .bind(preview.terminal)
++    .bind(&preview.checkpoint_summary_sha256)
++    .bind(&preview.package_sha256)
++    .bind(i32::try_from(preview.file_count).map_err(|_| CheckpointGitPublicationError::Invalid)?)
++    .bind(
++        i64::try_from(preview.total_text_bytes)
++            .map_err(|_| CheckpointGitPublicationError::Invalid)?,
++    )
++    .bind(&preview.requested_ref)
++    .bind(actor)
++    .execute(&mut *tx)
++    .await?
++    .rows_affected()
++        == 1;
++
++    let row = sqlx::query(
++        "SELECT publication_id,target_id,situation_id,operation_id,checkpoint_id,
++                checkpoint_seq,checkpoint_kind,provisional,terminal,checkpoint_summary_sha256,
++                package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
++                includes_examined_source_text,includes_original_uploads,publication_state,
++                requested_by_principal_id,created_at::text AS created_at
++           FROM niccolo.checkpoint_git_publication_intents
++          WHERE workspace_id=$1 AND publication_id=$2",
++    )
++    .bind(scope.workspace)
++    .bind(publication_id)
++    .fetch_optional(&mut *tx)
++    .await?
++    .ok_or(CheckpointGitPublicationError::Conflict)?;
++    let row = decode_intent_row(row)?;
++
++    if row.target_id != target_id
++        || row.situation_id != scope.situation
++        || row.operation_id != scope.operation
++        || row.checkpoint_id != checkpoint_id
++        || row.checkpoint_seq != preview.checkpoint_seq
++        || row.checkpoint_kind != preview.checkpoint_kind
++        || row.provisional != preview.provisional
++        || row.terminal != preview.terminal
++        || row.checkpoint_summary_sha256 != preview.checkpoint_summary_sha256
++        || row.package_sha256 != preview.package_sha256
++        || row.file_count
++            != i32::try_from(preview.file_count)
++                .map_err(|_| CheckpointGitPublicationError::Invalid)?
++        || row.total_text_bytes
++            != i64::try_from(preview.total_text_bytes)
++                .map_err(|_| CheckpointGitPublicationError::Invalid)?
++        || row.requested_ref != preview.requested_ref
++        || row.scope_kind != "OPERATION_CHECKPOINT"
++        || row.includes_examined_source_text
++        || row.includes_original_uploads
++        || row.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
++        || row.requested_by_principal_id != actor
++    {
++        return Err(CheckpointGitPublicationError::Conflict);
++    }
++    let view = intent_from_row(row)?;
++    tx.commit().await?;
++    Ok((view, !inserted))
++}
+diff --git a/src/lib.rs b/src/lib.rs
+index 7ec40a4..e1a0a88 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -489,6 +489,7 @@ pub mod analysis_quality;
+ pub mod adversarial_challenge;
+ 
+ pub mod operation_budget;
++pub mod checkpoint_git_publication;
+ pub mod checkpoint_package;
+ pub mod operation_checkpoint;
+ 
+diff --git a/tests/bff_http_integration.rs b/tests/bff_http_integration.rs
+index 266e361..304407c 100644
+--- a/tests/bff_http_integration.rs
++++ b/tests/bff_http_integration.rs
+@@ -438,6 +438,94 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
+     assert!(package["files"]["checkpoint.json"].as_str().is_some());
+     assert!(package["files"]["SHA256SUMS"].as_str().is_some());
+ 
++    let target = Uuid::new_v4();
++    let target_path = format!(
++        "/v1/workspaces/{}/git-publication-targets/{target}",
++        s.workspace
++    );
++    let (status, _, target_response) = invoke(
++        s.router.clone(),
++        req(
++            "POST",
++            &target_path,
++            &s.token,
++            Some(json!({
++                "repository_owner":"checkpoint-owner",
++                "repository_name":"checkpoint-history",
++                "ref_name":"work",
++                "repository_visibility":"PRIVATE",
++                "sensitive_exports_allowed":false
++            })),
++            None,
++        ),
++    )
++    .await;
++    assert_eq!(status, StatusCode::CREATED);
++    assert_eq!(target_response["registration_publishes_nothing"], true);
++
++    let checkpoint_base = format!("{}/checkpoints/{checkpoint_id}", path(&s, id, ""));
++    let preview_path = format!("{checkpoint_base}/git-publication-preview?target_id={target}");
++    let (status, _, preview) = invoke(
++        s.router.clone(),
++        req("GET", &preview_path, &s.token, None, None),
++    )
++    .await;
++    assert_eq!(status, StatusCode::OK);
++    assert_eq!(preview["scope_kind"], "OPERATION_CHECKPOINT");
++    assert_eq!(preview["checkpoint_id"], checkpoint_id);
++    assert_eq!(preview["checkpoint_summary_sha256"], checkpoint_digest);
++    assert_eq!(preview["checkpoint_kind"], "BUDGET_BOUNDARY");
++    assert_eq!(preview["provisional"], true);
++    assert_eq!(preview["terminal"], true);
++    assert_eq!(preview["requested_ref"], "work");
++    assert_eq!(preview["remote_publish_performed"], false);
++    assert_eq!(preview["ready_for_remote_publish"], false);
++    assert_eq!(preview["requires_transient_provider_authorization"], true);
++    assert_eq!(preview["establishes_truth"], false);
++    assert_eq!(preview["proves_completeness"], false);
++    assert_eq!(preview["authorizes_real_world_action"], false);
++    assert_eq!(preview["package_sha256"].as_str().unwrap().len(), 64);
++
++    let publication = Uuid::new_v4();
++    let intent_path = format!("{checkpoint_base}/git-publication-intents/{publication}");
++    let intent_body = json!({"target_id":target});
++    let (status, _, recorded) = invoke(
++        s.router.clone(),
++        req(
++            "POST",
++            &intent_path,
++            &s.token,
++            Some(intent_body.clone()),
++            None,
++        ),
++    )
++    .await;
++    assert_eq!(status, StatusCode::CREATED);
++    assert_eq!(recorded["replayed"], false);
++    assert_eq!(recorded["remote_publish_performed"], false);
++    assert_eq!(recorded["checkpoint_status_preserved"], true);
++    assert_eq!(recorded["intent"]["scope_kind"], "OPERATION_CHECKPOINT");
++    assert_eq!(recorded["intent"]["checkpoint_id"], checkpoint_id);
++    assert_eq!(
++        recorded["intent"]["package_sha256"],
++        preview["package_sha256"]
++    );
++    assert_eq!(recorded["intent"]["provisional"], true);
++    assert_eq!(recorded["intent"]["terminal"], true);
++    assert_eq!(recorded["intent"]["remote_publish_performed"], false);
++
++    let (status, _, replayed) = invoke(
++        s.router.clone(),
++        req("POST", &intent_path, &s.token, Some(intent_body), None),
++    )
++    .await;
++    assert_eq!(status, StatusCode::OK);
++    assert_eq!(replayed["replayed"], true);
++    assert_eq!(
++        replayed["intent"]["package_sha256"],
++        preview["package_sha256"]
++    );
++
+     let missing_checkpoint = Uuid::new_v4();
+     let (status, _, _) = invoke(
+         s.router.clone(),
+-- 
+2.47.3
