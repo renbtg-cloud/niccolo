@@ -92,13 +92,15 @@ Prerequisites: Node.js/npm, Rust 1.99.1, PostgreSQL 17 client tools (`psql`),
 and a running PostgreSQL server/database that the provided admin account owns.
 On Windows, use Git Bash.
 
-Run the bootstrap against a new dedicated PostgreSQL 17 database:
+For the shortest interactive first-user path, run one command:
 
 ```bash
-bash scripts/bootstrap-local-mvp.sh
+bash scripts/setup-local-mvp.sh
 ```
 
-If `NICCOLO_PG_ADMIN_URL` is not already exported, an interactive terminal asks for the database-owner URL with hidden input. Automation should export it instead; non-interactive bootstrap fails closed when it is missing.
+On a fresh installation the setup helper runs bootstrap, private model configuration, and then starts Niccolò. On later runs it detects the existing private local state and starts directly. It refuses to overwrite a partially created `.niccolo-local/` directory or to mix an incomplete explicit `NICCOLO_LLM_*` override with stored model credentials. Pass `--no-browser` when automatic browser opening is unwanted.
+
+The underlying bootstrap can also be run separately with `bash scripts/bootstrap-local-mvp.sh`. If `NICCOLO_PG_ADMIN_URL` is not already exported, an interactive terminal asks for the database-owner URL with hidden input. Automation should export it instead; non-interactive bootstrap fails closed when it is missing.
 
 The local bootstrap generates the restricted runtime PostgreSQL password
 automatically. Deployment automation may explicitly provide
@@ -117,7 +119,7 @@ It writes private files under the ignored `.niccolo-local/` folder:
 Situation identifiers), and `token.txt` (bearer token). Treat the folder
 as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
 
-Configure the OpenAI-compatible reasoning model once with:
+When using the individual helpers instead of `setup-local-mvp.sh`, configure the OpenAI-compatible reasoning model once with:
 
 ```bash
 bash scripts/configure-local-model.sh
@@ -132,7 +134,7 @@ automatically, while explicitly exported `NICCOLO_LLM_*` values override stored 
 start invocation. Keep any API key in that private file or process environment, never in the
 prepared browser URL or repository.
 
-Start the already-bootstrapped local MVP with one command:
+Start an already-bootstrapped and configured local MVP directly with:
 
 ```bash
 bash scripts/start-local-mvp.sh

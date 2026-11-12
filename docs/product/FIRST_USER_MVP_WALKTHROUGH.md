@@ -4,20 +4,31 @@ This is the shortest supported path from a fresh local installation to a first u
 
 It is intentionally not an architecture guide.
 
-## 1. Bootstrap once
+## 1. Set up and start
 
 Use a new dedicated PostgreSQL 17 database. The setup login should own that database and have
 `CREATEROLE` so bootstrap can create the dedicated restricted runtime login. It does **not** need
 `SUPERUSER` or `BYPASSRLS`.
 
-Run bootstrap. Niccolò generates the restricted runtime-login password by default, so a first
-user does not need to invent or manage a second database password:
+For an interactive first installation, the shortest supported path is:
+
+    bash scripts/setup-local-mvp.sh
+
+The helper runs bootstrap when private local state does not exist, asks for private model configuration
+when needed, and then starts Niccolò. On later runs the same command reuses the completed local state.
+It refuses to overwrite a partial `.niccolo-local/` setup. Pass `--no-browser` to suppress automatic
+browser opening.
+
+Bootstrap generates the restricted runtime-login password by default, so a first user does not need
+to invent or manage a second database password. In an interactive terminal it asks for the PostgreSQL
+database-owner URL with hidden input when `NICCOLO_PG_ADMIN_URL` was not already exported. Automation
+should export the URL instead; non-interactive bootstrap refuses to guess it.
+
+The individual steps remain available for troubleshooting or automation:
 
     bash scripts/bootstrap-local-mvp.sh
-
-In an interactive terminal, bootstrap asks for the PostgreSQL database-owner URL with hidden input
-when `NICCOLO_PG_ADMIN_URL` was not already exported. Automation should export the URL instead;
-non-interactive bootstrap refuses to guess it.
+    bash scripts/configure-local-model.sh
+    bash scripts/start-local-mvp.sh
 
 For a deliberately disconnected machine whose dependencies were transferred ahead of time, set
 `NICCOLO_OFFLINE=1`. `scripts/build-mvp.sh` then refuses network dependency resolution. It uses an
@@ -39,12 +50,12 @@ Expected result:
 
 Private local files are written under `.niccolo-local/`.
 
-## 2. Configure a reasoning model
+## 2. Reasoning-model configuration
 
 Niccolò can prepare Situations and retain sources without a reasoning model, but **Analyze**
 requires an OpenAI-compatible model.
 
-The shortest path is the private configuration helper:
+`setup-local-mvp.sh` invokes the private configuration helper automatically when an interactive first user needs it. To configure or replace the model separately, run:
 
     bash scripts/configure-local-model.sh
 
@@ -61,7 +72,7 @@ Do not put a bearer token or model API key in the prepared browser URL.
 
 ## 3. Start Niccolò
 
-Run:
+`setup-local-mvp.sh` reaches this step automatically. For later direct starts, or when using the individual helpers, run:
 
     bash scripts/start-local-mvp.sh
 
