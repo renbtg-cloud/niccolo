@@ -333,6 +333,9 @@ async fn remote_status_changes_only_after_append_only_verified_observation() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["state"], "PUSHED_UNVERIFIED");
     assert_eq!(body["remote_publish_verified"], false);
+    assert_eq!(body["last_event_kind"], "PUSH_ACCEPTED");
+    assert!(body["last_event_at"].as_str().is_some());
+    assert!(body["last_failure_class"].is_null());
 
     let verified = git_publication::RemoteEventInput {
         event_id: Uuid::new_v4(),
@@ -360,6 +363,8 @@ async fn remote_status_changes_only_after_append_only_verified_observation() {
     assert_eq!(body["verified_commit_sha"], "a".repeat(40));
     assert_eq!(body["verified_ref"], "main");
     assert_eq!(body["event_count"], 2);
+    assert_eq!(body["last_event_kind"], "REF_VERIFIED");
+    assert!(body["last_failure_class"].is_null());
 
     let wrong_analysis = Uuid::new_v4();
     let wrong = format!(
@@ -496,6 +501,89 @@ async fn publish_endpoint_requires_explicit_transient_authorization_and_replays_
     assert_eq!(body["provider_secret_stored"], false);
     assert_eq!(body["status"]["remote_publish_verified"], true);
     assert_eq!(body["status"]["verified_commit_sha"], "b".repeat(40));
+}
+
+#[tokio::test]
+async fn remote_status_counts_beyond_old_preview_bound_and_reports_last_failure_class() {
+    let f = setup().await;
+    let (situation, analysis) = published_analysis(&f).await;
+    let target = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace),
+                &f.writer,
+                Some(json!({
+                    "repository_owner":"owner",
+                    "repository_name":"event-history",
+                    "ref_name":"main",
+                    "repository_visibility":"PRIVATE",
+                    "sensitive_exports_allowed":false
+                }))
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let base = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("{base}/git-publication-intents/{publication}"),
+                &f.writer,
+                Some(json!({"target_id":target})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let digest = authz::credential_digest(&f.writer).unwrap();
+    for _ in 0..105 {
+        let event = git_publication::RemoteEventInput {
+            event_id: Uuid::new_v4(),
+            publication_id: publication,
+            kind: git_publication::RemoteEventKind::PublishFailed,
+            remote_commit_sha: None,
+            observed_ref: None,
+            failure_class: Some("TRANSPORT".into()),
+        };
+        authz::with_auth_digest(digest.clone(), async {
+            git_publication::record_remote_event(
+                &f.secure,
+                f.workspace,
+                f.writer_principal,
+                &event,
+            )
+            .await
+            .unwrap()
+        })
+        .await;
+    }
+    let (status, body) = call(
+        f.router.clone(),
+        request(
+            "GET",
+            format!("{base}/git-publication-intents/{publication}/remote-status"),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["state"], "REMOTE_ATTEMPT_FAILED");
+    assert_eq!(body["event_count"], 105);
+    assert_eq!(body["last_event_kind"], "PUBLISH_FAILED");
+    assert_eq!(body["last_failure_class"], "TRANSPORT");
 }
 
 #[tokio::test]

@@ -556,6 +556,9 @@ pub struct RemotePublicationStatus {
     pub verified_commit_sha: Option<String>,
     pub verified_ref: Option<String>,
     pub event_count: u32,
+    pub last_event_kind: Option<String>,
+    pub last_event_at: Option<String>,
+    pub last_failure_class: Option<String>,
 }
 
 fn valid_remote_sha(value: &str) -> bool {
@@ -730,42 +733,66 @@ pub async fn remote_status(
     if !intent_exists {
         return Err(GitPublicationError::Invisible);
     }
-    let rows: Vec<RemoteEventRow> = sqlx::query_as(
-        "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
-                failure_class,recorded_by_principal_id,created_at::text
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
            FROM niccolo.git_publication_events
-          WHERE workspace_id=$1 AND publication_id=$2
-          ORDER BY created_at,event_id
-          LIMIT 100",
+          WHERE workspace_id=$1 AND publication_id=$2",
     )
     .bind(workspace)
     .bind(publication_id)
-    .fetch_all(&mut *tx)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let verified: Option<(String, String)> = sqlx::query_as(
+        "SELECT remote_commit_sha,observed_ref
+           FROM niccolo.git_publication_events
+          WHERE workspace_id=$1 AND publication_id=$2 AND event_kind='REF_VERIFIED'
+          ORDER BY created_at DESC,event_id DESC
+          LIMIT 1",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let last: Option<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT event_kind,failure_class,created_at::text
+           FROM niccolo.git_publication_events
+          WHERE workspace_id=$1 AND publication_id=$2
+          ORDER BY created_at DESC,event_id DESC,event_kind DESC
+          LIMIT 1",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
 
-    let mut state = "AWAITING_REMOTE_AUTHORIZATION";
-    let mut verified_commit_sha = None;
-    let mut verified_ref = None;
-    for row in &rows {
-        match row.2.as_str() {
-            "PUSH_ACCEPTED" if verified_commit_sha.is_none() => state = "PUSHED_UNVERIFIED",
-            "REF_VERIFIED" => {
-                state = "VERIFIED_PUBLISHED";
-                verified_commit_sha = row.3.clone();
-                verified_ref = row.4.clone();
-            }
-            "PUBLISH_FAILED" if verified_commit_sha.is_none() => state = "REMOTE_ATTEMPT_FAILED",
-            _ => {}
-        }
-    }
+    let (remote_publish_verified, verified_commit_sha, verified_ref, state) =
+        if let Some((commit, observed_ref)) = verified {
+            (true, Some(commit), Some(observed_ref), "VERIFIED_PUBLISHED")
+        } else {
+            let state = match last.as_ref().map(|row| row.0.as_str()) {
+                Some("PUSH_ACCEPTED") => "PUSHED_UNVERIFIED",
+                Some("PUBLISH_FAILED") => "REMOTE_ATTEMPT_FAILED",
+                _ => "AWAITING_REMOTE_AUTHORIZATION",
+            };
+            (false, None, None, state)
+        };
+    let last_failure_class = last
+        .as_ref()
+        .and_then(|row| (row.0 == "PUBLISH_FAILED").then(|| row.1.clone()).flatten());
     Ok(RemotePublicationStatus {
         publication_id,
         state: state.into(),
-        remote_publish_verified: verified_commit_sha.is_some(),
+        remote_publish_verified,
         verified_commit_sha,
         verified_ref,
-        event_count: u32::try_from(rows.len()).map_err(|_| GitPublicationError::Conflict)?,
+        event_count: u32::try_from(event_count).map_err(|_| GitPublicationError::Conflict)?,
+        last_event_kind: last.as_ref().map(|row| row.0.clone()),
+        last_event_at: last.as_ref().map(|row| row.2.clone()),
+        last_failure_class,
     })
 }
 
