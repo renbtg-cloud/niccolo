@@ -7,7 +7,25 @@ umask 077
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-: "${NICCOLO_PG_ADMIN_URL:?Set an admin URL for a new dedicated PostgreSQL database}"
+if [[ -z "${NICCOLO_PG_ADMIN_URL:-}" ]]; then
+  if [[ -t 0 ]]; then
+    printf 'PostgreSQL owner URL for a new dedicated database (input hidden): '
+    IFS= read -r -s NICCOLO_PG_ADMIN_URL
+    printf '\n'
+    export NICCOLO_PG_ADMIN_URL
+  else
+    echo 'NICCOLO_PG_ADMIN_URL is required when bootstrap is not running in an interactive terminal.' >&2
+    exit 2
+  fi
+fi
+[[ -n "$NICCOLO_PG_ADMIN_URL" && "$NICCOLO_PG_ADMIN_URL" =~ [^[:space:]] ]] || {
+  echo 'A PostgreSQL owner URL is required.' >&2
+  exit 2
+}
+[[ ! "$NICCOLO_PG_ADMIN_URL" =~ [[:cntrl:]] ]] || {
+  echo 'NICCOLO_PG_ADMIN_URL contains unsupported control characters.' >&2
+  exit 2
+}
 for program in psql node; do
   command -v "$program" >/dev/null || {
     printf 'Missing executable: %s\n' "$program" >&2

@@ -10,11 +10,14 @@ Use a new dedicated PostgreSQL 17 database. The setup login should own that data
 `CREATEROLE` so bootstrap can create the dedicated restricted runtime login. It does **not** need
 `SUPERUSER` or `BYPASSRLS`.
 
-Set the database-owner connection. Niccolò generates the restricted runtime-login password by
-default, so a first user does not need to invent or manage a second database password:
+Run bootstrap. Niccolò generates the restricted runtime-login password by default, so a first
+user does not need to invent or manage a second database password:
 
-    export NICCOLO_PG_ADMIN_URL='...'
     bash scripts/bootstrap-local-mvp.sh
+
+In an interactive terminal, bootstrap asks for the PostgreSQL database-owner URL with hidden input
+when `NICCOLO_PG_ADMIN_URL` was not already exported. Automation should export the URL instead;
+non-interactive bootstrap refuses to guess it.
 
 For a deliberately disconnected machine whose dependencies were transferred ahead of time, set
 `NICCOLO_OFFLINE=1`. `scripts/build-mvp.sh` then refuses network dependency resolution. It uses an

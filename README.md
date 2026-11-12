@@ -92,11 +92,13 @@ Prerequisites: Node.js/npm, Rust 1.99.1, PostgreSQL 17 client tools (`psql`),
 and a running PostgreSQL server/database that the provided admin account owns.
 On Windows, use Git Bash.
 
-Set `NICCOLO_PG_ADMIN_URL` in your shell's environment, then run:
+Run the bootstrap against a new dedicated PostgreSQL 17 database:
 
 ```bash
 bash scripts/bootstrap-local-mvp.sh
 ```
+
+If `NICCOLO_PG_ADMIN_URL` is not already exported, an interactive terminal asks for the database-owner URL with hidden input. Automation should export it instead; non-interactive bootstrap fails closed when it is missing.
 
 The local bootstrap generates the restricted runtime PostgreSQL password
 automatically. Deployment automation may explicitly provide
