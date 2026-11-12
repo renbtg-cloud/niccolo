@@ -33,6 +33,14 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).not.toContain('Connect to the BFF first.');
   });
 
+  it('keeps the Analyze screen grounded in the selected Situation before launching work', () => {
+    expect(analysis).not.toContain('This prepared Situation has not been created yet.');
+    const operations = readFileSync(new URL('./OperationsPage.jsx', import.meta.url), 'utf8');
+    expect(operations).toContain("queryKey:client?qk.situation(client.config):['situation','none']");
+    expect(operations).toContain('situationGuide(situation.data)');
+    expect(operations).toContain('Focus-only first pass.');
+  });
+
   it('shows model readiness before the user enters Analyze', () => {
     expect(situation).toContain("queryKey: ['mvp-runtime-readiness']");
     expect(situation).toContain('A reasoning model is not configured yet.');

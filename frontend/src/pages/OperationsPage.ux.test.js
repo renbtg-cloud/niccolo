@@ -21,6 +21,16 @@ describe('primary analysis path', () => {
     expect(operations).toContain('No answer was published. You can start another analysis.');
   });
 
+  it('blocks analysis when the prepared Situation has not been created, but permits focus-only reasoning', () => {
+    expect(operations).toContain('client.situation()');
+    expect(operations).toContain('situation.error?.status===404');
+    expect(operations).toContain('This prepared Situation has not been created yet.');
+    expect(operations).toContain('Start the Situation first →');
+    expect(operations).toContain('Focus-only first pass.');
+    expect(operations).toContain('This is allowed.');
+    expect(operations).toContain('situationMissing||situationUnavailable');
+  });
+
   it('explains unavailable model setup before starting costly analysis work', () => {
     expect(operations).toContain('client.readiness()');
     expect(operations).toContain('readiness.data?.model_configured===false');
