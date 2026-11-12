@@ -8,7 +8,7 @@ import {
 } from './sourceUpload.js';
 
 describe('source upload boundary', () => {
-  it('maps eml and text exports to the backend media types', () => {
+  it('maps eml and WhatsApp txt exports to the backend media types', () => {
     expect(sourceDescriptor({ name: 'mail.eml', type: '', size: 12 })).toEqual({
       locator: 'mail.eml',
       contentType: 'message/rfc822',
@@ -17,6 +17,12 @@ describe('source upload boundary', () => {
       locator: 'chat.txt',
       contentType: 'text/plain',
     });
+  });
+
+  it('does not describe arbitrary plain text as a supported source contract', () => {
+    expect(() => sourceDescriptor(null)).toThrow('Choose an email (.eml) or WhatsApp export (.txt).');
+    expect(() => sourceDescriptor({ name: 'notes.md', type: 'text/plain', size: 12 }))
+      .toThrow('Use an .eml email or .txt WhatsApp export.');
   });
 
   it('rejects unsupported, empty and oversized sources before upload', () => {
