@@ -187,7 +187,7 @@ async fn publication_planning_is_explicit_idempotent_and_never_claims_remote_suc
     assert_eq!(preview["includes_original_uploads"], false);
     assert_eq!(preview["remote_publish_performed"], false);
     assert_eq!(preview["requires_transient_provider_authorization"], true);
-    assert_eq!(preview["ready_for_remote_publish"], false);
+    assert_eq!(preview["ready_for_remote_publish"], true);
     assert_eq!(preview["package_sha256"].as_str().unwrap().len(), 64);
     assert!(preview["file_count"].as_u64().unwrap() > 0);
     assert!(preview["total_text_bytes"].as_u64().unwrap() > 0);

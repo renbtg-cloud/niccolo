@@ -18,6 +18,7 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('requested_ref');
     expect(source).toContain('Record publication intent — does not upload');
     expect(source).toContain('Provider connection verified: no');
+    expect(source).toContain('ready_for_remote_publish');
   });
 
   it('keeps provider authorization transient and explicit', () => {
