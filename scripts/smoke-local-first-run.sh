@@ -134,6 +134,8 @@ default_handoff_status="$(curl --max-time 5 --silent --output /dev/null --write-
 # loopback port. Wrong guesses do not burn it; a successful redemption does.
 handoff_code='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
 wrong_handoff='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+handoff_payload="$(printf '{"code":"%s"}' "$handoff_code")"
+wrong_handoff_payload="$(printf '{"code":"%s"}' "$wrong_handoff")"
 NICCOLO_API_PORT=38081 \
 NICCOLO_LOCAL_HANDOFF_CODE="$handoff_code" \
 NICCOLO_LOCAL_HANDOFF_TOKEN_FILE="$ROOT/.niccolo-local/token.txt" \
@@ -155,12 +157,12 @@ done
 [[ "$handoff_started" == 1 ]]
 wrong_handoff_status="$(curl --max-time 5 --silent --output /dev/null --write-out '%{http_code}' \
   -H 'Content-Type: application/json' \
-  --data "{"code":"$wrong_handoff"}" \
+  --data "$wrong_handoff_payload" \
   http://127.0.0.1:38081/v1/local-handoff)"
 [[ "$wrong_handoff_status" == 404 ]]
 handoff_result="$(curl --max-time 5 --silent --show-error --fail \
   -H 'Content-Type: application/json' \
-  --data "{"code":"$handoff_code"}" \
+  --data "$handoff_payload" \
   http://127.0.0.1:38081/v1/local-handoff)"
 EXPECTED_TOKEN="$token" node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
@@ -168,7 +170,7 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
 });' <<< "$handoff_result"
 replay_handoff_status="$(curl --max-time 5 --silent --output /dev/null --write-out '%{http_code}' \
   -H 'Content-Type: application/json' \
-  --data "{"code":"$handoff_code"}" \
+  --data "$handoff_payload" \
   http://127.0.0.1:38081/v1/local-handoff)"
 [[ "$replay_handoff_status" == 404 ]]
 kill "$handoff_pid" 2>/dev/null || true
