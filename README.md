@@ -154,6 +154,8 @@ PostgreSQL already.
 
 For an MVP binary containing the **current** React interface, use `bash scripts/build-mvp.sh` after installing the prerequisites below. This command builds `frontend/dist` before compiling `niccolo-api`, whose embedded HTML/JavaScript/CSS are captured at Rust compile time. Running Cargo alone after changing React sources can serve stale UI assets.
 
+When the Cargo vendor directory and npm cache have already been provisioned, `NICCOLO_OFFLINE=1 bash scripts/build-mvp.sh` forces both package managers to stay offline instead of falling back to the network.
+
 
 ### Prerequisites
 
