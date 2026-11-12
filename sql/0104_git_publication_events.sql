@@ -22,7 +22,7 @@ CREATE TABLE niccolo.git_publication_events (
     OR
     (event_kind='PUBLISH_FAILED' AND remote_commit_sha IS NULL AND observed_ref IS NULL AND failure_class IS NOT NULL)
   ),
-  PRIMARY KEY(workspace_id,publication_id,event_id),
+  PRIMARY KEY(workspace_id,publication_id,event_id,event_kind),
   FOREIGN KEY(workspace_id,publication_id)
     REFERENCES niccolo.git_publication_intents(workspace_id,publication_id)
 );

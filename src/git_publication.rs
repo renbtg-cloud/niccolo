@@ -565,11 +565,12 @@ pub async fn record_remote_event(
         "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
                 failure_class,recorded_by_principal_id,created_at::text
            FROM niccolo.git_publication_events
-          WHERE workspace_id=$1 AND publication_id=$2 AND event_id=$3",
+          WHERE workspace_id=$1 AND publication_id=$2 AND event_id=$3 AND event_kind=$4",
     )
     .bind(workspace)
     .bind(input.publication_id)
     .bind(input.event_id)
+    .bind(kind)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(GitPublicationError::Conflict)?;
