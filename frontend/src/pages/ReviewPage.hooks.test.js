@@ -19,7 +19,10 @@ describe('ReviewPage hook order', () => {
 
   it('requires a separate explicit action before exporting examined source text', () => {
     expect(source).toContain('presentationSourceExportPreview(analysis)');
-    expect(source).toContain('presentationPackageWithExaminedSources(analysis)');
+    expect(source).toContain('presentationPackageWithExaminedSources(');
+    expect(source).toContain('pendingSensitiveExport.current?.analysis!==analysis');
+    expect(source).toContain('pendingSensitiveExport.current.eventId');
+    expect(source).toContain('presentationExportEvents(analysis,25)');
     expect(source).toContain('Include examined source text');
     expect(source).toContain('Scope preview:');
     expect(source).toContain('examined_source_text_bytes');
@@ -27,7 +30,8 @@ describe('ReviewPage hook order', () => {
     expect(source).toContain('Sensitive export.');
     expect(source).toContain('only source fragments recorded as examined by this analysis');
     expect(source).toContain('does not prove those excerpts are true');
-    expect(source).toContain('No remote publication occurred.');
+    expect(source).toContain('No remote publication occurred; the authorization event was recorded locally.');
+    expect(source).toContain('Recent sensitive export audit');
   });
 
   it('surfaces explicitly selected prior-export context without calling it evidence', () => {

@@ -83,7 +83,8 @@ export class NiccoloClient {
   analysisOutput(id) { return this.request('GET', `${analysisPath(this.config,id)}/output`); }
   presentationPackage(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package`); }
   presentationSourceExportPreview(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package/source-preview`); }
-  presentationPackageWithExaminedSources(id) { return this.request('POST', `${analysisPath(this.config,id)}/presentation-package`, { body: { include_examined_source_fragments: true } }); }
+  presentationExportEvents(id, limit = 25) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package/export-events?limit=${limit}`); }
+  presentationPackageWithExaminedSources(id, exportEventId) { return this.request('POST', `${analysisPath(this.config,id)}/presentation-package`, { body: { include_examined_source_fragments: true, export_event_id: exportEventId } }); }
   dashboard(id, operationId) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`); }
   epistemic(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/epistemic`); }
   epistemicPolicy() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/epistemic/policy?situation_id=${this.config.situation}`); }

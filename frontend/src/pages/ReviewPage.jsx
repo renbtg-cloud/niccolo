@@ -44,11 +44,13 @@ function ReviewContent(){
  const pendingReanalysis=useRef(null);
  const pendingClarification=useRef(null);
  const pendingReceipt=useRef(null);
+ const pendingSensitiveExport=useRef(null);
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const observed=useOperationObserver(activeOperation);
  const clarifications=useClarifications(); const reasoningInput=useReasoningInput(); const forensicContext=useForensicContext(); const handoff=useReasoningHandoff(); const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
  const sourceExportPreview=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'presentation-source-preview'):['presentation-source-preview','none'],enabled:!!client&&!!analysis&&!!output.data,queryFn:async()=> (await client.presentationSourceExportPreview(analysis)).value,retry:false});
+ const sourceExportEvents=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'presentation-export-events'):['presentation-export-events','none'],enabled:!!client&&!!analysis&&!!output.data,queryFn:async()=> (await client.presentationExportEvents(analysis,25)).value,retry:false});
  const r=review.data; const d=dashboard.data; const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
  const [clarificationDrafts,setClarificationDrafts]=useState({});
  // Keep every hook above conditional returns so connect/selection transitions never change hook order.
@@ -81,8 +83,17 @@ function ReviewContent(){
    return downloadPresentationPackage(result.value,`niccolo-analysis-${analysis}.zip`);
  }});
  const exportPackageWithSources=useMutation({mutationFn:async()=>{
-   const result=await client.presentationPackageWithExaminedSources(analysis);
+   if(pendingSensitiveExport.current?.analysis!==analysis){
+     pendingSensitiveExport.current={analysis,eventId:crypto.randomUUID()};
+   }
+   const result=await client.presentationPackageWithExaminedSources(
+     analysis,
+     pendingSensitiveExport.current.eventId,
+   );
    return downloadPresentationPackage(result.value,`niccolo-analysis-${analysis}-with-examined-sources.zip`);
+ },onSuccess:async()=>{
+   pendingSensitiveExport.current=null;
+   await qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'presentation-export-events')});
  }});
  const approveReanalysis=useMutation({mutationFn:async()=>{
    const goal=reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation';
@@ -116,7 +127,8 @@ function ReviewContent(){
          {sourceExportPreview.data&&!sourceExportPreview.data.within_export_bounds&&<p className="error" role="alert">This examined-source selection exceeds the bounded sensitive-export limit. Reduce the examined set before exporting source text.</p>}
          <button disabled={!output.data||exportPackage.isPending||exportPackageWithSources.isPending||sourceExportPreview.isPending||sourceExportPreview.isError||!sourceExportPreview.data?.within_export_bounds} onClick={()=>exportPackageWithSources.mutate()}>{exportPackageWithSources.isPending?'Preparing sensitive ZIP…':'Download ZIP with examined source excerpts'}</button>
          {exportPackageWithSources.error&&<p className="error" role="alert">Sensitive export unavailable: {exportPackageWithSources.error.message}</p>}
-         {exportPackageWithSources.isSuccess&&<p role="status">Sensitive archive prepared with {exportPackageWithSources.data} files. No remote publication occurred.</p>}
+         {exportPackageWithSources.isSuccess&&<p role="status">Sensitive archive prepared with {exportPackageWithSources.data} files. No remote publication occurred; the authorization event was recorded locally.</p>}
+         {sourceExportEvents.data?.events?.length>0&&<details><summary>Recent sensitive export audit</summary><ul>{sourceExportEvents.data.events.slice(0,10).map(event=><li key={event.export_event_id}><code>{event.export_event_id}</code> · {event.examined_fragment_count} examined fragment(s) · {event.examined_source_text_bytes} byte(s) · {event.created_at}<div><small>Original uploads: no · establishes truth: no · requested by <code>{event.requested_by_principal_id}</code></small></div></li>)}</ul></details>}
        </details>
      </article>
      {reasoningInput.data&&<article className={`review-panel ${reasoningInput.data.source_packet_truncated?'input-warning':''}`}><h3>What reached the reasoning model</h3><p><strong>{reasoningInput.data.source_fragment_count_included}/{reasoningInput.data.source_fragment_count_total}</strong> frozen source fragment(s) included · {reasoningInput.data.source_bytes_included} source byte(s).</p>{reasoningInput.data.source_packet_truncated&&<p><strong>Input was truncated by the explicit reasoning budget.</strong> The model did not receive every frozen source fragment.</p>}<p><strong>{reasoningInput.data.identity_binding_count??0}</strong> human-confirmed identity binding(s) frozen at identity event #{reasoningInput.data.identity_event_no_max??0}.</p><p><small>Matching speaker labels do not imply the same person. Frozen revision {reasoningInput.data.input_revision} · packet SHA-256 <code>{reasoningInput.data.reasoning_packet_sha256}</code>. This is input observability, not a truth or completeness score.</small></p></article>}
