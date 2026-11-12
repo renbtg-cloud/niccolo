@@ -24,6 +24,12 @@ describe('connection boundary', () => {
     expect(source).toContain('disabled={checking}');
   });
 
+  it('focuses only the secret field for a prepared session without persisting it', () => {
+    expect(source).toContain('autoFocus={prepared}');
+    expect(source).toContain('type="password"');
+    expect(source).toContain('autoComplete="off"');
+  });
+
   it('never reads a bearer token from URL hints', () => {
     expect(source).toContain('connectionHints(window.location.search)');
     expect(source).toContain('Bearer tokens are never read from the URL or persisted.');
