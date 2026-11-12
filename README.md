@@ -92,12 +92,15 @@ Prerequisites: Node.js/npm, Rust 1.99.1, PostgreSQL 17 client tools (`psql`),
 and a running PostgreSQL server/database that the provided admin account owns.
 On Windows, use Git Bash.
 
-Set `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SECURE_PASSWORD` in your shell's
-environment (do not include them in git commits or shared logs), then run:
+Set `NICCOLO_PG_ADMIN_URL` in your shell's environment, then run:
 
 ```bash
 bash scripts/bootstrap-local-mvp.sh
 ```
+
+The local bootstrap generates the restricted runtime PostgreSQL password automatically.
+Deployment automation may explicitly provide `NICCOLO_PG_SECURE_PASSWORD`; Niccolò never
+prints that value.
 
 The script refuses to overwrite a previously initialized database or local
 credentials. It also refuses to change the password of an existing
