@@ -478,6 +478,69 @@ async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
 }
 
 #[tokio::test]
+async fn tampered_grounded_score_digest_fails_closed_on_read_and_export() {
+    let h = setup().await;
+    let s = seed(&h).await;
+    let score = Uuid::new_v4();
+    let record_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/claims/{}/epistemic/records/{score}",
+        h.workspace, h.situation, s.analysis, s.claim
+    );
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req(
+                "POST",
+                &record_path,
+                &h.writer,
+                Some(body(s.evidence[0], s.evidence[1]))
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    sqlx::query(
+        "UPDATE niccolo.situation_analysis_grounded_score_records
+            SET result_sha256=$6
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND claim_id=$4 AND score_id=$5",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(s.analysis)
+    .bind(s.claim)
+    .bind(score)
+    .bind("0".repeat(64))
+    .execute(&h.admin)
+    .await
+    .unwrap();
+
+    let list_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/epistemic/records",
+        h.workspace, h.situation, s.analysis
+    );
+    let (status, _) = call(
+        h.router.clone(),
+        req("GET", &list_path, &h.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+
+    let presentation_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/presentation-package",
+        h.workspace, h.situation, s.analysis
+    );
+    let (status, _) = call(
+        h.router.clone(),
+        req("GET", &presentation_path, &h.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
 async fn ambiguous_claim_evidence_links_fail_closed() {
     let h = setup().await;
     let s = seed(&h).await;
