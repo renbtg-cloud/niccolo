@@ -637,8 +637,8 @@ fn from_bundle_and_extracts(
         includes_recorded_epistemic_policy_history: !epistemic.policies.is_empty(),
         includes_recorded_human_credence: !epistemic.human_credence.is_empty(),
         includes_deterministic_grounded_score_results: epistemic.deterministic_scores_exported,
-        epistemic_control_history_proves_policy_used_for_output:
-            epistemic.policy_history_proves_policy_used_for_output,
+        epistemic_control_history_proves_policy_used_for_output: epistemic
+            .policy_history_proves_policy_used_for_output,
         published_to_git: false,
     })
 }
