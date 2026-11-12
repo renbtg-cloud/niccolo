@@ -515,6 +515,7 @@ pub mod grounded_lineage_store;
 
 pub mod presentation_package;
 pub mod git_publication;
+pub mod github_publisher;
 
 pub mod adversarial_dossier;
 
