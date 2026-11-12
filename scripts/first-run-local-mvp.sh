@@ -25,6 +25,12 @@ for arg in "$@"; do
 done
 
 if [[ ! -f "$LOCAL_ENV" ]]; then
+  for program in psql node npm cargo rustc; do
+    command -v "$program" >/dev/null || {
+      printf 'Missing executable: %s\n' "$program" >&2
+      exit 1
+    }
+  done
   if [[ -z "${NICCOLO_PG_ADMIN_URL:-}" ]]; then
     if [[ -t 0 && -t 1 ]]; then
       printf '%s' 'PostgreSQL database-owner URL (input hidden): ' >&2
