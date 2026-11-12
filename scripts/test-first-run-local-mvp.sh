@@ -33,6 +33,17 @@ SH
 chmod +x "$TMP/repo/scripts/"*.sh
 
 export NICCOLO_TEST_TRACE="$TMP/trace"
+
+# Non-interactive bootstrap requires the owner URL through the environment and never prompts into a pipe/log.
+unset NICCOLO_PG_ADMIN_URL || true
+set +e
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser >"$TMP/no-admin-out" 2>"$TMP/no-admin-err"
+status=$?
+set -e
+[[ "$status" == 2 ]]
+grep -q 'run is non-interactive' "$TMP/no-admin-err"
+[[ ! -e "$TMP/repo/.niccolo-local/local.env" ]]
+
 export NICCOLO_PG_ADMIN_URL='postgres://owner:test@127.0.0.1:5432/db'
 
 # Non-interactive first run must not silently start without a reasoning model.
