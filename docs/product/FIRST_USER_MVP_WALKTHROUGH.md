@@ -56,7 +56,12 @@ Expected output includes:
 - the path `.niccolo-local/token.txt`;
 - whether a reasoning model is configured.
 
-Open the prepared URL.
+On a local desktop, Niccolò waits for the service to become healthy and then makes a best-effort
+attempt to open that prepared URL in the default browser. Headless systems simply keep the printed
+URL as the fallback. Set `NICCOLO_OPEN_BROWSER=0` or pass `--no-browser` to suppress automatic
+opening.
+
+If the browser did not open automatically, open the prepared URL shown by the start command.
 
 The browser receives only the non-secret identifiers. Copy the bearer token from
 `.niccolo-local/token.txt` into the password field and choose **Connect**. Niccolò first performs
