@@ -1,0 +1,38 @@
+name: Push archived local devrepo commits
+on:
+  push:
+    branches: [tmp/local-devrepo-push-20261112]
+permissions:
+  contents: write
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Recreate and push local devrepo commits one by one
+        shell: bash
+        run: |
+          set -euo pipefail
+          decode() { base64 -d "$1" | gzip -d > "$2"; }
+          decode dev-flow/patches/local-devrepo-2d9d900.mbox.gz.b64 /tmp/2d9.mbox
+          decode dev-flow/patches/local-devrepo-b9f00e6.mbox.gz.b64 /tmp/b9.mbox
+          decode dev-flow/patches/local-devrepo-1d20c20.mbox.gz.b64 /tmp/1d.mbox
+          git fetch origin 92e903eae2fade0a32b4ed1dadfb8eb6b89e1471
+          git checkout -B archive-local FETCH_HEAD
+          test "$(git rev-parse HEAD^{tree})" = 84e1cb6a51813c0d992a8b7fc3c75f5122afa22f
+          git config user.name "ChatGPT autonomous worker"
+          git config user.email "chatgpt-local@invalid"
+
+          git am /tmp/2d9.mbox
+          test "$(git rev-parse HEAD^{tree})" = 2ada52a64c42a614157d210995307d3bdaf4be4a
+          git push origin HEAD:refs/heads/archive/niccolo-devrepo-20261112
+
+          git am /tmp/b9.mbox
+          test "$(git rev-parse HEAD^{tree})" = 0be3449c3780af515ed4b9341f21b77f52c05157
+          git push origin HEAD:refs/heads/archive/niccolo-devrepo-20261112
+
+          git am /tmp/1d.mbox
+          test "$(git rev-parse HEAD^{tree})" = f55d0a96662e931b5745468d606c0d529ce6317c
+          git push origin HEAD:refs/heads/archive/niccolo-devrepo-20261112
