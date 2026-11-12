@@ -441,6 +441,87 @@ SQL
 }
 echo 'PASS: rich Analyze provenance, human boundary, automatic resume, and handoff'
 
+# A forensic export may come back into Niccolò only through quarantine. Prove
+# the first-run service can round-trip its own package without turning historical
+# rows into current evidence, and that a human must explicitly bind one item as
+# non-evidence context for a chosen analysis.
+forensic_file=".niccolo-local/ci-forensic-export.json"
+curl --max-time 30 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${path}/forensic-export" -o "$forensic_file"
+node -e '
+const fs=require("node:fs"),j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+if(j.format!=="niccolo.situation-forensic-export"||j.format_version!==1||
+   j.structural_validity_establishes_truth!==false||
+   j.included_model_output_is_documentary_evidence!==false||
+   j.imported_state_should_be_trusted_automatically!==false)process.exit(1);
+' "$forensic_file"
+forensic_batch="$(node -p "require('node:crypto').randomUUID()")"
+forensic_request=".niccolo-local/ci-forensic-import-request.json"
+FORENSIC_FILE="$forensic_file" node -e '
+const fs=require("node:fs");
+const pkg=JSON.parse(fs.readFileSync(process.env.FORENSIC_FILE,"utf8"));
+process.stdout.write(JSON.stringify({declared_origin:"ci://first-run-self-export",package:pkg}));
+' > "$forensic_request"
+forensic_import="$(curl --max-time 60 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary @"$forensic_request" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/forensic-imports/${forensic_batch}")"
+FORENSIC_BATCH="$forensic_batch" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.import_batch_id!==process.env.FORENSIC_BATCH||j.import_mode!=="UNTRUSTED"||
+    j.verification_status!=="STRUCTURALLY_VERIFIED"||
+    j.structural_validity_establishes_truth!==false||
+    j.current_credentials_upgrade_imported_statements!==false||
+    j.imported_model_output_is_documentary_evidence!==false)process.exit(1);
+});' <<< "$forensic_import"
+forensic_batches="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/forensic-imports?limit=25")"
+FORENSIC_BATCH="$forensic_batch" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(!j.batches?.some(x=>x.import_batch_id===process.env.FORENSIC_BATCH&&x.import_mode==="UNTRUSTED"))process.exit(1);
+});' <<< "$forensic_batches"
+forensic_items="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/forensic-imports/${forensic_batch}/items?limit=200")"
+forensic_item="$(node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s),x=j.items?.find(x=>x.source_kind==="LOGICAL_ROW");
+ if(!x||x.documentary_evidence!==false||x.current_credentials_establish_truth!==false)process.exit(1);
+ process.stdout.write(x.item_id);
+});' <<< "$forensic_items")"
+forensic_binding="$(node -p "require('node:crypto').randomUUID()")"
+bind_body="$(FORENSIC_BATCH="$forensic_batch" FORENSIC_ITEM="$forensic_item" node -e '
+process.stdout.write(JSON.stringify({
+ import_batch_id:process.env.FORENSIC_BATCH,
+ item_id:process.env.FORENSIC_ITEM,
+ note:"CI selected historical context; never treat it as fact or documentary evidence."
+}));')"
+bound="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "$bind_body" \
+  "${path}/analysis-snapshots/${analysis_id}/forensic-context/${forensic_binding}")"
+FORENSIC_BINDING="$forensic_binding" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s).item;
+ if(j.binding_id!==process.env.FORENSIC_BINDING||j.quarantine_provenance!==true||
+    j.establishes_truth!==false||j.documentary_evidence!==false||
+    j.current_credentials_upgrade_imported_statement!==false)process.exit(1);
+});' <<< "$bound"
+bound_context="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${path}/analysis-snapshots/${analysis_id}/forensic-context")"
+FORENSIC_BINDING="$forensic_binding" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(!j.items?.some(x=>x.binding_id===process.env.FORENSIC_BINDING)||
+    j.items_are_documentary_evidence!==false||j.part_of_frozen_analysis_input!==false)process.exit(1);
+});' <<< "$bound_context"
+echo 'PASS: forensic export round-trip stays quarantined and requires explicit non-evidence binding'
+
 # A second, empty database on the SAME PostgreSQL cluster must not
 # trigger password rotation for the already-provisioned service role.
 psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
