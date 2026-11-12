@@ -464,6 +464,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_git_publication_remote_status),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}/remote-events",
+            get(list_git_publication_remote_events),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}/publish",
             post(publish_git_publication_intent),
         )
@@ -5777,6 +5781,39 @@ async fn list_git_publication_intents(
         json!({
             "intents": intents,
             "remote_publish_performed": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitPublicationRemoteEventListQuery {
+    limit: Option<i64>,
+}
+
+async fn list_git_publication_remote_events(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, publication)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<GitPublicationRemoteEventListQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let events = git_publication::list_remote_events(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        publication,
+        query.limit.unwrap_or(25),
+    )
+    .await
+    .map_err(git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "events": events,
+            "provider_secret_stored": false,
+            "event_payloads_include_provider_response_bodies": false
         }),
         StatusCode::OK,
     ))

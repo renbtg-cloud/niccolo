@@ -707,6 +707,50 @@ pub async fn record_remote_event(
     Ok((view, !inserted))
 }
 
+pub async fn list_remote_events(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    publication_id: Uuid,
+    limit: i64,
+) -> Result<Vec<RemotePublicationEventView>, GitPublicationError> {
+    if publication_id.is_nil() || !(1..=100).contains(&limit) {
+        return Err(GitPublicationError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let intent_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+             SELECT 1 FROM niccolo.git_publication_intents
+              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND publication_id=$4
+         )",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(publication_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !intent_exists {
+        return Err(GitPublicationError::Invisible);
+    }
+    let rows: Vec<RemoteEventRow> = sqlx::query_as(
+        "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
+                failure_class,recorded_by_principal_id,created_at::text
+           FROM niccolo.git_publication_events
+          WHERE workspace_id=$1 AND publication_id=$2
+          ORDER BY created_at DESC,event_id DESC,event_kind DESC
+          LIMIT $3",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(rows.into_iter().map(remote_event_from_row).collect())
+}
+
 pub async fn remote_status(
     pool: &PgPool,
     workspace: Uuid,

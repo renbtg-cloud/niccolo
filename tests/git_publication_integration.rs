@@ -251,6 +251,111 @@ async fn publication_planning_is_explicit_idempotent_and_never_claims_remote_suc
 }
 
 #[tokio::test]
+async fn remote_event_history_is_scoped_bounded_and_secret_free() {
+    let f = setup().await;
+    let (situation, analysis) = published_analysis(&f).await;
+    let target = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace),
+                &f.writer,
+                Some(json!({
+                    "repository_owner":"owner",
+                    "repository_name":"event-ledger",
+                    "ref_name":"main",
+                    "repository_visibility":"PRIVATE",
+                    "sensitive_exports_allowed":false
+                }))
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let base = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("{base}/git-publication-intents/{publication}"),
+                &f.writer,
+                Some(json!({"target_id":target})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let digest = authz::credential_digest(&f.writer).unwrap();
+    for class in ["TRANSPORT", "PROVIDER_REJECTED"] {
+        let event = git_publication::RemoteEventInput {
+            event_id: Uuid::new_v4(),
+            publication_id: publication,
+            kind: git_publication::RemoteEventKind::PublishFailed,
+            remote_commit_sha: None,
+            observed_ref: None,
+            failure_class: Some(class.into()),
+        };
+        authz::with_auth_digest(digest.clone(), async {
+            git_publication::record_remote_event(
+                &f.secure,
+                f.workspace,
+                f.writer_principal,
+                &event,
+            )
+            .await
+            .unwrap()
+        })
+        .await;
+    }
+
+    let (status, body) = call(
+        f.router.clone(),
+        request(
+            "GET",
+            format!("{base}/git-publication-intents/{publication}/remote-events?limit=1"),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["events"].as_array().unwrap().len(), 1);
+    assert_eq!(body["provider_secret_stored"], false);
+    assert_eq!(body["event_payloads_include_provider_response_bodies"], false);
+    let event = &body["events"][0];
+    assert!(event.get("token").is_none());
+    assert!(event.get("provider_response").is_none());
+
+    let wrong_analysis = Uuid::new_v4();
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "GET",
+                format!(
+                    "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{wrong_analysis}/git-publication-intents/{publication}/remote-events?limit=25",
+                    f.workspace
+                ),
+                &f.reader,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
 async fn remote_status_changes_only_after_append_only_verified_observation() {
     let f = setup().await;
     let (situation, analysis) = published_analysis(&f).await;
