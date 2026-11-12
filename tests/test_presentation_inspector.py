@@ -67,6 +67,33 @@ class PresentationInspectorTests(unittest.TestCase):
         self.assertIn("CONTRADICTS", result.stdout)
         self.assertIn("NOT evidence weights", result.stdout)
 
+    def test_optional_examined_source_extracts_are_disclosed_without_truth_claims(self):
+        extracts = self.root / "data" / "examined_source_fragments.json"
+        extracts.write_text(
+            json.dumps([{
+                "document_id": "doc",
+                "evidence_id": "evidence",
+                "ordinal": 0,
+                "format": "WHATSAPP_EXPORT",
+                "locator": "private-chat.txt",
+                "speaker_label": "Alice",
+                "source_class": "HUMAN_COMMUNICATION",
+                "content": "private excerpt",
+            }]),
+            encoding="utf-8",
+        )
+        sums = json.loads((self.root / "SHA256SUMS.json").read_text())
+        sums["data/examined_source_fragments.json"] = hashlib.sha256(
+            extracts.read_bytes()
+        ).hexdigest()
+        (self.root / "SHA256SUMS.json").write_text(json.dumps(sums), encoding="utf-8")
+        result = self.run_inspector()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Explicitly authorized examined source excerpts: 1", result.stdout)
+        self.assertIn("NOT original uploaded files", result.stdout)
+        self.assertIn("do NOT establish truth", result.stdout)
+        self.assertIn("sensitive/private communications", result.stdout)
+
     def test_integrity_failure_is_fail_closed(self):
         path = self.root / "data" / "claims.csv"
         path.write_text(path.read_text(encoding="utf-8") + "tampered\n",

@@ -70,7 +70,16 @@ def explain():
             print("  qualification:", row["qualification"])
     print("\nThese are counts of recorded links, NOT evidence weights,")
     print("independent witnesses, verification, or calibrated probabilities.")
-    print("Source fragment contents and full model reasoning were NOT exported.")
+    source_extract_path = ROOT / "data" / "examined_source_fragments.json"
+    if source_extract_path.exists():
+        source_extracts = read_json(source_extract_path)
+        print("\nExplicitly authorized examined source excerpts:", len(source_extracts))
+        print("These excerpts were recorded as examined by this analysis.")
+        print("They are NOT original uploaded files, do NOT establish truth,")
+        print("and may contain sensitive/private communications.")
+    else:
+        print("Source fragment contents were NOT exported.")
+    print("Full model reasoning was NOT exported.")
     print("The PostgreSQL state of Niccolo remains authoritative.")
 
 
