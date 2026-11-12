@@ -32,15 +32,18 @@ Private local files are written under `.niccolo-local/`.
 Niccolò can prepare Situations and retain sources without a reasoning model, but **Analyze**
 requires an OpenAI-compatible model.
 
-For a loopback model runtime, either export the settings before starting:
+The shortest path is the private configuration helper:
 
-    export NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1'
-    export NICCOLO_LLM_MODEL='your-model'
+    bash scripts/configure-local-model.sh
 
-or create the ignored private file `.niccolo-local/model.env` containing the corresponding
-`export` commands.
+It prompts for the OpenAI-compatible base URL and model name, hides API-key input, rejects remote
+plain HTTP, and writes `.niccolo-local/model.env` with restrictive permissions where the platform
+supports them. A loopback HTTP model may be keyless; remote HTTPS providers require an API key.
 
-Remote HTTPS providers additionally require `NICCOLO_LLM_API_KEY`.
+For scripted or temporary overrides, export `NICCOLO_LLM_BASE_URL`, `NICCOLO_LLM_MODEL` and any
+other `NICCOLO_LLM_*` settings before starting. Explicit process-environment values override the
+stored private defaults for that invocation. `--from-env` lets automation persist already-exported
+values without putting an API key on a command line.
 
 Do not put a bearer token or model API key in the prepared browser URL.
 
