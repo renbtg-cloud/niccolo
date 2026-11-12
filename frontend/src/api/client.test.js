@@ -240,4 +240,13 @@ describe('original source downloads', () => {
     }));
     await expect(client.downloadSourceOriginal('legacy')).rejects.toThrow('source original unavailable');
   });
+ it('reads aggregate workspace integration diagnostics without analysis state',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{warning_codes:['DUPLICATE_OPERATIONAL_DELIVERIES'],interpretation:'transport only'});});
+   const r=await x.integrationDiagnostics();
+   expect(calls[0][0]).toContain('/v1/workspaces/11111111-1111-4111-8111-111111111111/integration-diagnostics');
+   expect(calls[0][1]).toBe('GET');
+   expect(r.value.warning_codes).toEqual(['DUPLICATE_OPERATIONAL_DELIVERIES']);
+ });
+
 });
