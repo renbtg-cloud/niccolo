@@ -24,6 +24,8 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('type="password"');
     expect(source).toContain('autoComplete="off"');
     expect(source).toContain('Transient token cleared from this UI.');
+    expect(source).toContain("onError: () =>");
+    expect(source).toContain('The transient token was cleared');
     expect(source).toContain('setGithubToken(\'\')');
     expect(source).toContain('I authorize publishing this exact standard package');
     expect(source).toContain('pendingPublish.current?.signature !== signature');

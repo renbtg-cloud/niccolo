@@ -124,6 +124,10 @@ export function GitPublicationPanel() {
         githubToken,
       )).value;
     },
+    onError: () => {
+      setGithubToken('');
+      setPublishConfirmed(false);
+    },
     onSuccess: async () => {
       pendingPublish.current = null;
       setGithubToken('');
@@ -212,7 +216,7 @@ export function GitPublicationPanel() {
         </label>
         <label className="checkbox-label"><input type="checkbox" checked={publishConfirmed} onChange={(event) => { pendingPublish.current=null; publish.reset(); setPublishConfirmed(event.target.checked); }}/> I authorize publishing this exact standard package to the selected GitHub repository/ref.</label>
         <button disabled={!githubToken || !publishConfirmed || publish.isPending} onClick={() => publish.mutate()}>{publish.isPending?'Publishing and verifying remote ref…':'Publish exact package to GitHub and verify'}</button>
-        {publish.error && <p className="error" role="alert">GitHub publication was not verified: {publish.error.message}</p>}
+        {publish.error && <p className="error" role="alert">GitHub publication was not verified: {publish.error.message} The transient token was cleared; paste authorization again to retry the same recorded attempt safely.</p>}
         {publish.isSuccess && <p role="status"><strong>Verified published.</strong> Transient token cleared from this UI.</p>}
       </>}
     </section>}
