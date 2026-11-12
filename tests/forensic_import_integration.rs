@@ -942,6 +942,25 @@ async fn selected_quarantined_item_reaches_reasoning_as_current_non_evidence_con
     assert!(!packet.current_human_control.imported_context_was_part_of_frozen_input);
     assert!(!packet.current_human_control.imported_context_is_documentary_evidence);
 
+    let summary_request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}/bff/reasoning-input",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (summary_status, summary) = call(f.router.clone(), summary_request).await;
+    assert_eq!(summary_status, StatusCode::OK);
+    assert_eq!(summary["imported_context_count"], 1);
+    assert_eq!(summary["imported_context_was_part_of_frozen_input"], false);
+    assert_eq!(summary["imported_context_is_documentary_evidence"], false);
+    assert_eq!(summary["imported_context_is_current_human_selected_context"], true);
+
     let native_evidence: i64 =
         sqlx::query_scalar("SELECT count(*) FROM niccolo.evidence WHERE workspace_id=$1")
             .bind(f.destination_workspace)

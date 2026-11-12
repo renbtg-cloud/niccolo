@@ -304,6 +304,10 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
     assert_eq!(summary["source_fragment_count_total"], 300);
     assert_eq!(summary["source_fragment_count_included"], 256);
     assert_eq!(summary["source_packet_truncated"], true);
+    assert_eq!(summary["imported_context_count"], 0);
+    assert_eq!(summary["imported_context_was_part_of_frozen_input"], false);
+    assert_eq!(summary["imported_context_is_documentary_evidence"], false);
+    assert_eq!(summary["imported_context_is_current_human_selected_context"], true);
     assert_eq!(
         summary["reasoning_packet_sha256"],
         reasoning_packet::sha256(&first).unwrap()

@@ -4312,6 +4312,10 @@ async fn get_reasoning_input_summary(
             "identity_binding_count": packet.frozen_input.identity_bindings.len(),
             "identity_bindings_are_human_confirmed": packet.frozen_input.identity_bindings_are_human_confirmed,
             "matching_speaker_labels_imply_same_person": packet.frozen_input.matching_speaker_labels_imply_same_person,
+            "imported_context_count": packet.current_human_control.imported_context.len(),
+            "imported_context_was_part_of_frozen_input": packet.current_human_control.imported_context_was_part_of_frozen_input,
+            "imported_context_is_documentary_evidence": packet.current_human_control.imported_context_is_documentary_evidence,
+            "imported_context_is_current_human_selected_context": true,
             "reasoning_packet_sha256": sha256,
             "packet_asserts_truth": packet.packet_asserts_truth,
             "summary_is_provider_input_observability": true
