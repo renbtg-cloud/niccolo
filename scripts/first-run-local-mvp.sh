@@ -26,13 +26,22 @@ done
 
 if [[ ! -f "$LOCAL_ENV" ]]; then
   if [[ -z "${NICCOLO_PG_ADMIN_URL:-}" ]]; then
-    cat >&2 <<'MSG'
-Niccolò has not been bootstrapped yet.
-Set NICCOLO_PG_ADMIN_URL to a PostgreSQL database-owner connection, then run this command again.
-Example:
-  export NICCOLO_PG_ADMIN_URL='postgres://owner:password@127.0.0.1:5432/niccolo'
+    if [[ -t 0 && -t 1 ]]; then
+      printf '%s' 'PostgreSQL database-owner URL (input hidden): ' >&2
+      IFS= read -r -s NICCOLO_PG_ADMIN_URL
+      printf '\n' >&2
+      if [[ -z "$NICCOLO_PG_ADMIN_URL" ]]; then
+        echo 'A PostgreSQL database-owner URL is required for first bootstrap.' >&2
+        exit 2
+      fi
+      export NICCOLO_PG_ADMIN_URL
+    else
+      cat >&2 <<'MSG'
+Niccolò has not been bootstrapped yet, and this run is non-interactive.
+Export NICCOLO_PG_ADMIN_URL with a PostgreSQL database-owner connection, then run this command again.
 MSG
-    exit 2
+      exit 2
+    fi
   fi
   printf '%s\n' '[1/3] Bootstrapping the local MVP...'
   bash "$ROOT/scripts/bootstrap-local-mvp.sh"

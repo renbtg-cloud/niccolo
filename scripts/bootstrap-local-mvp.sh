@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # First-run single-PC MVP setup against a NEW PostgreSQL 17 database.
-# Prerequisite: psql, Node.js, npm, Rust/Cargo, an admin DB URL and a password
-# for the dedicated niccolo_secure login. Does not install PostgreSQL itself.
+# Prerequisite: psql, Node.js, npm, Rust/Cargo, and an admin DB URL. The
+# dedicated niccolo_secure password is generated unless automation supplies it.
+# Does not install PostgreSQL itself.
 set -Eeuo pipefail
 umask 077
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
