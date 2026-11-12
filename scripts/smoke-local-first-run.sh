@@ -35,7 +35,7 @@ unset NICCOLO_LLM_BASE_URL NICCOLO_LLM_MODEL NICCOLO_LLM_PROVIDER NICCOLO_LLM_AP
 prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
 grep -Fq 'Reasoning model: configured (niccolo-ci-protocol-smoke)' <<< "$prepared_output"
 grep -Fq "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
-grep -Fq "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
+grep -Fq "Bearer token fallback: .niccolo-local/token.txt" <<< "$prepared_output"
 ! grep -Fq "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
 # The browser opener must wait for readiness and pass only the non-secret prepared URL.
 opener_dir="$(mktemp -d)"
