@@ -1,0 +1,27 @@
+name: Push archived niccolo-dev dfc68b8
+on:
+  push:
+    branches: [tmp/local-dev-push-20261112]
+permissions:
+  contents: write
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply non-workflow dfc68b8 and push immediately
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d dev-flow/patches/local-dev-dfc68b8.mbox.gz.b64 | gzip -d > /tmp/dfc.mbox
+          git fetch origin archive/niccolo-dev-20261112
+          git checkout -B archive-work FETCH_HEAD
+          git config user.name "ChatGPT autonomous worker"
+          git config user.email "chatgpt-local@invalid"
+          git apply --exclude=.github/workflows/epistemic-reasoning.yml /tmp/dfc.mbox
+          git add -A
+          test "$(git write-tree)" = 372948711d24c9779e2ae33de193d45e9a2053b6
+          git commit -m "autonomous MVP bootstrap hardening and checkpoint export"
+          git push origin HEAD:refs/heads/archive/niccolo-dev-20261112
