@@ -122,7 +122,9 @@ It writes private files under the ignored `.niccolo-local/` folder:
 Situation identifiers), and `token.txt` (bearer token). Treat the folder
 as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
 
-Configure the OpenAI-compatible reasoning model once with:
+The interactive `first-run-local-mvp.sh` path configures the OpenAI-compatible reasoning model
+when no private model configuration exists. To reconfigure later, or when setup and startup are
+deliberately separated, run:
 
 ```bash
 bash scripts/configure-local-model.sh
