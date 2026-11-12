@@ -573,11 +573,7 @@ async fn tampered_grounded_score_digest_fails_closed_on_read_and_export() {
         "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/epistemic/records",
         h.workspace, h.situation, s.analysis
     );
-    let (status, _) = call(
-        h.router.clone(),
-        req("GET", &list_path, &h.reader, None),
-    )
-    .await;
+    let (status, _) = call(h.router.clone(), req("GET", &list_path, &h.reader, None)).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
 
     let presentation_path = format!(
