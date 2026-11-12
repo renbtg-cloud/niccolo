@@ -627,7 +627,6 @@ async fn upstream_processing_declarations_are_attributed_metadata_not_evidence()
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-
 #[tokio::test]
 async fn runtime_resource_diagnostic_is_authenticated_sanitized_and_operational_only() {
     let f = setup().await;
