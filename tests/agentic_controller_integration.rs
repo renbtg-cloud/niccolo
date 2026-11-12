@@ -293,10 +293,10 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
         result,
         Err(agentic_runtime::RuntimeError::Budget(BudgetError::Invalid))
     ));
-    let last_event: String = sqlx::query_scalar(
-        "SELECT event_kind FROM niccolo.agentic_step_events \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4 \
-         ORDER BY event_seq DESC LIMIT 1"
+    let started_events: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.agentic_step_events
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4
+           AND event_kind='STARTED'",
     )
     .bind(s.workspace)
     .bind(s.situation)
@@ -305,7 +305,15 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
     .fetch_one(&admin)
     .await
     .unwrap();
-    assert_eq!(last_event, "FAILED");
+    assert_eq!(
+        started_events, 0,
+        "invalid operation budget must be rejected before the step is started"
+    );
+    let view = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(
+        view.steps.iter().find(|step| step.step_id == step_id).unwrap().state,
+        "PENDING"
+    );
     request.input = json!({"model_budget":{"max_invocations":1}});
     assert!(matches!(
         bff_operations::submit(&app, scope, &request).await,
