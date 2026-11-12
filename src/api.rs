@@ -413,7 +413,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package",
-            get(get_presentation_package),
+            get(get_presentation_package).post(post_presentation_package_with_examined_sources),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
@@ -5258,6 +5258,52 @@ async fn evaluate_grounded_claim_weights(
     ))
 }
 
+fn presentation_api_error(err: PresentationError) -> ApiError {
+    match err {
+        PresentationError::Manifest(crate::analysis_manifest::ManifestError::Invisible) => {
+            ApiError(StatusCode::NOT_FOUND, "published analysis unavailable")
+        }
+        PresentationError::TooLarge | PresentationError::SourceExtractTooLarge => ApiError(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "presentation package too large",
+        ),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "presentation package unavailable",
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PresentationPackageRequest {
+    include_examined_source_fragments: bool,
+}
+
+async fn post_presentation_package_with_examined_sources(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<PresentationPackageRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Write).await?;
+    if !request.include_examined_source_fragments {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "explicit examined-source inclusion required",
+        ));
+    }
+    let package = presentation_package::build_with_examined_sources(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+    )
+    .await
+    .map_err(presentation_api_error)?;
+    Ok(no_store(json!(package), StatusCode::OK))
+}
+
 async fn get_presentation_package(
     State(state): State<AppState>,
     Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
@@ -5266,19 +5312,7 @@ async fn get_presentation_package(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let package = presentation_package::build(&state.pool, workspace, situation, analysis)
         .await
-        .map_err(|err| match err {
-            PresentationError::Manifest(crate::analysis_manifest::ManifestError::Invisible) => {
-                ApiError(StatusCode::NOT_FOUND, "published analysis unavailable")
-            }
-            PresentationError::TooLarge => ApiError(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "presentation package too large",
-            ),
-            _ => ApiError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "presentation package unavailable",
-            ),
-        })?;
+        .map_err(presentation_api_error)?;
     Ok(no_store(json!(package), StatusCode::OK))
 }
 

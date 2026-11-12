@@ -7,11 +7,13 @@ use crate::analysis_manifest::{self, AnalysisBundle, ManifestError};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
 const MAX_PACKAGE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_SOURCE_EXTRACTS: i64 = 128;
+const MAX_SOURCE_EXTRACT_BYTES: usize = 512 * 1024;
 const INSPECT_PY: &str = include_str!("../assets/presentation/inspect.py");
 
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +24,20 @@ pub enum PresentationError {
     Json(#[from] serde_json::Error),
     #[error("presentation exceeds the configured byte budget")]
     TooLarge,
+    #[error("examined source extract selection exceeds the configured export budget")]
+    SourceExtractTooLarge,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExaminedSourceExtract {
+    pub document_id: Uuid,
+    pub evidence_id: Uuid,
+    pub ordinal: i32,
+    pub format: String,
+    pub locator: String,
+    pub speaker_label: String,
+    pub content: String,
+    pub source_class: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +52,9 @@ pub struct PresentationPackage {
     pub authoritative_state_remains_in_postgresql: bool,
     pub is_full_database_backup: bool,
     pub includes_original_source_fragment_contents: bool,
+    pub includes_examined_source_fragment_contents: bool,
+    pub examined_source_extracts_are_original_uploads: bool,
+    pub examined_source_extracts_establish_truth: bool,
     pub reproduces_model_reasoning: bool,
     pub contains_complete_investigation_event_log: bool,
     pub published_to_git: bool,
@@ -86,7 +105,10 @@ fn csv(header: &[&str], rows: Vec<Vec<String>>) -> String {
 
 /// Produce a presentation only from a recorded, immutable analysis bundle.
 /// No caller-controlled evidence roots, invented model steps or inferred truth.
-pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, PresentationError> {
+fn from_bundle_and_extracts(
+    bundle: &AnalysisBundle,
+    examined_source_extracts: &[ExaminedSourceExtract],
+) -> Result<PresentationPackage, PresentationError> {
     let mut files: BTreeMap<String, String> = BTreeMap::new();
 
     files.insert(
@@ -97,7 +119,8 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
             "bundle": bundle,
             "result_is_recomputed": false,
             "model_reasoning_is_reproducible": false,
-            "source_fragment_bodies_included": false
+            "source_fragment_bodies_included": !examined_source_extracts.is_empty(),
+            "source_fragment_selection": if examined_source_extracts.is_empty() { "NONE" } else { "RECORDED_EXAMINED_ONLY" }
         }))?,
     );
     files.insert(
@@ -302,6 +325,42 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
                 .collect(),
         ),
     );
+    if !examined_source_extracts.is_empty() {
+        files.insert(
+            "data/examined_source_fragments.json".into(),
+            serde_json::to_string_pretty(examined_source_extracts)?,
+        );
+        files.insert(
+            "data/examined_source_fragments.csv".into(),
+            csv(
+                &[
+                    "document_id",
+                    "evidence_id",
+                    "ordinal",
+                    "format",
+                    "locator",
+                    "speaker_label",
+                    "source_class",
+                    "content",
+                ],
+                examined_source_extracts
+                    .iter()
+                    .map(|x| {
+                        vec![
+                            x.document_id.to_string(),
+                            x.evidence_id.to_string(),
+                            x.ordinal.to_string(),
+                            x.format.clone(),
+                            x.locator.clone(),
+                            x.speaker_label.clone(),
+                            x.source_class.clone(),
+                            x.content.clone(),
+                        ]
+                    })
+                    .collect(),
+            ),
+        );
+    }
     files.insert("inspect.py".into(), INSPECT_PY.into());
     files.insert(
         "README.md".into(),
@@ -319,10 +378,10 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
              The JSON file contains the exact selected *published analysis bundle*. \
              CSV is a spreadsheet-safe presentation projection and may prefix \
              untrusted cell text with an apostrophe to prevent formula execution. \
-             Source fragment *IDs*, not source fragment contents or original \
-             uploaded documents, are included. The model's full reasoning, \
-             intermediate steps, actual numeric source weights, all historical \
-             events, and the full PostgreSQL state are NOT included. \
+             {} \
+             Original uploaded document bytes are NOT included. The model's full \
+             reasoning, intermediate steps, actual numeric source weights, all \
+             historical events, and the full PostgreSQL state are NOT included. \
              Python does not reproduce the LLM reasoning or rerun the investigation.\n\n\
              All exported material may be sensitive. Share/publish it only \
              after explicit authorization and inspection. PostgreSQL remains \
@@ -330,7 +389,13 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
              feature, not performed by this package builder.\n\n\
              The SHA-256 list detects accidental file changes; it is not a \
              digital signature and does not authenticate a publisher.\n",
-            bundle.analysis_id, bundle.input_revision
+            bundle.analysis_id,
+            bundle.input_revision,
+            if examined_source_extracts.is_empty() {
+                "Source fragment *IDs*, not source fragment contents, are included."
+            } else {
+                "This explicitly authorized variant includes only source fragment text recorded as examined by this analysis. Those excerpts are not original uploaded files, do not establish truth, and may contain sensitive material."
+            }
         ),
     );
 
@@ -365,10 +430,110 @@ pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, Prese
         authoritative_state_remains_in_postgresql: true,
         is_full_database_backup: false,
         includes_original_source_fragment_contents: false,
+        includes_examined_source_fragment_contents: !examined_source_extracts.is_empty(),
+        examined_source_extracts_are_original_uploads: false,
+        examined_source_extracts_establish_truth: false,
         reproduces_model_reasoning: false,
         contains_complete_investigation_event_log: false,
         published_to_git: false,
     })
+}
+
+pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, PresentationError> {
+    from_bundle_and_extracts(bundle, &[])
+}
+
+async fn scoped(
+    pool: &PgPool,
+    workspace: Uuid,
+) -> Result<Transaction<'_, Postgres>, PresentationError> {
+    let mut tx = pool.begin().await.map_err(ManifestError::from)?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await
+        .map_err(ManifestError::from)?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
+    if privileged {
+        return Err(PresentationError::Manifest(ManifestError::Privileged));
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(ManifestError::from)?;
+    crate::authz::bind_auth_digest(&mut tx)
+        .await
+        .map_err(ManifestError::from)?;
+    Ok(tx)
+}
+
+async fn examined_source_extracts(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<Vec<ExaminedSourceExtract>, PresentationError> {
+    let mut tx = scoped(pool, workspace).await?;
+    type Row = (Uuid, Uuid, i32, String, String, String, String, String);
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT d.document_id,f.evidence_id,f.ordinal,d.format,d.locator,
+                f.speaker_label,e.content,e.source_class
+           FROM niccolo.situation_analysis_snapshots a
+           JOIN niccolo.situation_analysis_examined_fragments x
+             ON x.workspace_id=a.workspace_id
+            AND x.situation_id=a.situation_id
+            AND x.analysis_id=a.analysis_id
+           JOIN niccolo.source_fragments f
+             ON f.workspace_id=x.workspace_id AND f.evidence_id=x.evidence_id
+           JOIN niccolo.source_documents d
+             ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id
+           JOIN niccolo.evidence e
+             ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id
+           JOIN niccolo.situation_revision_sources rs
+             ON rs.workspace_id=a.workspace_id
+            AND rs.situation_id=a.situation_id
+            AND rs.revision=a.input_revision
+            AND rs.document_id=d.document_id
+          WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3
+          ORDER BY d.document_id,f.ordinal
+          LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(MAX_SOURCE_EXTRACTS + 1)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
+    tx.commit().await.map_err(ManifestError::from)?;
+
+    if rows.len() as i64 > MAX_SOURCE_EXTRACTS {
+        return Err(PresentationError::SourceExtractTooLarge);
+    }
+    let mut bytes = 0usize;
+    let mut out = Vec::with_capacity(rows.len());
+    for (document_id, evidence_id, ordinal, format, locator, speaker_label, content, source_class) in rows {
+        bytes = bytes.saturating_add(content.len());
+        if bytes > MAX_SOURCE_EXTRACT_BYTES {
+            return Err(PresentationError::SourceExtractTooLarge);
+        }
+        out.push(ExaminedSourceExtract {
+            document_id,
+            evidence_id,
+            ordinal,
+            format,
+            locator,
+            speaker_label,
+            content,
+            source_class,
+        });
+    }
+    Ok(out)
 }
 
 pub async fn build(
@@ -380,6 +545,17 @@ pub async fn build(
     // This load performs the authorized workspace-scoped PostgreSQL read.
     let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
     from_bundle(&bundle)
+}
+
+pub async fn build_with_examined_sources(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<PresentationPackage, PresentationError> {
+    let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
+    let extracts = examined_source_extracts(pool, workspace, situation, analysis).await?;
+    from_bundle_and_extracts(&bundle, &extracts)
 }
 
 #[cfg(test)]
@@ -439,8 +615,35 @@ mod tests {
         assert!(!a.is_full_database_backup);
         assert!(!a.published_to_git);
         assert!(!a.includes_original_source_fragment_contents);
+        assert!(!a.includes_examined_source_fragment_contents);
+        assert!(!a.examined_source_extracts_are_original_uploads);
+        assert!(!a.examined_source_extracts_establish_truth);
         assert!(!a.reproduces_model_reasoning);
         assert!(a.authoritative_state_remains_in_postgresql);
+    }
+
+    #[test]
+    fn explicitly_selected_examined_source_text_is_bounded_and_labeled_as_non_truth() {
+        let source = ExaminedSourceExtract {
+            document_id: Uuid::from_u128(10),
+            evidence_id: Uuid::from_u128(5),
+            ordinal: 1,
+            format: "WHATSAPP_EXPORT".into(),
+            locator: "chat.txt".into(),
+            speaker_label: "Alice".into(),
+            content: "=not a spreadsheet command, just untrusted source text".into(),
+            source_class: "HUMAN_COMMUNICATION".into(),
+        };
+        let result = from_bundle_and_extracts(&example(), &[source]).unwrap();
+        assert!(result.includes_examined_source_fragment_contents);
+        assert!(!result.includes_original_source_fragment_contents);
+        assert!(!result.examined_source_extracts_are_original_uploads);
+        assert!(!result.examined_source_extracts_establish_truth);
+        assert!(result.files.contains_key("data/examined_source_fragments.json"));
+        assert!(result.files.contains_key("data/examined_source_fragments.csv"));
+        assert!(result.files["README.md"].contains("explicitly authorized variant"));
+        assert!(result.files["README.md"].contains("do not establish truth"));
+        assert!(result.files["data/examined_source_fragments.csv"].contains("'=not a spreadsheet"));
     }
 
     #[test]
