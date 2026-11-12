@@ -17,6 +17,13 @@ describe('connection boundary', () => {
     expect(source).toContain('handleSubmit(connectClean)');
   });
 
+  it('validates workspace access before marking a disconnected form as connected', () => {
+    expect(source).toContain('await validateConnection(credentials)');
+    expect(source).toContain("setConnectionError(connectionFailureMessage(error))");
+    expect(source).toContain("checking?'Checking…':'Connect'");
+    expect(source).toContain('disabled={checking}');
+  });
+
   it('never reads a bearer token from URL hints', () => {
     expect(source).toContain('connectionHints(window.location.search)');
     expect(source).toContain('Bearer tokens are never read from the URL or persisted.');
