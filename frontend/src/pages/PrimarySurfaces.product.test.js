@@ -39,11 +39,13 @@ describe('buyer-facing primary surfaces', () => {
     expect(operations).toContain("queryKey:client?qk.situation(client.config):['situation','none']");
     expect(operations).toContain('situationGuide(situation.data)');
     expect(operations).toContain('Focus-only first pass.');
+    expect(operations).toContain('bash scripts/configure-local-model.sh');
   });
 
   it('shows model readiness before the user enters Analyze', () => {
     expect(situation).toContain("queryKey: ['mvp-runtime-readiness']");
     expect(situation).toContain('A reasoning model is not configured yet.');
+    expect(situation).toContain('bash scripts/configure-local-model.sh');
     expect(situation).toContain('.niccolo-local/model.env');
   });
 
