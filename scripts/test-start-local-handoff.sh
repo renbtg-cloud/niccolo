@@ -39,6 +39,9 @@ for _ in $(seq 1 40); do [[ -s "$TMP/browser-url" ]] && break; sleep 0.05; done
 code="$(cat "$TMP/server-code")"
 url="$(cat "$TMP/browser-url")"
 [[ "$url" == "http://127.0.0.1:38080/?workspace=11111111-1111-4111-8111-111111111111&situation=22222222-2222-4222-8222-222222222222#handoff=$code" ]]
+prepared="$(cat .niccolo-local/prepared-url.txt)"
+[[ "$prepared" == "http://127.0.0.1:38080/?workspace=11111111-1111-4111-8111-111111111111&situation=22222222-2222-4222-8222-222222222222" ]]
+[[ "$prepared" != *'#handoff='* ]]
 ! grep -Fq 'ncl_aaaaaaaa' <<< "$output"
 ! grep -Fq "$code" <<< "$output"
 grep -Fq 'one-shot local handoff' <<< "$output"
