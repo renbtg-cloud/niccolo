@@ -54,7 +54,6 @@ chmod 600 "$url_file" 2>/dev/null || true
 echo "Niccolo local session"
 echo "Open: $prepared_url"
 echo "Bearer token: $token_file"
-echo "Paste that token into the connection panel; it is intentionally not embedded in the URL."
 llm_base="${NICCOLO_LLM_BASE_URL:-}"
 llm_model="${NICCOLO_LLM_MODEL:-}"
 llm_key="${NICCOLO_LLM_API_KEY:-}"
@@ -93,16 +92,32 @@ open_browser=1
 if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
   open_browser=0
 fi
+# Never inherit a stale handoff capability supplied by the surrounding shell.
+unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
+browser_url="$prepared_url"
 if (( open_browser == 1 )); then
-  echo "Browser: best-effort automatic open is enabled (set NICCOLO_OPEN_BROWSER=0 to disable)."
+  if command -v od >/dev/null 2>&1 && [[ -r /dev/urandom ]]; then
+    handoff_code="$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+    if [[ "$handoff_code" =~ ^[0-9a-f]{64}$ ]]; then
+      export NICCOLO_LOCAL_HANDOFF_CODE="$handoff_code"
+      export NICCOLO_LOCAL_HANDOFF_TOKEN_FILE="$ROOT/$token_file"
+      browser_url="${prepared_url}#handoff=${handoff_code}"
+      echo "Browser: automatic open uses a short-lived one-shot local handoff; the bearer token stays in $token_file."
+    else
+      echo "Browser: secure handoff generation failed; opening the prepared URL for manual token entry." >&2
+    fi
+  else
+    echo "Browser: secure handoff generator unavailable; opening the prepared URL for manual token entry." >&2
+  fi
   (
-    # The opener needs only the generated loopback URL and port. Do not expose
-    # database or model credentials to the short-lived helper process.
+    # The opener receives only the prepared loopback URL plus an optional
+    # one-shot capability. It never receives the bearer or database/model secrets.
     unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_SECURE_PASSWORD NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL PGPASSWORD
-    exec bash scripts/open-local-mvp-browser.sh "$prepared_url" "$NICCOLO_API_PORT"
+    unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
+    exec bash scripts/open-local-mvp-browser.sh "$browser_url" "$NICCOLO_API_PORT"
   ) >/dev/null 2>&1 &
 else
-  echo "Browser: automatic open disabled; use the Open URL above."
+  echo "Browser: automatic open disabled; use the Open URL above and paste the bearer token from $token_file."
 fi
 
 exec "$binary"
