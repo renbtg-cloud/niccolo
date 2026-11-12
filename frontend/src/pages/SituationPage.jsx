@@ -43,11 +43,11 @@ export function SituationPage(){
 
 function ConnectedSituation({client}){
   const qc = useQueryClient();
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [sourceCursor, setSourceCursor] = useState(null);
   const [sourceBackStack, setSourceBackStack] = useState([]);
-  // Preserve the document identity across retries after a partial upload.
-  const pendingDocumentId = useRef(null);
+  // Preserve each document identity across retries after a partial multi-file import.
+  const pendingDocumentIds = useRef(new Map());
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
@@ -131,25 +131,39 @@ function ConnectedSituation({client}){
     onSuccess: refresh,
   });
   const upload = useMutation({
-    mutationFn: async (selected) => {
-      const descriptor = sourceDescriptor(selected);
-      const documentId = pendingDocumentId.current ?? crypto.randomUUID();
-      pendingDocumentId.current = documentId;
-      const ingested = await client.ingestSource(documentId, {
-        locator: descriptor.locator,
-        contentType: descriptor.contentType,
-        body: selected,
-      });
-      const attached = await client.addSituationSource(documentId);
-      return { documentId, ingest: ingested.value, situation: attached.value };
+    mutationFn: async (selectedFiles) => {
+      if (!selectedFiles.length) throw new Error('Choose at least one source file.');
+      const imported = [];
+      for (const selected of selectedFiles) {
+        const descriptor = sourceDescriptor(selected);
+        const signature = JSON.stringify([
+          selected.name,
+          selected.size,
+          selected.lastModified ?? null,
+          descriptor.contentType,
+        ]);
+        let documentId = pendingDocumentIds.current.get(signature);
+        if (!documentId) {
+          documentId = crypto.randomUUID();
+          pendingDocumentIds.current.set(signature, documentId);
+        }
+        const ingested = await client.ingestSource(documentId, {
+          locator: descriptor.locator,
+          contentType: descriptor.contentType,
+          body: selected,
+        });
+        const attached = await client.addSituationSource(documentId);
+        imported.push({ documentId, ingest: ingested.value, situation: attached.value });
+      }
+      return { imported };
     },
     onSuccess: async () => {
-      setFile(null);
-      pendingDocumentId.current = null;
+      setFiles([]);
+      pendingDocumentIds.current.clear();
       await refresh();
     },
-    // If ingestion succeeded but attachment failed, surface the imported record
-    // in the catalog so the user can attach it without uploading a duplicate.
+    // If a later file fails after earlier files succeeded, preserve every
+    // document UUID so retrying the same selection replays rather than duplicates.
     onError: refresh,
   });
 
@@ -195,20 +209,21 @@ function ConnectedSituation({client}){
       <input
         aria-label="Source file"
         type="file"
+        multiple
         accept=".eml,.txt,message/rfc822,text/plain"
         disabled={upload.isPending}
         onChange={(event) => {
-          pendingDocumentId.current = null;
+          pendingDocumentIds.current.clear();
           upload.reset();
-          setFile(event.target.files?.[0] ?? null);
+          setFiles(Array.from(event.target.files ?? []));
         }}
       />
-      <button disabled={!file || upload.isPending} onClick={() => file && upload.mutate(file)}>
-        {upload.isPending ? 'Importing…' : 'Import and attach'}
+      <button disabled={files.length === 0 || upload.isPending} onClick={() => files.length && upload.mutate(files)}>
+        {upload.isPending ? `Importing ${files.length} record(s)…` : `Import and attach ${files.length || ''} record${files.length === 1 ? '' : 's'}`}
       </button>
-      {file && <small>Selected: {file.name} · {file.size} bytes</small>}
+      {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
       {upload.error && <p className="error">{upload.error.message}</p>}
-      {upload.data && <p>Record imported and attached to this Situation.</p>}
+      {upload.data && <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>}
     </article>
 
     <article>
