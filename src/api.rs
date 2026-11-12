@@ -25,6 +25,7 @@ use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::forensic_context::{self, ForensicContextError};
 use crate::forensic_import::{self, ForensicImportError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
+use crate::grounded_score_store::{self, GroundedScoreStoreError, NewGroundedScoreRecord};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
@@ -272,6 +273,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/claims/{claim}/epistemic/evaluate",
             post(evaluate_grounded_claim_weights),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/claims/{claim}/epistemic/records/{score}",
+            post(record_grounded_claim_score),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/epistemic/records",
+            get(list_grounded_claim_scores),
         )
         .route("/v1/workspaces/{workspace}/epistemic/policy", get(get_effective_epistemic_policy))
         .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
@@ -5374,6 +5383,117 @@ async fn post_presentation_package_with_examined_sources(
     .await
     .map_err(presentation_api_error)?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+
+fn grounded_score_store_error(error: GroundedScoreStoreError) -> ApiError {
+    match error {
+        GroundedScoreStoreError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid grounded score record")
+        }
+        GroundedScoreStoreError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "grounded score ID conflict")
+        }
+        GroundedScoreStoreError::Json(_) | GroundedScoreStoreError::Database(_)
+        | GroundedScoreStoreError::Privileged => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "grounded score record unavailable",
+        ),
+    }
+}
+
+async fn record_grounded_claim_score(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, claim, score)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<GroundedClaimWeightRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    if score.is_nil() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid grounded score ID"));
+    }
+    let (policy, policy_source) = if let Some(policy) = request.policy {
+        (policy, "EXPLICIT_TRIAL".to_owned())
+    } else {
+        let selected = epistemic_policy_store::effective(&state.pool, workspace, Some(situation))
+            .await
+            .map_err(epistemic_policy_error)?;
+        (selected.policy, selected.scope)
+    };
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let result = grounded_claim_weights::evaluate_claim(
+        &state.pool,
+        scope,
+        claim,
+        policy,
+        request.human_declared_confidence_percent,
+        &request.evidence,
+    )
+    .await
+    .map_err(grounded_weight_error)?;
+    let (record, replayed) = grounded_score_store::record(
+        &state.pool,
+        &NewGroundedScoreRecord {
+            scope,
+            claim_id: claim,
+            score_id: score,
+            policy_source,
+            policy,
+            human_declared_confidence_percent: request.human_declared_confidence_percent,
+            declared_evidence: request.evidence,
+            result,
+            recorded_by: actor,
+        },
+    )
+    .await
+    .map_err(grounded_score_store_error)?;
+    Ok(no_store(
+        json!({
+            "record": record,
+            "replayed": replayed,
+            "is_immutable_record": true,
+            "score_is_probability_of_truth": false,
+            "establishes_claim_truth": false,
+            "modifies_published_analysis": false
+        }),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroundedScoreListQuery {
+    limit: Option<i64>,
+}
+
+async fn list_grounded_claim_scores(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<GroundedScoreListQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = crate::analysis_structure::AnalysisScope {
+        workspace,
+        situation,
+        analysis,
+    };
+    let page = grounded_score_store::list_for_analysis(
+        &state.pool,
+        scope,
+        query.limit.unwrap_or(100),
+    )
+    .await
+    .map_err(grounded_score_store_error)?;
+    Ok(no_store(json!(page), StatusCode::OK))
 }
 
 async fn get_presentation_package(
