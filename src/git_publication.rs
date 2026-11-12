@@ -95,8 +95,10 @@ fn valid_repo_component(value: &str, max: usize) -> bool {
 fn valid_ref(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 244
-        && !value.starts_with(['/', '.'])
-        && !value.ends_with(['/', '.'])
+        && !value.starts_with('/')
+        && !value.starts_with('.')
+        && !value.ends_with('/')
+        && !value.ends_with('.')
         && !value.ends_with(".lock")
         && !value.contains("..")
         && !value.contains("@{")
