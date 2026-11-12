@@ -7,6 +7,8 @@ cd "$ROOT"
 
 : "${NPM:=npm}"
 : "${CARGO:=cargo}"
+: "${NICCOLO_BUILD_VERIFY:=1}"
+[[ "$NICCOLO_BUILD_VERIFY" == "0" || "$NICCOLO_BUILD_VERIFY" == "1" ]] || { echo "NICCOLO_BUILD_VERIFY must be 0 or 1" >&2; exit 2; }
 
 npm_ci=(ci)
 cargo_locked=(--locked)
@@ -18,8 +20,12 @@ fi
 
 echo "[1/5] Install locked frontend dependencies"
 (cd frontend && "$NPM" "${npm_ci[@]}")
-echo "[2/5] Verify frontend regression tests"
-(cd frontend && "$NPM" test)
+if [[ "$NICCOLO_BUILD_VERIFY" == "1" ]]; then
+  echo "[2/5] Verify frontend regression tests"
+  (cd frontend && "$NPM" test)
+else
+  echo "[2/5] Skip frontend regression tests (installation build)"
+fi
 echo "[3/5] Build the frontend that Rust embeds"
 (cd frontend && "$NPM" run build)
 for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/assets/app.css; do
@@ -28,8 +34,12 @@ for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/a
     exit 1
   fi
 done
-echo "[4/5] Verify Rust unit tests"
-"$CARGO" test "${cargo_locked[@]}" --lib
+if [[ "$NICCOLO_BUILD_VERIFY" == "1" ]]; then
+  echo "[4/5] Verify Rust unit tests"
+  "$CARGO" test "${cargo_locked[@]}" --lib
+else
+  echo "[4/5] Skip Rust unit tests (installation build)"
+fi
 echo "[5/5] Compile the Niccolo API and provisioning CLI"
 "$CARGO" build "${cargo_locked[@]}" --release --bin niccolo-api --bin niccolo-provision
 
