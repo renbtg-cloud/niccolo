@@ -4684,10 +4684,9 @@ fn checkpoint_error(error: CheckpointError) -> ApiError {
             StatusCode::CONFLICT,
             "checkpoint integrity or replay conflict",
         ),
-        CheckpointError::TooMany => ApiError(
-            StatusCode::CONFLICT,
-            "operation checkpoint limit reached",
-        ),
+        CheckpointError::TooMany => {
+            ApiError(StatusCode::CONFLICT, "operation checkpoint limit reached")
+        }
         CheckpointError::Database(_) | CheckpointError::Json(_) | CheckpointError::Privileged => {
             ApiError(
                 StatusCode::INTERNAL_SERVER_ERROR,
