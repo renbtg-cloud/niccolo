@@ -101,6 +101,25 @@ pub struct ExportedEpistemicPolicy {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportedGroundedScore {
+    pub claim_id: Uuid,
+    pub score_id: Uuid,
+    pub policy_source: String,
+    pub policy: Value,
+    pub human_declared_confidence_percent: Option<u8>,
+    pub declared_evidence: Value,
+    pub result: Value,
+    pub result_sha256: String,
+    pub recorded_by_principal_id: Uuid,
+    pub created_at: String,
+    pub immutable_record: bool,
+    pub score_is_probability_of_truth: bool,
+    pub establishes_claim_truth: bool,
+    pub is_documentary_evidence: bool,
+    pub modifies_published_analysis: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportedHumanCredence {
     pub claim_id: Uuid,
     pub credence_id: Uuid,
@@ -120,6 +139,7 @@ pub struct ExportedHumanCredence {
 pub struct PresentationEpistemicContext {
     pub policies: Vec<ExportedEpistemicPolicy>,
     pub human_credence: Vec<ExportedHumanCredence>,
+    pub grounded_scores: Vec<ExportedGroundedScore>,
     pub deterministic_scores_exported: bool,
     pub policy_history_proves_policy_used_for_output: bool,
 }
@@ -504,10 +524,75 @@ fn from_bundle_and_extracts(
         ),
     );
     files.insert(
+        "data/grounded_scores.json".into(),
+        serde_json::to_string_pretty(&epistemic.grounded_scores)?,
+    );
+    files.insert(
+        "data/grounded_scores.csv".into(),
+        csv(
+            &[
+                "claim_id",
+                "score_id",
+                "policy_source",
+                "human_declared_confidence_percent",
+                "support_points",
+                "counter_points",
+                "net_points",
+                "source_graph_revision",
+                "result_sha256",
+                "recorded_by_principal_id",
+                "created_at",
+                "score_is_probability_of_truth",
+                "establishes_claim_truth",
+                "is_documentary_evidence",
+                "modifies_published_analysis",
+            ],
+            epistemic
+                .grounded_scores
+                .iter()
+                .map(|record| {
+                    vec![
+                        record.claim_id.to_string(),
+                        record.score_id.to_string(),
+                        record.policy_source.clone(),
+                        record
+                            .human_declared_confidence_percent
+                            .map(|value| value.to_string())
+                            .unwrap_or_default(),
+                        record.result["report"]["support_points"]
+                            .as_i64()
+                            .map(|value| value.to_string())
+                            .unwrap_or_default(),
+                        record.result["report"]["counter_points"]
+                            .as_i64()
+                            .map(|value| value.to_string())
+                            .unwrap_or_default(),
+                        record.result["report"]["net_points"]
+                            .as_i64()
+                            .map(|value| value.to_string())
+                            .unwrap_or_default(),
+                        record.result["source_graph_revision"]
+                            .as_i64()
+                            .map(|value| value.to_string())
+                            .unwrap_or_default(),
+                        record.result_sha256.clone(),
+                        record.recorded_by_principal_id.to_string(),
+                        record.created_at.clone(),
+                        record.score_is_probability_of_truth.to_string(),
+                        record.establishes_claim_truth.to_string(),
+                        record.is_documentary_evidence.to_string(),
+                        record.modifies_published_analysis.to_string(),
+                    ]
+                })
+                .collect(),
+        ),
+    );
+    files.insert(
         "data/epistemic_export_scope.json".into(),
         serde_json::to_string_pretty(&json!({
             "recorded_policy_count": epistemic.policies.len(),
             "recorded_human_credence_count": epistemic.human_credence.len(),
+            "recorded_grounded_score_count": epistemic.grounded_scores.len(),
             "deterministic_scores_exported": epistemic.deterministic_scores_exported,
             "policy_history_proves_policy_used_for_output": epistemic.policy_history_proves_policy_used_for_output,
             "human_credence_is_documentary_evidence": false,
@@ -683,7 +768,59 @@ async fn epistemic_context(
     .fetch_all(&mut *tx)
     .await
     .map_err(ManifestError::from)?;
+    type ScoreRow = (
+        Uuid,
+        Uuid,
+        String,
+        Value,
+        Option<i16>,
+        Value,
+        Value,
+        String,
+        Uuid,
+        String,
+    );
+    let grounded_scores: Vec<ScoreRow> = sqlx::query_as(
+        "SELECT claim_id,score_id,policy_source,policy,human_declared_confidence_percent,
+                declared_evidence,result,result_sha256,recorded_by_principal_id,created_at::text
+           FROM niccolo.situation_analysis_grounded_score_records
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+          ORDER BY created_at,claim_id,score_id
+          LIMIT 512",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
     tx.commit().await.map_err(ManifestError::from)?;
+    let grounded_scores = grounded_scores
+        .into_iter()
+        .map(|row| {
+            Ok(ExportedGroundedScore {
+                claim_id: row.0,
+                score_id: row.1,
+                policy_source: row.2,
+                policy: row.3,
+                human_declared_confidence_percent: row
+                    .4
+                    .map(|value| u8::try_from(value).map_err(|_| PresentationError::Invalid))
+                    .transpose()?,
+                declared_evidence: row.5,
+                result: row.6,
+                result_sha256: row.7,
+                recorded_by_principal_id: row.8,
+                created_at: row.9,
+                immutable_record: true,
+                score_is_probability_of_truth: false,
+                establishes_claim_truth: false,
+                is_documentary_evidence: false,
+                modifies_published_analysis: false,
+            })
+        })
+        .collect::<Result<Vec<_>, PresentationError>>()?;
+    let deterministic_scores_exported = !grounded_scores.is_empty();
     Ok(PresentationEpistemicContext {
         policies: policies
             .into_iter()
@@ -723,7 +860,8 @@ async fn epistemic_context(
                 part_of_frozen_analysis_input: false,
             })
             .collect(),
-        deterministic_scores_exported: false,
+        grounded_scores,
+        deterministic_scores_exported,
         policy_history_proves_policy_used_for_output: false,
     })
 }
