@@ -493,6 +493,160 @@ let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
  if(!x||x.documentary_evidence!==false||x.current_credentials_establish_truth!==false)process.exit(1);
  process.stdout.write(x.item_id);
 });' <<< "$forensic_items")"
+IFS=forensic_binding="$(node -p "require('node:crypto').randomUUID()")"
+bind_body="$(FORENSIC_BATCH="$forensic_batch" FORENSIC_ITEM="$forensic_item" node -e '
+process.stdout.write(JSON.stringify({
+ import_batch_id:process.env.FORENSIC_BATCH,
+ item_id:process.env.FORENSIC_ITEM,
+ note:"CI selected historical context; never treat it as fact or documentary evidence."
+}));')"
+bound="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+  --data-binary "$bind_body" \
+  "${path}/analysis-snapshots/${analysis_id}/forensic-context/${forensic_binding}")"
+FORENSIC_BINDING="$forensic_binding" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s).item;
+ if(j.binding_id!==process.env.FORENSIC_BINDING||j.quarantine_provenance!==true||
+    j.establishes_truth!==false||j.documentary_evidence!==false||
+    j.current_credentials_upgrade_imported_statement!==false)process.exit(1);
+});' <<< "$bound"
+bound_context="$(curl --max-time 10 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${path}/analysis-snapshots/${analysis_id}/forensic-context")"
+FORENSIC_BINDING="$forensic_binding" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(!j.items?.some(x=>x.binding_id===process.env.FORENSIC_BINDING)||
+    j.items_are_documentary_evidence!==false||j.part_of_frozen_analysis_input!==false)process.exit(1);
+});' <<< "$bound_context"
+echo 'PASS: forensic export round-trip stays quarantined and requires explicit non-evidence binding'
+
+# A second, empty database on the SAME PostgreSQL cluster must not
+# trigger password rotation for the already-provisioned service role.
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'CREATE DATABASE niccolo_ci_role_probe'
+probe_url="$(node -e '
+const u = new URL(process.env.NICCOLO_PG_ADMIN_URL);
+u.pathname="/niccolo_ci_role_probe";
+process.stdout.write(u.toString());
+')"
+probe_root=".niccolo-local/role-probe"
+mkdir -p "$probe_root/scripts"
+cp scripts/bootstrap-local-mvp.sh "$probe_root/scripts/bootstrap-local-mvp.sh"
+if (cd "$probe_root" && NICCOLO_PG_ADMIN_URL="$probe_url" \
+    bash scripts/bootstrap-local-mvp.sh > bootstrap-probe.log 2>&1); then
+  echo 'Bootstrapping a second DB unexpectedly reused a cluster-global service role' >&2
+  exit 1
+fi
+grep -q 'Niccolo cluster role(s) already exist:' "$probe_root/bootstrap-probe.log" || {
+  echo 'Cluster-role conflict was not the explicit reason for refusing second bootstrap' >&2
+  exit 1
+}
+[[ "$(psql -X -At -v ON_ERROR_STOP=1 "$probe_url" \
+  -c "SELECT to_regclass('niccolo.workspaces') IS NULL")" == "t" ]] || {
+  echo 'Second bootstrap mutated an empty database before refusing role reuse' >&2
+  exit 1
+}
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'DROP DATABASE niccolo_ci_role_probe'
+echo 'PASS: preflight refuses reuse of cluster-global Niccolo roles'
+
+# The MVP advertises up to 4 MiB per source. Verify real HTTP ingestion
+# accepts more than the default Axum 2 MiB body cap, without skipping
+# fragment-bound checks or byte-exact original retention.
+large_file=".niccolo-local/ci-large-chat.txt"
+node -e '
+const message="x".repeat(32000);
+for(let i=0;i<66;i++)
+  process.stdout.write("[08/11/2026, 10:00] Speaker"+i+": "+message+"\n");
+' > "$large_file"
+large_size="$(wc -c < "$large_file")"
+[[ "$large_size" -gt 2097152 && "$large_size" -lt 4194304 ]] || {
+  echo "Unexpected bounded large source size: $large_size" >&2
+  exit 1
+}
+large_id="$(node -p "require('node:crypto').randomUUID()")"
+large_path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${large_id}"
+large_result="$(curl --max-time 30 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-large-chat.txt' \
+  --data-binary @"$large_file" "$large_path")"
+printf '%s' "$large_result" | node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);
+ if(j.replayed!==false||j.fragment_ids?.length!==66)process.exit(1);
+});'
+curl --max-time 30 --silent --show-error --fail \
+  -H "Authorization: Bearer ${token}" \
+  "${large_path}/original" -o ".niccolo-local/ci-large-original.txt"
+cmp "$large_file" ".niccolo-local/ci-large-original.txt"
+oversize_file=".niccolo-local/ci-oversized-chat.txt"
+node -e 'process.stdout.write("x".repeat(4*1024*1024+1))' > "$oversize_file"
+oversize_id="$(node -p "require('node:crypto').randomUUID()")"
+oversize_status="$(curl --max-time 30 --silent --show-error \
+  --output /dev/null --write-out '%{http_code}' \
+  -H "Authorization: Bearer ${token}" \
+  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-oversized-chat.txt' \
+  --data-binary @"$oversize_file" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${oversize_id}")"
+[[ "$oversize_status" == 413 ]] || {
+  echo "Expected HTTP 413 for a source above 4 MiB, got $oversize_status" >&2
+  exit 1
+}
+echo 'PASS: HTTP source limit accepts 2–4 MiB, rejects >4 MiB, retains exact bytes'
+
+# Reject migrations over an unrelated application's tables, even when
+# there is no Niccolo schema yet.
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'CREATE DATABASE niccolo_ci_populated_probe'
+populated_url="$(node -e '
+const u=new URL(process.env.NICCOLO_PG_ADMIN_URL);
+u.pathname="/niccolo_ci_populated_probe";
+process.stdout.write(u.toString());
+')"
+psql -X -q -v ON_ERROR_STOP=1 "$populated_url" \
+  -c 'CREATE TABLE public.customer_records (record_id integer PRIMARY KEY)'
+if (cd "$probe_root" && NICCOLO_PG_ADMIN_URL="$populated_url" \
+    bash scripts/bootstrap-local-mvp.sh > populated-probe.log 2>&1); then
+  echo 'Bootstrap unexpectedly applied migrations over existing application data' >&2
+  exit 1
+fi
+grep -q 'Database contains existing user relations' "$probe_root/populated-probe.log" || {
+  echo 'Unexpected reason for refusing bootstrap over populated database' >&2
+  exit 1
+}
+[[ "$(psql -X -At -v ON_ERROR_STOP=1 "$populated_url" \
+  -c "SELECT to_regclass('public.customer_records') IS NOT NULL AND to_regclass('niccolo.workspaces') IS NULL")" == "t" ]] || {
+  echo 'Unsafe data mutation while refusing populated-database bootstrap' >&2
+  exit 1
+}
+psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
+  -c 'DROP DATABASE niccolo_ci_populated_probe'
+echo 'PASS: unrelated application data is protected from first-run migrations'
+
+echo 'PASS: bootstrap, embedded UI, Situation lifecycle, auth isolation, rich Analyze, and human-boundary resume'
+
+\t' read -r forensic_original_item forensic_original_sha < <(node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s),x=j.items?.find(x=>x.source_kind==="ORIGINAL_SOURCE_BYTES");
+ if(!x||x.documentary_evidence!==false||x.current_credentials_establish_truth!==false)process.exit(1);
+ process.stdout.write(x.item_id+"\t"+x.source_sha256);
+});' <<< "$forensic_items")
+forensic_original_headers=".niccolo-local/ci-forensic-original.headers"
+forensic_original_file=".niccolo-local/ci-forensic-original.bin"
+curl --max-time 30 --silent --show-error --fail \
+  -D "$forensic_original_headers" -o "$forensic_original_file" \
+  -H "Authorization: Bearer ${token}" \
+  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/forensic-imports/${forensic_batch}/items/${forensic_original_item}/original"
+grep -qi '^content-type: application/octet-stream' "$forensic_original_headers"
+grep -qi '^cache-control: no-store' "$forensic_original_headers"
+grep -qi '^x-niccolo-quarantine: true' "$forensic_original_headers"
+grep -qi '^x-niccolo-documentary-evidence: false' "$forensic_original_headers"
+[[ "$(sha256sum "$forensic_original_file" | awk '{print $1}')" == "$forensic_original_sha" ]] || {
+  echo 'Quarantined original bytes do not match imported source digest' >&2
+  exit 1
+}
 forensic_binding="$(node -p "require('node:crypto').randomUUID()")"
 bind_body="$(FORENSIC_BATCH="$forensic_batch" FORENSIC_ITEM="$forensic_item" node -e '
 process.stdout.write(JSON.stringify({
