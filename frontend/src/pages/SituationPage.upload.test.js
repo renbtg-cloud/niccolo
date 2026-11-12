@@ -4,6 +4,12 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 
 describe('Situation multi-source first-user import', () => {
+  it('states that txt means a WhatsApp chat export, not generic text', () => {
+    expect(source).toContain('a WhatsApp chat export (.txt)');
+    expect(source).toContain('Generic text files are not interpreted as WhatsApp conversations.');
+    expect(source).not.toContain('WhatsApp/text export');
+  });
+
   it('accepts several supported files in one explicit user selection', () => {
     expect(source).toContain('multiple');
     expect(source).toContain('setFiles(Array.from(event.target.files ?? []))');
