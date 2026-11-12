@@ -438,6 +438,94 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert!(package["files"]["checkpoint.json"].as_str().is_some());
     assert!(package["files"]["SHA256SUMS"].as_str().is_some());
 
+    let target = Uuid::new_v4();
+    let target_path = format!(
+        "/v1/workspaces/{}/git-publication-targets/{target}",
+        s.workspace
+    );
+    let (status, _, target_response) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &target_path,
+            &s.token,
+            Some(json!({
+                "repository_owner":"checkpoint-owner",
+                "repository_name":"checkpoint-history",
+                "ref_name":"work",
+                "repository_visibility":"PRIVATE",
+                "sensitive_exports_allowed":false
+            })),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(target_response["registration_publishes_nothing"], true);
+
+    let checkpoint_base = format!("{}/checkpoints/{checkpoint_id}", path(&s, id, ""));
+    let preview_path = format!("{checkpoint_base}/git-publication-preview?target_id={target}");
+    let (status, _, preview) = invoke(
+        s.router.clone(),
+        req("GET", &preview_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["scope_kind"], "OPERATION_CHECKPOINT");
+    assert_eq!(preview["checkpoint_id"], checkpoint_id);
+    assert_eq!(preview["checkpoint_summary_sha256"], checkpoint_digest);
+    assert_eq!(preview["checkpoint_kind"], "BUDGET_BOUNDARY");
+    assert_eq!(preview["provisional"], true);
+    assert_eq!(preview["terminal"], true);
+    assert_eq!(preview["requested_ref"], "work");
+    assert_eq!(preview["remote_publish_performed"], false);
+    assert_eq!(preview["ready_for_remote_publish"], false);
+    assert_eq!(preview["requires_transient_provider_authorization"], true);
+    assert_eq!(preview["establishes_truth"], false);
+    assert_eq!(preview["proves_completeness"], false);
+    assert_eq!(preview["authorizes_real_world_action"], false);
+    assert_eq!(preview["package_sha256"].as_str().unwrap().len(), 64);
+
+    let publication = Uuid::new_v4();
+    let intent_path = format!("{checkpoint_base}/git-publication-intents/{publication}");
+    let intent_body = json!({"target_id":target});
+    let (status, _, recorded) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path,
+            &s.token,
+            Some(intent_body.clone()),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(recorded["replayed"], false);
+    assert_eq!(recorded["remote_publish_performed"], false);
+    assert_eq!(recorded["checkpoint_status_preserved"], true);
+    assert_eq!(recorded["intent"]["scope_kind"], "OPERATION_CHECKPOINT");
+    assert_eq!(recorded["intent"]["checkpoint_id"], checkpoint_id);
+    assert_eq!(
+        recorded["intent"]["package_sha256"],
+        preview["package_sha256"]
+    );
+    assert_eq!(recorded["intent"]["provisional"], true);
+    assert_eq!(recorded["intent"]["terminal"], true);
+    assert_eq!(recorded["intent"]["remote_publish_performed"], false);
+
+    let (status, _, replayed) = invoke(
+        s.router.clone(),
+        req("POST", &intent_path, &s.token, Some(intent_body), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed["replayed"], true);
+    assert_eq!(
+        replayed["intent"]["package_sha256"],
+        preview["package_sha256"]
+    );
+
     let missing_checkpoint = Uuid::new_v4();
     let (status, _, _) = invoke(
         s.router.clone(),

@@ -12,6 +12,7 @@ use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
+use crate::checkpoint_git_publication::{self, CheckpointGitPublicationError};
 use crate::checkpoint_package::{self, CheckpointPackageError};
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
@@ -407,6 +408,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/package",
             get(get_bff_operation_checkpoint_package),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-preview",
+            get(get_bff_operation_checkpoint_git_publication_preview),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}",
+            post(record_bff_operation_checkpoint_git_publication_intent),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
@@ -4799,6 +4808,131 @@ async fn get_bff_operation_checkpoint_package(
     let package =
         checkpoint_package::build(scope, &checkpoint).map_err(checkpoint_package_error)?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> ApiError {
+    match error {
+        CheckpointGitPublicationError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid checkpoint git publication request",
+        ),
+        CheckpointGitPublicationError::Conflict => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint git publication identity conflict",
+        ),
+        CheckpointGitPublicationError::Checkpoint(CheckpointError::Invisible) => {
+            ApiError(StatusCode::NOT_FOUND, "checkpoint unavailable")
+        }
+        CheckpointGitPublicationError::Git(GitPublicationError::Invisible) => {
+            ApiError(StatusCode::NOT_FOUND, "git publication target unavailable")
+        }
+        CheckpointGitPublicationError::Checkpoint(CheckpointError::Invalid)
+        | CheckpointGitPublicationError::Git(GitPublicationError::Invalid)
+        | CheckpointGitPublicationError::Package(CheckpointPackageError::Invalid) => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid checkpoint git publication request",
+        ),
+        CheckpointGitPublicationError::Checkpoint(CheckpointError::Conflict)
+        | CheckpointGitPublicationError::Package(CheckpointPackageError::Integrity)
+        | CheckpointGitPublicationError::Git(GitPublicationError::Conflict)
+        | CheckpointGitPublicationError::Git(GitPublicationError::Stale) => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint git publication source is inconsistent",
+        ),
+        CheckpointGitPublicationError::Package(CheckpointPackageError::TooLarge) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "checkpoint package exceeds publication limit",
+        ),
+        CheckpointGitPublicationError::Database(_)
+        | CheckpointGitPublicationError::Privileged
+        | CheckpointGitPublicationError::Checkpoint(_)
+        | CheckpointGitPublicationError::Package(_)
+        | CheckpointGitPublicationError::Git(_) => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "checkpoint git publication planning unavailable",
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckpointGitPublicationPreviewQuery {
+    target_id: Uuid,
+}
+
+async fn get_bff_operation_checkpoint_git_publication_preview(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<CheckpointGitPublicationPreviewQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let preview = checkpoint_git_publication::preview(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        checkpoint,
+        query.target_id,
+    )
+    .await
+    .map_err(checkpoint_git_publication_error)?;
+    Ok(no_store(json!(preview), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckpointGitPublicationIntentRequest {
+    target_id: Uuid,
+}
+
+async fn record_bff_operation_checkpoint_git_publication_intent(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint, publication)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(request): Json<CheckpointGitPublicationIntentRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (intent, replayed) = checkpoint_git_publication::record_intent(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        checkpoint,
+        actor,
+        publication,
+        request.target_id,
+    )
+    .await
+    .map_err(checkpoint_git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "intent": intent,
+            "replayed": replayed,
+            "remote_publish_performed": false,
+            "requires_provider_authorization_before_publish": true,
+            "checkpoint_status_preserved": true,
+            "establishes_truth": false,
+            "proves_completeness": false,
+            "authorizes_real_world_action": false
+        }),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn wait_bff_operation(
