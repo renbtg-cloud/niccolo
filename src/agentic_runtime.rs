@@ -141,6 +141,120 @@ async fn record_step_checkpoint(
     Ok(())
 }
 
+fn step_requires_model(step: &agentic_controller::StepView) -> bool {
+    !step.requires_human
+        && !matches!(
+            step.kind.as_str(),
+            "REQUEST_HUMAN_DECISION" | "CHECK_STOP_CONDITIONS" | "PREPARE_HANDOFF"
+        )
+}
+
+fn budget_stop_reason(error: &operation_budget::BudgetError) -> Option<&'static str> {
+    match error {
+        operation_budget::BudgetError::Deadline => Some("DEADLINE_EXPIRED"),
+        operation_budget::BudgetError::Invocations => Some("INVOCATION_LIMIT"),
+        operation_budget::BudgetError::Tokens => Some("TOKEN_LIMIT"),
+        _ => None,
+    }
+}
+
+async fn finish_budget_boundary(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    step: &agentic_controller::StepView,
+    completed_steps: usize,
+    reason: &str,
+) -> Result<RunOutcome, RuntimeError> {
+    let op = bff_operations::get(pool, scope).await?;
+    let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
+    let controller = agentic_controller::view(pool, scope).await?;
+    let budget = operation_budget::view(pool, scope).await?;
+    let quality = analysis_quality::report(
+        pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace: scope.workspace,
+            situation: scope.situation,
+            analysis,
+        },
+    )
+    .await?;
+    let handoff = reasoning_handoff::bundle(
+        pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace: scope.workspace,
+            situation: scope.situation,
+            analysis,
+        },
+    )
+    .await?;
+    let handoff_sha256 = reasoning_handoff::sha256(&handoff)?;
+    let result = json!({
+        "agentic": true,
+        "completion_status": "PARTIAL_BUDGET_BOUNDARY",
+        "provisional": true,
+        "stop_reason": reason,
+        "next_unexecuted_step_id": step.step_id,
+        "next_unexecuted_step_kind": step.kind,
+        "completed_steps_this_run": completed_steps,
+        "plan_revision": controller.plan_revision,
+        "plan_sha256": controller.plan_sha256,
+        "quality": quality,
+        "budget": budget,
+        "handoff": handoff,
+        "handoff_sha256": handoff_sha256,
+        "published_analysis_may_be_absent_or_older": true,
+        "partial_result_establishes_truth": false,
+        "partial_result_proves_completeness": false,
+        "human_owns_consequential_decisions": true
+    });
+    let final_view = if op.state == "RUNNING" {
+        bff_operations::succeed(pool, scope, op.state_version, actor, &result).await?
+    } else {
+        op
+    };
+    let checkpoint_summary = json!({
+        "completion_status": "PARTIAL_BUDGET_BOUNDARY",
+        "stop_reason": reason,
+        "analysis_id": analysis,
+        "plan_revision": controller.plan_revision,
+        "plan_sha256": controller.plan_sha256,
+        "next_unexecuted_step_id": step.step_id,
+        "next_unexecuted_step_kind": step.kind,
+        "completed_steps_this_run": completed_steps,
+        "used_invocations": budget.used_invocations,
+        "max_invocations": budget.max_invocations,
+        "used_total_tokens": budget.used_total_tokens,
+        "max_total_tokens": budget.max_total_tokens,
+        "token_usage_complete": budget.token_usage_complete,
+        "handoff_sha256": handoff_sha256,
+        "provisional": true,
+        "establishes_truth": false,
+        "proves_completeness": false
+    });
+    operation_checkpoint::record(
+        pool,
+        scope,
+        &operation_checkpoint::NewCheckpoint {
+            checkpoint_id: step.step_id,
+            analysis_id: Some(analysis),
+            checkpoint_kind: "BUDGET_BOUNDARY".into(),
+            step_id: Some(step.step_id),
+            summary: checkpoint_summary,
+            provisional: true,
+            terminal: true,
+            recorded_by: actor,
+        },
+    )
+    .await?;
+    Ok(RunOutcome {
+        state: final_view.state,
+        completed_steps,
+        waiting_for_human: false,
+        terminal: final_view.terminal,
+    })
+}
+
 pub async fn ensure_default_plan(
     pool: &PgPool,
     scope: OperationScope,
@@ -233,7 +347,6 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             .await?;
             return Ok(());
         }
-        let _operation_budget = operation_budget::require_available(pool, scope).await?;
         let packet = reasoning_packet::build(pool, analysis_scope).await?;
         let packet_sha = reasoning_packet::sha256(&packet)?;
         let human_steering = agentic_controller::human_steering(pool, scope, 32).await?;
@@ -486,6 +599,25 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             .find(|s| s.step_id == id)
             .expect("ready step exists")
             .clone();
+        if step_requires_model(&step) {
+            match operation_budget::require_available(pool, scope).await {
+                Ok(_) => {}
+                Err(error) => {
+                    if let Some(reason) = budget_stop_reason(&error) {
+                        return finish_budget_boundary(
+                            pool,
+                            scope,
+                            actor,
+                            &step,
+                            completed,
+                            reason,
+                        )
+                        .await;
+                    }
+                    return Err(error.into());
+                }
+            }
+        }
         execute_step(pool, scope, actor, model, &step, view.plan_revision).await?;
         completed += 1;
         record_step_checkpoint(pool, scope, actor, &step).await?;
