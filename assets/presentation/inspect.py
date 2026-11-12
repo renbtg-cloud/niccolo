@@ -100,6 +100,22 @@ def explain():
             )
         print("Human percentages remain human declarations, not documentary evidence or calibrated truth probabilities.")
         print("Recorded policy history does not prove a policy generated the published answer.")
+        grounded_path = ROOT / "data" / "grounded_scores.json"
+        if grounded_path.exists():
+            grounded = read_json(grounded_path)
+            print("- immutable grounded score records:", len(grounded))
+            for record in grounded:
+                report = record.get("result", {}).get("report", {})
+                print(
+                    "  grounded score", record["score_id"],
+                    "claim", record["claim_id"],
+                    "support", report.get("support_points"),
+                    "counter", report.get("counter_points"),
+                    "net", report.get("net_points"),
+                    "result SHA-256", record["result_sha256"],
+                )
+            if grounded:
+                print("Stored grounded scores are deterministic heuristic artifacts, not truth probabilities or proof.")
     source_extract_path = ROOT / "data" / "examined_source_fragments.json"
     if source_extract_path.exists():
         source_extracts = read_json(source_extract_path)
