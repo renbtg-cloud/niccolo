@@ -73,16 +73,15 @@ Expected output includes:
 - whether a reasoning model is configured.
 
 On a local desktop, Niccolò waits for the service to become healthy and then makes a best-effort
-attempt to open that prepared URL in the default browser. Headless systems simply keep the printed
-URL as the fallback. Set `NICCOLO_OPEN_BROWSER=0` or pass `--no-browser` to suppress automatic
-opening.
+attempt to open the prepared URL in the default browser. That automatic path adds a random
+short-lived **one-shot handoff capability** only to the browser fragment (`#handoff=...`), exchanges
+it locally for the bearer once, removes the fragment before the network request, and then validates
+the token/workspace pair. The bearer itself is never placed in the URL or persisted by the browser.
 
-If the browser did not open automatically, open the prepared URL shown by the start command.
-
-The browser receives only the non-secret identifiers. Copy the bearer token from
-`.niccolo-local/token.txt` into the password field and choose **Connect**. Niccolò first performs
-a bounded workspace read to validate the token/workspace pair; a rejected token does not create a
-connected browser session or require you to recreate the prepared Situation.
+Headless systems, `NICCOLO_OPEN_BROWSER=0`, `--no-browser`, or a failed/expired handoff keep the
+manual fallback: open the printed prepared URL, copy the bearer from
+`.niccolo-local/token.txt`, and choose **Connect**. A rejected token does not create a connected
+browser session or require you to recreate the prepared Situation.
 
 ## 4. Create the first Situation
 
@@ -227,7 +226,7 @@ The current Git planning scope deliberately excludes examined source text and or
 Do not teach the tester the architecture first. Record where they hesitate or ask for help:
 
 1. Did they understand what a Situation is?
-2. Did they understand the prepared URL / token split?
+2. Did automatic local connection work without exposing the bearer, and was the manual token fallback understandable when needed?
 3. Did they know whether the model was configured before clicking Analyze?
 4. Did they distinguish uploaded records from Human context?
 5. Did they know what to type as the focus?
