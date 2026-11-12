@@ -7,7 +7,8 @@ describe('GroundedScorePanel product boundary', () => {
   it('makes live evaluation unmistakably different from immutable history', () => {
     expect(source).toContain('Preview live heuristic score');
     expect(source).toContain('Live preview — not recorded');
-    expect(source).toContain('Record exactly this preview');
+    expect(source).toContain('Record immutable heuristic score');
+    expect(source).toContain('exactly this preview');
     expect(source).toContain('Recorded score artifacts — immutable history');
     expect(source).toContain('not an immutable audit artifact');
   });
