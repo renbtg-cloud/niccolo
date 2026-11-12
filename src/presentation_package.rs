@@ -694,15 +694,14 @@ pub async fn build_with_examined_sources_and_preview(
 ) -> Result<(PresentationPackage, ExaminedSourceExportPreview), PresentationError> {
     let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
     let extracts = examined_source_extracts(pool, workspace, situation, analysis).await?;
-    let source_bytes = extracts
-        .iter()
-        .try_fold(0u64, |total, item| {
-            total.checked_add(
+    let source_bytes = extracts.iter().try_fold(0u64, |total, item| {
+        total
+            .checked_add(
                 u64::try_from(item.content.len())
                     .map_err(|_| PresentationError::SourceExtractTooLarge)?,
             )
             .ok_or(PresentationError::SourceExtractTooLarge)
-        })?;
+    })?;
     let preview = preview_from_counts(
         u64::try_from(extracts.len()).map_err(|_| PresentationError::SourceExtractTooLarge)?,
         source_bytes,
@@ -767,14 +766,16 @@ pub async fn record_sensitive_export_event(
         || actor.is_nil()
         || !preview.within_export_bounds
         || package_sha256.len() != 64
-        || !package_sha256.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || !package_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
         return Err(PresentationError::Invalid);
     }
     let count =
         i64::try_from(preview.examined_fragment_count).map_err(|_| PresentationError::Invalid)?;
-    let bytes =
-        i64::try_from(preview.examined_source_text_bytes).map_err(|_| PresentationError::Invalid)?;
+    let bytes = i64::try_from(preview.examined_source_text_bytes)
+        .map_err(|_| PresentationError::Invalid)?;
     let mut tx = audit_scoped(pool, workspace).await?;
     let inserted = sqlx::query(
         "INSERT INTO niccolo.analysis_export_events

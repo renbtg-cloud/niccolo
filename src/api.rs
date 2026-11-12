@@ -5275,9 +5275,10 @@ fn presentation_api_error(err: PresentationError) -> ApiError {
             StatusCode::PAYLOAD_TOO_LARGE,
             "presentation package too large",
         ),
-        PresentationError::Invalid => {
-            ApiError(StatusCode::BAD_REQUEST, "invalid presentation export request")
-        }
+        PresentationError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid presentation export request",
+        ),
         PresentationError::Conflict => {
             ApiError(StatusCode::CONFLICT, "presentation export event conflict")
         }

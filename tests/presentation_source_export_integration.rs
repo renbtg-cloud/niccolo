@@ -333,7 +333,8 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     .bind(f.workspace)
     .bind(analysis)
     .bind(export_event)
-    .fetch_one(&f.admin)    .await
+    .fetch_one(&f.admin)
+    .await
     .unwrap();
     assert_eq!(audit_rows, 1);
 
