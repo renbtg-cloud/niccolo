@@ -19,7 +19,8 @@ describe('buyer-facing primary surfaces', () => {
   it('collapses prepared demo identifiers while keeping the bearer token explicit', () => {
     expect(connect).toContain('Prepared Situation');
     expect(connect).toContain('<summary>Connection identifiers</summary>');
-    expect(connect).toContain('Bearer tokens are never read from the URL or persisted.');
+    expect(connect).toContain('Bearer tokens are never placed in the URL or persisted.');
+    expect(connect).toContain('A local one-shot handoff connects automatically when present');
     expect(connect).toContain('.niccolo-local/token.txt');
     expect(connect).toContain('Share prepared demo link');
     expect(connect).toContain('Send the bearer token separately.');
