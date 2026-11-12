@@ -108,10 +108,10 @@ printf '%s\n' "$token" > .niccolo-local/token.txt
 chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt .niccolo-local/prepared-url.txt 2>/dev/null || true
 
 echo 'Local setup complete. Credentials are in .niccolo-local/ (never commit or share).'
-echo 'Configure reasoning: bash scripts/configure-local-model.sh'
+echo 'If you used the lower-level bootstrap directly, configure reasoning next: bash scripts/configure-local-model.sh'
 echo 'Start: bash scripts/start-local-mvp.sh'
-echo 'Prepared browser URL: .niccolo-local/prepared-url.txt'
-echo 'Bearer token: .niccolo-local/token.txt'
-echo 'The prepared URL fills workspace and Situation identifiers; paste the bearer token separately.'
-echo 'On a desktop, start waits for health and best-effort opens that URL; set NICCOLO_OPEN_BROWSER=0 to disable.'
+echo 'Prepared browser URL fallback: .niccolo-local/prepared-url.txt'
+echo 'Bearer token manual fallback: .niccolo-local/token.txt'
+echo 'On a desktop, start waits for health and uses a short-lived one-shot local handoff for automatic connection.'
+echo 'Headless/--no-browser starts keep the prepared URL + token-file manual fallback.'
 echo 'The first Situation is created through the web UI, not automatically here.'
