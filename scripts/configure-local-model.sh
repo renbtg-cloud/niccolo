@@ -82,7 +82,48 @@ fi
 
 valid_text(){
   local value="$1" max="$2"
-  [[ -n "$value" && ${#value} -le $max && "$value" != *
+  [[ -n "$value" && ${#value} -le $max && "$value" =~ [^[:space:]] ]] || return 1
+  [[ "$value" =~ [[:cntrl:]] ]] && return 1
+  return 0
+}
+
+valid_text "$base_url" 2048 || { echo 'A bounded model base URL is required.' >&2; exit 2; }
+valid_text "$model" 512 || { echo 'A bounded model name is required.' >&2; exit 2; }
+if [[ -n "$provider" ]]; then
+  valid_text "$provider" 128 || { echo 'Provider label is invalid.' >&2; exit 2; }
+fi
+
+command -v node >/dev/null 2>&1 || { echo 'Node.js is required to validate the model endpoint.' >&2; exit 1; }
+endpoint_kind="$(NICCOLO_CONFIG_BASE_URL="$base_url" node - <<'NODE'
+const raw = process.env.NICCOLO_CONFIG_BASE_URL;
+try {
+  if (/\s/.test(raw)) process.exit(2);
+  const u = new URL(raw);
+  if (u.username || u.password || u.search || u.hash) process.exit(2);
+  if (u.protocol === 'http:') {
+    if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') process.exit(3);
+    process.stdout.write('loopback');
+  } else if (u.protocol === 'https:' && u.hostname) {
+    process.stdout.write('remote');
+  } else {
+    process.exit(2);
+  }
+} catch {
+  process.exit(2);
+}
+NODE
+)" || {
+  status=$?
+  if [[ "$status" == 3 ]]; then
+    echo 'Plain HTTP model endpoints are allowed only on loopback.' >&2
+  else
+    echo 'Model base URL must be a credential-free HTTPS URL, or HTTP on 127.0.0.1/localhost.' >&2
+  fi
+  exit 2
+}
+loopback_http=0
+[[ "$endpoint_kind" != "loopback" ]] || loopback_http=1
+
 if (( loopback_http == 0 )) && [[ -z "$api_key" && "$mode" != "--from-env" ]]; then
   printf 'API key (input hidden): '
   IFS= read -r -s api_key
