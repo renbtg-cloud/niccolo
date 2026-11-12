@@ -517,7 +517,17 @@ async fn examined_source_extracts(
     }
     let mut bytes = 0usize;
     let mut out = Vec::with_capacity(rows.len());
-    for (document_id, evidence_id, ordinal, format, locator, speaker_label, content, source_class) in rows {
+    for (
+        document_id,
+        evidence_id,
+        ordinal,
+        format,
+        locator,
+        speaker_label,
+        content,
+        source_class,
+    ) in rows
+    {
         bytes = bytes.saturating_add(content.len());
         if bytes > MAX_SOURCE_EXTRACT_BYTES {
             return Err(PresentationError::SourceExtractTooLarge);
@@ -639,8 +649,16 @@ mod tests {
         assert!(!result.includes_original_source_fragment_contents);
         assert!(!result.examined_source_extracts_are_original_uploads);
         assert!(!result.examined_source_extracts_establish_truth);
-        assert!(result.files.contains_key("data/examined_source_fragments.json"));
-        assert!(result.files.contains_key("data/examined_source_fragments.csv"));
+        assert!(
+            result
+                .files
+                .contains_key("data/examined_source_fragments.json")
+        );
+        assert!(
+            result
+                .files
+                .contains_key("data/examined_source_fragments.csv")
+        );
         assert!(result.files["README.md"].contains("explicitly authorized variant"));
         assert!(result.files["README.md"].contains("do not establish truth"));
         assert!(result.files["data/examined_source_fragments.csv"].contains("'=not a spreadsheet"));
