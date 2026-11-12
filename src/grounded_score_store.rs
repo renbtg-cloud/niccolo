@@ -25,6 +25,8 @@ pub enum GroundedScoreStoreError {
     Invalid,
     #[error("grounded score ID replay conflicts with recorded artifact")]
     Conflict,
+    #[error("grounded score stored artifact failed integrity validation")]
+    Corrupt,
     #[error("grounded score record limit reached")]
     TooMany,
     #[error("privileged SQL session is prohibited")]
@@ -134,7 +136,7 @@ type StoredRow = (
 fn view(row: StoredRow) -> Result<GroundedScoreRecordView, GroundedScoreStoreError> {
     let confidence = row
         .4
-        .map(|value| u8::try_from(value).map_err(|_| GroundedScoreStoreError::Conflict))
+        .map(|value| u8::try_from(value).map_err(|_| GroundedScoreStoreError::Corrupt))
         .transpose()?;
     let policy: WeightPolicy = serde_json::from_value(row.3)?;
     let declared_evidence: Vec<DeclaredEvidenceStrength> = serde_json::from_value(row.5)?;
@@ -147,7 +149,7 @@ fn view(row: StoredRow) -> Result<GroundedScoreRecordView, GroundedScoreStoreErr
         || result.establishes_claim_truth
         || result.modifies_historical_analysis
     {
-        return Err(GroundedScoreStoreError::Conflict);
+        return Err(GroundedScoreStoreError::Corrupt);
     }
     Ok(GroundedScoreRecordView {
         claim_id: row.0,

@@ -5466,7 +5466,8 @@ fn grounded_score_store_error(error: GroundedScoreStoreError) -> ApiError {
         GroundedScoreStoreError::TooMany => {
             ApiError(StatusCode::CONFLICT, "grounded score record limit reached")
         }
-        GroundedScoreStoreError::Json(_)
+        GroundedScoreStoreError::Corrupt
+        | GroundedScoreStoreError::Json(_)
         | GroundedScoreStoreError::Database(_)
         | GroundedScoreStoreError::Privileged => ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
