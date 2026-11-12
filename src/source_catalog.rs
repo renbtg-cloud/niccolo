@@ -83,7 +83,15 @@ pub async fn list_sources(
         .into_iter()
         .take(limit as usize)
         .map(
-            |(document_id, format, locator, sha256, byte_length, fragment_count, original_bytes_available)| SourceMetadata {
+            |(
+                document_id,
+                format,
+                locator,
+                sha256,
+                byte_length,
+                fragment_count,
+                original_bytes_available,
+            )| SourceMetadata {
                 document_id,
                 format,
                 locator,
@@ -142,12 +150,14 @@ pub async fn source_original(
     .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
-    value.map(|(format, digest, original)| {
-        if format!("{:x}", Sha256::digest(&original)) != digest {
-            return Err(CatalogError::CorruptOriginal);
-        }
-        Ok((format, original))
-    }).transpose()
+    value
+        .map(|(format, digest, original)| {
+            if format!("{:x}", Sha256::digest(&original)) != digest {
+                return Err(CatalogError::CorruptOriginal);
+            }
+            Ok((format, original))
+        })
+        .transpose()
 }
 
 pub async fn document_speakers(

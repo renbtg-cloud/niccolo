@@ -257,8 +257,18 @@ pub async fn record(
         || row.2 != input.collection_status
         || row.3 != input.scope_description.trim()
         || row.4 != input.reason.trim()
-        || row.5 != input.collector_label.as_deref().map(str::trim).map(str::to_owned)
-        || row.6 != input.date_scope.as_deref().map(str::trim).map(str::to_owned)
+        || row.5
+            != input
+                .collector_label
+                .as_deref()
+                .map(str::trim)
+                .map(str::to_owned)
+        || row.6
+            != input
+                .date_scope
+                .as_deref()
+                .map(str::trim)
+                .map(str::to_owned)
         || row.7 != input.assertion_kind
         || row.8 != input.document_id
         || row.9 != input.supersedes_scope_id

@@ -169,7 +169,6 @@ pub struct ImportOriginalBytes {
     pub bytes: Vec<u8>,
 }
 
-
 #[cfg(test)]
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -194,7 +193,6 @@ fn package_sha256(package: &ForensicSituationExport) -> Result<String, ForensicI
         .map_err(situation_forensic_export::ForensicExportError::from)?;
     Ok(format!("{:x}", writer.0.finalize()))
 }
-
 
 fn valid_text(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
@@ -406,8 +404,6 @@ type ImportItemDetailRow = (
     Option<Value>,
     bool,
 );
-
-
 
 fn replay_view(
     row: BatchRow,
@@ -695,8 +691,7 @@ pub async fn list_items(
 ) -> Result<ImportItemPage, ForensicImportError> {
     if batch.is_nil()
         || !(1..=200).contains(&limit)
-        || after_source_path
-            .is_some_and(|value| value.len() > 2048 || value.contains('\0'))
+        || after_source_path.is_some_and(|value| value.len() > 2048 || value.contains('\0'))
     {
         return Err(ForensicImportError::Invalid);
     }

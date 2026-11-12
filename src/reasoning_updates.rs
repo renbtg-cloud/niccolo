@@ -1,6 +1,9 @@
 //! v0.801-v0.850: structured intermediate reasoning updates.
 //! These records feed later reasoning steps but remain explicit assumptions/gaps/questions, not facts.
-use crate::{analysis_structure::AnalysisScope, observation_query_ledger::{self, SourceQueryIntent}};
+use crate::{
+    analysis_structure::AnalysisScope,
+    observation_query_ledger::{self, SourceQueryIntent},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -153,7 +156,10 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         for prediction in &interpretation.predictions {
             if !nested_ids.insert(prediction.prediction_id)
                 || !valid(&prediction.expected_observation, 4096)
-                || !matches!(prediction.direction.as_str(), "SUPPORT" | "COUNTEREVIDENCE" | "DISCRIMINATE")
+                || !matches!(
+                    prediction.direction.as_str(),
+                    "SUPPORT" | "COUNTEREVIDENCE" | "DISCRIMINATE"
+                )
                 || !valid(&prediction.rationale, 4096)
             {
                 return Err(UpdateError::Invalid);
@@ -162,7 +168,10 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         nested_ids.clear();
         for link in &interpretation.evidence_links {
             if !nested_ids.insert(link.link_id)
-                || !matches!(link.relation.as_str(), "SUPPORTS" | "CONTRADICTS" | "CONTEXT")
+                || !matches!(
+                    link.relation.as_str(),
+                    "SUPPORTS" | "CONTRADICTS" | "CONTEXT"
+                )
                 || !valid(&link.rationale, 4096)
             {
                 return Err(UpdateError::Invalid);
@@ -172,7 +181,10 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         for relation in &interpretation.relations {
             if !nested_ids.insert(relation.relation_id)
                 || relation.other_interpretation_id == interpretation.interpretation_id
-                || !matches!(relation.relation.as_str(), "COMPETES_WITH" | "CAN_COEXIST" | "REFINES" | "OVERLAPS")
+                || !matches!(
+                    relation.relation.as_str(),
+                    "COMPETES_WITH" | "CAN_COEXIST" | "REFINES" | "OVERLAPS"
+                )
                 || !valid(&relation.rationale, 4096)
             {
                 return Err(UpdateError::Invalid);
@@ -206,8 +218,15 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
             || q.possible_outcomes.len() > 8
             || q.decision_relevance.is_some_and(|v| v > 100)
             || q.acquisition_cost.is_some_and(|v| v > 100)
-            || q.cheaper_alternative.as_ref().is_some_and(|v| !valid(v, 2048))
-            || q.discriminates_interpretation_ids.iter().copied().collect::<std::collections::BTreeSet<_>>().len() != q.discriminates_interpretation_ids.len()
+            || q.cheaper_alternative
+                .as_ref()
+                .is_some_and(|v| !valid(v, 2048))
+            || q.discriminates_interpretation_ids
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != q.discriminates_interpretation_ids.len()
         {
             return Err(UpdateError::Invalid);
         }
@@ -343,12 +362,14 @@ pub async fn apply(
                 .bind(scope.workspace).bind(scope.situation).bind(scope.analysis)
                 .bind(interpretation.interpretation_id).bind(prediction.prediction_id)
                 .fetch_optional(&mut *tx).await?;
-            if stored != Some((
-                prediction.expected_observation.trim().to_owned(),
-                prediction.direction.clone(),
-                prediction.rationale.trim().to_owned(),
-                actor,
-            )) {
+            if stored
+                != Some((
+                    prediction.expected_observation.trim().to_owned(),
+                    prediction.direction.clone(),
+                    prediction.rationale.trim().to_owned(),
+                    actor,
+                ))
+            {
                 return Err(UpdateError::Conflict);
             }
         }
@@ -376,7 +397,14 @@ pub async fn apply(
             if inserted.rows_affected() == 0 && stored.is_none() {
                 return Err(UpdateError::Invalid);
             }
-            if stored != Some((link.evidence_id, link.relation.clone(), link.rationale.trim().to_owned(), actor)) {
+            if stored
+                != Some((
+                    link.evidence_id,
+                    link.relation.clone(),
+                    link.rationale.trim().to_owned(),
+                    actor,
+                ))
+            {
                 return Err(UpdateError::Conflict);
             }
         }
@@ -389,13 +417,15 @@ pub async fn apply(
             let stored:Option<(Uuid,Uuid,String,String,Uuid)>=sqlx::query_as("SELECT left_interpretation_id,right_interpretation_id,relation,rationale,recorded_by_principal_id FROM niccolo.situation_analysis_hypothesis_relations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND relation_id=$4")
                 .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(relation.relation_id)
                 .fetch_optional(&mut *tx).await?;
-            if stored != Some((
-                interpretation.interpretation_id,
-                relation.other_interpretation_id,
-                relation.relation.clone(),
-                relation.rationale.trim().to_owned(),
-                actor,
-            )) {
+            if stored
+                != Some((
+                    interpretation.interpretation_id,
+                    relation.other_interpretation_id,
+                    relation.relation.clone(),
+                    relation.rationale.trim().to_owned(),
+                    actor,
+                ))
+            {
                 return Err(UpdateError::Conflict);
             }
         }
@@ -427,14 +457,16 @@ pub async fn apply(
             .bind(query.query_id)
             .fetch_optional(&mut *tx)
             .await?;
-        if stored != Some((
-            query.query.trim().to_owned(),
-            query.rationale.trim().to_owned(),
-            query.expected_observation.trim().to_owned(),
-            query.direction.clone(),
-            query.interpretation_id,
-            actor,
-        )) {
+        if stored
+            != Some((
+                query.query.trim().to_owned(),
+                query.rationale.trim().to_owned(),
+                query.expected_observation.trim().to_owned(),
+                query.direction.clone(),
+                query.interpretation_id,
+                actor,
+            ))
+        {
             return Err(UpdateError::Conflict);
         }
     }
@@ -487,12 +519,17 @@ pub async fn apply(
                 .execute(&mut *tx).await?;
             let value_row:Option<StoredClarificationValueRow>=sqlx::query_as("SELECT decision_relevance,acquisition_cost,cheaper_alternative,recorded_by_principal_id FROM niccolo.situation_analysis_clarification_values WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4")
                 .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).fetch_optional(&mut *tx).await?;
-            if value_row != Some((
-                q.decision_relevance.map(|v| v as i16),
-                q.acquisition_cost.map(|v| v as i16),
-                q.cheaper_alternative.as_deref().map(str::trim).map(str::to_owned),
-                actor,
-            )) {
+            if value_row
+                != Some((
+                    q.decision_relevance.map(|v| v as i16),
+                    q.acquisition_cost.map(|v| v as i16),
+                    q.cheaper_alternative
+                        .as_deref()
+                        .map(str::trim)
+                        .map(str::to_owned),
+                    actor,
+                ))
+            {
                 return Err(UpdateError::Conflict);
             }
             for interpretation_id in &q.discriminates_interpretation_ids {
@@ -512,7 +549,13 @@ pub async fn apply(
                     .execute(&mut *tx).await?;
                 let outcome_row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT outcome_label,effect_note,recorded_by_principal_id FROM niccolo.situation_analysis_clarification_outcomes WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND question_id=$4 AND outcome_id=$5")
                     .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(q.question_id).bind(outcome.outcome_id).fetch_optional(&mut *tx).await?;
-                if outcome_row != Some((outcome.label.trim().to_owned(), outcome.effect_note.trim().to_owned(), actor)) {
+                if outcome_row
+                    != Some((
+                        outcome.label.trim().to_owned(),
+                        outcome.effect_note.trim().to_owned(),
+                        actor,
+                    ))
+                {
                     return Err(UpdateError::Conflict);
                 }
             }
@@ -583,7 +626,6 @@ mod tests {
         assert!(parse(&value).is_err());
     }
 
-
     #[test]
     fn parses_hypothesis_predictions_relations_and_evidence_links() {
         let left = Uuid::new_v4();
@@ -625,8 +667,14 @@ mod tests {
         });
         let parsed = parse(&value).unwrap().unwrap();
         assert_eq!(parsed.candidate_interpretations[0].predictions.len(), 1);
-        assert_eq!(parsed.candidate_interpretations[0].evidence_links[0].evidence_id, evidence);
-        assert_eq!(parsed.candidate_interpretations[0].relations[0].other_interpretation_id, right);
+        assert_eq!(
+            parsed.candidate_interpretations[0].evidence_links[0].evidence_id,
+            evidence
+        );
+        assert_eq!(
+            parsed.candidate_interpretations[0].relations[0].other_interpretation_id,
+            right
+        );
     }
 
     #[test]

@@ -106,14 +106,8 @@ fn valid_input(input: &TemporalAssertionInput) -> bool {
                 | "UNKNOWN"
         )
         && !(input.evidence_id.is_some() && input.contribution_id.is_some())
-        && input
-            .valid_from
-            .as_ref()
-            .is_none_or(|v| valid_text(v, 128))
-        && input
-            .valid_to
-            .as_ref()
-            .is_none_or(|v| valid_text(v, 128))
+        && input.valid_from.as_ref().is_none_or(|v| valid_text(v, 128))
+        && input.valid_to.as_ref().is_none_or(|v| valid_text(v, 128))
 }
 
 async fn scoped(

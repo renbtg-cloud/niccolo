@@ -7,7 +7,7 @@ describe('Situation multi-source first-user import', () => {
   it('accepts several supported files in one explicit user selection', () => {
     expect(source).toContain('multiple');
     expect(source).toContain('setFiles(Array.from(event.target.files ?? []))');
-    expect(source).toContain('for (const selected of selectedFiles)');
+    expect(source).toContain('for (const [index, selected] of selectedFiles.entries())');
     expect(source).toContain('Import and attach');
   });
 

@@ -8,13 +8,26 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 : "${NICCOLO_PG_ADMIN_URL:?Set an admin URL for a new dedicated PostgreSQL database}"
-: "${NICCOLO_PG_SECURE_PASSWORD:?Set the dedicated non-admin runtime password}"
 for program in psql node; do
   command -v "$program" >/dev/null || {
     printf 'Missing executable: %s\n' "$program" >&2
     exit 1
   }
 done
+
+# The runtime database credential is an implementation secret, not something a
+# first user should have to invent. Generate a high-entropy value unless an
+# operator deliberately supplied one (for example in deployment automation).
+generated_secure_password=0
+if [[ -z "${NICCOLO_PG_SECURE_PASSWORD:-}" ]]; then
+  NICCOLO_PG_SECURE_PASSWORD="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")"
+  export NICCOLO_PG_SECURE_PASSWORD
+  generated_secure_password=1
+fi
+if [[ "$NICCOLO_PG_SECURE_PASSWORD" =~ [[:cntrl:]] ]]; then
+  echo 'NICCOLO_PG_SECURE_PASSWORD contains unsupported control characters.' >&2
+  exit 2
+fi
 if [[ -e .niccolo-local/local.env || -e .niccolo-local/token.txt ]]; then
   echo 'Local credentials already exist; refusing to overwrite them.' >&2
   exit 1
@@ -49,7 +62,7 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT rolsu
 fi
 
 echo '[1/4] Build MVP before changing the database'
-bash scripts/build-mvp.sh
+NICCOLO_BUILD_VERIFY=0 bash scripts/build-mvp.sh
 ext=''
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ext='.exe';; esac
 
@@ -94,9 +107,15 @@ printf '%s\n' "$token" > .niccolo-local/token.txt
 chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt .niccolo-local/prepared-url.txt 2>/dev/null || true
 
 echo 'Local setup complete. Credentials are in .niccolo-local/ (never commit or share).'
-echo 'Set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL to enable local inference.'
+if (( generated_secure_password == 1 )); then
+  echo 'Runtime PostgreSQL password: generated automatically and stored only in .niccolo-local/local.env.'
+else
+  echo 'Runtime PostgreSQL password: supplied by the operator and not displayed.'
+fi
+echo 'Configure reasoning: bash scripts/configure-local-model.sh'
 echo 'Start: bash scripts/start-local-mvp.sh'
 echo 'Prepared browser URL: .niccolo-local/prepared-url.txt'
 echo 'Bearer token: .niccolo-local/token.txt'
 echo 'The prepared URL fills workspace and Situation identifiers; paste the bearer token separately.'
+echo 'On a desktop, start waits for health and best-effort opens that URL; set NICCOLO_OPEN_BROWSER=0 to disable.'
 echo 'The first Situation is created through the web UI, not automatically here.'

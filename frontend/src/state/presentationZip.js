@@ -99,3 +99,10 @@ export function presentationZip(pkg) {
   view.setUint32(16, offset, true);
   return new Blob([...parts, ...directory, end], { type: 'application/zip' });
 }
+
+export function checkpointZip(pkg) {
+  if (pkg?.format !== 'niccolo.operation-checkpoint-package' || pkg.published_to_git !== false) {
+    throw new Error('Invalid operation checkpoint package.');
+  }
+  return presentationZip({ ...pkg, format: 'niccolo.presentation-package' });
+}

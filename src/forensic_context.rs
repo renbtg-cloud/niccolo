@@ -129,7 +129,11 @@ fn view_from_row(row: BindingRow, mut remaining_bytes: i64) -> (ForensicContextI
     let had_payload = candidate_payload.is_some();
     let include_payload =
         had_payload && payload_bytes <= MAX_ITEM_JSON_BYTES && payload_bytes <= remaining_bytes;
-    let payload_json = if include_payload { candidate_payload } else { None };
+    let payload_json = if include_payload {
+        candidate_payload
+    } else {
+        None
+    };
     if include_payload {
         remaining_bytes -= payload_bytes;
     }

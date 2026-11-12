@@ -3,11 +3,11 @@
 use crate::analysis_assumptions;
 use crate::analysis_claims;
 use crate::analysis_structure::AnalysisScope;
+use crate::review_workflow;
 use crate::{
     collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
     integrity_scope, source_scope, temporal_state,
 };
-use crate::review_workflow;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -213,7 +213,9 @@ pub async fn bundle(
     let hypothesis_portfolio = hypothesis_portfolio::portfolio(pool, scope)
         .await
         .map_err(|e| dep(&e))?;
-    let temporal_assertions = temporal_state::list(pool, scope).await.map_err(|e| dep(&e))?;
+    let temporal_assertions = temporal_state::list(pool, scope)
+        .await
+        .map_err(|e| dep(&e))?;
     let source_scope = source_scope::list(pool, scope).await.map_err(|e| dep(&e))?;
     let collection_events = collection_provenance::list(pool, scope)
         .await
@@ -221,7 +223,9 @@ pub async fn bundle(
     let integrity_assessments = integrity_scope::list(pool, scope)
         .await
         .map_err(|e| dep(&e))?;
-    let decisions = decision_points::package(pool, scope).await.map_err(|e| dep(&e))?;
+    let decisions = decision_points::package(pool, scope)
+        .await
+        .map_err(|e| dep(&e))?;
     let decision_readiness = decision_readiness::latest(pool, scope)
         .await
         .map_err(|e| dep(&e))?;

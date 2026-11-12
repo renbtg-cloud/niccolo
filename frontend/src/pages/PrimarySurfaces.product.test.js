@@ -25,6 +25,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(connect).toContain('Send the bearer token separately.');
   });
 
+  it('focuses the first Situation question only while creating it', () => {
+    expect(situation).toContain("function FocusForm({ initial = '', label, pending, onSubmit, autoFocus = false })");
+    expect(situation).toContain('<textarea autoFocus={autoFocus}');
+    expect(situation).toContain('<FocusForm label="Initial focus" autoFocus');
+  });
+
   it('describes Situation preparation without blocking a first pass', () => {
     expect(situation).toContain('What Niccolò has to work with');
     expect(situation).toContain('not a completeness score and not a gate');
@@ -39,11 +45,13 @@ describe('buyer-facing primary surfaces', () => {
     expect(operations).toContain("queryKey:client?qk.situation(client.config):['situation','none']");
     expect(operations).toContain('situationGuide(situation.data)');
     expect(operations).toContain('Focus-only first pass.');
+    expect(operations).toContain('bash scripts/configure-local-model.sh');
   });
 
   it('shows model readiness before the user enters Analyze', () => {
     expect(situation).toContain("queryKey: ['mvp-runtime-readiness']");
     expect(situation).toContain('A reasoning model is not configured yet.');
+    expect(situation).toContain('bash scripts/configure-local-model.sh');
     expect(situation).toContain('.niccolo-local/model.env');
   });
 
@@ -61,9 +69,9 @@ describe('buyer-facing primary surfaces', () => {
   });
 
   it('retains upload document identity when a partial import must be retried', () => {
-    expect(situation).toContain('pendingDocumentId.current ?? crypto.randomUUID()');
-    expect(situation).toContain('pendingDocumentId.current = documentId');
-    expect(situation).toContain('pendingDocumentId.current = null');
+    expect(situation).toContain('pendingDocumentIds.current.get(signature)');
+    expect(situation).toContain('pendingDocumentIds.current.set(signature, documentId)');
+    expect(situation).toContain('pendingDocumentIds.current.clear()');
     expect(situation).toContain('onError: refresh');
     expect(situation).toContain('upload.reset();');
     expect(situation).toContain('pendingContribution.current?.signature !== signature');

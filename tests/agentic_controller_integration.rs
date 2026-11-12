@@ -5,13 +5,16 @@ use niccolo_evidence::{
     analysis_structure::AnalysisScope,
     bff_operations::{self, NewOperation, OperationScope},
     human_agency::{self, EvidenceGapInput},
-    model_adapter::{self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel},
     model_adapter::DeterministicModel,
-    operation_budget::{self, BudgetError},
+    model_adapter::{
+        self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest,
+        ModelResponse, ReasoningModel,
+    },
+    operation_budget,
 };
 use serde_json::json;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 #[derive(Clone, Copy)]
 struct Seed {
@@ -94,8 +97,12 @@ struct OverBudgetModel {
 }
 
 impl ReasoningModel for OverBudgetModel {
-    fn provider(&self) -> &str { "over-budget-fixture" }
-    fn model(&self) -> &str { "static-response" }
+    fn provider(&self) -> &str {
+        "over-budget-fixture"
+    }
+    fn model(&self) -> &str {
+        "static-response"
+    }
     fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async {
@@ -137,16 +144,14 @@ impl ReasoningModel for HumanSteeringAssertingModel {
             true
         );
         assert_eq!(
-            request.output_contract["niccolo_rules"]
-                ["human_steering_does_not_rewrite_frozen_input"],
+            request.output_contract["niccolo_rules"]["human_steering_does_not_rewrite_frozen_input"],
             true
         );
         let responses = steering["responses"]
             .as_array()
             .expect("human steering responses are an array");
         assert!(responses.iter().any(|response| {
-            response["decision"] == "REPLAN"
-                && response["response_text"] == self.expected_text
+            response["decision"] == "REPLAN" && response["response_text"] == self.expected_text
         }));
         let purpose = request.purpose.clone();
         Box::pin(async move {
@@ -164,8 +169,12 @@ impl ReasoningModel for HumanSteeringAssertingModel {
 
 struct NoUsageModel;
 impl ReasoningModel for NoUsageModel {
-    fn provider(&self) -> &str { "usage-omitting-fixture" }
-    fn model(&self) -> &str { "static-response" }
+    fn provider(&self) -> &str {
+        "usage-omitting-fixture"
+    }
+    fn model(&self) -> &str {
+        "static-response"
+    }
     fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
         Box::pin(async {
             Ok(ModelResponse {
@@ -187,14 +196,20 @@ async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
     let scope = op(&app, s, 10).await;
     let step_id = Uuid::new_v4();
     let (revision, _) = agentic_controller::create_plan(
-        &app, scope, s.principal,
+        &app,
+        scope,
+        s.principal,
         &[step(step_id, 1, "SYNTHESIZE", false, vec![])],
     )
     .await
     .unwrap();
     model_adapter::invoke_recorded(
         &app,
-        InvocationScope { operation: scope, plan_revision: revision, step_id },
+        InvocationScope {
+            operation: scope,
+            plan_revision: revision,
+            step_id,
+        },
         s.principal,
         &NoUsageModel,
         &ModelRequest {
@@ -228,10 +243,16 @@ async fn model_token_budget_breach_is_not_retried_or_misreported() {
     )
     .await
     .unwrap();
-    let model = OverBudgetModel { calls: AtomicUsize::new(0) };
+    let model = OverBudgetModel {
+        calls: AtomicUsize::new(0),
+    };
     let result = model_adapter::invoke_recorded_with_policy(
         &app,
-        InvocationScope { operation: scope, plan_revision: revision, step_id },
+        InvocationScope {
+            operation: scope,
+            plan_revision: revision,
+            step_id,
+        },
         s.principal,
         &model,
         &ModelRequest {
@@ -239,7 +260,11 @@ async fn model_token_budget_breach_is_not_retried_or_misreported() {
             input: json!({}),
             output_contract: json!({}),
         },
-        InvocationPolicy { timeout_ms: 5_000, max_attempts: 4, max_total_tokens: Some(100) },
+        InvocationPolicy {
+            timeout_ms: 5_000,
+            max_attempts: 4,
+            max_total_tokens: Some(100),
+        },
     )
     .await;
     assert!(matches!(result, Err(ModelError::Budget)));
@@ -600,7 +625,13 @@ async fn step_budget_remains_operation_wide_across_replans() {
     )
     .await
     .unwrap();
-    assert_eq!(agentic_controller::view(&app, scope).await.unwrap().budget_used, 1);
+    assert_eq!(
+        agentic_controller::view(&app, scope)
+            .await
+            .unwrap()
+            .budget_used,
+        1
+    );
 
     agentic_controller::resolve_human_boundary(
         &app,
@@ -616,7 +647,10 @@ async fn step_budget_remains_operation_wide_across_replans() {
     let replanned = agentic_controller::view(&app, scope).await.unwrap();
     assert_eq!(replanned.budget_used, 1);
     assert_eq!(replanned.budget_total, 2);
-    let first = *replanned.ready_step_ids.first().expect("replanned work is ready");
+    let first = *replanned
+        .ready_step_ids
+        .first()
+        .expect("replanned work is ready");
     agentic_controller::start_step(&app, scope, first, s.principal)
         .await
         .unwrap();
@@ -625,7 +659,10 @@ async fn step_budget_remains_operation_wide_across_replans() {
         .unwrap();
     let after = agentic_controller::view(&app, scope).await.unwrap();
     assert_eq!(after.budget_used, 2);
-    let next = *after.ready_step_ids.first().expect("another replanned step is ready");
+    let next = *after
+        .ready_step_ids
+        .first()
+        .expect("another replanned step is ready");
     assert!(matches!(
         agentic_controller::start_step(&app, scope, next, s.principal).await,
         Err(agentic_controller::ControllerError::BudgetExhausted)
@@ -744,12 +781,20 @@ async fn bounded_human_steering_keeps_the_newest_responses_in_chronological_orde
         .unwrap();
     assert!(steering.truncated);
     assert_eq!(steering.responses.len(), 32);
-    assert_eq!(steering.responses.first().unwrap().response_text, "response-02");
-    assert_eq!(steering.responses.last().unwrap().response_text, "response-33");
-    assert!(steering
-        .responses
-        .windows(2)
-        .all(|pair| pair[0].plan_revision < pair[1].plan_revision));
+    assert_eq!(
+        steering.responses.first().unwrap().response_text,
+        "response-02"
+    );
+    assert_eq!(
+        steering.responses.last().unwrap().response_text,
+        "response-33"
+    );
+    assert!(
+        steering
+            .responses
+            .windows(2)
+            .all(|pair| pair[0].plan_revision < pair[1].plan_revision)
+    );
 }
 
 #[tokio::test]
@@ -1166,20 +1211,16 @@ async fn prior_human_review_survives_plan_revision_changes() {
     .await
     .unwrap();
 
-    assert!(agentic_controller::human_review_occurred(&app, scope)
-        .await
-        .unwrap());
+    assert!(
+        agentic_controller::human_review_occurred(&app, scope)
+            .await
+            .unwrap()
+    );
 
-    let model = DeterministicModel::new("human-review-regression", "deterministic")
+    let model = DeterministicModel::new("human-review-regression", "deterministic").unwrap();
+    let outcome = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+        .await
         .unwrap();
-    let outcome = agentic_runtime::run_until_boundary(
-        &app,
-        scope,
-        s.principal,
-        &model,
-    )
-    .await
-    .unwrap();
     assert_eq!(outcome.state, "SUCCEEDED");
     assert!(outcome.terminal);
 

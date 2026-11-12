@@ -92,12 +92,16 @@ Prerequisites: Node.js/npm, Rust 1.99.1, PostgreSQL 17 client tools (`psql`),
 and a running PostgreSQL server/database that the provided admin account owns.
 On Windows, use Git Bash.
 
-Set `NICCOLO_PG_ADMIN_URL` and `NICCOLO_PG_SECURE_PASSWORD` in your shell's
-environment (do not include them in git commits or shared logs), then run:
+Set `NICCOLO_PG_ADMIN_URL` in your shell's environment, then run:
 
 ```bash
 bash scripts/bootstrap-local-mvp.sh
 ```
+
+The local bootstrap generates the restricted runtime PostgreSQL password
+automatically. Deployment automation may explicitly provide
+`NICCOLO_PG_SECURE_PASSWORD`; Niccolò never prints that value.
+For an intentionally disconnected installation, set `NICCOLO_OFFLINE=1`. The build uses Cargo offline mode and npm's cache only; `NICCOLO_NPM_CACHE=/path/to/npm-cache` can select a transferred cache explicitly. The standard VM dependency bundle is detected automatically when staged under `/opt/niccolo-offline/staged/AB/npm-cache`.
 
 The script refuses to overwrite a previously initialized database or local
 credentials. It also refuses to change the password of an existing
@@ -111,15 +115,19 @@ It writes private files under the ignored `.niccolo-local/` folder:
 Situation identifiers), and `token.txt` (bearer token). Treat the folder
 as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
 
-For a local OpenAI-compatible model runtime, configure
-`NICCOLO_LLM_BASE_URL` (for example `http://127.0.0.1:11434/v1`) and
-`NICCOLO_LLM_MODEL` before starting the API. Keyless HTTP is permitted only
-on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
-Some local models require `NICCOLO_LLM_JSON_MODE=false`.
+Configure the OpenAI-compatible reasoning model once with:
 
-For repeated local use, those exports may be kept in the ignored private file
-`.niccolo-local/model.env`; `scripts/start-local-mvp.sh` sources it
-automatically when present. Keep any API key in that private file, never in the
+```bash
+bash scripts/configure-local-model.sh
+```
+
+The helper prompts for the base URL and model, hides API-key input, rejects remote plain HTTP,
+and writes only the ignored private file `.niccolo-local/model.env` with restrictive permissions
+where the platform supports them. Keyless HTTP is permitted only on loopback; remote HTTPS
+providers require an API key. Some local models require `NICCOLO_LLM_JSON_MODE=false`, which can
+still be exported before running the helper. `scripts/start-local-mvp.sh` sources the private file
+automatically, while explicitly exported `NICCOLO_LLM_*` values override stored defaults for one
+start invocation. Keep any API key in that private file or process environment, never in the
 prepared browser URL or repository.
 
 Start the already-bootstrapped local MVP with one command:
@@ -129,9 +137,13 @@ bash scripts/start-local-mvp.sh
 ```
 
 The helper prints a prepared loopback URL containing only the non-secret
-workspace and Situation identifiers. Open that URL, paste the bearer token from
-`.niccolo-local/token.txt`, and choose **Connect**. The token is deliberately
-never placed in the URL or printed by the start helper.
+workspace and Situation identifiers. On a desktop it also waits for the local
+service to become healthy and makes a best-effort attempt to open that URL in
+the default browser; headless systems simply keep the printed URL as the
+fallback. Set `NICCOLO_OPEN_BROWSER=0` or pass `--no-browser` to suppress the
+automatic open. Paste the bearer token from `.niccolo-local/token.txt` and
+choose **Connect**. The token is deliberately never placed in the URL or
+printed by the start helper.
 
 The prepared URL is also stored in `.niccolo-local/prepared-url.txt`. The
 first Situation is then created from the web interface by entering its focus.
@@ -142,6 +154,8 @@ PostgreSQL already.
 ## Run locally
 
 For an MVP binary containing the **current** React interface, use `bash scripts/build-mvp.sh` after installing the prerequisites below. This command builds `frontend/dist` before compiling `niccolo-api`, whose embedded HTML/JavaScript/CSS are captured at Rust compile time. Running Cargo alone after changing React sources can serve stale UI assets.
+
+When the Cargo vendor directory and npm cache have already been provisioned, `NICCOLO_OFFLINE=1 bash scripts/build-mvp.sh` forces both package managers to stay offline instead of falling back to the network.
 
 
 ### Prerequisites
@@ -264,7 +278,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - User-owned GitHub publication: bounded repository/ref metadata, exact standard-package scope and SHA-256 preview, immutable local publication intents, explicit one-shot transient provider authorization, non-force Git-data publication, remote ref re-verification, and an append-only secret-free publication event ledger.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
-- Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.
+- Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives, immutable anytime checkpoints, and deterministic bounded local checkpoint export packages.
 - A first-party React interface and associated client-state/test infrastructure.
 
 These foundations are not equivalent to a complete consumer onboarding, production-ready data security, or end-to-end autonomous analysis service.

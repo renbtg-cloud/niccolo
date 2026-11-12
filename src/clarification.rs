@@ -179,7 +179,6 @@ pub async fn propose(
     })
 }
 
-
 pub async fn values(
     pool: &PgPool,
     workspace: Uuid,

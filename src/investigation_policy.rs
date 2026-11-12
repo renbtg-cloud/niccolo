@@ -37,12 +37,19 @@ fn dep<E: std::fmt::Display>(e: E) -> InvestigationError {
 }
 
 fn clarification_information_value(value: &clarification::ClarificationValue) -> u16 {
-    let hypothesis_component =
-        (value.discriminates_interpretation_ids.len().min(3) as u16) * 10;
-    let outcome_component = if value.possible_outcome_count >= 2 { 10 } else { 0 };
+    let hypothesis_component = (value.discriminates_interpretation_ids.len().min(3) as u16) * 10;
+    let outcome_component = if value.possible_outcome_count >= 2 {
+        10
+    } else {
+        0
+    };
     let decision_component = value.decision_relevance.unwrap_or(0) / 3;
     let cost_penalty = value.acquisition_cost.unwrap_or(0) / 4;
-    let alternative_penalty = if value.cheaper_alternative.is_some() { 8 } else { 0 };
+    let alternative_penalty = if value.cheaper_alternative.is_some() {
+        8
+    } else {
+        0
+    };
     45u16
         .saturating_add(hypothesis_component)
         .saturating_add(outcome_component)
@@ -77,17 +84,13 @@ pub async fn queue(
     )
     .await
     .map_err(dep)?;
-    let question_values = clarification::values(
-        pool,
-        scope.workspace,
-        scope.situation,
-        scope.analysis,
-    )
-    .await
-    .map_err(dep)?
-    .into_iter()
-    .map(|v| (v.question_id, v))
-    .collect::<std::collections::BTreeMap<_, _>>();
+    let question_values =
+        clarification::values(pool, scope.workspace, scope.situation, scope.analysis)
+            .await
+            .map_err(dep)?
+            .into_iter()
+            .map(|v| (v.question_id, v))
+            .collect::<std::collections::BTreeMap<_, _>>();
     let mut items = Vec::new();
     for g in gaps
         .into_iter()
@@ -150,7 +153,11 @@ pub async fn queue(
                     value.possible_outcome_count,
                     value.decision_relevance,
                     value.acquisition_cost,
-                    value.cheaper_alternative.as_ref().map(|x| format!(", cheaper alternative: {x}")).unwrap_or_default()
+                    value
+                        .cheaper_alternative
+                        .as_ref()
+                        .map(|x| format!(", cheaper alternative: {x}"))
+                        .unwrap_or_default()
                 ),
             )
         } else {

@@ -396,12 +396,14 @@ pub async fn human_steering(
     let mut responses = rows
         .into_iter()
         .take(limit as usize)
-        .map(|(plan_revision, step_id, decision, response_text)| HumanSteeringEntry {
-            plan_revision,
-            step_id,
-            decision,
-            response_text,
-        })
+        .map(
+            |(plan_revision, step_id, decision, response_text)| HumanSteeringEntry {
+                plan_revision,
+                step_id,
+                decision,
+                response_text,
+            },
+        )
         .collect::<Vec<_>>();
     responses.reverse();
     Ok(HumanSteeringView {
@@ -458,15 +460,9 @@ async fn replan_steps(
         .get("human_intent")
         .cloned()
         .and_then(|value| serde_json::from_value(value).ok());
-    crate::agentic_policy::plan_for_intent(
-        pool,
-        scope.workspace,
-        scope.situation,
-        analysis,
-        intent,
-    )
-    .await
-    .map_err(|_| ControllerError::Invalid)
+    crate::agentic_policy::plan_for_intent(pool, scope.workspace, scope.situation, analysis, intent)
+        .await
+        .map_err(|_| ControllerError::Invalid)
 }
 
 // This flag means "ensure autonomous execution is running", not "this HTTP
@@ -714,7 +710,10 @@ mod human_boundary_input_tests {
         assert!(human_boundary_input_valid("STOP", "  "));
         assert!(!human_boundary_input_valid("CONTINUE", ""));
         assert!(!human_boundary_input_valid("REPLAN", "  "));
-        assert!(human_boundary_input_valid("CONTINUE", "Please include another source"));
+        assert!(human_boundary_input_valid(
+            "CONTINUE",
+            "Please include another source"
+        ));
         assert!(!human_boundary_input_valid("UNKNOWN", "yes"));
         assert!(!human_boundary_input_valid("STOP", &"x".repeat(4097)));
     }

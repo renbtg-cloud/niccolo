@@ -3,9 +3,9 @@
 use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
-    bff_operations, model_adapter, model_artifacts, operation_budget, operation_checkpoint,
-    reasoning_handoff,
-    reasoning_packet, reasoning_updates, observation_retrieval, observation_query_ledger,
+    bff_operations, model_adapter, model_artifacts, observation_query_ledger,
+    observation_retrieval, operation_budget, operation_checkpoint, reasoning_handoff,
+    reasoning_packet, reasoning_updates,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -498,15 +498,8 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         };
         // A SQL failure may prevent this update too, but never suppress the
         // original error. The enclosing BFF independently fails its operation.
-        let _ = agentic_controller::finish_step(
-            pool,
-            scope,
-            step.step_id,
-            actor,
-            "FAILED",
-            reason,
-        )
-        .await;
+        let _ = agentic_controller::finish_step(pool, scope, step.step_id, actor, "FAILED", reason)
+            .await;
     }
     result
 }
@@ -606,12 +599,7 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
                 Err(error) => {
                     if let Some(reason) = budget_stop_reason(&error) {
                         return finish_budget_boundary(
-                            pool,
-                            scope,
-                            actor,
-                            &step,
-                            completed,
-                            reason,
+                            pool, scope, actor, &step, completed, reason,
                         )
                         .await;
                     }

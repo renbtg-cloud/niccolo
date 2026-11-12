@@ -100,7 +100,6 @@ async fn scoped(
     Ok(tx)
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HypothesisEvent {
     pub event_id: Uuid,
@@ -125,8 +124,10 @@ pub async fn append_event(
     event_kind: &str,
     note: &str,
 ) -> Result<HypothesisEvent, HypothesisPortfolioError> {
-    if !matches!(event_kind, "CHALLENGED" | "WEAKENED" | "RETAINED" | "RETIRED" | "RESTORED")
-        || !valid_note(note)
+    if !matches!(
+        event_kind,
+        "CHALLENGED" | "WEAKENED" | "RETAINED" | "RETIRED" | "RESTORED"
+    ) || !valid_note(note)
     {
         return Err(HypothesisPortfolioError::Invalid);
     }
@@ -273,12 +274,14 @@ pub async fn portfolio(
             latest_status: status.unwrap_or_else(|| "LIVE".into()),
             evidence_links: evidence_rows
                 .into_iter()
-                .map(|(link_id, evidence_id, relation, rationale)| HypothesisEvidenceLink {
-                    link_id,
-                    evidence_id,
-                    relation,
-                    rationale,
-                })
+                .map(
+                    |(link_id, evidence_id, relation, rationale)| HypothesisEvidenceLink {
+                        link_id,
+                        evidence_id,
+                        relation,
+                        rationale,
+                    },
+                )
                 .collect(),
             predictions: prediction_rows
                 .into_iter()

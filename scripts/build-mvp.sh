@@ -7,11 +7,38 @@ cd "$ROOT"
 
 : "${NPM:=npm}"
 : "${CARGO:=cargo}"
+: "${NICCOLO_BUILD_VERIFY:=1}"
+[[ "$NICCOLO_BUILD_VERIFY" == "0" || "$NICCOLO_BUILD_VERIFY" == "1" ]] || { echo "NICCOLO_BUILD_VERIFY must be 0 or 1" >&2; exit 2; }
+
+npm_ci=(ci)
+cargo_locked=(--locked)
+if [[ "${NICCOLO_OFFLINE:-0}" == "1" ]]; then
+  npm_ci+=(--offline --no-audit --no-fund)
+  cargo_locked+=(--offline)
+  offline_cache="${NICCOLO_NPM_CACHE:-}"
+  if [[ -z "$offline_cache" && -d "$ROOT/.niccolo-offline/npm-cache" ]]; then
+    offline_cache="$ROOT/.niccolo-offline/npm-cache"
+  fi
+  if [[ -z "$offline_cache" && -d /opt/niccolo-offline/staged/AB/npm-cache ]]; then
+    offline_cache=/opt/niccolo-offline/staged/AB/npm-cache
+  fi
+  if [[ -n "$offline_cache" ]]; then
+    [[ -d "$offline_cache" ]] || { echo "NICCOLO_NPM_CACHE does not exist: $offline_cache" >&2; exit 2; }
+    npm_ci+=(--cache "$offline_cache")
+    echo "Offline dependency mode enabled with npm cache: $offline_cache"
+  else
+    echo "Offline dependency mode enabled with npm's configured cache."
+  fi
+fi
 
 echo "[1/5] Install locked frontend dependencies"
-(cd frontend && "$NPM" ci)
-echo "[2/5] Verify frontend regression tests"
-(cd frontend && "$NPM" test)
+(cd frontend && "$NPM" "${npm_ci[@]}")
+if [[ "$NICCOLO_BUILD_VERIFY" == "1" ]]; then
+  echo "[2/5] Verify frontend regression tests"
+  (cd frontend && "$NPM" test)
+else
+  echo "[2/5] Skip frontend regression tests (installation build)"
+fi
 echo "[3/5] Build the frontend that Rust embeds"
 (cd frontend && "$NPM" run build)
 for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/assets/app.css; do
@@ -20,10 +47,14 @@ for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/a
     exit 1
   fi
 done
-echo "[4/5] Verify Rust unit tests"
-"$CARGO" test --locked --lib
+if [[ "$NICCOLO_BUILD_VERIFY" == "1" ]]; then
+  echo "[4/5] Verify Rust unit tests"
+  "$CARGO" test "${cargo_locked[@]}" --lib
+else
+  echo "[4/5] Skip Rust unit tests (installation build)"
+fi
 echo "[5/5] Compile the Niccolo API and provisioning CLI"
-"$CARGO" build --locked --release --bin niccolo-api --bin niccolo-provision
+"$CARGO" build "${cargo_locked[@]}" --release --bin niccolo-api --bin niccolo-provision
 
 ext=''
 case "$(uname -s)" in

@@ -81,8 +81,13 @@ fn valid(input: &DecisionReadinessInput) -> bool {
     input.reversal_conditions.iter().all(|c| {
         ids.insert(c.condition_id)
             && valid_text(&c.condition_text, 4096)
-            && matches!(c.impact.as_str(), "MAY_REVERSE" | "REQUIRES_REVIEW" | "LOW_IMPACT")
-            && c.acquisition_note.as_ref().is_none_or(|x| valid_text(x, 4096))
+            && matches!(
+                c.impact.as_str(),
+                "MAY_REVERSE" | "REQUIRES_REVIEW" | "LOW_IMPACT"
+            )
+            && c.acquisition_note
+                .as_ref()
+                .is_none_or(|x| valid_text(x, 4096))
     })
 }
 
@@ -161,12 +166,14 @@ async fn load(
         unresolved_unknowns,
         reversal_conditions: conditions
             .into_iter()
-            .map(|(condition_id, condition_text, impact, acquisition_note)| ReversalConditionView {
-                condition_id,
-                condition_text,
-                impact,
-                acquisition_note,
-            })
+            .map(
+                |(condition_id, condition_text, impact, acquisition_note)| ReversalConditionView {
+                    condition_id,
+                    condition_text,
+                    impact,
+                    acquisition_note,
+                },
+            )
             .collect(),
         human_owns_decision: true,
         readiness_claims_omniscience: false,
@@ -240,7 +247,14 @@ pub async fn record(
         .await?;
     }
 
-    let Some(view) = load(&mut tx, scope, input.decision_id, input.assessment_id, !inserted).await?
+    let Some(view) = load(
+        &mut tx,
+        scope,
+        input.decision_id,
+        input.assessment_id,
+        !inserted,
+    )
+    .await?
     else {
         return Err(DecisionReadinessError::Invisible);
     };
@@ -329,7 +343,8 @@ mod tests {
             unresolved_unknowns: "Personal mobile messages were not collected.".into(),
             reversal_conditions: vec![ReversalConditionInput {
                 condition_id: Uuid::new_v4(),
-                condition_text: "A contemporaneous record showing explicit contrary authorization.".into(),
+                condition_text: "A contemporaneous record showing explicit contrary authorization."
+                    .into(),
                 impact: "MAY_REVERSE".into(),
                 acquisition_note: Some("If recovered, reanalyse before action.".into()),
             }],

@@ -48,7 +48,19 @@ pub struct ObservationSearchPage {
     pub lexical_ranking_is_evidentiary_weight: bool,
 }
 
-type HitRow = (Uuid, Uuid, i32, i32, i32, String, String, String, String, String, f32);
+type HitRow = (
+    Uuid,
+    Uuid,
+    i32,
+    i32,
+    i32,
+    String,
+    String,
+    String,
+    String,
+    String,
+    f32,
+);
 
 pub fn valid_query(query: &str, limit: i64) -> bool {
     (1..=25).contains(&limit)
@@ -111,12 +123,10 @@ pub async fn search(
 
     // A punctuation-heavy query may contain valid letters but produce zero
     // PostgreSQL lexemes. It must not silently look like a negative finding.
-    let nodes: i32 = sqlx::query_scalar(
-        "SELECT numnode(plainto_tsquery('simple', $1))",
-    )
-    .bind(query)
-    .fetch_one(&mut *tx)
-    .await?;
+    let nodes: i32 = sqlx::query_scalar("SELECT numnode(plainto_tsquery('simple', $1))")
+        .bind(query)
+        .fetch_one(&mut *tx)
+        .await?;
     if nodes == 0 {
         return Err(ObservationSearchError::Invalid);
     }

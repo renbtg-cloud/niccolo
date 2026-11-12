@@ -156,7 +156,6 @@ pub async fn create(
     ))
 }
 
-
 pub async fn list(pool: &PgPool, workspace: Uuid) -> Result<Vec<ActorView>, ActorError> {
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
@@ -195,9 +194,7 @@ pub async fn record_kind(
     actor_kind: Option<&str>,
     rationale: &str,
 ) -> Result<ActorEvent, ActorError> {
-    if !valid_text(rationale, 2048)
-        || actor_kind.is_some_and(|kind| !valid_kind(kind))
-    {
+    if !valid_text(rationale, 2048) || actor_kind.is_some_and(|kind| !valid_kind(kind)) {
         return Err(ActorError::Invalid);
     }
     let operation = if actor_kind.is_some() { "SET" } else { "CLEAR" };
@@ -277,7 +274,11 @@ pub async fn bind_source_speaker(
     if !valid_text(speaker_label, 512) || !valid_text(rationale, 2048) {
         return Err(ActorError::Invalid);
     }
-    let operation = if actor_id.is_some() { "ASSIGN" } else { "CLEAR" };
+    let operation = if actor_id.is_some() {
+        "ASSIGN"
+    } else {
+        "CLEAR"
+    };
     let speaker_label = speaker_label.trim();
     let mut tx = scoped(pool, workspace, false).await?;
     let inserted = sqlx::query(

@@ -185,16 +185,18 @@ fn looks_like_datetime(dt: &str) -> bool {
         return false;
     };
     let mut time_parts = time.trim().split(':');
-    let (Some(hour), Some(minute), None) = (
-        time_parts.next(),
-        time_parts.next(),
-        time_parts.next(),
-    ) else {
+    let (Some(hour), Some(minute), None) =
+        (time_parts.next(), time_parts.next(), time_parts.next())
+    else {
         return false;
     };
-    if ![day, month, year, hour, minute].iter().all(|v| {
-        !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit())
-    }) || hour.len() != 2 || minute.len() != 2 || year.len() < 2 {
+    if ![day, month, year, hour, minute]
+        .iter()
+        .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+        || hour.len() != 2
+        || minute.len() != 2
+        || year.len() < 2
+    {
         return false;
     }
     let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (

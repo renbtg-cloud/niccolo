@@ -113,8 +113,15 @@ pub async fn record_hits(
     hits: &[ObservationHit],
 ) -> Result<(), QueryLedgerError> {
     if hits.len() > 5
-        || hits.iter().any(|h| !h.lexical_relevance.is_finite() || h.lexical_relevance < 0.0)
-        || hits.iter().map(|h| h.evidence_id).collect::<std::collections::BTreeSet<_>>().len() != hits.len()
+        || hits
+            .iter()
+            .any(|h| !h.lexical_relevance.is_finite() || h.lexical_relevance < 0.0)
+        || hits
+            .iter()
+            .map(|h| h.evidence_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != hits.len()
     {
         return Err(QueryLedgerError::Invalid);
     }
@@ -189,8 +196,21 @@ pub async fn for_packet(
     let mut bytes = 0usize;
     let mut truncated = false;
     let mut traces = Vec::new();
-    for (query_id, query, rationale, expected_observation, direction, interpretation_id) in queries {
-        type ResultRow = (Uuid, Uuid, i32, i32, i32, String, String, String, String, String, i16);
+    for (query_id, query, rationale, expected_observation, direction, interpretation_id) in queries
+    {
+        type ResultRow = (
+            Uuid,
+            Uuid,
+            i32,
+            i32,
+            i32,
+            String,
+            String,
+            String,
+            String,
+            String,
+            i16,
+        );
         let rows: Vec<ResultRow> = sqlx::query_as(
             "SELECT h.evidence_id,d.document_id,f.ordinal,f.byte_start,f.byte_end,                     f.speaker_label,e.content,e.source_class,d.format,d.locator,h.hit_rank              FROM niccolo.situation_analysis_observation_query_hits h              JOIN niccolo.source_fragments f                ON f.workspace_id=h.workspace_id AND f.evidence_id=h.evidence_id              JOIN niccolo.evidence e                ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id AND e.admissible              JOIN niccolo.source_documents d                ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id              WHERE h.workspace_id=$1 AND h.situation_id=$2 AND h.analysis_id=$3 AND h.query_id=$4              ORDER BY h.hit_rank,h.evidence_id",
         )

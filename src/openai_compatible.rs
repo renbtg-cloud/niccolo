@@ -3,7 +3,9 @@
 //! The core stays provider-neutral. The runtime path uses the native TLS
 //! adapter from model_adapter. The curl adapter remains only as a compatibility
 //! implementation and test oracle while the native path is validated.
-use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, ModelResponse, OpenAiCompatibleModel, ReasoningModel};
+use crate::model_adapter::{
+    ModelError, ModelFuture, ModelRequest, ModelResponse, OpenAiCompatibleModel, ReasoningModel,
+};
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},

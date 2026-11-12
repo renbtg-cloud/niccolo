@@ -380,7 +380,9 @@ impl ParsedEndpoint {
         // ambiguous or header-unsafe forms before constructing HTTP bytes.
         if authority.is_empty()
             || authority.contains('@')
-            || authority.bytes().any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+            || authority
+                .bytes()
+                .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
             || authority.contains(['?', '#', '\\'])
         {
             return Err(ModelError::Invalid);
@@ -731,8 +733,10 @@ fn complete_content_length_end(raw: &[u8]) -> Result<Option<usize>, ModelError> 
                 return Err(ModelError::Provider("duplicate Content-Length".into()));
             }
             body_length = Some(
-                value.trim().parse::<usize>()
-                    .map_err(|_| ModelError::Provider("invalid Content-Length".into()))?
+                value
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| ModelError::Provider("invalid Content-Length".into()))?,
             );
         }
     }
@@ -819,8 +823,12 @@ mod bounded_response_tests {
     #[test]
     fn json_response_format_can_be_disabled_for_local_models() {
         let model = OpenAiCompatibleModel::new(
-            "local", "model", "http://127.0.0.1:11434/v1/chat/completions", ""
-        ).unwrap();
+            "local",
+            "model",
+            "http://127.0.0.1:11434/v1/chat/completions",
+            "",
+        )
+        .unwrap();
         let request = ModelRequest {
             purpose: "SYNTHESIZE".into(),
             input: serde_json::json!({}),
@@ -828,9 +836,9 @@ mod bounded_response_tests {
         };
         let enforced: Value = serde_json::from_str(&model.request_body(&request).unwrap()).unwrap();
         assert_eq!(enforced["response_format"]["type"], "json_object");
-        let compatible: Value = serde_json::from_str(
-            &model.with_json_mode(false).request_body(&request).unwrap()
-        ).unwrap();
+        let compatible: Value =
+            serde_json::from_str(&model.with_json_mode(false).request_body(&request).unwrap())
+                .unwrap();
         assert!(compatible.get("response_format").is_none());
     }
 
@@ -849,34 +857,63 @@ mod bounded_response_tests {
 
     #[test]
     fn keyless_model_is_local_http_only() {
-        assert!(OpenAiCompatibleModel::new(
-            "local", "model", "http://127.0.0.1:11434/v1/chat/completions", ""
-        ).is_ok());
-        assert!(OpenAiCompatibleModel::new(
-            "remote", "model", "https://example.com/v1/chat/completions", ""
-        ).is_err());
-        assert!(OpenAiCompatibleModel::new(
-            "remote", "model", "http://example.com/v1/chat/completions", ""
-        ).is_err());
+        assert!(
+            OpenAiCompatibleModel::new(
+                "local",
+                "model",
+                "http://127.0.0.1:11434/v1/chat/completions",
+                ""
+            )
+            .is_ok()
+        );
+        assert!(
+            OpenAiCompatibleModel::new(
+                "remote",
+                "model",
+                "https://example.com/v1/chat/completions",
+                ""
+            )
+            .is_err()
+        );
+        assert!(
+            OpenAiCompatibleModel::new(
+                "remote",
+                "model",
+                "http://example.com/v1/chat/completions",
+                ""
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn native_transport_timeout_has_bounded_configuration() {
         let original = OpenAiCompatibleModel::new(
-            "local", "model", "http://127.0.0.1:11434/v1/chat/completions", ""
-        ).unwrap();
+            "local",
+            "model",
+            "http://127.0.0.1:11434/v1/chat/completions",
+            "",
+        )
+        .unwrap();
         assert_eq!(original.transport_timeout_secs, 25);
         assert!(original.clone().with_transport_timeout_secs(0).is_err());
         assert!(original.clone().with_transport_timeout_secs(121).is_err());
         assert_eq!(
-            original.with_transport_timeout_secs(3).unwrap().transport_timeout_secs,
+            original
+                .with_transport_timeout_secs(3)
+                .unwrap()
+                .transport_timeout_secs,
             3
         );
     }
 
     #[test]
     fn stalled_local_model_times_out_at_transport_boundary() {
-        use std::{net::TcpListener, thread, time::{Duration, Instant}};
+        use std::{
+            net::TcpListener,
+            thread,
+            time::{Duration, Instant},
+        };
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let server = thread::spawn(move || {
@@ -885,15 +922,24 @@ mod bounded_response_tests {
             drop(socket);
         });
         let model = OpenAiCompatibleModel::new(
-            "local", "model", &format!("http://127.0.0.1:{port}/v1/chat/completions"), ""
-        ).unwrap().with_transport_timeout_secs(1).unwrap();
+            "local",
+            "model",
+            &format!("http://127.0.0.1:{port}/v1/chat/completions"),
+            "",
+        )
+        .unwrap()
+        .with_transport_timeout_secs(1)
+        .unwrap();
         let request = ModelRequest {
             purpose: "SYNTHESIZE".into(),
             input: serde_json::json!({}),
             output_contract: serde_json::json!({}),
         };
         let start = Instant::now();
-        assert!(matches!(model.perform_blocking(&request), Err(ModelError::Timeout)));
+        assert!(matches!(
+            model.perform_blocking(&request),
+            Err(ModelError::Timeout)
+        ));
         assert!(start.elapsed() < Duration::from_millis(1350));
         server.join().unwrap();
     }
@@ -903,17 +949,25 @@ mod bounded_response_tests {
         assert!(!retryable_model_error(&ModelError::Budget));
         assert!(!retryable_model_error(&ModelError::Invalid));
         assert!(retryable_model_error(&ModelError::Timeout));
-        assert!(retryable_model_error(&ModelError::Provider("transient".into())));
+        assert!(retryable_model_error(&ModelError::Provider(
+            "transient".into()
+        )));
     }
 
     #[test]
     fn socket_timeout_errors_are_classified_as_timeouts() {
         for kind in [std::io::ErrorKind::TimedOut, std::io::ErrorKind::WouldBlock] {
             let error = std::io::Error::new(kind, "timed out");
-            assert!(matches!(transport_io_error("read", error), ModelError::Timeout));
+            assert!(matches!(
+                transport_io_error("read", error),
+                ModelError::Timeout
+            ));
         }
         let other = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
-        assert!(matches!(transport_io_error("connect", other), ModelError::Provider(_)));
+        assert!(matches!(
+            transport_io_error("connect", other),
+            ModelError::Provider(_)
+        ));
     }
 
     #[test]
@@ -942,7 +996,10 @@ mod bounded_response_tests {
             }
         }
         let expected = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n{}";
-        let mut server = KeepAliveReply { bytes: expected, sent: false };
+        let mut server = KeepAliveReply {
+            bytes: expected,
+            sent: false,
+        };
         assert_eq!(read_bounded(&mut server).unwrap(), expected);
     }
 
@@ -966,7 +1023,11 @@ mod bounded_response_tests {
             }
         }
         let wire = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n2\r\n{}\r\n0\r\n\r\n";
-        let framed = read_bounded(&mut PersistentReply { wire, received: false }).unwrap();
+        let framed = read_bounded(&mut PersistentReply {
+            wire,
+            received: false,
+        })
+        .unwrap();
         assert_eq!(framed, wire);
         let (code, _, body) = parse_http_response(&framed).unwrap();
         assert_eq!(code, 200);
@@ -975,8 +1036,14 @@ mod bounded_response_tests {
 
     #[test]
     fn chunked_reply_detects_missing_frames_and_trailers() {
-        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n").unwrap(), None);
-        assert_eq!(complete_chunked_body_end(b"2\r\n{}\r\n0\r\n\r\n").unwrap(), Some(12));
+        assert_eq!(
+            complete_chunked_body_end(b"2\r\n{}\r\n0\r\n").unwrap(),
+            None
+        );
+        assert_eq!(
+            complete_chunked_body_end(b"2\r\n{}\r\n0\r\n\r\n").unwrap(),
+            Some(12)
+        );
         assert_eq!(
             complete_chunked_body_end(b"2\r\n{}\r\n0\r\nX-Test: yes\r\n\r\n").unwrap(),
             Some(25)
@@ -1000,12 +1067,18 @@ mod bounded_response_tests {
     #[test]
     fn rejects_overflowing_chunk_length_without_panicking() {
         let chunk = b"ffffffffffffffff\r\n";
-        assert!(matches!(decode_chunked(chunk), Err(ModelError::Provider(_))));
+        assert!(matches!(
+            decode_chunked(chunk),
+            Err(ModelError::Provider(_))
+        ));
     }
 
     #[test]
     fn rejects_response_above_maximum_before_unbounded_allocation() {
         let source = vec![b'x'; MAX_HTTP_RESPONSE_BYTES as usize + 1];
-        assert!(matches!(read_bounded(&mut &source[..]), Err(ModelError::Provider(_))));
+        assert!(matches!(
+            read_bounded(&mut &source[..]),
+            Err(ModelError::Provider(_))
+        ));
     }
 }
