@@ -204,6 +204,9 @@ pub async fn submit(
             input.kind.as_str(),
             "BUILD_BRIEFING" | "BUILD_HANDOFF" | "REANALYZE"
         ) && input.target_analysis_id.is_none()
+        || input.deadline_at.as_deref().is_some_and(|value| {
+            value.trim() != value || chrono::DateTime::parse_from_rfc3339(value).is_err()
+        })
     {
         return Err(BffOperationError::Invalid);
     }

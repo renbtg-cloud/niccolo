@@ -292,6 +292,30 @@ async fn v196_v200_parent_budget_and_operation_digest_contracts_are_preserved() 
 }
 
 #[tokio::test]
+async fn malformed_deadline_is_rejected_before_postgres_cast_or_persistence() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let mut bad = input(s, "AGENTIC_ANALYSIS", None);
+    bad.deadline_at = Some("tomorrow-ish".into());
+    let scope = op(s, Uuid::new_v4());
+    assert!(matches!(
+        bff_operations::submit(&app, scope, &bad).await,
+        Err(bff_operations::BffOperationError::Invalid)
+    ));
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.bff_operations
+          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
 async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
     let (admin, app) = pools().await;
     let seed = seed(&admin).await;
