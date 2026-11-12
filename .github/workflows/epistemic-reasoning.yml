@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - ci/mvp-checkpoint
-      - fix/source-import-contract-20261112
 
 concurrency:
   group: epistemic-${{ github.ref_name }}
