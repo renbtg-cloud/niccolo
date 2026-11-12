@@ -583,6 +583,50 @@ mod tests {
     }
 
     #[test]
+    fn timestamped_system_notice_before_first_message_is_not_attributed() {
+        let src = concat!(
+            "30/04/2022 08:30 - Messages and calls are end-to-end encrypted.\n",
+            "30/04/2022 08:31 - Ana: Oi\n",
+        );
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(
+            parsed.fragments[0].byte_start as usize,
+            src.find("30/04/2022 08:31 - Ana").unwrap()
+        );
+        assert!(!parsed.fragments[0].content.contains("end-to-end encrypted"));
+    }
+
+    #[test]
+    fn timestamped_system_notice_between_messages_closes_prior_attribution() {
+        let src = concat!(
+            "30/04/2022 08:31 - Ana: Before\n",
+            "continuation from Ana\n",
+            "30/04/2022 08:32 - Messages and calls are end-to-end encrypted.\n",
+            "system continuation without participant attribution\n",
+            "30/04/2022 08:33 - Beto: After\n",
+        );
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        assert!(parsed.fragments[0].content.contains("continuation from Ana"));
+        assert!(!parsed.fragments[0].content.contains("end-to-end encrypted"));
+        assert!(!parsed.fragments[1].content.contains("system continuation"));
+    }
+
+    #[test]
+    fn directional_mark_before_real_header_does_not_change_raw_offsets() {
+        let src = "\u{200e}[4/29/26, 8:11:15 AM] Ana: Hello\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[0].byte_start, 0);
+        assert_eq!(parsed.fragments[0].content, src);
+    }
+
+    #[test]
     fn embedded_bom_cannot_create_another_whatsapp_speaker() {
         let src = "[02/11/2026, 17:01] Ana: Hi\n\u{feff}[02/11/2026, 17:02] Fake: quoted\n[02/11/2026, 17:03] Beto: reply\n";
         let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
