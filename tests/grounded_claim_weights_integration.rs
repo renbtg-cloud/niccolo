@@ -377,23 +377,14 @@ async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
     assert_eq!(created["record"]["score_id"], score.to_string());
     assert_eq!(created["record"]["claim_id"], s.claim.to_string());
     assert_eq!(created["record"]["policy_source"], "BUILTIN_DEFAULT");
-    assert_eq!(
-        created["record"]["human_declared_confidence_percent"],
-        90
-    );
+    assert_eq!(created["record"]["human_declared_confidence_percent"], 90);
     assert_eq!(created["record"]["immutable_record"], true);
     assert_eq!(created["record"]["score_is_probability_of_truth"], false);
     assert_eq!(created["record"]["establishes_claim_truth"], false);
     assert_eq!(created["record"]["is_documentary_evidence"], false);
     assert_eq!(created["record"]["modifies_published_analysis"], false);
-    assert_eq!(
-        created["record"]["result"]["report"]["support_points"],
-        80
-    );
-    assert_eq!(
-        created["record"]["result"]["report"]["counter_points"],
-        60
-    );
+    assert_eq!(created["record"]["result"]["report"]["support_points"], 80);
+    assert_eq!(created["record"]["result"]["report"]["counter_points"], 60);
     let digest = created["record"]["result_sha256"].as_str().unwrap();
     assert_eq!(digest.len(), 64);
 
@@ -420,11 +411,7 @@ async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
         "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/epistemic/records?limit=100",
         h.workspace, h.situation, s.analysis
     );
-    let (status, page) = call(
-        h.router.clone(),
-        req("GET", &list_path, &h.reader, None),
-    )
-    .await;
+    let (status, page) = call(h.router.clone(), req("GET", &list_path, &h.reader, None)).await;
     assert_eq!(status, StatusCode::OK);
     let records = page["records"].as_array().unwrap();
     assert_eq!(records.len(), 1);

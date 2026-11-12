@@ -5385,7 +5385,6 @@ async fn post_presentation_package_with_examined_sources(
     Ok(no_store(json!(package), StatusCode::OK))
 }
 
-
 fn grounded_score_store_error(error: GroundedScoreStoreError) -> ApiError {
     match error {
         GroundedScoreStoreError::Invalid => {
@@ -5394,7 +5393,8 @@ fn grounded_score_store_error(error: GroundedScoreStoreError) -> ApiError {
         GroundedScoreStoreError::Conflict => {
             ApiError(StatusCode::CONFLICT, "grounded score ID conflict")
         }
-        GroundedScoreStoreError::Json(_) | GroundedScoreStoreError::Database(_)
+        GroundedScoreStoreError::Json(_)
+        | GroundedScoreStoreError::Database(_)
         | GroundedScoreStoreError::Privileged => ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
             "grounded score record unavailable",
@@ -5410,7 +5410,10 @@ async fn record_grounded_claim_score(
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
     if score.is_nil() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid grounded score ID"));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid grounded score ID",
+        ));
     }
     let (policy, policy_source) = if let Some(policy) = request.policy {
         (policy, "EXPLICIT_TRIAL".to_owned())
@@ -5486,13 +5489,10 @@ async fn list_grounded_claim_scores(
         situation,
         analysis,
     };
-    let page = grounded_score_store::list_for_analysis(
-        &state.pool,
-        scope,
-        query.limit.unwrap_or(100),
-    )
-    .await
-    .map_err(grounded_score_store_error)?;
+    let page =
+        grounded_score_store::list_for_analysis(&state.pool, scope, query.limit.unwrap_or(100))
+            .await
+            .map_err(grounded_score_store_error)?;
     Ok(no_store(json!(page), StatusCode::OK))
 }
 
