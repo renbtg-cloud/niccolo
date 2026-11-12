@@ -29,6 +29,21 @@ export function proactiveLeads(dashboard) {
   }));
 }
 
+export function proactiveBriefingMeta(dashboard) {
+  const proactive = dashboard?.proactive;
+  const shownCount = proactive?.leads?.length ?? 0;
+  const candidateCount = Math.max(
+    shownCount,
+    Number.isInteger(proactive?.candidate_count) ? proactive.candidate_count : shownCount,
+  );
+  return {
+    shownCount,
+    candidateCount,
+    truncated: proactive?.truncated === true,
+    userOwnsChoice: proactive?.user_owns_which_lead_to_pursue === true,
+  };
+}
+
 export function reanalysisPrompt(dashboard) {
   const r = dashboard?.reanalysis;
   if (!r?.recommended) return null;
