@@ -109,6 +109,12 @@ Supported MVP source files include:
 - `.eml` plain-text email;
 - `.txt` WhatsApp chat export.
 
+WhatsApp exports vary by phone and locale. The MVP recognizes common Android/iOS timestamp layouts
+(including 12/24-hour clocks, optional seconds, slash/dot/dash dates, and day/month or month/day
+ordering) only to detect message boundaries; it does not reinterpret those timestamps as verified
+chronology. Timestamped service lines without participant attribution remain in the retained original
+upload but are not promoted into a participant-attributed evidence fragment.
+
 Choose one or several files and then **Import and attach**. A browser batch is prevalidated
 before the first upload, is bounded to 32 files / 64 MiB total, and each file still keeps the
 server's 4 MiB per-source limit. If a later file fails after earlier ones were attached, retrying
