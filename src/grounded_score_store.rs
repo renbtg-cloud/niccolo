@@ -356,7 +356,7 @@ mod tests {
             Uuid::from_u128(6),
             "2026-11-12 00:00:00+00".into(),
         );
-        assert!(matches!(view(row), Err(GroundedScoreStoreError::Conflict)));
+        assert!(matches!(view(row), Err(GroundedScoreStoreError::Corrupt)));
     }
 
     #[test]
