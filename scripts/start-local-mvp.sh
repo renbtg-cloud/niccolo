@@ -66,6 +66,17 @@ if [[ "${1:-}" == "--print-only" ]]; then
   exit 0
 fi
 
+ext=''
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ext='.exe' ;;
+esac
+binary="./target/release/niccolo-api${ext}"
+[[ -x "$binary" || -f "$binary" ]] || {
+  echo "Missing API binary: $binary" >&2
+  echo "Run the bootstrap/build first." >&2
+  exit 1
+}
+
 open_browser=1
 if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
   open_browser=0
@@ -81,16 +92,5 @@ if (( open_browser == 1 )); then
 else
   echo "Browser: automatic open disabled; use the Open URL above."
 fi
-
-ext=''
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) ext='.exe' ;;
-esac
-binary="./target/release/niccolo-api${ext}"
-[[ -x "$binary" || -f "$binary" ]] || {
-  echo "Missing API binary: $binary" >&2
-  echo "Run the bootstrap/build first." >&2
-  exit 1
-}
 
 exec "$binary"
