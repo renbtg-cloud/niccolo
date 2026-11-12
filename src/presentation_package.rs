@@ -5,7 +5,7 @@
 //! only source of values. CSV is presentation-friendly; JSON is lossless.
 use crate::analysis_manifest::{self, AnalysisBundle, ManifestError};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::BTreeMap;
