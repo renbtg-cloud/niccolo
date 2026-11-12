@@ -14,5 +14,6 @@ export const qk = {
   operationObservation: (c, id) => ['operation-observation', c.workspace, c.situation, id],
   agentic: (c, id) => ['agentic-plan', c.workspace, c.situation, id],
   analysis: (c, id, view) => ['analysis', c.workspace, c.situation, id, view],
+  groundedScores: (c, id) => ['grounded-scores', c.workspace, c.situation, id],
   dashboard: (c, id, operation) => ['dashboard', c.workspace, c.situation, id, operation ?? null],
 };
