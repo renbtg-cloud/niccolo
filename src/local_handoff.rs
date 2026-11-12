@@ -151,6 +151,18 @@ mod tests {
     }
 
     #[test]
+    fn expired_capability_fails_closed() {
+        let path = token_file();
+        let code = "f".repeat(64);
+        let handoff =
+            LocalHandoff::configured(&code, path.clone(), Duration::from_millis(1)).unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+        assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn invalid_secret_does_not_burn_the_capability() {
         let path = std::env::temp_dir().join(format!("niccolo-handoff-{}.token", Uuid::new_v4()));
         fs::write(&path, "not-a-token\n").unwrap();
