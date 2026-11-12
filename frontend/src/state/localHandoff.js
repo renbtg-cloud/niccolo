@@ -1,6 +1,10 @@
 const HANDOFF_FRAGMENT = /^#handoff=([0-9a-f]{64})$/;
 const TOKEN = /^ncl_[0-9a-f]{64}$/;
 
+export function hasLocalHandoffFragment(locationLike) {
+  return HANDOFF_FRAGMENT.test(locationLike?.hash ?? '');
+}
+
 export function takeLocalHandoffFromFragment(locationLike, historyLike) {
   const match = HANDOFF_FRAGMENT.exec(locationLike?.hash ?? '');
   if (!match) return '';
