@@ -23,7 +23,7 @@ The exact branch topology remains an implementation choice. No requirement to cr
 
 **Durability and idempotency:** PostgreSQL records intended export, target repository/ref, payload digest and publication outcome. Network push is not a database transaction. Verify remote commit/ref after pushing; retries must not duplicate content or silently lose an accepted input. Failure to publish to Git must not cause an investigation's PostgreSQL state to vanish. All publishing is gated by explicit account/repository permissions, release selection and provider authorization. Never claim data is preserved remotely before verifying the destination.
 
-**Offboarding:** a user-owned Git repository persists independently of Niccolò as long as the user's account/provider retains it. Any managed export-retention period (for example 180 days) would apply only to a Niccolò-controlled service, not remove or guarantee user-owned Git data. Do not add managed retention infrastructure for MVP without need.
+**Offboarding:** a user-owned Git repository persists independently of Niccolò as long as the user's account/provider retains it. The implemented GitHub path records an exact standard-package digest and immutable publication intent first, accepts provider authorization only as a transient request input, performs a non-force Git-data publication, re-reads the remote ref, and records append-only verification observations. A failed or unverified network attempt is never reported as published. Any managed export-retention period (for example 180 days) would apply only to a Niccolò-controlled service, not remove or guarantee user-owned Git data. Do not add managed retention infrastructure for MVP without need.
 
 ## Explainable presentation bundle: first implementation slice
 
@@ -61,7 +61,7 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
 
 | Milestone | Purpose | Status |
 | --- | --- | --- |
-| REX-001 | Record portable user-owned historical Git / Python+data MVP contract | This specification |
+| REX-001 | Record portable user-owned historical Git / Python+data MVP contract | Implemented: standard presentation package, deterministic digest, local target/intent ledger, transient GitHub publication, remote ref verification, and append-only event history |
 | REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
 | REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Verified bounded slices: examined source text export, Situation policy history, analysis human credence, and immutable explicitly recorded grounded-score artifacts; original uploaded document bytes remain omitted |
 | GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Partial verified slice: bounded target metadata, exact standard-package scope/digest preview and immutable publication intent; no provider connection or secret is stored and no remote request occurs yet |

@@ -261,7 +261,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
 - Deterministic Situation forensic export plus untrusted re-import quarantine, bounded inspection, retained-byte recovery, explicit non-evidence context selection, and inheritance of those human selections into approved reanalysis.
 - Portable published-analysis ZIPs: source-ID-only by default, with a separate bounded/write-authorized examined-source-text variant, pre-download scope preview, source/package SHA-256 provenance and immutable local authorization audit.
-- User-owned GitHub publication planning: bounded repository/ref metadata, exact standard-package scope and SHA-256 preview, and immutable publication intents that remain explicitly un-published until future provider authorization and remote verification.
+- User-owned GitHub publication: bounded repository/ref metadata, exact standard-package scope and SHA-256 preview, immutable local publication intents, explicit one-shot transient provider authorization, non-force Git-data publication, remote ref re-verification, and an append-only secret-free publication event ledger.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
 - Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.

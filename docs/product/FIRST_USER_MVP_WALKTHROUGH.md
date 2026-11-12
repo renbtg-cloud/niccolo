@@ -180,11 +180,13 @@ Recording is a separate write action. It creates an immutable score artifact con
 
 The recorded score is **not** a probability of truth, proof, documentary evidence or certification of witness independence. It does not rewrite the published analysis. It can later be inspected and included in the portable analysis export.
 
-## 10. Optional: plan a user-owned GitHub publication
+## 11. Optional: publish the standard package to user-owned GitHub
 
 In **Review**, the GitHub publication panel can record a target repository owner/name/ref and show the exact standard presentation-package file count, byte count and SHA-256 before anything leaves the machine.
 
-This is currently a **planning boundary, not a publisher**. Recording a target or publication intent does not connect to GitHub, does not accept or persist a GitHub token, does not push a commit, and does not establish remote preservation. The recorded intent remains `AWAITING_REMOTE_AUTHORIZATION`. PostgreSQL remains authoritative until a future publisher has both explicit provider authorization and independently verified the resulting remote commit/ref.
+Recording a target or publication intent is still local-only: it does not contact GitHub or prove remote preservation. After reviewing the exact package SHA-256 and requested ref, the user may explicitly publish that recorded standard package with a **transient GitHub fine-grained token**.
+
+Niccolò does not persist that token. The remote operation uses a non-force Git ref update, then re-reads the ref and records append-only publication observations in PostgreSQL. The UI says **verified published** only when the observed remote ref points at the exact commit Niccolò just constructed. Failed attempts keep only a bounded failure classification; provider response bodies and credentials are not recorded. PostgreSQL remains the authoritative publication ledger even when the package has been copied to user-owned GitHub.
 
 The current Git planning scope deliberately excludes examined source text and original uploads.
 
