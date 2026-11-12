@@ -10,11 +10,15 @@ Use a new dedicated PostgreSQL 17 database. The setup login should own that data
 `CREATEROLE` so bootstrap can create the dedicated restricted runtime login. It does **not** need
 `SUPERUSER` or `BYPASSRLS`.
 
-Set the two required setup variables:
+Set the database-owner connection. Niccolò generates the restricted runtime-login password by
+default, so a first user does not need to invent or manage a second database password:
 
     export NICCOLO_PG_ADMIN_URL='...'
-    export NICCOLO_PG_SECURE_PASSWORD='...'
     bash scripts/bootstrap-local-mvp.sh
+
+Deployment automation may explicitly set `NICCOLO_PG_SECURE_PASSWORD` before bootstrap when it
+needs to control that credential. The value is never printed. The ordinary local path generates a
+random password and stores only the resulting runtime connection string in `.niccolo-local/local.env`.
 
 Bootstrap builds the first-party UI and Rust binaries, applies migrations, creates a restricted
 runtime login, creates one workspace plus one prepared Situation identifier, and mints a private
