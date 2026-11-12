@@ -559,7 +559,17 @@ async fn examined_source_extracts(
     analysis: Uuid,
 ) -> Result<Vec<ExaminedSourceExtract>, PresentationError> {
     let mut tx = scoped(pool, workspace).await?;
-    type Row = (Uuid, Uuid, i32, String, String, String, String, String, String);
+    type Row = (
+        Uuid,
+        Uuid,
+        i32,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+    );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT d.document_id,f.evidence_id,f.ordinal,d.format,d.locator,d.sha256,
                 f.speaker_label,e.content,e.source_class
