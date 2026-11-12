@@ -499,6 +499,104 @@ async fn publish_endpoint_requires_explicit_transient_authorization_and_replays_
 }
 
 #[tokio::test]
+async fn failed_publish_attempt_event_is_retry_idempotent() {
+    let f = setup().await;
+    let (situation, analysis) = published_analysis(&f).await;
+    let target = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    let target_uri = format!(
+        "/v1/workspaces/{}/git-publication-targets/{target}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                target_uri,
+                &f.writer,
+                Some(json!({
+                    "repository_owner":"owner",
+                    "repository_name":"history",
+                    "ref_name":"main",
+                    "repository_visibility":"PRIVATE",
+                    "sensitive_exports_allowed":false
+                }))
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let base = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("{base}/git-publication-intents/{publication}"),
+                &f.writer,
+                Some(json!({"target_id":target})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let attempt = Uuid::new_v4();
+    let digest = authz::credential_digest(&f.writer).unwrap();
+    let failed = git_publication::RemoteEventInput {
+        event_id: attempt,
+        publication_id: publication,
+        kind: git_publication::RemoteEventKind::PublishFailed,
+        remote_commit_sha: None,
+        observed_ref: None,
+        failure_class: Some("TRANSPORT".into()),
+    };
+    let first = authz::with_auth_digest(digest.clone(), async {
+        git_publication::record_remote_event(
+            &f.secure,
+            f.workspace,
+            f.writer_principal,
+            &failed,
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+    assert!(!first.1);
+    let replay = authz::with_auth_digest(digest, async {
+        git_publication::record_remote_event(
+            &f.secure,
+            f.workspace,
+            f.writer_principal,
+            &failed,
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+    assert!(replay.1);
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.git_publication_events
+          WHERE workspace_id=$1 AND publication_id=$2 AND event_id=$3
+            AND event_kind='PUBLISH_FAILED'",
+    )
+    .bind(f.workspace)
+    .bind(publication)
+    .bind(attempt)
+    .fetch_one(&f.admin)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+}
+
+#[tokio::test]
 async fn target_registration_rejects_urls_and_public_sensitive_scope() {
     let f = setup().await;
     let target = Uuid::new_v4();

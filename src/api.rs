@@ -5916,7 +5916,7 @@ async fn publish_git_publication_intent(
                 workspace,
                 actor,
                 &git_publication::RemoteEventInput {
-                    event_id: Uuid::new_v4(),
+                    event_id: request.attempt_id,
                     publication_id: publication,
                     kind: git_publication::RemoteEventKind::PublishFailed,
                     remote_commit_sha: None,
