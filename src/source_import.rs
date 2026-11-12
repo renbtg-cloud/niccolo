@@ -599,6 +599,18 @@ mod tests {
     }
 
     #[test]
+    fn system_only_whatsapp_export_does_not_create_synthetic_speaker_evidence() {
+        let src = concat!(
+            "30/04/2022 08:30 - Messages and calls are end-to-end encrypted.\n",
+            "30/04/2022 08:31 - You changed the group description\n",
+        );
+        assert_eq!(
+            parse_source(SourceFormat::WhatsappExport, src.as_bytes()),
+            Err(ParseError::Empty)
+        );
+    }
+
+    #[test]
     fn timestamped_system_notice_between_messages_closes_prior_attribution() {
         let src = concat!(
             "30/04/2022 08:31 - Ana: Before\n",
