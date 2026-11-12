@@ -459,6 +459,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_git_publication_intent),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}/remote-status",
+            get(get_git_publication_remote_status),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
             get(get_adversarial_dossier),
         )
@@ -5767,6 +5771,18 @@ async fn list_git_publication_intents(
         }),
         StatusCode::OK,
     ))
+}
+
+async fn get_git_publication_remote_status(
+    State(state): State<AppState>,
+    Path((workspace, _situation, _analysis, publication)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let status = git_publication::remote_status(&state.pool, workspace, publication)
+        .await
+        .map_err(git_publication_error)?;
+    Ok(no_store(json!(status), StatusCode::OK))
 }
 
 async fn get_adversarial_dossier(
