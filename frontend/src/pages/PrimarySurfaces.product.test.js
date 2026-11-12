@@ -61,9 +61,9 @@ describe('buyer-facing primary surfaces', () => {
   });
 
   it('retains upload document identity when a partial import must be retried', () => {
-    expect(situation).toContain('pendingDocumentId.current ?? crypto.randomUUID()');
-    expect(situation).toContain('pendingDocumentId.current = documentId');
-    expect(situation).toContain('pendingDocumentId.current = null');
+    expect(situation).toContain('pendingDocumentIds.current.get(signature)');
+    expect(situation).toContain('pendingDocumentIds.current.set(signature, documentId)');
+    expect(situation).toContain('pendingDocumentIds.current.clear()');
     expect(situation).toContain('onError: refresh');
     expect(situation).toContain('upload.reset();');
     expect(situation).toContain('pendingContribution.current?.signature !== signature');
