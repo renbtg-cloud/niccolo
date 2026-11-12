@@ -145,12 +145,15 @@ bash scripts/start-local-mvp.sh
 
 The helper prints a prepared loopback URL containing only the non-secret
 workspace and Situation identifiers. On a desktop it also waits for the local
-service to become healthy and makes a best-effort attempt to open that URL in
-the default browser; headless systems simply keep the printed URL as the
-fallback. Set `NICCOLO_OPEN_BROWSER=0` or pass `--no-browser` to suppress the
-automatic open. Paste the bearer token from `.niccolo-local/token.txt` and
-choose **Connect**. The token is deliberately never placed in the URL or
-printed by the start helper.
+service to become healthy and makes a best-effort attempt to open it. Automatic
+opening uses a random, short-lived one-shot capability in the URL fragment; the
+browser removes that fragment before redeeming it locally for the bearer and
+keeps the bearer only in memory. The bearer itself is never placed in the URL
+or printed by the start helper.
+
+Headless systems, `NICCOLO_OPEN_BROWSER=0`, `--no-browser`, or an
+expired/unavailable handoff use the manual fallback: open the printed prepared
+URL, paste the bearer from `.niccolo-local/token.txt`, and choose **Connect**.
 
 The prepared URL is also stored in `.niccolo-local/prepared-url.txt`. The
 first Situation is then created from the web interface by entering its focus.
