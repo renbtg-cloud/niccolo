@@ -255,47 +255,26 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     Ok(fragments)
 }
 
-fn looks_like_datetime(dt: &str) -> bool {
-    // Reject impossible calendar dates: otherwise a quoted line with a malformed
-    // timestamp can silently split a message and misattribute its content.
-    // The locale-dependent format remains deliberately limited to day/month/year.
-    let Some((date, time)) = dt.split_once(',') else {
-        return false;
-    };
-    let mut date_parts = date.trim().split('/');
-    let (Some(day), Some(month), Some(year), None) = (
-        date_parts.next(),
-        date_parts.next(),
-        date_parts.next(),
-        date_parts.next(),
-    ) else {
-        return false;
-    };
-    let mut time_parts = time.trim().split(':');
-    let (Some(hour), Some(minute), None) =
-        (time_parts.next(), time_parts.next(), time_parts.next())
-    else {
-        return false;
-    };
-    if ![day, month, year, hour, minute]
-        .iter()
-        .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
-        || hour.len() != 2
-        || minute.len() != 2
-        || year.len() < 2
+fn ascii_number(raw: &str, max_len: usize) -> Option<u32> {
+    if raw.is_empty()
+        || raw.len() > max_len
+        || !raw.bytes().all(|byte| byte.is_ascii_digit())
     {
-        return false;
+        return None;
     }
-    let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (
-        day.parse::<u8>(),
-        month.parse::<u8>(),
-        year.parse::<u32>(),
-        hour.parse::<u8>(),
-        minute.parse::<u8>(),
-    ) else {
-        return false;
-    };
-    if hour >= 24 || minute >= 60 || !(1..=12).contains(&month) || year == 0 {
+    raw.parse().ok()
+}
+
+fn normalized_year(raw: &str) -> Option<u32> {
+    match raw.len() {
+        2 => ascii_number(raw, 2).map(|year| 2000 + year),
+        4 => ascii_number(raw, 4).filter(|year| *year > 0),
+        _ => None,
+    }
+}
+
+fn valid_calendar_date(year: u32, month: u32, day: u32) -> bool {
+    if !(1..=12).contains(&month) || day == 0 {
         return false;
     }
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
@@ -305,7 +284,102 @@ fn looks_like_datetime(dt: &str) -> bool {
         4 | 6 | 9 | 11 => 30,
         _ => 31,
     };
-    (1..=days_in_month).contains(&day)
+    day <= days_in_month
+}
+
+fn valid_whatsapp_date(raw: &str) -> bool {
+    let separator = ['/', '.', '-']
+        .into_iter()
+        .find(|separator| raw.contains(*separator));
+    let Some(separator) = separator else {
+        return false;
+    };
+    if raw.chars().filter(|ch| *ch == separator).count() != 2 {
+        return false;
+    }
+    let parts: Vec<&str> = raw.split(separator).collect();
+    if parts.len() != 3
+        || parts[0].len() > 4
+        || parts[1].len() > 2
+        || parts[2].len() > 4
+    {
+        return false;
+    }
+    let Some(first) = ascii_number(parts[0], 4) else {
+        return false;
+    };
+    let Some(second) = ascii_number(parts[1], 2) else {
+        return false;
+    };
+    let Some(third) = ascii_number(parts[2], 4) else {
+        return false;
+    };
+
+    if parts[0].len() == 4 {
+        return first > 0 && valid_calendar_date(first, second, third);
+    }
+    let Some(year) = normalized_year(parts[2]) else {
+        return false;
+    };
+    valid_calendar_date(year, second, first) || valid_calendar_date(year, first, second)
+}
+
+fn valid_whatsapp_time(raw: &str, meridiem: Option<&str>) -> bool {
+    let parts: Vec<&str> = raw.split(':').collect();
+    if !(2..=3).contains(&parts.len())
+        || parts[0].is_empty()
+        || parts[0].len() > 2
+        || parts[1].len() != 2
+        || (parts.len() == 3 && parts[2].len() != 2)
+    {
+        return false;
+    }
+    let Some(hour) = ascii_number(parts[0], 2) else {
+        return false;
+    };
+    let Some(minute) = ascii_number(parts[1], 2) else {
+        return false;
+    };
+    let second = if parts.len() == 3 {
+        let Some(second) = ascii_number(parts[2], 2) else {
+            return false;
+        };
+        second
+    } else {
+        0
+    };
+    if minute >= 60 || second >= 60 {
+        return false;
+    }
+    match meridiem {
+        Some(marker) if marker.eq_ignore_ascii_case("am") || marker.eq_ignore_ascii_case("pm") => {
+            (1..=12).contains(&hour)
+        }
+        Some(_) => false,
+        None => hour < 24,
+    }
+}
+
+fn looks_like_datetime(dt: &str) -> bool {
+    // WhatsApp export timestamps vary by phone and locale. We only decide
+    // whether a line is a plausible message boundary; the timestamp is never
+    // normalized into evidence or used to infer chronology here.
+    let dt = dt
+        .trim_start_matches(|ch| matches!(ch, '\u{200e}' | '\u{200f}'))
+        .trim();
+    let mut pieces = dt.split_whitespace();
+    let Some(date) = pieces.next() else {
+        return false;
+    };
+    let Some(time) = pieces.next() else {
+        return false;
+    };
+    let meridiem = pieces.next();
+    if pieces.next().is_some() {
+        return false;
+    }
+    let date = date.strip_suffix(',').unwrap_or(date);
+    valid_whatsapp_date(date) && valid_whatsapp_time(time, meridiem)
 }
 
 fn message_speaker(line: &str) -> Option<&str> {
