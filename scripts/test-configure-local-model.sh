@@ -39,6 +39,21 @@ source .niccolo-local/model.env
 [[ "$NICCOLO_LLM_MODEL" == 'new-model' ]]
 [[ -z "${NICCOLO_LLM_API_KEY:-}" ]]
 
+# Changing endpoint never silently reuses a stored provider key.
+cat > .niccolo-local/model.env <<'ENV'
+export NICCOLO_LLM_BASE_URL=https://old.example/v1
+export NICCOLO_LLM_MODEL=old-model
+export NICCOLO_LLM_API_KEY=old-provider-secret
+ENV
+stored_digest="$(sha256sum .niccolo-local/model.env | awk '{print $1}')"
+if env -u NICCOLO_LLM_API_KEY NICCOLO_LLM_BASE_URL='https://new.example/v1' NICCOLO_LLM_MODEL='new-model' \
+    bash scripts/configure-local-model.sh --from-env > rehost.log 2>&1; then
+  echo 'stored API key was silently reused for a different endpoint' >&2
+  exit 1
+fi
+grep -Fq 'Remote HTTPS model providers require an API key.' rehost.log
+[[ "$(sha256sum .niccolo-local/model.env | awk '{print $1}')" == "$stored_digest" ]]
+
 # Remote HTTPS requires a key, but a key must never be echoed.
 if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='remote' NICCOLO_LLM_API_KEY='' \
     run_cfg > missing-key.log 2>&1; then
