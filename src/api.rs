@@ -5358,6 +5358,8 @@ async fn post_presentation_package_with_examined_sources(
     )
     .await
     .map_err(presentation_api_error)?;
+    let package_sha256 =
+        presentation_package::package_sha256(&package).map_err(presentation_api_error)?;
     presentation_package::record_sensitive_export_event(
         &state.pool,
         workspace,
@@ -5366,6 +5368,7 @@ async fn post_presentation_package_with_examined_sources(
         request.export_event_id,
         actor,
         &preview,
+        &package_sha256,
     )
     .await
     .map_err(presentation_api_error)?;

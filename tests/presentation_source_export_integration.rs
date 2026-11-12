@@ -5,7 +5,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz};
+use niccolo_evidence::{api, authz, presentation_package};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
@@ -313,6 +313,14 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     assert_eq!(events[0]["analysis_id"], analysis.to_string());
     assert_eq!(events[0]["examined_fragment_count"], 1);
     assert!(events[0]["examined_source_text_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(
+        events[0]["package_sha256"],
+        presentation_package::package_sha256(
+            &serde_json::from_value::<presentation_package::PresentationPackage>(sensitive.clone())
+                .unwrap()
+        )
+        .unwrap()
+    );
     assert_eq!(events[0]["includes_original_uploads"], false);
     assert_eq!(events[0]["establishes_truth"], false);
 

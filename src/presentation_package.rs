@@ -54,6 +54,7 @@ pub struct SensitiveExportEventView {
     pub requested_by_principal_id: Uuid,
     pub examined_fragment_count: u64,
     pub examined_source_text_bytes: u64,
+    pub package_sha256: String,
     pub includes_original_uploads: bool,
     pub establishes_truth: bool,
     pub created_at: String,
@@ -745,6 +746,13 @@ async fn audit_scoped(
     Ok(tx)
 }
 
+pub fn package_sha256(package: &PresentationPackage) -> Result<String, PresentationError> {
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(package)?)
+    ))
+}
+
 pub async fn record_sensitive_export_event(
     pool: &PgPool,
     workspace: Uuid,
@@ -753,8 +761,14 @@ pub async fn record_sensitive_export_event(
     export_event_id: Uuid,
     actor: Uuid,
     preview: &ExaminedSourceExportPreview,
+    package_sha256: &str,
 ) -> Result<SensitiveExportRecord, PresentationError> {
-    if export_event_id.is_nil() || actor.is_nil() || !preview.within_export_bounds {
+    if export_event_id.is_nil()
+        || actor.is_nil()
+        || !preview.within_export_bounds
+        || package_sha256.len() != 64
+        || !package_sha256.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err(PresentationError::Invalid);
     }
     let count =
@@ -766,8 +780,8 @@ pub async fn record_sensitive_export_event(
         "INSERT INTO niccolo.analysis_export_events
          (workspace_id,export_event_id,situation_id,analysis_id,export_kind,
           requested_by_principal_id,examined_fragment_count,examined_source_text_bytes,
-          includes_original_uploads,establishes_truth)
-         VALUES($1,$2,$3,$4,'EXAMINED_SOURCE_PRESENTATION',$5,$6,$7,FALSE,FALSE)
+          package_sha256,includes_original_uploads,establishes_truth)
+         VALUES($1,$2,$3,$4,'EXAMINED_SOURCE_PRESENTATION',$5,$6,$7,$8,FALSE,FALSE)
          ON CONFLICT DO NOTHING",
     )
     .bind(workspace)
@@ -777,15 +791,16 @@ pub async fn record_sensitive_export_event(
     .bind(actor)
     .bind(count)
     .bind(bytes)
+    .bind(package_sha256)
     .execute(&mut *tx)
     .await?
     .rows_affected()
         == 1;
 
-    type Row = (Uuid, Uuid, Uuid, i64, i64, bool, bool, String);
+    type Row = (Uuid, Uuid, Uuid, i64, i64, String, bool, bool, String);
     let row: Row = sqlx::query_as(
         "SELECT export_event_id,analysis_id,requested_by_principal_id,
-                examined_fragment_count,examined_source_text_bytes,
+                examined_fragment_count,examined_source_text_bytes,package_sha256,
                 includes_original_uploads,establishes_truth,created_at::text
            FROM niccolo.analysis_export_events
           WHERE workspace_id=$1 AND export_event_id=$2",
@@ -799,8 +814,9 @@ pub async fn record_sensitive_export_event(
         || row.2 != actor
         || row.3 != count
         || row.4 != bytes
-        || row.5
+        || row.5 != package_sha256
         || row.6
+        || row.7
     {
         return Err(PresentationError::Conflict);
     }
@@ -811,9 +827,10 @@ pub async fn record_sensitive_export_event(
         examined_fragment_count: u64::try_from(row.3).map_err(|_| PresentationError::Conflict)?,
         examined_source_text_bytes: u64::try_from(row.4)
             .map_err(|_| PresentationError::Conflict)?,
-        includes_original_uploads: row.5,
-        establishes_truth: row.6,
-        created_at: row.7,
+        package_sha256: row.5,
+        includes_original_uploads: row.6,
+        establishes_truth: row.7,
+        created_at: row.8,
     };
     tx.commit().await?;
     Ok(SensitiveExportRecord {
@@ -834,10 +851,10 @@ pub async fn list_sensitive_export_events(
     }
     analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
     let mut tx = scoped(pool, workspace).await?;
-    type Row = (Uuid, Uuid, Uuid, i64, i64, bool, bool, String);
+    type Row = (Uuid, Uuid, Uuid, i64, i64, String, bool, bool, String);
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT export_event_id,analysis_id,requested_by_principal_id,
-                examined_fragment_count,examined_source_text_bytes,
+                examined_fragment_count,examined_source_text_bytes,package_sha256,
                 includes_original_uploads,establishes_truth,created_at::text
            FROM niccolo.analysis_export_events
           WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
@@ -863,9 +880,10 @@ pub async fn list_sensitive_export_events(
                     .map_err(|_| PresentationError::Conflict)?,
                 examined_source_text_bytes: u64::try_from(row.4)
                     .map_err(|_| PresentationError::Conflict)?,
-                includes_original_uploads: row.5,
-                establishes_truth: row.6,
-                created_at: row.7,
+                package_sha256: row.5,
+                includes_original_uploads: row.6,
+                establishes_truth: row.7,
+                created_at: row.8,
             })
         })
         .collect::<Result<Vec<_>, PresentationError>>()?;
