@@ -37,6 +37,7 @@ use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
+use crate::local_handoff::{LocalHandoff, LocalHandoffError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
@@ -78,6 +79,7 @@ const FORENSIC_IMPORT_HTTP_BODY_LIMIT: usize = 192 * 1024 * 1024;
 pub struct AppState {
     pub pool: PgPool,
     pub model: Arc<dyn ReasoningModel>,
+    pub local_handoff: LocalHandoff,
 }
 
 /// Reject ambiguous authorization headers before either middleware or handler
@@ -135,6 +137,14 @@ pub fn router(pool: PgPool) -> Router {
 }
 
 pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router {
+    router_with_model_and_handoff(pool, model, LocalHandoff::from_env())
+}
+
+fn router_with_model_and_handoff(
+    pool: PgPool,
+    model: Arc<dyn ReasoningModel>,
+    local_handoff: LocalHandoff,
+) -> Router {
     Router::new()
         .route(
             "/",
@@ -201,6 +211,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
                 )
             }),
         )
+        .route("/v1/local-handoff", post(consume_local_handoff))
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
         .route("/readyz", get(readiness))
         .route(
@@ -684,9 +695,35 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_examined_fragment),
         )
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
-        .with_state(AppState { pool, model })
+        .with_state(AppState {
+            pool,
+            model,
+            local_handoff,
+        })
         .layer(axum::middleware::from_fn(request_digest_context))
         .layer(axum::middleware::from_fn(response_security_headers))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalHandoffRequest {
+    code: String,
+}
+
+async fn consume_local_handoff(
+    State(state): State<AppState>,
+    Json(request): Json<LocalHandoffRequest>,
+) -> Result<Response, ApiError> {
+    match state.local_handoff.consume(&request.code) {
+        Ok(token) => Ok(no_store(json!({"token": token}), StatusCode::OK)),
+        Err(LocalHandoffError::NotFound) => {
+            Err(ApiError(StatusCode::NOT_FOUND, "local handoff unavailable"))
+        }
+        Err(LocalHandoffError::SecretUnavailable) => Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "local handoff secret unavailable",
+        )),
+    }
 }
 
 #[derive(Debug)]
