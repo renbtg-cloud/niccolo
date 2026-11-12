@@ -259,7 +259,7 @@ async fn model_token_budget_breach_is_not_retried_or_misreported() {
 }
 
 #[tokio::test]
-async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
+async fn invalid_operation_budget_is_rejected_before_operation_or_step_state_exists() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let scope = OperationScope {
@@ -267,7 +267,7 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
         situation: s.situation,
         operation: Uuid::new_v4(),
     };
-    let mut request = NewOperation {
+    let request = NewOperation {
         kind: "AGENTIC_ANALYSIS".into(),
         target_analysis_id: Some(s.analysis),
         parent_operation_id: None,
@@ -277,48 +277,34 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
         step_budget: 32,
         requested_by: s.principal,
     };
-    bff_operations::submit(&app, scope, &request).await.unwrap();
-    let step_id = Uuid::new_v4();
-    agentic_controller::create_plan(
-        &app,
-        scope,
-        s.principal,
-        &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
-    )
-    .await
-    .unwrap();
-    let model = DeterministicModel::new("local-fixture", "none").unwrap();
-    let result = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model).await;
     assert!(matches!(
-        result,
-        Err(agentic_runtime::RuntimeError::Budget(BudgetError::Invalid))
+        bff_operations::submit(&app, scope, &request).await,
+        Err(bff_operations::BffOperationError::Invalid)
     ));
-    let started_events: i64 = sqlx::query_scalar(
-        "SELECT count(*)::bigint FROM niccolo.agentic_step_events
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4
-           AND event_kind='STARTED'",
+
+    let operations: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.bff_operations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
     )
     .bind(s.workspace)
     .bind(s.situation)
     .bind(scope.operation)
-    .bind(step_id)
     .fetch_one(&admin)
     .await
     .unwrap();
-    assert_eq!(
-        started_events, 0,
-        "invalid operation budget must be rejected before the step is started"
-    );
-    let view = agentic_controller::view(&app, scope).await.unwrap();
-    assert_eq!(
-        view.steps.iter().find(|step| step.step_id == step_id).unwrap().state,
-        "PENDING"
-    );
-    request.input = json!({"model_budget":{"max_invocations":1}});
-    assert!(matches!(
-        bff_operations::submit(&app, scope, &request).await,
-        Err(bff_operations::BffOperationError::IdempotencyConflict)
-    ));
+    assert_eq!(operations, 0);
+
+    let step_events: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.agentic_step_events
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(step_events, 0);
 }
 
 #[tokio::test]

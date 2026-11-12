@@ -1,7 +1,7 @@
 //! v0.182-v0.200: one durable BFF operation model with sync and async delivery surfaces.
 //! Interaction mode never changes domain semantics or result/error representation.
 use crate::analysis_structure::AnalysisScope;
-use crate::{human_briefing, reasoning_handoff};
+use crate::{human_briefing, operation_budget, reasoning_handoff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -207,6 +207,7 @@ pub async fn submit(
     {
         return Err(BffOperationError::Invalid);
     }
+    operation_budget::validate_input(&input.input).map_err(|_| BffOperationError::Invalid)?;
     let input_json = canonical(&input.input)?;
     if input_json.len() > 262_144 {
         return Err(BffOperationError::Invalid);

@@ -94,6 +94,10 @@ fn configured(input: &Value) -> Result<(i64, i64, i64), BudgetError> {
     Ok((max_i, max_t, finalization_reserve_ms))
 }
 
+pub fn validate_input(input: &Value) -> Result<(), BudgetError> {
+    configured(input).map(|_| ())
+}
+
 /// Pure display/accounting logic, using a single observed remaining-deadline
 /// sample. It never infers truth, certainty, model quality or completed work.
 fn summarize(
