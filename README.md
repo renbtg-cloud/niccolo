@@ -111,15 +111,19 @@ It writes private files under the ignored `.niccolo-local/` folder:
 Situation identifiers), and `token.txt` (bearer token). Treat the folder
 as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
 
-For a local OpenAI-compatible model runtime, configure
-`NICCOLO_LLM_BASE_URL` (for example `http://127.0.0.1:11434/v1`) and
-`NICCOLO_LLM_MODEL` before starting the API. Keyless HTTP is permitted only
-on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
-Some local models require `NICCOLO_LLM_JSON_MODE=false`.
+Configure the OpenAI-compatible reasoning model once with:
 
-For repeated local use, those exports may be kept in the ignored private file
-`.niccolo-local/model.env`; `scripts/start-local-mvp.sh` sources it
-automatically when present. Keep any API key in that private file, never in the
+```bash
+bash scripts/configure-local-model.sh
+```
+
+The helper prompts for the base URL and model, hides API-key input, rejects remote plain HTTP,
+and writes only the ignored private file `.niccolo-local/model.env` with restrictive permissions
+where the platform supports them. Keyless HTTP is permitted only on loopback; remote HTTPS
+providers require an API key. Some local models require `NICCOLO_LLM_JSON_MODE=false`, which can
+still be exported before running the helper. `scripts/start-local-mvp.sh` sources the private file
+automatically, while explicitly exported `NICCOLO_LLM_*` values override stored defaults for one
+start invocation. Keep any API key in that private file or process environment, never in the
 prepared browser URL or repository.
 
 Start the already-bootstrapped local MVP with one command:
