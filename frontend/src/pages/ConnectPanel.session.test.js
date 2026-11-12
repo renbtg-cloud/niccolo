@@ -24,6 +24,12 @@ describe('connection boundary', () => {
     expect(source).toContain('disabled={checking}');
   });
 
+  it('starts in connecting state when a valid handoff fragment is already present', () => {
+    expect(source).toContain('useState(()=>hasLocalHandoffFragment(window.location))');
+    expect(source).toContain('disabled={checking}');
+    expect(source).toContain("checking?'Connecting…':'Connect'");
+  });
+
   it('removes a one-shot local capability before redeeming it and keeps bearer fallback explicit', () => {
     expect(source).toContain('connectionHints(window.location.search)');
     expect(source).toContain('takeLocalHandoffFromFragment(window.location,window.history)');
