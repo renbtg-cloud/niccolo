@@ -85,10 +85,7 @@ struct EmailHeader {
     body_start: usize,
 }
 
-fn invalid_email_header<T>(
-    nested: bool,
-    reason: &'static str,
-) -> Result<Option<T>, ParseError> {
+fn invalid_email_header<T>(nested: bool, reason: &'static str) -> Result<Option<T>, ParseError> {
     if nested {
         Ok(None)
     } else {
@@ -187,8 +184,7 @@ fn parse_email_header(
 }
 
 fn email_thread_boundary(src: &str, start: usize) -> bool {
-    start > 0
-        && (src[..start].ends_with("\n\n") || src[..start].ends_with("\r\n\r\n"))
+    start > 0 && (src[..start].ends_with("\n\n") || src[..start].ends_with("\r\n\r\n"))
 }
 
 fn next_embedded_email_header(
@@ -239,8 +235,8 @@ fn push_email_fragment(
 }
 
 fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
-    let first = parse_email_header(src, 0, false)?
-        .ok_or(ParseError::Unsupported("email header"))?;
+    let first =
+        parse_email_header(src, 0, false)?.ok_or(ParseError::Unsupported("email header"))?;
     let mut speaker = first.speaker_label;
     let mut body_start = first.body_start;
     let mut fragments = Vec::new();
@@ -248,13 +244,7 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     loop {
         let next = next_embedded_email_header(src, body_start)?;
         let body_end = next.as_ref().map_or(src.len(), |(start, _)| *start);
-        push_email_fragment(
-            &mut fragments,
-            src,
-            body_start,
-            body_end,
-            speaker,
-        )?;
+        push_email_fragment(&mut fragments, src, body_start, body_end, speaker)?;
         let Some((_, header)) = next else {
             break;
         };
@@ -282,16 +272,18 @@ fn looks_like_datetime(dt: &str) -> bool {
         return false;
     };
     let mut time_parts = time.trim().split(':');
-    let (Some(hour), Some(minute), None) = (
-        time_parts.next(),
-        time_parts.next(),
-        time_parts.next(),
-    ) else {
+    let (Some(hour), Some(minute), None) =
+        (time_parts.next(), time_parts.next(), time_parts.next())
+    else {
         return false;
     };
-    if ![day, month, year, hour, minute].iter().all(|v| {
-        !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit())
-    }) || hour.len() != 2 || minute.len() != 2 || year.len() < 2 {
+    if ![day, month, year, hour, minute]
+        .iter()
+        .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+        || hour.len() != 2
+        || minute.len() != 2
+        || year.len() < 2
+    {
         return false;
     }
     let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (
@@ -482,9 +474,21 @@ mod tests {
                 "adrian.kessler@aurelius.example",
             ]
         );
-        assert!(parsed.fragments[0].content.contains("committee meets at noon"));
-        assert!(parsed.fragments[1].content.contains("Push this through before the committee sees it."));
-        assert!(parsed.fragments[2].content.contains("I am not authorizing the settlement or bonus."));
+        assert!(
+            parsed.fragments[0]
+                .content
+                .contains("committee meets at noon")
+        );
+        assert!(
+            parsed.fragments[1]
+                .content
+                .contains("Push this through before the committee sees it.")
+        );
+        assert!(
+            parsed.fragments[2]
+                .content
+                .contains("I am not authorizing the settlement or bonus.")
+        );
         for fragment in parsed.fragments {
             assert_eq!(
                 fragment.content.as_bytes(),
@@ -499,7 +503,11 @@ mod tests {
         let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
         assert_eq!(parsed.fragments.len(), 1);
         assert_eq!(parsed.fragments[0].speaker_label, "root@example.org");
-        assert!(parsed.fragments[0].content.contains("From: quoted@example.org"));
+        assert!(
+            parsed.fragments[0]
+                .content
+                .contains("From: quoted@example.org")
+        );
     }
 
     #[test]

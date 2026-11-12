@@ -2,8 +2,8 @@
 use niccolo_evidence::{
     postgres_ingest::{ImportError, ingest_source},
     postgres_repository::{RepositoryError, load_workspace_graph},
-    source_import::SourceFormat,
     source_catalog,
+    source_import::SourceFormat,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::collections::BTreeSet;
@@ -121,10 +121,7 @@ async fn canonical_email_thread_stores_each_sender_as_a_separate_attributed_frag
         ]
     );
     for (_, start, end, _, content) in stored {
-        assert_eq!(
-            content.as_bytes(),
-            &raw[start as usize..end as usize]
-        );
+        assert_eq!(content.as_bytes(), &raw[start as usize..end as usize]);
     }
 }
 
@@ -135,21 +132,39 @@ async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
     let id = Uuid::new_v4();
     let raw = b"From: Example <example@example.org>\r\n\r\nOl\xc3\xa1!\r\n";
     let imported = ingest_source(
-        &service, w, id, SourceFormat::Eml, "fixture://original", raw
-    ).await.unwrap();
+        &service,
+        w,
+        id,
+        SourceFormat::Eml,
+        "fixture://original",
+        raw,
+    )
+    .await
+    .unwrap();
     assert!(!imported.replayed);
     let stored: Vec<u8> = sqlx::query_scalar(
         "SELECT original_bytes FROM niccolo.source_payloads WHERE workspace_id=$1 AND document_id=$2",
     ).bind(w).bind(id).fetch_one(&admin).await.unwrap();
     assert_eq!(stored, raw);
-    let page = source_catalog::list_sources(&service, w, None, 25).await.unwrap();
+    let page = source_catalog::list_sources(&service, w, None, 25)
+        .await
+        .unwrap();
     assert_eq!(page.documents.len(), 1);
     assert!(page.documents[0].original_bytes_available);
-    let authorized = source_catalog::source_original(&service, w, id).await.unwrap();
+    let authorized = source_catalog::source_original(&service, w, id)
+        .await
+        .unwrap();
     assert_eq!(authorized, Some(("EML".to_owned(), raw.to_vec())));
     let replay = ingest_source(
-        &service, w, id, SourceFormat::Eml, "fixture://original", raw
-    ).await.unwrap();
+        &service,
+        w,
+        id,
+        SourceFormat::Eml,
+        "fixture://original",
+        raw,
+    )
+    .await
+    .unwrap();
     assert!(replay.replayed);
     assert_eq!(replay.graph_revision, imported.graph_revision);
 }
@@ -159,16 +174,28 @@ async fn original_bytes_are_not_visible_outside_the_authorized_workspace() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;
     let id = Uuid::new_v4();
-    ingest_source(&service, w, id, SourceFormat::Eml, "fixture://isolated", b"From: A\n\none")
-        .await.unwrap();
+    ingest_source(
+        &service,
+        w,
+        id,
+        SourceFormat::Eml,
+        "fixture://isolated",
+        b"From: A\n\none",
+    )
+    .await
+    .unwrap();
     // No workspace GUC nor bearer digest is bound to this connection.
-    let visible: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.source_payloads WHERE workspace_id=$1",
-    ).bind(w).fetch_one(&service).await.unwrap();
+    let visible: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.source_payloads WHERE workspace_id=$1")
+            .bind(w)
+            .fetch_one(&service)
+            .await
+            .unwrap();
     assert_eq!(visible, 0);
     let wrong_workspace = workspace(&admin).await;
     let isolated = source_catalog::source_original(&service, wrong_workspace, id)
-        .await.unwrap();
+        .await
+        .unwrap();
     assert!(isolated.is_none());
 }
 
@@ -177,13 +204,25 @@ async fn original_source_bytes_cannot_be_modified_after_import() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;
     let id = Uuid::new_v4();
-    ingest_source(&service, w, id, SourceFormat::Eml, "fixture://immutable", b"From: A\n\none")
-        .await.unwrap();
+    ingest_source(
+        &service,
+        w,
+        id,
+        SourceFormat::Eml,
+        "fixture://immutable",
+        b"From: A\n\none",
+    )
+    .await
+    .unwrap();
     let attempt = sqlx::query(
         "UPDATE niccolo.source_payloads SET original_bytes=$3 WHERE workspace_id=$1 AND document_id=$2",
     ).bind(w).bind(id).bind(&b"tampered"[..]).execute(&admin).await;
     assert_eq!(
-        attempt.unwrap_err().as_database_error().and_then(|e| e.code()).as_deref(),
+        attempt
+            .unwrap_err()
+            .as_database_error()
+            .and_then(|e| e.code())
+            .as_deref(),
         Some("23514")
     );
 }
