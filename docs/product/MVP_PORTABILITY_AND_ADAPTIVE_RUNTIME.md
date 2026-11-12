@@ -64,10 +64,10 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
 | GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Not implemented |
 | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
 | ARM-001 | Observe effective Linux process/container resources; portable adapter boundary | Verified Linux first slice (PR #26) |
-| ARM-002 | Self-managed/delegated modes; bounded budgets and visible degradation | Not implemented |
+| ARM-002 | Self-managed/delegated modes; bounded budgets and visible degradation | Partial verified slice: self/external/hybrid policy advice, resource-aware atomic worker admission and operation-wide invocation/token/deadline enforcement; HTTP-spawned execution and quality-degradation scheduling are not yet adaptive |
 | ARM-003 | Anytime partial-result checkpoints, bounded deadline and finalization time | Not implemented |
 
-The operation-wide invocation/token/deadline accounting and Linux effective-resource observer are verified prerequisites. They are **not** proof that adaptive scheduling, graceful degradation or full anytime reasoning exist.
+The operation-wide invocation/token/deadline accounting and Linux effective-resource observer are verified prerequisites. The worker library also has an atomic workspace-wide adaptive admission ceiling: self-managed/hybrid policy can cap competing execution leases from observed capacity, while externally managed mode leaves concurrency to the operator. This is **not** yet the default HTTP-spawned execution path and is not proof that graceful epistemic degradation or full anytime reasoning exists.
 
 ### Security and evidence rules
 
