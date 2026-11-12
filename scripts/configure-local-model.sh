@@ -171,6 +171,7 @@ command -v node >/dev/null 2>&1 || { echo 'Node.js is required to validate the m
 endpoint_kind="$(NICCOLO_CONFIG_BASE_URL="$base_url" node - <<'NODE'
 const raw = process.env.NICCOLO_CONFIG_BASE_URL;
 try {
+  if (/\s/.test(raw)) process.exit(2);
   const u = new URL(raw);
   if (u.username || u.password || u.search || u.hash) process.exit(2);
   if (u.protocol === 'http:') {
