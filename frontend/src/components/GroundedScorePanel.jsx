@@ -44,7 +44,8 @@ export function GroundedScorePanel() {
   const eligible = claims.filter((claim) => (claim.source_provenance ?? []).length > 0);
   const selected = eligible.find((claim) => claim.claim_id === claimId) ?? null;
   const sources = selected?.source_provenance ?? [];
-  const complete = !!selected && sources.every((source) => {
+  const tooManySources = sources.length > 64;
+  const complete = !!selected && !tooManySources && sources.every((source) => {
     const draft = sourceDraft(drafts, source.evidence_id);
     const strength = Number(draft.strength);
     return Number.isInteger(strength)
@@ -123,6 +124,7 @@ export function GroundedScorePanel() {
         </select>
       </label>
       {selected && <div className="grounded-score-sources">
+        {tooManySources && <p className="error" role="alert">This claim has more than 64 linked source fragments. Narrow the recorded claim links before creating a bounded score artifact.</p>}
         {sources.map((source) => {
           const draft = sourceDraft(drafts, source.evidence_id);
           return <fieldset key={source.evidence_id}>
