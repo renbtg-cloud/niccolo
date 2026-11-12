@@ -63,6 +63,14 @@ export class NiccoloClient {
   retractSituationContribution(contributionId) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}/retract`, { body: {} }); }
   revisions() { return this.request('GET', `${situationPath(this.config)}/revisions?after=0&limit=100`); }
   analysisHistory(before = null, limit = 100) { const q = before ? `?before=${before}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${situationPath(this.config)}/analysis-history${q}`); }
+  forensicExport() { return this.request('GET', `${situationPath(this.config)}/forensic-export`); }
+  forensicImports(before = null, limit = 25) { const q = before ? `?before=${before}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `/v1/workspaces/${this.config.workspace}/forensic-imports${q}`); }
+  forensicImport(batchId) { return this.request('GET', `/v1/workspaces/${this.config.workspace}/forensic-imports/${batchId}`); }
+  importForensic(batchId, declaredOrigin, pkg) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/forensic-imports/${batchId}`, { body: { declared_origin: declaredOrigin, package: pkg } }); }
+  forensicImportItems(batchId, after = null, limit = 50) { const q = after ? `?after=${encodeURIComponent(after)}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `/v1/workspaces/${this.config.workspace}/forensic-imports/${batchId}/items${q}`); }
+  forensicImportItem(batchId, itemId) { return this.request('GET', `/v1/workspaces/${this.config.workspace}/forensic-imports/${batchId}/items/${itemId}`); }
+  analysisForensicContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/forensic-context`); }
+  bindAnalysisForensicContext(id, bindingId, batchId, itemId, note = null) { return this.request('POST', `${analysisPath(this.config,id)}/forensic-context/${bindingId}`, { body: { import_batch_id: batchId, item_id: itemId, note } }); }
   analysisReview(id) { return this.request('GET', `${analysisPath(this.config,id)}/review`); }
   analysisClarifications(id, after = null, limit = 25) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications${q}`); }
   clarificationAnswers(id, questionId, after = null, limit = 25) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers${q}`); }

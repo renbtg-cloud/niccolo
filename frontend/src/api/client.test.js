@@ -57,6 +57,29 @@ describe('BFF client',()=>{
    expect(JSON.parse(calls[5][1].body).human_reason).toBe('confirmed by user');
  });
 
+ it('exposes forensic export import quarantine inspection and explicit analysis binding',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,{batches:[],items:[]});});
+   await x.forensicExport();
+   await x.forensicImports(null,25);
+   await x.forensicImports('batch-cursor',10);
+   await x.forensicImport('batch');
+   await x.importForensic('batch','file://prior-niccolo.json',{format:'NICCOLO_SITUATION_FORENSIC_EXPORT'});
+   await x.forensicImportItems('batch','logical/tables/a row.json',20);
+   await x.forensicImportItem('batch','item');
+   await x.analysisForensicContext('analysis');
+   await x.bindAnalysisForensicContext('analysis','binding','batch','item','Use only as historical context');
+   expect(calls[0][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/forensic-export');
+   expect(calls[1][0]).toContain('/forensic-imports?limit=25');
+   expect(calls[2][0]).toContain('/forensic-imports?before=batch-cursor&limit=10');
+   expect(calls[3][0]).toContain('/forensic-imports/batch');
+   expect(JSON.parse(calls[4][1].body)).toEqual({declared_origin:'file://prior-niccolo.json',package:{format:'NICCOLO_SITUATION_FORENSIC_EXPORT'}});
+   expect(calls[5][0]).toContain('/forensic-imports/batch/items?after=logical%2Ftables%2Fa%20row.json&limit=20');
+   expect(calls[6][0]).toContain('/forensic-imports/batch/items/item');
+   expect(calls[7][0]).toContain('/analysis-snapshots/analysis/forensic-context');
+   expect(JSON.parse(calls[8][1].body)).toEqual({import_batch_id:'batch',item_id:'item',note:'Use only as historical context'});
+ });
+
  it('submits explicit human-approved reanalysis without rewriting the prior analysis',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{kind:'REANALYZE',state:'SUCCEEDED',result:{prior_analysis_id:'old',new_analysis_id:'new',historical_output_preserved:true,human_requested_operation:true}});});const r=await x.runReanalysisSync('op-re','old','new','Revisit with new evidence');expect(calls[0][0]).toContain('/bff/operations/op-re/sync');const body=JSON.parse(calls[0][1].body);expect(body.kind).toBe('REANALYZE');expect(body.target_analysis_id).toBe('old');expect(body.input).toEqual({new_analysis_id:'new',goal:'Revisit with new evidence'});expect(r.value.result.historical_output_preserved).toBe(true);});
 
  it('creates corrects and retracts attributed human context without calling it evidence',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{revision:4,contributions:[]});});await x.addSituationContribution('c1','user_reported','I remember the tone',null);await x.correctSituationContribution('c1','c2','I now remember it differently',null);await x.retractSituationContribution('c2');expect(calls[0][0]).toContain('/contributions/c1');expect(JSON.parse(calls[0][1].body)).toEqual({kind:'user_reported',text:'I remember the tone',related_evidence_id:null});expect(calls[1][0]).toContain('/contributions/c1/corrections/c2');expect(calls[2][0]).toContain('/contributions/c2/retract');});
