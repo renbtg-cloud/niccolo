@@ -399,7 +399,6 @@ one unsupported assertion",
     assert!(!assessment.independence_established);
 }
 
-
 #[tokio::test]
 async fn aggregate_integration_diagnostics_report_transport_patterns_without_truth_claims() {
     let f = setup().await;
@@ -410,7 +409,11 @@ async fn aggregate_integration_diagnostics_report_transport_patterns_without_tru
         let result = ingest_source_with_operational_id(
             &f.service,
             f.workspace,
-            if attempt == 0 { retry_document } else { Uuid::new_v4() },
+            if attempt == 0 {
+                retry_document
+            } else {
+                Uuid::new_v4()
+            },
             SourceFormat::Eml,
             "fixture://aggregate/retry",
             retry_raw,
@@ -453,11 +456,7 @@ async fn aggregate_integration_diagnostics_report_transport_patterns_without_tru
     }
 
     let path = format!("/v1/workspaces/{}/integration-diagnostics", f.workspace);
-    let (status, body) = call(
-        f.router.clone(),
-        req("GET", path, &f.writer, None, &[]),
-    )
-    .await;
+    let (status, body) = call(f.router.clone(), req("GET", path, &f.writer, None, &[])).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["source_document_count"], 4);
     assert_eq!(body["operational_event_count"], 3);
@@ -485,7 +484,6 @@ async fn aggregate_integration_diagnostics_report_transport_patterns_without_tru
         "Integration diagnostics describe delivery and identity patterns only; they do not measure evidence quality, credibility, independence, or truth."
     );
 }
-
 
 #[tokio::test]
 async fn upstream_processing_declarations_are_attributed_metadata_not_evidence() {
@@ -599,7 +597,10 @@ async fn upstream_processing_declarations_are_attributed_metadata_not_evidence()
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(second_page["declarations"].as_array().unwrap().len(), 1);
-    assert_eq!(second_page["declarations"][0]["declaration_id"], second_created["declaration_id"]);
+    assert_eq!(
+        second_page["declarations"][0]["declaration_id"],
+        second_created["declaration_id"]
+    );
 
     let invisible = Uuid::new_v4();
     let invisible_path = format!(
