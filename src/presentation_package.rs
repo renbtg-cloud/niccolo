@@ -440,7 +440,10 @@ fn from_bundle_and_extracts(
                 .map(|policy| {
                     vec![
                         policy.policy_id.to_string(),
-                        policy.situation_id.map(|id| id.to_string()).unwrap_or_default(),
+                        policy
+                            .situation_id
+                            .map(|id| id.to_string())
+                            .unwrap_or_default(),
                         policy.scope.clone(),
                         policy.support_multiplier_pct.to_string(),
                         policy.counter_multiplier_pct.to_string(),
@@ -449,7 +452,9 @@ fn from_bundle_and_extracts(
                         policy.recorded_by_principal_id.to_string(),
                         policy.created_at.clone(),
                         policy.is_probability_model.to_string(),
-                        policy.proves_policy_was_used_for_published_output.to_string(),
+                        policy
+                            .proves_policy_was_used_for_published_output
+                            .to_string(),
                     ]
                 })
                 .collect(),
@@ -685,7 +690,12 @@ async fn epistemic_context(
             .map(|row| ExportedEpistemicPolicy {
                 policy_id: row.0,
                 situation_id: row.1,
-                scope: if row.1.is_some() { "SITUATION" } else { "WORKSPACE" }.into(),
+                scope: if row.1.is_some() {
+                    "SITUATION"
+                } else {
+                    "WORKSPACE"
+                }
+                .into(),
                 support_multiplier_pct: row.2 as u16,
                 counter_multiplier_pct: row.3 as u16,
                 per_origin_cap: row.4 as u16,
