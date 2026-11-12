@@ -289,7 +289,7 @@ function ConnectedSituation({client}){
         : readiness.error
           ? <p className="error">Niccolò cannot confirm reasoning readiness: {readiness.error.message}</p>
           : readiness.data?.model_configured === false
-            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting, or use .niccolo-local/model.env.</small></>
+            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, run bash scripts/configure-local-model.sh once, then restart Niccolò. The private settings are kept in .niccolo-local/model.env.</small></>
             : <><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></>}
     </article>
 
