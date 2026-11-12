@@ -37,7 +37,7 @@ pub struct BindingInput {
     pub note: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForensicContextItem {
     pub binding_id: Uuid,
     pub import_batch_id: Uuid,
@@ -248,8 +248,7 @@ pub async fn bind(
 
     let analysis: Option<Uuid> = sqlx::query_scalar(
         "SELECT analysis_id FROM niccolo.situation_analysis_snapshots
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
-          FOR UPDATE",
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
