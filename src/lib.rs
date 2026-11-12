@@ -425,6 +425,7 @@ pub mod analysis_integrity;
 
 pub mod integrity_scope;
 pub mod integration_diagnostics;
+pub mod upstream_processing;
 pub mod analysis_manifest;
 pub mod analysis_read_models;
 pub mod analysis_structure;
