@@ -336,4 +336,82 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     .fetch_one(&f.admin)    .await
     .unwrap();
     assert_eq!(audit_rows, 1);
+
+    let other_analysis = Uuid::new_v4();
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                analysis_path(&f, situation, other_analysis),
+                &f.writer,
+                Some(json!({"goal":"A different published analysis"})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                format!(
+                    "{}/examined-fragments/{examined}",
+                    analysis_path(&f, situation, other_analysis)
+                ),
+                &f.writer,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                format!("{}/output", analysis_path(&f, situation, other_analysis)),
+                &f.writer,
+                Some(json!({
+                    "answer_text":"A second immutable answer.",
+                    "coverage_note":"Same examined fragment, different analysis."
+                })),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (status, _) = call(
+        f.router.clone(),
+        json_request(
+            "POST",
+            format!(
+                "{}/presentation-package",
+                analysis_path(&f, situation, other_analysis)
+            ),
+            &f.writer,
+            Some(json!({
+                "include_examined_source_fragments":true,
+                "export_event_id":export_event
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let audit_rows_after_conflict: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.analysis_export_events
+          WHERE workspace_id=$1 AND export_event_id=$2",
+    )
+    .bind(f.workspace)
+    .bind(export_event)
+    .fetch_one(&f.admin)
+    .await
+    .unwrap();
+    assert_eq!(audit_rows_after_conflict, 1);
 }
