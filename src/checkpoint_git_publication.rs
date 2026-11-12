@@ -133,6 +133,12 @@ pub async fn preview(
     let checkpoint = operation_checkpoint::get(pool, scope, checkpoint_id).await?;
     let package = checkpoint_package::build(scope, &checkpoint)?;
     let target = git_publication::get_target(pool, scope.workspace, target_id).await?;
+    // Checkpoint summaries may contain sensitive human/investigative context even
+    // though the bounded package excludes original uploads and examined source text.
+    // Keep this first remote-publication slice private-by-declaration.
+    if target.repository_visibility != "PRIVATE" {
+        return Err(CheckpointGitPublicationError::Invalid);
+    }
     let (file_count, total_text_bytes) = package_shape(&package)?;
     Ok(CheckpointPublicationPreview {
         requested_ref: target.ref_name.clone(),
