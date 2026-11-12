@@ -78,6 +78,57 @@ async fn attributed_import_and_workspace_graph_are_connected() {
     }
 }
 #[tokio::test]
+async fn canonical_email_thread_stores_each_sender_as_a_separate_attributed_fragment() {
+    let (admin, service) = pools().await;
+    let w = workspace(&admin).await;
+    let id = Uuid::new_v4();
+    let raw = include_bytes!("../fixtures/law-firm-mvp/sources/02_full_thread.eml");
+
+    let imported = ingest_source(
+        &service,
+        w,
+        id,
+        SourceFormat::Eml,
+        "fixture://law-firm/full-thread",
+        raw,
+    )
+    .await
+    .unwrap();
+    assert_eq!(imported.fragment_ids.len(), 3);
+
+    let stored: Vec<(i32, i32, i32, String, String)> = sqlx::query_as(
+        "SELECT f.ordinal,f.byte_start,f.byte_end,f.speaker_label,e.content
+           FROM niccolo.source_fragments f
+           JOIN niccolo.evidence e USING(workspace_id,evidence_id)
+          WHERE f.workspace_id=$1 AND f.document_id=$2
+          ORDER BY f.ordinal",
+    )
+    .bind(w)
+    .bind(id)
+    .fetch_all(&admin)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        stored
+            .iter()
+            .map(|(_, _, _, speaker, _)| speaker.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "julian.mercer@aurelius.example",
+            "adrian.kessler@aurelius.example",
+            "adrian.kessler@aurelius.example",
+        ]
+    );
+    for (_, start, end, _, content) in stored {
+        assert_eq!(
+            content.as_bytes(),
+            &raw[start as usize..end as usize]
+        );
+    }
+}
+
+#[tokio::test]
 async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;
