@@ -169,7 +169,6 @@ jobs:
           --health-retries 15
     env:
       NICCOLO_PG_ADMIN_URL: postgres://niccolo_bootstrap_admin:ephemeral_ci_admin_password@localhost:5432/niccolo_first_run
-      NICCOLO_PG_SECURE_PASSWORD: ephemeral_ci_service_password
       CARGO_BUILD_JOBS: "2"
     steps:
       - uses: actions/checkout@v4
