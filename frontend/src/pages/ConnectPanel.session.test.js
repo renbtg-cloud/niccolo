@@ -20,12 +20,17 @@ describe('connection boundary', () => {
   it('validates workspace access before marking a disconnected form as connected', () => {
     expect(source).toContain('await validateConnection(credentials)');
     expect(source).toContain("setConnectionError(connectionFailureMessage(error))");
-    expect(source).toContain("checking?'Checking…':'Connect'");
+    expect(source).toContain("checking?'Connecting…':'Connect'");
     expect(source).toContain('disabled={checking}');
   });
 
-  it('never reads a bearer token from URL hints', () => {
+  it('removes a one-shot local capability before redeeming it and keeps bearer fallback explicit', () => {
     expect(source).toContain('connectionHints(window.location.search)');
-    expect(source).toContain('Bearer tokens are never read from the URL or persisted.');
+    expect(source).toContain('takeLocalHandoffFromFragment(window.location,window.history)');
+    expect(source).toContain('await redeemLocalHandoff(code)');
+    expect(source.indexOf('takeLocalHandoffFromFragment(window.location,window.history)')).toBeLessThan(source.indexOf('await redeemLocalHandoff(code)'));
+    expect(source).toContain('connectionSchema.safeParse({...getValues(),token})');
+    expect(source).toContain('.niccolo-local/token.txt');
+    expect(source).toContain('Bearer tokens are never placed in the URL or persisted.');
   });
 });
