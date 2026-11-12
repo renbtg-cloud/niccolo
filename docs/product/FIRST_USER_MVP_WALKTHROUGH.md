@@ -140,7 +140,10 @@ fragments recorded as examined by that analysis. That action requires write auth
 that excerpts may contain private communications and do not establish truth. Before the sensitive
 download is enabled, Review shows a read-only scope preview with the number of recorded examined
 fragments and the UTF-8 byte count that would be included; the preview itself exposes no source
-text.
+text. Each successful sensitive export also records an immutable local authorization event with the
+requesting principal, selected fragment/byte counts and SHA-256 of the exact presentation package.
+Retrying an interrupted browser response reuses the same event ID instead of creating duplicate
+audit history.
 
 The answer is provisional reasoning over recorded input, not a declaration of truth.
 

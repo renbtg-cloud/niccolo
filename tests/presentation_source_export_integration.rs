@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 struct Fixture {
     router: Router,
+    admin: sqlx::PgPool,
     workspace: Uuid,
     writer: String,
     reader: String,
@@ -44,6 +45,7 @@ async fn setup() -> Fixture {
         .unwrap();
     Fixture {
         router: api::router(secure),
+        admin,
         workspace,
         writer,
         reader,
@@ -331,14 +333,7 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     .bind(f.workspace)
     .bind(analysis)
     .bind(export_event)
-    .fetch_one(
-        &PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
-            .await
-            .unwrap(),
-    )
-    .await
+    .fetch_one(&f.admin)    .await
     .unwrap();
     assert_eq!(audit_rows, 1);
 }
