@@ -752,6 +752,33 @@ impl From<RepositoryError> for ApiError {
         }
     }
 }
+fn import_error_for_format(error: ImportError, format: SourceFormat) -> ApiError {
+    match error {
+        ImportError::Parse(_) => match format {
+            SourceFormat::Eml => ApiError(
+                StatusCode::BAD_REQUEST,
+                "invalid or unsupported plain-text email source",
+            ),
+            SourceFormat::WhatsappExport => {
+                ApiError(StatusCode::BAD_REQUEST, "invalid WhatsApp chat export")
+            }
+        },
+        ImportError::Locator | ImportError::OperationalEventInvalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid source metadata")
+        }
+        ImportError::DocumentConflict => {
+            ApiError(StatusCode::CONFLICT, "source document conflict")
+        }
+        ImportError::OperationalEventConflict => {
+            ApiError(StatusCode::CONFLICT, "operational event identity conflict")
+        }
+        ImportError::WorkspaceInvisible => {
+            ApiError(StatusCode::NOT_FOUND, "workspace unavailable")
+        }
+        _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source unavailable"),
+    }
+}
+
 impl From<ImportError> for ApiError {
     fn from(e: ImportError) -> Self {
         match e {
@@ -1100,7 +1127,8 @@ async fn ingest(
         &body,
         operational_event_id,
     )
-    .await?;
+    .await
+    .map_err(|error| import_error_for_format(error, format))?;
     let warning = result
         .operational_duplicate
         .then_some("duplicate operational delivery suppressed; deduplicate retries upstream");
