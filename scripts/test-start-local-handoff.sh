@@ -52,4 +52,33 @@ rm -f "$TMP/browser-url" "$TMP/server-code"
 manual="$(NICCOLO_OPEN_BROWSER=0 NICCOLO_LOCAL_HANDOFF_CODE="$(printf 'f%.0s' {1..64})" NICCOLO_LOCAL_HANDOFF_TOKEN_FILE='/tmp/stale' bash scripts/start-local-mvp.sh)"
 grep -Fq 'paste the bearer token from .niccolo-local/token.txt' <<< "$manual"
 
-printf '%s\n' 'PASS: local browser start uses a non-bearer one-shot capability and keeps manual fallback.'
+# Corrupted local bootstrap state must fail before browser/server startup.
+cp .niccolo-local/identifiers.txt "$TMP/identifiers.good"
+cp .niccolo-local/token.txt "$TMP/token.good"
+
+set +e
+bad_port="$(NICCOLO_API_PORT=70000 bash scripts/start-local-mvp.sh --print-only 2>&1)"
+bad_port_status=$?
+set -e
+[[ "$bad_port_status" == 2 ]]
+grep -Fq 'NICCOLO_API_PORT must be an integer from 1 to 65535.' <<< "$bad_port"
+
+printf '%s\n' "export WORKSPACE_UUID='not-a-uuid'" "export SITUATION_UUID='22222222-2222-4222-8222-222222222222'" > .niccolo-local/identifiers.txt
+set +e
+bad_id="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
+bad_id_status=$?
+set -e
+[[ "$bad_id_status" == 2 ]]
+grep -Fq 'Invalid WORKSPACE_UUID' <<< "$bad_id"
+cp "$TMP/identifiers.good" .niccolo-local/identifiers.txt
+
+printf '%s\n' 'not-a-token' > .niccolo-local/token.txt
+set +e
+bad_token="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
+bad_token_status=$?
+set -e
+[[ "$bad_token_status" == 2 ]]
+grep -Fq 'Invalid local bearer token file' <<< "$bad_token"
+cp "$TMP/token.good" .niccolo-local/token.txt
+
+printf '%s\n' 'PASS: local browser start uses a non-bearer one-shot capability, keeps manual fallback, and rejects corrupted local bootstrap state.'
