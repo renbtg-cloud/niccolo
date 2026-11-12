@@ -42,6 +42,8 @@ export class NiccoloClient {
   }
   readiness() { return this.request('GET', '/readyz'); }
   integrationDiagnostics() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/integration-diagnostics`); }
+  integrationProcessingDeclarations(after = 0, limit = 100) { return this.request('GET', `/v1/workspaces/${this.config.workspace}/integration-processing-declarations?after=${after}&limit=${limit}`); }
+  recordIntegrationProcessingDeclaration(declarationId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/integration-processing-declarations/${declarationId}`, { body }); }
   situation() { return this.request('GET', situationPath(this.config)); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
