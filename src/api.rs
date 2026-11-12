@@ -338,6 +338,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_situation_forensic_export),
         )
         .route(
+            "/v1/workspaces/{workspace}/forensic-imports",
+            get(list_forensic_import_batches),
+        )
+        .route(
             "/v1/workspaces/{workspace}/forensic-imports/{batch}",
             get(get_forensic_import_batch)
                 .post(import_forensic_package)
@@ -1538,6 +1542,31 @@ async fn import_forensic_package(
         StatusCode::CREATED
     };
     Ok(no_store(json!(imported), status))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForensicImportBatchesQuery {
+    before: Option<Uuid>,
+    limit: Option<i64>,
+}
+
+async fn list_forensic_import_batches(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    Query(query): Query<ForensicImportBatchesQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = forensic_import::list_batches(
+        &state.pool,
+        workspace,
+        query.before,
+        query.limit.unwrap_or(25),
+    )
+    .await
+    .map_err(forensic_import_error)?;
+    Ok(no_store(json!(page), StatusCode::OK))
 }
 
 async fn get_forensic_import_batch(

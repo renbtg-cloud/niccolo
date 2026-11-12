@@ -473,6 +473,123 @@ async fn untrusted_import_is_quarantined_and_exact_replay_is_idempotent() {
 }
 
 #[tokio::test]
+async fn imported_batches_are_listed_newest_first_with_stable_bounded_pagination() {
+    let f = fixture().await;
+    let first_package = exported(&f).await;
+    let mut second_package = first_package.clone();
+    second_package
+        .omissions
+        .push("pagination transport variant".into());
+    let first_batch = Uuid::new_v4();
+    let second_batch = Uuid::new_v4();
+
+    for (batch, origin, package) in [
+        (first_batch, "fixture://list/one", &first_package),
+        (second_batch, "fixture://list/two", &second_package),
+    ] {
+        let (status, _) = call(
+            f.router.clone(),
+            import_request(&f, batch, &f.destination_token, origin, package),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+
+    let first_page = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports?limit=1",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (status, page_one) = call(f.router.clone(), first_page).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page_one["batches"].as_array().unwrap().len(), 1);
+    let cursor = page_one["next_before_batch_id"].as_str().unwrap();
+    let seen_one = page_one["batches"][0]["import_batch_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let second_page = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports?before={cursor}&limit=1",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (status, page_two) = call(f.router.clone(), second_page).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page_two["batches"].as_array().unwrap().len(), 1);
+    assert!(page_two["next_before_batch_id"].is_null());
+    let seen_two = page_two["batches"][0]["import_batch_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(seen_one, seen_two);
+    let seen = [seen_one, seen_two]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        seen,
+        [first_batch.to_string(), second_batch.to_string()]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(page_two["batches"][0]["import_mode"], "UNTRUSTED");
+    assert_eq!(
+        page_two["batches"][0]["structural_validity_establishes_truth"],
+        false
+    );
+
+    let source_workspace_list = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports?limit=25",
+            f.source_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.source_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (status, source_page) = call(f.router.clone(), source_workspace_list).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(source_page["batches"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn unknown_import_batch_cursor_fails_closed() {
+    let f = fixture().await;
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports?before={}&limit=25",
+            f.destination_workspace,
+            Uuid::new_v4()
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = call(f.router.clone(), request).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn reused_batch_id_for_a_different_package_fails_as_provenance_conflict() {
     let f = fixture().await;
     let first_package = exported(&f).await;

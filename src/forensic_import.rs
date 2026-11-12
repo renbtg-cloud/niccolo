@@ -129,6 +129,12 @@ pub struct StoredImportBatchView {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportBatchPage {
+    pub batches: Vec<StoredImportBatchView>,
+    pub next_before_batch_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportItemSummary {
     pub item_id: Uuid,
     pub source_path: String,
@@ -593,6 +599,83 @@ pub async fn get_batch(
         structural_validity_establishes_truth: false,
         current_credentials_upgrade_imported_statements: false,
         imported_model_output_is_documentary_evidence: false,
+    })
+}
+
+pub async fn list_batches(
+    pool: &PgPool,
+    workspace: Uuid,
+    before_batch_id: Option<Uuid>,
+    limit: i64,
+) -> Result<ImportBatchPage, ForensicImportError> {
+    if !(1..=100).contains(&limit) || before_batch_id.is_some_and(|batch| batch.is_nil()) {
+        return Err(ForensicImportError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let cursor = if let Some(batch) = before_batch_id {
+        let row: Option<(String, Uuid)> = sqlx::query_as(
+            "SELECT imported_at::text,import_batch_id
+               FROM niccolo.forensic_import_batches
+              WHERE workspace_id=$1 AND import_batch_id=$2",
+        )
+        .bind(workspace)
+        .bind(batch)
+        .fetch_optional(&mut *tx)
+        .await?;
+        Some(row.ok_or(ForensicImportError::Invisible)?)
+    } else {
+        None
+    };
+    let rows: Vec<StoredBatchRow> = sqlx::query_as(
+        "SELECT b.import_batch_id,b.source_package_sha256,b.source_manifest_sha256,
+                b.source_format,b.source_format_version,b.source_workspace_id,b.source_situation_id,
+                b.declared_origin,b.verification_status,b.import_mode,b.imported_by_principal_id,
+                b.imported_at::text,
+                (SELECT count(*)::bigint FROM niccolo.forensic_import_items i
+                  WHERE i.workspace_id=b.workspace_id AND i.import_batch_id=b.import_batch_id)
+           FROM niccolo.forensic_import_batches b
+          WHERE b.workspace_id=$1
+            AND ($2::timestamptz IS NULL OR (b.imported_at,b.import_batch_id)<($2::timestamptz,$3))
+          ORDER BY b.imported_at DESC,b.import_batch_id DESC
+          LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(cursor.as_ref().map(|row| row.0.as_str()))
+    .bind(cursor.as_ref().map(|row| row.1))
+    .bind(limit + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let has_more = rows.len() as i64 > limit;
+    let batches = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|row| StoredImportBatchView {
+            import_batch_id: row.0,
+            source_package_sha256: row.1,
+            source_manifest_sha256: row.2,
+            source_format: row.3,
+            source_format_version: row.4 as u32,
+            source_workspace_id: row.5,
+            source_situation_id: row.6,
+            declared_origin: row.7,
+            verification_status: row.8,
+            import_mode: row.9,
+            imported_by_principal_id: row.10,
+            imported_at: row.11,
+            item_count: row.12 as u64,
+            structural_validity_establishes_truth: false,
+            current_credentials_upgrade_imported_statements: false,
+            imported_model_output_is_documentary_evidence: false,
+        })
+        .collect::<Vec<_>>();
+    let next_before_batch_id = has_more
+        .then(|| batches.last().map(|batch| batch.import_batch_id))
+        .flatten();
+    Ok(ImportBatchPage {
+        batches,
+        next_before_batch_id,
     })
 }
 
