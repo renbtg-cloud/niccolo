@@ -4098,15 +4098,9 @@ mod tests {
         use std::{fs, time::Duration};
         use tower::ServiceExt;
 
-        let path = std::env::temp_dir().join(format!(
-            "niccolo-http-handoff-{}.token",
-            Uuid::new_v4()
-        ));
-        let token = format!(
-            "ncl_{}{}",
-            Uuid::new_v4().simple(),
-            Uuid::new_v4().simple()
-        );
+        let path =
+            std::env::temp_dir().join(format!("niccolo-http-handoff-{}.token", Uuid::new_v4()));
+        let token = format!("ncl_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         fs::write(&path, format!("{token}\n")).unwrap();
         let code = "d".repeat(64);
         let router = router_with_model_and_handoff(
