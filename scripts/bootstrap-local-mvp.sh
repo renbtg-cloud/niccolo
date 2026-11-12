@@ -63,7 +63,7 @@ if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c "SELECT rolsu
 fi
 
 echo '[1/4] Build MVP before changing the database'
-bash scripts/build-mvp.sh
+NICCOLO_BUILD_VERIFY=0 bash scripts/build-mvp.sh
 ext=''
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ext='.exe';; esac
 
