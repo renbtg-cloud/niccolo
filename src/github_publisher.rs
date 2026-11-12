@@ -56,9 +56,7 @@ pub trait GitHubTransport {
 }
 
 fn valid_token(token: &str) -> bool {
-    !token.trim().is_empty()
-        && token.len() <= 4096
-        && !token.contains(['\r', '\n', '\0'])
+    !token.trim().is_empty() && token.len() <= 4096 && !token.contains(['\r', '\n', '\0'])
 }
 
 fn branch_name(ref_name: &str) -> Result<&str, GitHubPublishError> {
@@ -137,8 +135,8 @@ fn validate_local_material(
     {
         return Err(GitHubPublishError::LocalIntegrity);
     }
-    let digest =
-        presentation_package::package_sha256(package).map_err(|_| GitHubPublishError::LocalIntegrity)?;
+    let digest = presentation_package::package_sha256(package)
+        .map_err(|_| GitHubPublishError::LocalIntegrity)?;
     if digest != intent.package_sha256 {
         return Err(GitHubPublishError::LocalIntegrity);
     }
@@ -391,7 +389,9 @@ impl GitHubTransport for CurlGitHubTransport {
                 "--header",
                 &header_arg,
                 "--output",
-                response_path.to_str().ok_or(GitHubPublishError::Transport)?,
+                response_path
+                    .to_str()
+                    .ok_or(GitHubPublishError::Transport)?,
                 "--write-out",
                 "%{http_code}",
             ]);
@@ -399,7 +399,9 @@ impl GitHubTransport for CurlGitHubTransport {
                 command.args(["--data-binary", &body_arg]);
             }
             command.arg(url);
-            let output = command.output().map_err(|_| GitHubPublishError::Transport)?;
+            let output = command
+                .output()
+                .map_err(|_| GitHubPublishError::Transport)?;
             if !output.status.success() {
                 return Err(GitHubPublishError::Transport);
             }
@@ -412,7 +414,8 @@ impl GitHubTransport for CurlGitHubTransport {
             if !(200..300).contains(&status) {
                 return Err(GitHubPublishError::ProviderRejected(status));
             }
-            let metadata = fs::metadata(&response_path).map_err(|_| GitHubPublishError::Transport)?;
+            let metadata =
+                fs::metadata(&response_path).map_err(|_| GitHubPublishError::Transport)?;
             if metadata.len() > MAX_PROVIDER_RESPONSE_BYTES {
                 return Err(GitHubPublishError::Transport);
             }
@@ -438,10 +441,7 @@ impl GitHubTransport for CurlGitHubTransport {
 mod tests {
     use super::*;
     use crate::git_publication::{PublicationIntentView, TargetView};
-    use std::{
-        collections::VecDeque,
-        sync::Mutex,
-    };
+    use std::{collections::VecDeque, sync::Mutex};
 
     struct ScriptedTransport {
         responses: Mutex<VecDeque<Value>>,
@@ -501,9 +501,12 @@ mod tests {
             format_version: 1,
             analysis_id: Uuid::from_u128(3),
             input_revision: 1,
-            files: [("README.md".into(), "hello".into()), ("data/a.csv".into(), "a,b\n".into())]
-                .into_iter()
-                .collect(),
+            files: [
+                ("README.md".into(), "hello".into()),
+                ("data/a.csv".into(), "a,b\n".into()),
+            ]
+            .into_iter()
+            .collect(),
             authoritative_state_remains_in_postgresql: true,
             is_full_database_backup: false,
             includes_original_source_fragment_contents: false,
@@ -555,9 +558,14 @@ mod tests {
             json!({"object":{"sha":"6".repeat(40)}}),
             json!({"object":{"sha":"6".repeat(40)}}),
         ]);
-        let verified =
-            publish_standard_package(&transport, &target(), &intent, &package, "test-secret-token")
-                .unwrap();
+        let verified = publish_standard_package(
+            &transport,
+            &target(),
+            &intent,
+            &package,
+            "test-secret-token",
+        )
+        .unwrap();
         assert_eq!(verified.commit_sha, "6".repeat(40));
         assert!(!verified.already_present);
         let calls = transport.calls.lock().unwrap();
@@ -569,12 +577,14 @@ mod tests {
                 .as_ref()
                 .and_then(|value| value.get("tree"))
                 .and_then(Value::as_array)
-                .is_some_and(|entries| entries.iter().all(|entry| {
-                    entry["path"]
-                        .as_str()
-                        .unwrap()
-                        .starts_with("niccolo/situations/")
-                }))
+                .is_some_and(|entries| {
+                    entries.iter().all(|entry| {
+                        entry["path"]
+                            .as_str()
+                            .unwrap()
+                            .starts_with("niccolo/situations/")
+                    })
+                })
         }));
     }
 
@@ -591,13 +601,22 @@ mod tests {
             json!({"sha":"4".repeat(40)}),
             json!({"sha":"5".repeat(40)}),
         ]);
-        let verified =
-            publish_standard_package(&transport, &target(), &intent, &package, "test-secret-token")
-                .unwrap();
+        let verified = publish_standard_package(
+            &transport,
+            &target(),
+            &intent,
+            &package,
+            "test-secret-token",
+        )
+        .unwrap();
         assert!(verified.already_present);
         assert_eq!(verified.commit_sha, "6".repeat(40));
         let calls = transport.calls.lock().unwrap();
-        assert!(!calls.iter().any(|call| call.1.ends_with("/git/commits") && call.0 == "POST"));
+        assert!(
+            !calls
+                .iter()
+                .any(|call| call.1.ends_with("/git/commits") && call.0 == "POST")
+        );
         assert!(!calls.iter().any(|call| call.0 == "PATCH"));
     }
 
@@ -608,7 +627,13 @@ mod tests {
         package.files.insert("README.md".into(), "changed".into());
         let transport = ScriptedTransport::new(vec![]);
         assert_eq!(
-            publish_standard_package(&transport, &target(), &intent, &package, "test-secret-token"),
+            publish_standard_package(
+                &transport,
+                &target(),
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
             Err(GitHubPublishError::LocalIntegrity)
         );
         assert!(transport.calls.lock().unwrap().is_empty());
@@ -622,7 +647,13 @@ mod tests {
             "full_name":"owner/history","private":false
         })]);
         assert_eq!(
-            publish_standard_package(&transport, &target(), &intent, &package, "test-secret-token"),
+            publish_standard_package(
+                &transport,
+                &target(),
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
             Err(GitHubPublishError::VerificationMismatch)
         );
         let empty = ScriptedTransport::new(vec![]);

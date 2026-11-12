@@ -91,7 +91,9 @@ fn valid_repo_component(value: &str, max: usize) -> bool {
         && value.len() <= max
         && value != "."
         && value != ".."
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
 fn valid_ref(value: &str) -> bool {
@@ -105,10 +107,9 @@ fn valid_ref(value: &str) -> bool {
         && !value.contains("..")
         && !value.contains("@{")
         && !value.contains("//")
-        && value.bytes().all(|b| {
-            b.is_ascii_alphanumeric()
-                || matches!(b, b'/' | b'.' | b'_' | b'-')
-        })
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'.' | b'_' | b'-'))
 }
 
 pub fn validate_target(input: &TargetInput) -> Result<(), GitPublicationError> {
@@ -117,7 +118,10 @@ pub fn validate_target(input: &TargetInput) -> Result<(), GitPublicationError> {
         || !valid_repo_component(&input.repository_name, 100)
         || input.repository_name.ends_with(".git")
         || !valid_ref(&input.ref_name)
-        || !matches!(input.repository_visibility.as_str(), "PRIVATE" | "PUBLIC" | "UNKNOWN")
+        || !matches!(
+            input.repository_visibility.as_str(),
+            "PRIVATE" | "PUBLIC" | "UNKNOWN"
+        )
         || (input.sensitive_exports_allowed && input.repository_visibility != "PRIVATE")
     {
         return Err(GitPublicationError::Invalid);
@@ -125,7 +129,10 @@ pub fn validate_target(input: &TargetInput) -> Result<(), GitPublicationError> {
     Ok(())
 }
 
-async fn scoped(pool: &PgPool, workspace: Uuid) -> Result<Transaction<'_, Postgres>, GitPublicationError> {
+async fn scoped(
+    pool: &PgPool,
+    workspace: Uuid,
+) -> Result<Transaction<'_, Postgres>, GitPublicationError> {
     let mut tx = pool.begin().await?;
     let privileged: bool = sqlx::query_scalar(
         "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
@@ -143,7 +150,18 @@ async fn scoped(pool: &PgPool, workspace: Uuid) -> Result<Transaction<'_, Postgr
     Ok(tx)
 }
 
-type TargetRow = (Uuid, String, String, String, String, String, bool, String, Uuid, String);
+type TargetRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    String,
+    String,
+    bool,
+    String,
+    Uuid,
+    String,
+);
 
 fn target_from_row(row: TargetRow) -> TargetView {
     TargetView {
@@ -248,13 +266,12 @@ pub async fn preview(
     }
     let package = presentation_package::build(pool, workspace, situation, analysis).await?;
     let package_sha256 = presentation_package::package_sha256(&package)?;
-    let file_count = u32::try_from(package.files.len()).map_err(|_| GitPublicationError::Invalid)?;
-    let total_text_bytes = package
-        .files
-        .values()
-        .try_fold(0_u64, |acc, value| {
-            acc.checked_add(value.len() as u64).ok_or(GitPublicationError::Invalid)
-        })?;
+    let file_count =
+        u32::try_from(package.files.len()).map_err(|_| GitPublicationError::Invalid)?;
+    let total_text_bytes = package.files.values().try_fold(0_u64, |acc, value| {
+        acc.checked_add(value.len() as u64)
+            .ok_or(GitPublicationError::Invalid)
+    })?;
     let mut tx = scoped(pool, workspace).await?;
     let row: TargetRow = sqlx::query_as(
         "SELECT target_id,provider,repository_owner,repository_name,ref_name,
@@ -286,7 +303,6 @@ pub async fn preview(
         ready_for_remote_publish: false,
     })
 }
-
 
 type IntentRow = (
     Uuid,
@@ -380,7 +396,8 @@ pub async fn record_intent(
         || row.4 != "STANDARD_PRESENTATION"
         || row.5 != preview.package_sha256
         || row.6 != i32::try_from(preview.file_count).map_err(|_| GitPublicationError::Invalid)?
-        || row.7 != i64::try_from(preview.total_text_bytes).map_err(|_| GitPublicationError::Invalid)?
+        || row.7
+            != i64::try_from(preview.total_text_bytes).map_err(|_| GitPublicationError::Invalid)?
         || row.8 != preview.requested_ref
         || row.9
         || row.10
@@ -426,9 +443,6 @@ pub async fn list_intents(
     tx.commit().await?;
     rows.into_iter().map(intent_from_row).collect()
 }
-
-
-
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicationMaterial {
@@ -546,7 +560,9 @@ pub struct RemotePublicationStatus {
 
 fn valid_remote_sha(value: &str) -> bool {
     (40..=64).contains(&value.len())
-        && value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn validate_remote_event(input: &RemoteEventInput) -> Result<(), GitPublicationError> {
@@ -555,7 +571,10 @@ fn validate_remote_event(input: &RemoteEventInput) -> Result<(), GitPublicationE
     }
     match input.kind {
         RemoteEventKind::PushAccepted => {
-            if input.remote_commit_sha.as_deref().is_none_or(|sha| !valid_remote_sha(sha))
+            if input
+                .remote_commit_sha
+                .as_deref()
+                .is_none_or(|sha| !valid_remote_sha(sha))
                 || input.observed_ref.is_some()
                 || input.failure_class.is_some()
             {
@@ -563,8 +582,14 @@ fn validate_remote_event(input: &RemoteEventInput) -> Result<(), GitPublicationE
             }
         }
         RemoteEventKind::RefVerified => {
-            if input.remote_commit_sha.as_deref().is_none_or(|sha| !valid_remote_sha(sha))
-                || input.observed_ref.as_deref().is_none_or(|value| !valid_ref(value))
+            if input
+                .remote_commit_sha
+                .as_deref()
+                .is_none_or(|sha| !valid_remote_sha(sha))
+                || input
+                    .observed_ref
+                    .as_deref()
+                    .is_none_or(|value| !valid_ref(value))
                 || input.failure_class.is_some()
             {
                 return Err(GitPublicationError::Invalid);
@@ -575,7 +600,12 @@ fn validate_remote_event(input: &RemoteEventInput) -> Result<(), GitPublicationE
                 || input.observed_ref.is_some()
                 || !matches!(
                     input.failure_class.as_deref(),
-                    Some("TRANSPORT" | "PROVIDER_REJECTED" | "VERIFICATION_MISMATCH" | "LOCAL_INTEGRITY")
+                    Some(
+                        "TRANSPORT"
+                            | "PROVIDER_REJECTED"
+                            | "VERIFICATION_MISMATCH"
+                            | "LOCAL_INTEGRITY"
+                    )
                 )
             {
                 return Err(GitPublicationError::Invalid);
@@ -593,7 +623,16 @@ fn event_kind(kind: RemoteEventKind) -> &'static str {
     }
 }
 
-type RemoteEventRow = (Uuid, Uuid, String, Option<String>, Option<String>, Option<String>, Uuid, String);
+type RemoteEventRow = (
+    Uuid,
+    Uuid,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Uuid,
+    String,
+);
 
 fn remote_event_from_row(row: RemoteEventRow) -> RemotePublicationEventView {
     RemotePublicationEventView {
@@ -730,7 +769,6 @@ pub async fn remote_status(
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -786,8 +824,21 @@ mod tests {
 
     #[test]
     fn unsafe_git_refs_fail_closed() {
-        for bad in ["", "/main", ".hidden", "a..b", "a@{b", "a//b", "main.lock", "main:bad", "main?bad"] {
-            assert!(validate_target(&target("owner", "repo", bad)).is_err(), "{bad}");
+        for bad in [
+            "",
+            "/main",
+            ".hidden",
+            "a..b",
+            "a@{b",
+            "a//b",
+            "main.lock",
+            "main:bad",
+            "main?bad",
+        ] {
+            assert!(
+                validate_target(&target("owner", "repo", bad)).is_err(),
+                "{bad}"
+            );
         }
         assert!(validate_target(&target("owner", "repo", "refs/heads/work")).is_ok());
     }
