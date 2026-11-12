@@ -783,25 +783,26 @@ async fn epistemic_context(
     let grounded_scores = score_page
         .records
         .into_iter()
-        .map(|record| ExportedGroundedScore {
-            claim_id: record.claim_id,
-            score_id: record.score_id,
-            policy_source: record.policy_source,
-            policy: serde_json::to_value(record.policy).unwrap_or(Value::Null),
-            human_declared_confidence_percent: record.human_declared_confidence_percent,
-            declared_evidence: serde_json::to_value(record.declared_evidence)
-                .unwrap_or(Value::Null),
-            result: serde_json::to_value(record.result).unwrap_or(Value::Null),
-            result_sha256: record.result_sha256,
-            recorded_by_principal_id: record.recorded_by_principal_id,
-            created_at: record.created_at,
-            immutable_record: record.immutable_record,
-            score_is_probability_of_truth: record.score_is_probability_of_truth,
-            establishes_claim_truth: record.establishes_claim_truth,
-            is_documentary_evidence: record.is_documentary_evidence,
-            modifies_published_analysis: record.modifies_published_analysis,
+        .map(|record| {
+            Ok(ExportedGroundedScore {
+                claim_id: record.claim_id,
+                score_id: record.score_id,
+                policy_source: record.policy_source,
+                policy: serde_json::to_value(record.policy)?,
+                human_declared_confidence_percent: record.human_declared_confidence_percent,
+                declared_evidence: serde_json::to_value(record.declared_evidence)?,
+                result: serde_json::to_value(record.result)?,
+                result_sha256: record.result_sha256,
+                recorded_by_principal_id: record.recorded_by_principal_id,
+                created_at: record.created_at,
+                immutable_record: record.immutable_record,
+                score_is_probability_of_truth: record.score_is_probability_of_truth,
+                establishes_claim_truth: record.establishes_claim_truth,
+                is_documentary_evidence: record.is_documentary_evidence,
+                modifies_published_analysis: record.modifies_published_analysis,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, PresentationError>>()?;
     let deterministic_scores_exported = !grounded_scores.is_empty();
     Ok(PresentationEpistemicContext {
         policies: policies
