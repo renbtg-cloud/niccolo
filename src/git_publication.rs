@@ -426,6 +426,228 @@ pub async fn list_intents(
 }
 
 
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteEventKind {
+    PushAccepted,
+    RefVerified,
+    PublishFailed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteEventInput {
+    pub event_id: Uuid,
+    pub publication_id: Uuid,
+    pub kind: RemoteEventKind,
+    pub remote_commit_sha: Option<String>,
+    pub observed_ref: Option<String>,
+    pub failure_class: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePublicationEventView {
+    pub event_id: Uuid,
+    pub publication_id: Uuid,
+    pub event_kind: String,
+    pub remote_commit_sha: Option<String>,
+    pub observed_ref: Option<String>,
+    pub failure_class: Option<String>,
+    pub recorded_by_principal_id: Uuid,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePublicationStatus {
+    pub publication_id: Uuid,
+    pub state: String,
+    pub remote_publish_verified: bool,
+    pub verified_commit_sha: Option<String>,
+    pub verified_ref: Option<String>,
+    pub event_count: u32,
+}
+
+fn valid_remote_sha(value: &str) -> bool {
+    (40..=64).contains(&value.len())
+        && value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn validate_remote_event(input: &RemoteEventInput) -> Result<(), GitPublicationError> {
+    if input.event_id.is_nil() || input.publication_id.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    match input.kind {
+        RemoteEventKind::PushAccepted => {
+            if input.remote_commit_sha.as_deref().is_none_or(|sha| !valid_remote_sha(sha))
+                || input.observed_ref.is_some()
+                || input.failure_class.is_some()
+            {
+                return Err(GitPublicationError::Invalid);
+            }
+        }
+        RemoteEventKind::RefVerified => {
+            if input.remote_commit_sha.as_deref().is_none_or(|sha| !valid_remote_sha(sha))
+                || input.observed_ref.as_deref().is_none_or(|value| !valid_ref(value))
+                || input.failure_class.is_some()
+            {
+                return Err(GitPublicationError::Invalid);
+            }
+        }
+        RemoteEventKind::PublishFailed => {
+            if input.remote_commit_sha.is_some()
+                || input.observed_ref.is_some()
+                || !matches!(
+                    input.failure_class.as_deref(),
+                    Some("TRANSPORT" | "PROVIDER_REJECTED" | "VERIFICATION_MISMATCH" | "LOCAL_INTEGRITY")
+                )
+            {
+                return Err(GitPublicationError::Invalid);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn event_kind(kind: RemoteEventKind) -> &'static str {
+    match kind {
+        RemoteEventKind::PushAccepted => "PUSH_ACCEPTED",
+        RemoteEventKind::RefVerified => "REF_VERIFIED",
+        RemoteEventKind::PublishFailed => "PUBLISH_FAILED",
+    }
+}
+
+type RemoteEventRow = (Uuid, Uuid, String, Option<String>, Option<String>, Option<String>, Uuid, String);
+
+fn remote_event_from_row(row: RemoteEventRow) -> RemotePublicationEventView {
+    RemotePublicationEventView {
+        event_id: row.0,
+        publication_id: row.1,
+        event_kind: row.2,
+        remote_commit_sha: row.3,
+        observed_ref: row.4,
+        failure_class: row.5,
+        recorded_by_principal_id: row.6,
+        created_at: row.7,
+    }
+}
+
+pub async fn record_remote_event(
+    pool: &PgPool,
+    workspace: Uuid,
+    actor: Uuid,
+    input: &RemoteEventInput,
+) -> Result<(RemotePublicationEventView, bool), GitPublicationError> {
+    if actor.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    validate_remote_event(input)?;
+    let kind = event_kind(input.kind);
+    let mut tx = scoped(pool, workspace).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.git_publication_events
+         (workspace_id,publication_id,event_id,event_kind,remote_commit_sha,observed_ref,
+          failure_class,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(input.publication_id)
+    .bind(input.event_id)
+    .bind(kind)
+    .bind(input.remote_commit_sha.as_deref())
+    .bind(input.observed_ref.as_deref())
+    .bind(input.failure_class.as_deref())
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    let row: RemoteEventRow = sqlx::query_as(
+        "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
+                failure_class,recorded_by_principal_id,created_at::text
+           FROM niccolo.git_publication_events
+          WHERE workspace_id=$1 AND publication_id=$2 AND event_id=$3",
+    )
+    .bind(workspace)
+    .bind(input.publication_id)
+    .bind(input.event_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Conflict)?;
+    if row.2 != kind
+        || row.3 != input.remote_commit_sha
+        || row.4 != input.observed_ref
+        || row.5 != input.failure_class
+        || row.6 != actor
+    {
+        return Err(GitPublicationError::Conflict);
+    }
+    let view = remote_event_from_row(row);
+    tx.commit().await?;
+    Ok((view, !inserted))
+}
+
+pub async fn remote_status(
+    pool: &PgPool,
+    workspace: Uuid,
+    publication_id: Uuid,
+) -> Result<RemotePublicationStatus, GitPublicationError> {
+    if publication_id.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let intent_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+             SELECT 1 FROM niccolo.git_publication_intents
+              WHERE workspace_id=$1 AND publication_id=$2
+         )",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !intent_exists {
+        return Err(GitPublicationError::Invisible);
+    }
+    let rows: Vec<RemoteEventRow> = sqlx::query_as(
+        "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
+                failure_class,recorded_by_principal_id,created_at::text
+           FROM niccolo.git_publication_events
+          WHERE workspace_id=$1 AND publication_id=$2
+          ORDER BY created_at,event_id
+          LIMIT 100",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let mut state = "AWAITING_REMOTE_AUTHORIZATION";
+    let mut verified_commit_sha = None;
+    let mut verified_ref = None;
+    for row in &rows {
+        match row.2.as_str() {
+            "PUSH_ACCEPTED" if verified_commit_sha.is_none() => state = "PUSHED_UNVERIFIED",
+            "REF_VERIFIED" => {
+                state = "VERIFIED_PUBLISHED";
+                verified_commit_sha = row.3.clone();
+                verified_ref = row.4.clone();
+            }
+            "PUBLISH_FAILED" if verified_commit_sha.is_none() => state = "REMOTE_ATTEMPT_FAILED",
+            _ => {}
+        }
+    }
+    Ok(RemotePublicationStatus {
+        publication_id,
+        state: state.into(),
+        remote_publish_verified: verified_commit_sha.is_some(),
+        verified_commit_sha,
+        verified_ref,
+        event_count: u32::try_from(rows.len()).map_err(|_| GitPublicationError::Conflict)?,
+    })
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,6 +661,36 @@ mod tests {
             repository_visibility: "PRIVATE".into(),
             sensitive_exports_allowed: false,
         }
+    }
+
+    #[test]
+    fn remote_publication_event_shapes_are_strict_and_secret_free() {
+        let publication_id = Uuid::from_u128(2);
+        let event_id = Uuid::from_u128(3);
+        let verified = RemoteEventInput {
+            event_id,
+            publication_id,
+            kind: RemoteEventKind::RefVerified,
+            remote_commit_sha: Some("a".repeat(40)),
+            observed_ref: Some("main".into()),
+            failure_class: None,
+        };
+        assert!(validate_remote_event(&verified).is_ok());
+        let mut bad = verified.clone();
+        bad.remote_commit_sha = Some("A".repeat(40));
+        assert!(validate_remote_event(&bad).is_err());
+        let failed = RemoteEventInput {
+            event_id,
+            publication_id,
+            kind: RemoteEventKind::PublishFailed,
+            remote_commit_sha: None,
+            observed_ref: None,
+            failure_class: Some("TRANSPORT".into()),
+        };
+        assert!(validate_remote_event(&failed).is_ok());
+        let mut raw_provider_error = failed;
+        raw_provider_error.failure_class = Some("HTTP 403: secret-ish provider body".into());
+        assert!(validate_remote_event(&raw_provider_error).is_err());
     }
 
     #[test]
