@@ -18,6 +18,7 @@ CREATE TABLE niccolo.situation_analysis_grounded_score_records (
   recorded_by_principal_id UUID NOT NULL REFERENCES niccolo_auth.principals(principal_id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   PRIMARY KEY(workspace_id,situation_id,analysis_id,claim_id,score_id),
+  UNIQUE(workspace_id,situation_id,analysis_id,score_id),
   FOREIGN KEY(workspace_id,situation_id,analysis_id,claim_id)
     REFERENCES niccolo.situation_analysis_claims(workspace_id,situation_id,analysis_id,claim_id)
 );
