@@ -1,0 +1,326 @@
+//! GIT-001 first slice: local, auditable publication planning for a user-owned
+//! GitHub repository. This module deliberately performs no network request and
+//! accepts no provider secret. "Planned" is never reported as "published".
+use crate::{authz, presentation_package};
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
+
+#[derive(Debug, thiserror::Error)]
+pub enum GitPublicationError {
+    #[error("database unavailable: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("presentation unavailable: {0}")]
+    Presentation(#[from] presentation_package::PresentationError),
+    #[error("privileged SQL login prohibited")]
+    Privileged,
+    #[error("invalid git publication request")]
+    Invalid,
+    #[error("git publication target unavailable")]
+    Invisible,
+    #[error("git publication identity conflicts with recorded scope")]
+    Conflict,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetInput {
+    pub target_id: Uuid,
+    pub repository_owner: String,
+    pub repository_name: String,
+    pub ref_name: String,
+    pub repository_visibility: String,
+    pub sensitive_exports_allowed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetView {
+    pub target_id: Uuid,
+    pub provider: String,
+    pub repository_owner: String,
+    pub repository_name: String,
+    pub ref_name: String,
+    pub repository_visibility: String,
+    pub sensitive_exports_allowed: bool,
+    pub authorization_mode: String,
+    pub created_by_principal_id: Uuid,
+    pub created_at: String,
+    pub remote_connection_verified: bool,
+    pub provider_secret_stored: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicationPreview {
+    pub target: TargetView,
+    pub situation_id: Uuid,
+    pub analysis_id: Uuid,
+    pub scope_kind: String,
+    pub package_sha256: String,
+    pub file_count: u32,
+    pub total_text_bytes: u64,
+    pub requested_ref: String,
+    pub includes_examined_source_text: bool,
+    pub includes_original_uploads: bool,
+    pub remote_publish_performed: bool,
+    pub requires_transient_provider_authorization: bool,
+    pub ready_for_remote_publish: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicationIntentView {
+    pub publication_id: Uuid,
+    pub target_id: Uuid,
+    pub situation_id: Uuid,
+    pub analysis_id: Uuid,
+    pub scope_kind: String,
+    pub package_sha256: String,
+    pub file_count: u32,
+    pub total_text_bytes: u64,
+    pub requested_ref: String,
+    pub includes_examined_source_text: bool,
+    pub includes_original_uploads: bool,
+    pub publication_state: String,
+    pub requested_by_principal_id: Uuid,
+    pub created_at: String,
+    pub remote_publish_performed: bool,
+}
+
+fn valid_repo_component(value: &str, max: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max
+        && value != "."
+        && value != ".."
+        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+fn valid_ref(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 244
+        && !value.starts_with(['/', '.'])
+        && !value.ends_with(['/', '.'])
+        && !value.ends_with(".lock")
+        && !value.contains("..")
+        && !value.contains("@{")
+        && !value.contains("//")
+        && value.bytes().all(|b| {
+            b.is_ascii_alphanumeric()
+                || matches!(b, b'/' | b'.' | b'_' | b'-')
+        })
+}
+
+pub fn validate_target(input: &TargetInput) -> Result<(), GitPublicationError> {
+    if input.target_id.is_nil()
+        || !valid_repo_component(&input.repository_owner, 100)
+        || !valid_repo_component(&input.repository_name, 100)
+        || input.repository_name.ends_with(".git")
+        || !valid_ref(&input.ref_name)
+        || !matches!(input.repository_visibility.as_str(), "PRIVATE" | "PUBLIC" | "UNKNOWN")
+        || (input.sensitive_exports_allowed && input.repository_visibility != "PRIVATE")
+    {
+        return Err(GitPublicationError::Invalid);
+    }
+    Ok(())
+}
+
+async fn scoped(pool: &PgPool, workspace: Uuid) -> Result<Transaction<'_, Postgres>, GitPublicationError> {
+    let mut tx = pool.begin().await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(GitPublicationError::Privileged);
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    authz::bind_auth_digest(&mut tx).await?;
+    Ok(tx)
+}
+
+type TargetRow = (Uuid, String, String, String, String, String, bool, String, Uuid, String);
+
+fn target_from_row(row: TargetRow) -> TargetView {
+    TargetView {
+        target_id: row.0,
+        provider: row.1,
+        repository_owner: row.2,
+        repository_name: row.3,
+        ref_name: row.4,
+        repository_visibility: row.5,
+        sensitive_exports_allowed: row.6,
+        authorization_mode: row.7,
+        created_by_principal_id: row.8,
+        created_at: row.9,
+        remote_connection_verified: false,
+        provider_secret_stored: false,
+    }
+}
+
+pub async fn register_target(
+    pool: &PgPool,
+    workspace: Uuid,
+    actor: Uuid,
+    input: &TargetInput,
+) -> Result<(TargetView, bool), GitPublicationError> {
+    validate_target(input)?;
+    let mut tx = scoped(pool, workspace).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.git_publication_targets
+         (workspace_id,target_id,provider,repository_owner,repository_name,ref_name,
+          repository_visibility,sensitive_exports_allowed,created_by_principal_id)
+         VALUES($1,$2,'GITHUB',$3,$4,$5,$6,$7,$8)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(input.target_id)
+    .bind(&input.repository_owner)
+    .bind(&input.repository_name)
+    .bind(&input.ref_name)
+    .bind(&input.repository_visibility)
+    .bind(input.sensitive_exports_allowed)
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    let row: TargetRow = sqlx::query_as(
+        "SELECT target_id,provider,repository_owner,repository_name,ref_name,
+                repository_visibility,sensitive_exports_allowed,authorization_mode,
+                created_by_principal_id,created_at::text
+           FROM niccolo.git_publication_targets
+          WHERE workspace_id=$1 AND target_id=$2",
+    )
+    .bind(workspace)
+    .bind(input.target_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Conflict)?;
+    if row.2 != input.repository_owner
+        || row.3 != input.repository_name
+        || row.4 != input.ref_name
+        || row.5 != input.repository_visibility
+        || row.6 != input.sensitive_exports_allowed
+        || row.8 != actor
+    {
+        return Err(GitPublicationError::Conflict);
+    }
+    let view = target_from_row(row);
+    tx.commit().await?;
+    Ok((view, !inserted))
+}
+
+pub async fn list_targets(
+    pool: &PgPool,
+    workspace: Uuid,
+) -> Result<Vec<TargetView>, GitPublicationError> {
+    let mut tx = scoped(pool, workspace).await?;
+    let rows: Vec<TargetRow> = sqlx::query_as(
+        "SELECT target_id,provider,repository_owner,repository_name,ref_name,
+                repository_visibility,sensitive_exports_allowed,authorization_mode,
+                created_by_principal_id,created_at::text
+           FROM niccolo.git_publication_targets
+          WHERE workspace_id=$1
+          ORDER BY created_at,target_id
+          LIMIT 100",
+    )
+    .bind(workspace)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(rows.into_iter().map(target_from_row).collect())
+}
+
+pub async fn preview(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    target_id: Uuid,
+) -> Result<PublicationPreview, GitPublicationError> {
+    if target_id.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    let package = presentation_package::build(pool, workspace, situation, analysis).await?;
+    let package_sha256 = presentation_package::package_sha256(&package)?;
+    let file_count = u32::try_from(package.files.len()).map_err(|_| GitPublicationError::Invalid)?;
+    let total_text_bytes = package
+        .files
+        .values()
+        .try_fold(0_u64, |acc, value| {
+            acc.checked_add(value.len() as u64).ok_or(GitPublicationError::Invalid)
+        })?;
+    let mut tx = scoped(pool, workspace).await?;
+    let row: TargetRow = sqlx::query_as(
+        "SELECT target_id,provider,repository_owner,repository_name,ref_name,
+                repository_visibility,sensitive_exports_allowed,authorization_mode,
+                created_by_principal_id,created_at::text
+           FROM niccolo.git_publication_targets
+          WHERE workspace_id=$1 AND target_id=$2",
+    )
+    .bind(workspace)
+    .bind(target_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Invisible)?;
+    tx.commit().await?;
+    let target = target_from_row(row);
+    Ok(PublicationPreview {
+        requested_ref: target.ref_name.clone(),
+        target,
+        situation_id: situation,
+        analysis_id: analysis,
+        scope_kind: "STANDARD_PRESENTATION".into(),
+        package_sha256,
+        file_count,
+        total_text_bytes,
+        includes_examined_source_text: false,
+        includes_original_uploads: false,
+        remote_publish_performed: false,
+        requires_transient_provider_authorization: true,
+        ready_for_remote_publish: false,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(owner: &str, repo: &str, ref_name: &str) -> TargetInput {
+        TargetInput {
+            target_id: Uuid::from_u128(1),
+            repository_owner: owner.into(),
+            repository_name: repo.into(),
+            ref_name: ref_name.into(),
+            repository_visibility: "PRIVATE".into(),
+            sensitive_exports_allowed: false,
+        }
+    }
+
+    #[test]
+    fn repository_coordinates_are_narrow_not_urls() {
+        assert!(validate_target(&target("renbtg-cloud", "niccolo-history", "main")).is_ok());
+        assert!(validate_target(&target("https://evil.example", "repo", "main")).is_err());
+        assert!(validate_target(&target("owner", "../repo", "main")).is_err());
+        assert!(validate_target(&target("owner", "repo.git", "main")).is_err());
+    }
+
+    #[test]
+    fn unsafe_git_refs_fail_closed() {
+        for bad in ["", "/main", ".hidden", "a..b", "a@{b", "a//b", "main.lock", "main:bad", "main?bad"] {
+            assert!(validate_target(&target("owner", "repo", bad)).is_err(), "{bad}");
+        }
+        assert!(validate_target(&target("owner", "repo", "refs/heads/work")).is_ok());
+    }
+
+    #[test]
+    fn sensitive_remote_scope_requires_declared_private_target() {
+        let mut input = target("owner", "repo", "main");
+        input.sensitive_exports_allowed = true;
+        input.repository_visibility = "UNKNOWN".into();
+        assert!(validate_target(&input).is_err());
+        input.repository_visibility = "PRIVATE".into();
+        assert!(validate_target(&input).is_ok());
+    }
+}
