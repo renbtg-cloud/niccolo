@@ -76,6 +76,8 @@ class PresentationInspectorTests(unittest.TestCase):
                 "ordinal": 0,
                 "format": "WHATSAPP_EXPORT",
                 "locator": "private-chat.txt",
+                "document_sha256": "a" * 64,
+                "fragment_sha256": hashlib.sha256(b"private excerpt").hexdigest(),
                 "speaker_label": "Alice",
                 "source_class": "HUMAN_COMMUNICATION",
                 "content": "private excerpt",
@@ -93,6 +95,10 @@ class PresentationInspectorTests(unittest.TestCase):
         self.assertIn("NOT original uploaded files", result.stdout)
         self.assertIn("do NOT establish truth", result.stdout)
         self.assertIn("sensitive/private communications", result.stdout)
+        self.assertIn("fragment SHA-256", result.stdout)
+        self.assertIn(hashlib.sha256(b"private excerpt").hexdigest(), result.stdout)
+        self.assertIn("document SHA-256", result.stdout)
+        self.assertNotIn("private excerpt", result.stdout)
 
     def test_integrity_failure_is_fail_closed(self):
         path = self.root / "data" / "claims.csv"

@@ -77,6 +77,15 @@ def explain():
         print("These excerpts were recorded as examined by this analysis.")
         print("They are NOT original uploaded files, do NOT establish truth,")
         print("and may contain sensitive/private communications.")
+        print("Excerpt bodies are not printed to the terminal; inspect the JSON/CSV explicitly.")
+        for row in source_extracts:
+            print(
+                "- evidence", row["evidence_id"],
+                "locator", row["locator"],
+                "bytes", len(row["content"].encode("utf-8")),
+                "fragment SHA-256", row["fragment_sha256"],
+                "document SHA-256", row["document_sha256"],
+            )
     else:
         print("Source fragment contents were NOT exported.")
     print("Full model reasoning was NOT exported.")
