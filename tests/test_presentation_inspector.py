@@ -98,16 +98,38 @@ class PresentationInspectorTests(unittest.TestCase):
             "part_of_frozen_analysis_input": False,
         }]), encoding="utf-8")
         scope = self.root / "data" / "epistemic_export_scope.json"
+        grounded = self.root / "data" / "grounded_scores.json"
+        grounded.write_text(json.dumps([{
+            "claim_id": "c1",
+            "score_id": "score-1",
+            "policy_source": "SITUATION",
+            "policy": {"support_multiplier_pct": 80, "counter_multiplier_pct": 140, "per_origin_cap": 75},
+            "human_declared_confidence_percent": 63,
+            "declared_evidence": [],
+            "result": {
+                "source_graph_revision": 9,
+                "report": {"support_points": 40, "counter_points": 20, "net_points": 20},
+            },
+            "result_sha256": "b" * 64,
+            "recorded_by_principal_id": "principal-1",
+            "created_at": "2026-11-11 00:00:02+00",
+            "immutable_record": True,
+            "score_is_probability_of_truth": False,
+            "establishes_claim_truth": False,
+            "is_documentary_evidence": False,
+            "modifies_published_analysis": False,
+        }]), encoding="utf-8")
         scope.write_text(json.dumps({
             "recorded_policy_count": 1,
             "recorded_human_credence_count": 1,
-            "deterministic_scores_exported": False,
+            "recorded_grounded_score_count": 1,
+            "deterministic_scores_exported": True,
             "policy_history_proves_policy_used_for_output": False,
             "human_credence_is_documentary_evidence": False,
             "human_credence_is_calibrated_probability": False,
         }), encoding="utf-8")
         sums = json.loads((self.root / "SHA256SUMS.json").read_text())
-        for path in [policies, credence, scope]:
+        for path in [policies, credence, grounded, scope]:
             sums[str(path.relative_to(self.root))] = hashlib.sha256(path.read_bytes()).hexdigest()
         (self.root / "SHA256SUMS.json").write_text(json.dumps(sums), encoding="utf-8")
 
@@ -116,9 +138,12 @@ class PresentationInspectorTests(unittest.TestCase):
         self.assertIn("Recorded epistemic controls:", result.stdout)
         self.assertIn("policy records relevant to this Situation: 1", result.stdout)
         self.assertIn("human credence records for this analysis: 1", result.stdout)
-        self.assertIn("deterministic grounded scores exported: False", result.stdout)
+        self.assertIn("deterministic grounded scores exported: True", result.stdout)
         self.assertIn("policy history proves policy used for output: False", result.stdout)
         self.assertIn("63% SUBJECTIVE_BELIEF", result.stdout)
+        self.assertIn("immutable grounded score records: 1", result.stdout)
+        self.assertIn("grounded score score-1 claim c1 support 40 counter 20 net 20", result.stdout)
+        self.assertIn("deterministic heuristic artifacts, not truth probabilities or proof", result.stdout)
         self.assertIn("not documentary evidence or calibrated truth probabilities", result.stdout)
 
     def test_optional_examined_source_extracts_are_disclosed_without_truth_claims(self):
