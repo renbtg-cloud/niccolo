@@ -25,6 +25,7 @@ use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::forensic_context::{self, ForensicContextError};
 use crate::forensic_import::{self, ForensicImportError};
 use crate::git_publication::{self, GitPublicationError};
+use crate::github_publisher::{self, GitHubPublishError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::grounded_score_store::{self, GroundedScoreStoreError, NewGroundedScoreRecord};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
@@ -461,6 +462,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}/remote-status",
             get(get_git_publication_remote_status),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}/publish",
+            post(publish_git_publication_intent),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
@@ -5787,6 +5792,202 @@ async fn get_git_publication_remote_status(
         .await
         .map_err(git_publication_error)?;
     Ok(no_store(json!(status), StatusCode::OK))
+}
+
+fn transient_github_token(headers: &HeaderMap) -> Result<String, ApiError> {
+    let value = headers
+        .get("x-niccolo-github-authorization")
+        .and_then(|value| value.to_str().ok())
+        .ok_or(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "transient GitHub authorization required",
+        ))?;
+    let token = value.strip_prefix("Bearer ").ok_or(ApiError(
+        StatusCode::UNAUTHORIZED,
+        "transient GitHub authorization required",
+    ))?;
+    if token.trim().is_empty()
+        || token.len() > 4096
+        || token.contains(['\r', '\n', '\0'])
+    {
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "transient GitHub authorization required",
+        ));
+    }
+    Ok(token.to_owned())
+}
+
+fn github_publish_error(error: GitHubPublishError) -> ApiError {
+    match error {
+        GitHubPublishError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid GitHub publication request")
+        }
+        GitHubPublishError::LocalIntegrity => ApiError(
+            StatusCode::CONFLICT,
+            "publication package changed; preview and record a new intent",
+        ),
+        GitHubPublishError::Transport
+        | GitHubPublishError::ProviderRejected(_)
+        | GitHubPublishError::VerificationMismatch
+        | GitHubPublishError::InvalidProviderResponse => ApiError(
+            StatusCode::BAD_GATEWAY,
+            "GitHub publication could not be verified",
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitHubPublishRequest {
+    attempt_id: Uuid,
+    confirmation: String,
+}
+
+async fn publish_git_publication_intent(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, publication)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<GitHubPublishRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    if request.attempt_id.is_nil()
+        || request.confirmation != "PUBLISH_STANDARD_PRESENTATION_TO_GITHUB"
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "explicit GitHub publication confirmation required",
+        ));
+    }
+
+    let existing = git_publication::remote_status(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        publication,
+    )
+    .await
+    .map_err(git_publication_error)?;
+    if existing.remote_publish_verified {
+        return Ok(no_store(
+            json!({
+                "status": existing,
+                "replayed_verified_publication": true,
+                "provider_secret_stored": false
+            }),
+            StatusCode::OK,
+        ));
+    }
+
+    let provider_token = transient_github_token(&headers)?;
+    let material = git_publication::publication_material(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        publication,
+    )
+    .await
+    .map_err(git_publication_error)?;
+
+    let publish_result = tokio::task::spawn_blocking(move || {
+        let transport = github_publisher::CurlGitHubTransport::default();
+        github_publisher::publish_standard_package(
+            &transport,
+            &material.target,
+            &material.intent,
+            &material.package,
+            &provider_token,
+        )
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "GitHub publication task failed"))?;
+
+    let verified = match publish_result {
+        Ok(verified) => verified,
+        Err(error) => {
+            let failure_class = match error {
+                GitHubPublishError::LocalIntegrity | GitHubPublishError::Invalid => {
+                    "LOCAL_INTEGRITY"
+                }
+                GitHubPublishError::Transport => "TRANSPORT",
+                GitHubPublishError::ProviderRejected(_) => "PROVIDER_REJECTED",
+                GitHubPublishError::VerificationMismatch
+                | GitHubPublishError::InvalidProviderResponse => "VERIFICATION_MISMATCH",
+            };
+            let _ = git_publication::record_remote_event(
+                &state.pool,
+                workspace,
+                actor,
+                &git_publication::RemoteEventInput {
+                    event_id: Uuid::new_v4(),
+                    publication_id: publication,
+                    kind: git_publication::RemoteEventKind::PublishFailed,
+                    remote_commit_sha: None,
+                    observed_ref: None,
+                    failure_class: Some(failure_class.into()),
+                },
+            )
+            .await;
+            return Err(github_publish_error(error));
+        }
+    };
+
+    for (kind, observed_ref) in [
+        (git_publication::RemoteEventKind::PushAccepted, None),
+        (
+            git_publication::RemoteEventKind::RefVerified,
+            Some(verified.ref_name.clone()),
+        ),
+    ] {
+        git_publication::record_remote_event(
+            &state.pool,
+            workspace,
+            actor,
+            &git_publication::RemoteEventInput {
+                event_id: request.attempt_id,
+                publication_id: publication,
+                kind,
+                remote_commit_sha: Some(verified.commit_sha.clone()),
+                observed_ref,
+                failure_class: None,
+            },
+        )
+        .await
+        .map_err(git_publication_error)?;
+    }
+
+    let status = git_publication::remote_status(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        publication,
+    )
+    .await
+    .map_err(git_publication_error)?;
+    if !status.remote_publish_verified
+        || status.verified_commit_sha.as_deref() != Some(verified.commit_sha.as_str())
+        || status.verified_ref.as_deref() != Some(verified.ref_name.as_str())
+    {
+        return Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "remote publication verification ledger mismatch",
+        ));
+    }
+    Ok(no_store(
+        json!({
+            "status": status,
+            "repository_full_name": verified.repository_full_name,
+            "package_sha256": verified.package_sha256,
+            "remote_commit_already_present": verified.already_present,
+            "provider_secret_stored": false,
+            "remote_publish_verified": true
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn get_adversarial_dossier(
