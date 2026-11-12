@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - ci/mvp-checkpoint
-      - fix/eml-thread-attribution-20261112
 
 concurrency:
   group: epistemic-${{ github.ref_name }}
