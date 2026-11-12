@@ -56,6 +56,7 @@ use crate::source_catalog;
 use crate::source_import::SourceFormat;
 use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
+use crate::upstream_processing::{self, NewProcessingDeclaration, UpstreamProcessingError};
 use crate::{
     adversarial_dossier, agentic_controller, agentic_policy, bff_dashboard, bff_epistemic,
     bff_executor, reasoning_handoff, reasoning_packet,
@@ -307,6 +308,14 @@ fn router_with_model_and_handoff(
         .route(
             "/v1/workspaces/{workspace}/integration-diagnostics",
             get(get_integration_diagnostics),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/integration-processing-declarations",
+            get(list_upstream_processing_declarations),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/integration-processing-declarations/{declaration}",
+            post(record_upstream_processing_declaration),
         )
         .route(
             "/v1/workspaces/{workspace}/sources/{document}/speakers",
@@ -977,6 +986,105 @@ struct SourceQuery {
     limit: Option<i64>,
     after: Option<Uuid>,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpstreamProcessingRequest {
+    processing_kind: String,
+    scope_locator: String,
+    declaration_text: String,
+    source_document_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpstreamProcessingQuery {
+    after: Option<i64>,
+    limit: Option<i64>,
+}
+
+async fn record_upstream_processing_declaration(
+    State(state): State<AppState>,
+    Path((workspace, declaration)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(body): Json<UpstreamProcessingRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let recorded = upstream_processing::record(
+        &state.pool,
+        workspace,
+        declaration,
+        actor,
+        NewProcessingDeclaration {
+            processing_kind: &body.processing_kind,
+            scope_locator: &body.scope_locator,
+            declaration_text: &body.declaration_text,
+            source_document_id: body.source_document_id,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        UpstreamProcessingError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid upstream processing declaration",
+        ),
+        UpstreamProcessingError::InvisibleDocument => {
+            ApiError(StatusCode::NOT_FOUND, "source document unavailable")
+        }
+        UpstreamProcessingError::Conflict => ApiError(
+            StatusCode::CONFLICT,
+            "upstream processing declaration conflict",
+        ),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "upstream processing declarations unavailable",
+        ),
+    })?;
+    Ok(no_store(
+        json!(recorded),
+        if recorded.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_upstream_processing_declarations(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    Query(query): Query<UpstreamProcessingQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let declarations = upstream_processing::history(
+        &state.pool,
+        workspace,
+        query.after.unwrap_or(0),
+        query.limit.unwrap_or(100),
+    )
+    .await
+    .map_err(|error| match error {
+        UpstreamProcessingError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid upstream processing declaration query",
+        ),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "upstream processing declarations unavailable",
+        ),
+    })?;
+    let next_after = declarations.last().map(|item| item.event_no);
+    Ok(no_store(
+        json!({
+            "declarations": declarations,
+            "next_after": next_after,
+            "declarations_are_verified": false,
+            "declarations_are_evidence": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
 async fn get_integration_diagnostics(
     State(state): State<AppState>,
     Path(workspace): Path<Uuid>,
