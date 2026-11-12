@@ -85,6 +85,17 @@ describe('BFF client',()=>{
    expect(JSON.parse(calls[9][1].body)).toEqual({import_batch_id:'batch',item_id:'item',note:'Use only as historical context'});
  });
 
+ it('separates standard analysis export from explicitly authorized examined-source export',async()=>{
+   const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.presentation-package',files:{'README.md':'x'},published_to_git:false});});
+   await x.presentationPackage('a');
+   await x.presentationPackageWithExaminedSources('a');
+   expect(calls[0][0]).toContain('/analysis-snapshots/a/presentation-package');
+   expect(calls[0][1].method).toBe('GET');
+   expect(calls[1][0]).toContain('/analysis-snapshots/a/presentation-package');
+   expect(calls[1][1].method).toBe('POST');
+   expect(JSON.parse(calls[1][1].body)).toEqual({include_examined_source_fragments:true});
+ });
+
  it('submits explicit human-approved reanalysis without rewriting the prior analysis',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{kind:'REANALYZE',state:'SUCCEEDED',result:{prior_analysis_id:'old',new_analysis_id:'new',historical_output_preserved:true,human_requested_operation:true}});});const r=await x.runReanalysisSync('op-re','old','new','Revisit with new evidence');expect(calls[0][0]).toContain('/bff/operations/op-re/sync');const body=JSON.parse(calls[0][1].body);expect(body.kind).toBe('REANALYZE');expect(body.target_analysis_id).toBe('old');expect(body.input).toEqual({new_analysis_id:'new',goal:'Revisit with new evidence'});expect(r.value.result.historical_output_preserved).toBe(true);});
 
  it('creates corrects and retracts attributed human context without calling it evidence',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{revision:4,contributions:[]});});await x.addSituationContribution('c1','user_reported','I remember the tone',null);await x.correctSituationContribution('c1','c2','I now remember it differently',null);await x.retractSituationContribution('c2');expect(calls[0][0]).toContain('/contributions/c1');expect(JSON.parse(calls[0][1].body)).toEqual({kind:'user_reported',text:'I remember the tone',related_evidence_id:null});expect(calls[1][0]).toContain('/contributions/c1/corrections/c2');expect(calls[2][0]).toContain('/contributions/c2/retract');});

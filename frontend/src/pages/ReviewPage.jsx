@@ -18,6 +18,23 @@ import { handoffSummary, receiptSummary } from '../state/handoffPresentation.js'
 import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
 import { presentationZip } from '../state/presentationZip.js';
 
+function downloadPresentationPackage(pkg, filename) {
+ const files=pkg?.files;
+ const archive=presentationZip(pkg);
+ const url=URL.createObjectURL(archive);
+ try {
+   const anchor=document.createElement('a');
+   anchor.href=url;
+   anchor.download=filename;
+   document.body.append(anchor);
+   anchor.click();
+   anchor.remove();
+ } finally {
+   window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+ }
+ return Object.keys(files??{}).length;
+}
+
 export function ReviewPage(){
  const selectedAnalysis=useUiStore(s=>s.analysis);
  return <ReviewContent key={selectedAnalysis||'unselected'} />;
@@ -60,20 +77,11 @@ function ReviewContent(){
  }});
  const exportPackage=useMutation({mutationFn:async()=>{
    const result=await client.presentationPackage(analysis);
-   const files=result.value?.files;
-   const archive=presentationZip(result.value);
-   const url=URL.createObjectURL(archive);
-   try {
-     const anchor=document.createElement('a');
-     anchor.href=url;
-     anchor.download=`niccolo-analysis-${analysis}.zip`;
-     document.body.append(anchor);
-     anchor.click();
-     anchor.remove();
-   } finally {
-     window.setTimeout(()=>URL.revokeObjectURL(url),30000);
-   }
-   return Object.keys(files).length;
+   return downloadPresentationPackage(result.value,`niccolo-analysis-${analysis}.zip`);
+ }});
+ const exportPackageWithSources=useMutation({mutationFn:async()=>{
+   const result=await client.presentationPackageWithExaminedSources(analysis);
+   return downloadPresentationPackage(result.value,`niccolo-analysis-${analysis}-with-examined-sources.zip`);
  }});
  const approveReanalysis=useMutation({mutationFn:async()=>{
    const goal=reanalysisGoal.trim()||r?.goal||'Revisit the prior analysis using the current Situation';
@@ -95,10 +103,16 @@ function ReviewContent(){
      {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
      {output.error&&<p className="error">Answer unavailable: {output.error.message}</p>}
      <article className="review-panel"><h3>Download this analysis</h3>
-       <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
-       <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
+       <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. The standard package contains source IDs but not source text, original uploaded documents or complete model reasoning. This does not upload anything to GitHub or another service.</p>
+       <button disabled={!output.data||exportPackage.isPending||exportPackageWithSources.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
        {exportPackage.error&&<p className="error" role="alert">Export unavailable: {exportPackage.error.message}</p>}
        {exportPackage.isSuccess&&<p role="status">Archive prepared with {exportPackage.data} files. Keep it private unless you choose to share it.</p>}
+       <details className="sensitive-export"><summary>Include examined source text</summary>
+         <p><strong>Sensitive export.</strong> This explicitly includes only source fragments recorded as examined by this analysis. It does not include original uploaded files, does not prove those excerpts are true, and may expose private communications. Inspect the ZIP before sharing it.</p>
+         <button disabled={!output.data||exportPackage.isPending||exportPackageWithSources.isPending} onClick={()=>exportPackageWithSources.mutate()}>{exportPackageWithSources.isPending?'Preparing sensitive ZIP…':'Download ZIP with examined source excerpts'}</button>
+         {exportPackageWithSources.error&&<p className="error" role="alert">Sensitive export unavailable: {exportPackageWithSources.error.message}</p>}
+         {exportPackageWithSources.isSuccess&&<p role="status">Sensitive archive prepared with {exportPackageWithSources.data} files. No remote publication occurred.</p>}
+       </details>
      </article>
      {reasoningInput.data&&<article className={`review-panel ${reasoningInput.data.source_packet_truncated?'input-warning':''}`}><h3>What reached the reasoning model</h3><p><strong>{reasoningInput.data.source_fragment_count_included}/{reasoningInput.data.source_fragment_count_total}</strong> frozen source fragment(s) included · {reasoningInput.data.source_bytes_included} source byte(s).</p>{reasoningInput.data.source_packet_truncated&&<p><strong>Input was truncated by the explicit reasoning budget.</strong> The model did not receive every frozen source fragment.</p>}<p><strong>{reasoningInput.data.identity_binding_count??0}</strong> human-confirmed identity binding(s) frozen at identity event #{reasoningInput.data.identity_event_no_max??0}.</p><p><small>Matching speaker labels do not imply the same person. Frozen revision {reasoningInput.data.input_revision} · packet SHA-256 <code>{reasoningInput.data.reasoning_packet_sha256}</code>. This is input observability, not a truth or completeness score.</small></p></article>}
      {forensicContext.error&&<p className="error">Imported historical context unavailable: {forensicContext.error.message}</p>}

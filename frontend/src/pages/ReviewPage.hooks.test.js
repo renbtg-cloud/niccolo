@@ -17,6 +17,15 @@ describe('ReviewPage hook order', () => {
     expect(source).toContain('pendingReceipt.current=null;');
   });
 
+  it('requires a separate explicit action before exporting examined source text', () => {
+    expect(source).toContain('presentationPackageWithExaminedSources(analysis)');
+    expect(source).toContain('Include examined source text');
+    expect(source).toContain('Sensitive export.');
+    expect(source).toContain('only source fragments recorded as examined by this analysis');
+    expect(source).toContain('does not prove those excerpts are true');
+    expect(source).toContain('No remote publication occurred.');
+  });
+
   it('surfaces explicitly selected prior-export context without calling it evidence', () => {
     expect(source).toContain('useForensicContext()');
     expect(source).toContain('Imported historical context');
