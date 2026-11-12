@@ -1217,7 +1217,12 @@ mod tests {
             content: "=not a spreadsheet command, just untrusted source text".into(),
             source_class: "HUMAN_COMMUNICATION".into(),
         };
-        let result = from_bundle_and_extracts(&example(), &[source]).unwrap();
+        let result = from_bundle_and_extracts(
+            &example(),
+            &[source],
+            &PresentationEpistemicContext::default(),
+        )
+        .unwrap();
         assert!(result.includes_examined_source_fragment_contents);
         assert!(!result.includes_original_source_fragment_contents);
         assert!(!result.examined_source_extracts_are_original_uploads);
