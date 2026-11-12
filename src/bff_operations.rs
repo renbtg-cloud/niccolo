@@ -204,9 +204,6 @@ pub async fn submit(
             input.kind.as_str(),
             "BUILD_BRIEFING" | "BUILD_HANDOFF" | "REANALYZE"
         ) && input.target_analysis_id.is_none()
-        || input.deadline_at.as_deref().is_some_and(|value| {
-            value.trim() != value || chrono::DateTime::parse_from_rfc3339(value).is_err()
-        })
     {
         return Err(BffOperationError::Invalid);
     }
@@ -217,6 +214,16 @@ pub async fn submit(
     }
     let input_sha = digest(&input_json);
     let mut tx = scoped(pool, scope.workspace, false).await?;
+    if let Some(deadline) = input.deadline_at.as_deref() {
+        let parsed: Result<String, sqlx::Error> =
+            sqlx::query_scalar("SELECT $1::timestamptz::text")
+                .bind(deadline)
+                .fetch_one(&mut *tx)
+                .await;
+        if parsed.is_err() {
+            return Err(BffOperationError::Invalid);
+        }
+    }
     type ReplayRow = (
         Uuid,
         String,

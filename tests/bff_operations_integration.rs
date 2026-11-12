@@ -292,7 +292,7 @@ async fn v196_v200_parent_budget_and_operation_digest_contracts_are_preserved() 
 }
 
 #[tokio::test]
-async fn malformed_deadline_is_rejected_before_postgres_cast_or_persistence() {
+async fn malformed_deadline_is_rejected_before_operation_persistence() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let mut bad = input(s, "AGENTIC_ANALYSIS", None);
