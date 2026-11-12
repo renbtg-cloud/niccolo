@@ -2,6 +2,7 @@
 # CI-only validation: disposable PostgreSQL database and freshly generated credentials.
 # Never point this script at existing Niccolo data or a production database.
 set -Eeuo pipefail
+trap 'status=$?; printf "first-run smoke failed at line %s (exit %s): %s\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 : "${NICCOLO_PG_ADMIN_URL:?new disposable DB required}"
