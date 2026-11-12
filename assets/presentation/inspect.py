@@ -70,6 +70,36 @@ def explain():
             print("  qualification:", row["qualification"])
     print("\nThese are counts of recorded links, NOT evidence weights,")
     print("independent witnesses, verification, or calibrated probabilities.")
+
+    policy_path = ROOT / "data" / "epistemic_policies.json"
+    credence_path = ROOT / "data" / "human_credence.json"
+    scope_path = ROOT / "data" / "epistemic_export_scope.json"
+    if policy_path.exists() and credence_path.exists() and scope_path.exists():
+        policies = read_json(policy_path)
+        credence = read_json(credence_path)
+        scope = read_json(scope_path)
+        print("\nRecorded epistemic controls:")
+        print("- policy records relevant to this Situation:", len(policies))
+        print("- human credence records for this analysis:", len(credence))
+        print("- deterministic grounded scores exported:", scope["deterministic_scores_exported"])
+        print("- policy history proves policy used for output:", scope["policy_history_proves_policy_used_for_output"])
+        for policy in policies:
+            print(
+                "  policy", policy["policy_id"],
+                "scope", policy["scope"],
+                "support x", policy["support_multiplier_pct"],
+                "counter x", policy["counter_multiplier_pct"],
+                "per-origin cap", policy["per_origin_cap"],
+            )
+        for entry in credence:
+            print(
+                "  human credence", entry["credence_id"],
+                "claim", entry["claim_id"],
+                str(entry["confidence_percent"]) + "%",
+                entry["usage_policy"],
+            )
+        print("Human percentages remain human declarations, not documentary evidence or calibrated truth probabilities.")
+        print("Recorded policy history does not prove a policy generated the published answer.")
     source_extract_path = ROOT / "data" / "examined_source_fragments.json"
     if source_extract_path.exists():
         source_extracts = read_json(source_extract_path)
