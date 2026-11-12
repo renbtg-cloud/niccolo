@@ -249,4 +249,16 @@ describe('original source downloads', () => {
    expect(r.value.warning_codes).toEqual(['DUPLICATE_OPERATIONAL_DELIVERIES']);
  });
 
+ it('records and lists attributed upstream processing declarations',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,o.method==='POST'?{declaration_is_verified:false,declaration_is_evidence:false}:{declarations:[],declarations_are_verified:false,declarations_are_evidence:false});});
+   await x.integrationProcessingDeclarations(7,25);
+   await x.recordIntegrationProcessingDeclaration('decl',{processing_kind:'FILTER',scope_locator:'s3://mail',declaration_text:'Integrator reports a date filter.',source_document_id:null});
+   expect(calls[0][0]).toContain('/integration-processing-declarations?after=7&limit=25');
+   expect(calls[0][1].method).toBe('GET');
+   expect(calls[1][0]).toContain('/integration-processing-declarations/decl');
+   expect(calls[1][1].method).toBe('POST');
+   expect(JSON.parse(calls[1][1].body)).toEqual({processing_kind:'FILTER',scope_locator:'s3://mail',declaration_text:'Integrator reports a date filter.',source_document_id:null});
+ });
+
 });
