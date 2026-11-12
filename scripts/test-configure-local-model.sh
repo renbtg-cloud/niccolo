@@ -60,6 +60,7 @@ for bad_url in \
   'https://user:pass@provider.example/v1' \
   'https://provider.example/v1?key=secret' \
   'https://provider.example/v1#fragment' \
+  ' https://provider.example/v1' \
   'https://'; do
   if NICCOLO_LLM_BASE_URL="$bad_url" NICCOLO_LLM_MODEL='bad' NICCOLO_LLM_API_KEY='secret' \
       run_cfg > bad-url.log 2>&1; then
