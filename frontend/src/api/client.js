@@ -91,6 +91,7 @@ export class NiccoloClient {
   compareEpistemic(body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/compare`, { body }); }
   recordEpistemicPolicy(policyId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/policies/${policyId}`, { body }); }
   groundedScoreRecords(id, limit = 100) { return this.request('GET', `${analysisPath(this.config,id)}/epistemic/records?limit=${limit}`); }
+  evaluateGroundedScore(id, claimId, body) { return this.request('POST', `${analysisPath(this.config,id)}/claims/${claimId}/epistemic/evaluate`, { body }); }
   recordGroundedScore(id, claimId, scoreId, body) { return this.request('POST', `${analysisPath(this.config,id)}/claims/${claimId}/epistemic/records/${scoreId}`, { body }); }
 
   reasoningInput(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/reasoning-input`); }

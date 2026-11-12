@@ -119,15 +119,18 @@ describe('BFF client',()=>{
  it('reads provider reasoning input observability including explicit truncation',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{source_fragment_count_total:300,source_fragment_count_included:256,source_packet_truncated:true,reasoning_packet_sha256:'abc'});});const r=await x.reasoningInput('a');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/reasoning-input');expect(r.value.source_packet_truncated).toBe(true);expect(r.value.source_fragment_count_included).toBe(256);});
  it('reads the deterministic reasoning handoff independently of active operation state',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{handoff:{version:2,handoff_grants_authority:false},handoff_sha256:'a'.repeat(64),read_model_is_authority:false});});const r=await x.reasoningHandoff('a');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/handoff');expect(calls[0][1]).toBe('GET');expect(r.value.handoff.version).toBe(2);expect(r.value.read_model_is_authority).toBe(false);});
  it('lists and records SHA-bound handoff receipts without client-supplied recipient',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,o.method==='POST'?{receipt_id:'r',recipient_principal_id:'server-derived',receipt_means_agreement:false,receipt_grants_authority:false}:{receipts:[{kind:'REVIEWED'}],receipt_means_agreement:false,receipt_grants_authority:false});});const list=await x.handoffReceipts('a');await x.recordHandoffReceipt('a','r','a'.repeat(64),'REVIEWED','looked at it');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/handoff/receipts');expect(calls[0][1].method).toBe('GET');expect(calls[1][0]).toContain('/analysis-snapshots/a/bff/handoff/receipts/r');expect(JSON.parse(calls[1][1].body)).toEqual({handoff_sha256:'a'.repeat(64),kind:'REVIEWED',note:'looked at it'});expect(JSON.parse(calls[1][1].body)).not.toHaveProperty('recipient_principal_id');expect(list.value.receipt_means_agreement).toBe(false);});
- it('records and lists immutable grounded scores without client-side provenance authority',async()=>{
+ it('separates live grounded evaluation from immutable score recording',async()=>{
    const calls=[];
-   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,o.method==='POST'?{record:{score_id:'score',score_is_probability_of_truth:false},replayed:false}:{records:[]});});
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?200:200,o.method==='POST'?{assessment:{report:{net_points:7}}}:{records:[]});});
+   const body={human_declared_confidence_percent:null,evidence:[{evidence_id:'e',declared_strength:50,rationale:'human rationale'}]};
    await x.groundedScoreRecords('analysis',77);
-   await x.recordGroundedScore('analysis','claim','score',{human_declared_confidence_percent:null,evidence:[{evidence_id:'e',declared_strength:50,rationale:'human rationale'}]});
+   await x.evaluateGroundedScore('analysis','claim',body);
+   await x.recordGroundedScore('analysis','claim','score',body);
    expect(calls[0][0]).toContain('/analysis-snapshots/analysis/epistemic/records?limit=77');
-   expect(calls[0][1].method).toBe('GET');
-   expect(calls[1][0]).toContain('/analysis-snapshots/analysis/claims/claim/epistemic/records/score');
-   expect(JSON.parse(calls[1][1].body)).toEqual({human_declared_confidence_percent:null,evidence:[{evidence_id:'e',declared_strength:50,rationale:'human rationale'}]});
+   expect(calls[1][0]).toContain('/analysis-snapshots/analysis/claims/claim/epistemic/evaluate');
+   expect(calls[2][0]).toContain('/analysis-snapshots/analysis/claims/claim/epistemic/records/score');
+   expect(JSON.parse(calls[1][1].body)).toEqual(body);
+   expect(JSON.parse(calls[2][1].body)).toEqual(body);
  });
 
 });
