@@ -10,11 +10,15 @@ export function GitPublicationPanel() {
   const qc = useQueryClient();
   const pendingTarget = useRef(null);
   const pendingIntent = useRef(null);
+  const pendingPublish = useRef(null);
   const [owner, setOwner] = useState('');
   const [repository, setRepository] = useState('');
   const [refName, setRefName] = useState('main');
   const [visibility, setVisibility] = useState('PRIVATE');
   const [selectedTarget, setSelectedTarget] = useState('');
+  const [selectedPublication, setSelectedPublication] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [publishConfirmed, setPublishConfirmed] = useState(false);
 
   const targets = useQuery({
     queryKey: client ? qk.gitPublicationTargets(client.config) : ['git-publication-targets','none'],
@@ -32,6 +36,13 @@ export function GitPublicationPanel() {
     queryKey: client && analysis ? qk.gitPublicationIntents(client.config, analysis) : ['git-publication-intents','none'],
     enabled: !!client && !!analysis,
     queryFn: async () => (await client.gitPublicationIntents(analysis, 25)).value,
+  });
+  const remoteStatus = useQuery({
+    queryKey: client && analysis && selectedPublication
+      ? ['git-publication-remote-status', client.config.workspace, client.config.situation, analysis, selectedPublication]
+      : ['git-publication-remote-status','none'],
+    enabled: !!client && !!analysis && !!selectedPublication,
+    queryFn: async () => (await client.gitPublicationRemoteStatus(analysis, selectedPublication)).value,
   });
 
   const register = useMutation({
@@ -75,9 +86,45 @@ export function GitPublicationPanel() {
         selectedTarget,
       )).value;
     },
-    onSuccess: async () => {
+    onSuccess: async (value) => {
       pendingIntent.current = null;
+      setSelectedPublication(value.intent.publication_id);
+      setPublishConfirmed(false);
+      setGithubToken('');
       await qc.invalidateQueries({ queryKey: qk.gitPublicationIntents(client.config, analysis) });
+    },
+  });
+
+  const publish = useMutation({
+    mutationFn: async () => {
+      if (!selectedPublication) throw new Error('Select a recorded publication intent.');
+      if (!publishConfirmed) throw new Error('Explicit publication confirmation is required.');
+      if (!githubToken) throw new Error('Paste a transient GitHub fine-grained token.');
+      const selected = (intents.data?.intents ?? []).find((intent) => intent.publication_id === selectedPublication);
+      if (!selected) throw new Error('Selected publication intent is no longer visible.');
+      const signature = JSON.stringify({
+        publication: selectedPublication,
+        package_sha256: selected.package_sha256,
+        requested_ref: selected.requested_ref,
+      });
+      if (pendingPublish.current?.signature !== signature) {
+        pendingPublish.current = { signature, attemptId: crypto.randomUUID() };
+      }
+      return (await client.publishGitPublicationIntent(
+        analysis,
+        selectedPublication,
+        pendingPublish.current.attemptId,
+        githubToken,
+      )).value;
+    },
+    onSuccess: async () => {
+      pendingPublish.current = null;
+      setGithubToken('');
+      setPublishConfirmed(false);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: qk.gitPublicationIntents(client.config, analysis) }),
+        qc.invalidateQueries({ queryKey: ['git-publication-remote-status', client.config.workspace, client.config.situation, analysis, selectedPublication] }),
+      ]);
     },
   });
 
@@ -141,13 +188,32 @@ export function GitPublicationPanel() {
       {plan.isSuccess && <p role="status">Intent recorded locally. GitHub has not been contacted.</p>}
     </section>}
 
+    {selectedPublication && <section className="git-publication-preview" aria-label="Remote GitHub publication">
+      <h4>Explicit remote publication</h4>
+      <p>This is the network side effect. Niccolò will publish only the exact recorded standard package, use a non-force Git ref update, re-read the ref, and report success only after the remote commit SHA matches.</p>
+      <p><small>The GitHub token is transient UI state: it is sent once in a dedicated authorization header and is not written to PostgreSQL, query keys, publication records, URLs, or the returned status.</small></p>
+      {remoteStatus.isPending && <p>Checking durable remote status…</p>}
+      {remoteStatus.data && <p><strong>{remoteStatus.data.state}</strong>{remoteStatus.data.verified_commit_sha && <> · commit <code>{remoteStatus.data.verified_commit_sha}</code></>}{remoteStatus.data.verified_ref && <> · ref <code>{remoteStatus.data.verified_ref}</code></>}</p>}
+      {remoteStatus.error && <p className="error">Remote status unavailable: {remoteStatus.error.message}</p>}
+      {remoteStatus.data?.remote_publish_verified ? <p role="status"><strong>Verified published.</strong> PostgreSQL contains a ref-verification observation for the exact remote commit shown above.</p> : <>
+        <label>Transient GitHub fine-grained token
+          <input type="password" autoComplete="off" value={githubToken} onChange={(event) => { pendingPublish.current=null; publish.reset(); setGithubToken(event.target.value); }} placeholder="Fine-grained token with Contents: write on this repository"/>
+        </label>
+        <label className="checkbox-label"><input type="checkbox" checked={publishConfirmed} onChange={(event) => { pendingPublish.current=null; publish.reset(); setPublishConfirmed(event.target.checked); }}/> I authorize publishing this exact standard package to the selected GitHub repository/ref.</label>
+        <button disabled={!githubToken || !publishConfirmed || publish.isPending} onClick={() => publish.mutate()}>{publish.isPending?'Publishing and verifying remote ref…':'Publish exact package to GitHub and verify'}</button>
+        {publish.error && <p className="error" role="alert">GitHub publication was not verified: {publish.error.message}</p>}
+        {publish.isSuccess && <p role="status"><strong>Verified published.</strong> Transient token cleared from this UI.</p>}
+      </>}
+    </section>}
+
     <details>
       <summary>Recent publication intents ({history.length})</summary>
       {intents.error && <p className="error">Intent history unavailable: {intents.error.message}</p>}
       {history.length===0 ? <p>No publication intent has been recorded for this analysis.</p> :
         <ul>{history.map((intent) => <li key={intent.publication_id}>
-          <strong>{intent.publication_state}</strong> · <code>{intent.package_sha256}</code>
-          <div><small>Ref {intent.requested_ref} · remote publish performed: no · original uploads: no</small></div>
+          <button className={selectedPublication===intent.publication_id?'history-selected':''} onClick={() => { pendingPublish.current=null; publish.reset(); setGithubToken(''); setPublishConfirmed(false); setSelectedPublication(intent.publication_id); }}><strong>{intent.publication_state}</strong> · select intent</button>
+          <div><code>{intent.package_sha256}</code></div>
+          <div><small>Ref {intent.requested_ref} · verified remote state is tracked separately · original uploads: no</small></div>
         </li>)}</ul>}
     </details>
   </article>;

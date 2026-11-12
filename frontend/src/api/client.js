@@ -90,6 +90,25 @@ export class NiccoloClient {
   gitPublicationPreview(id, targetId) { return this.request('GET', `${analysisPath(this.config,id)}/git-publication-preview?target_id=${targetId}`); }
   gitPublicationIntents(id, limit = 25) { return this.request('GET', `${analysisPath(this.config,id)}/git-publication-intents?limit=${limit}`); }
   recordGitPublicationIntent(id, publicationId, targetId) { return this.request('POST', `${analysisPath(this.config,id)}/git-publication-intents/${publicationId}`, { body: { target_id: targetId } }); }
+  gitPublicationRemoteStatus(id, publicationId) { return this.request('GET', `${analysisPath(this.config,id)}/git-publication-intents/${publicationId}/remote-status`); }
+  async publishGitPublicationIntent(id, publicationId, attemptId, githubToken) {
+    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\r\n\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
+    const path = `${analysisPath(this.config,id)}/git-publication-intents/${publicationId}/publish`;
+    const response = await this.fetch(path, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.config.token}`,
+        'Content-Type': 'application/json',
+        'X-Niccolo-GitHub-Authorization': `Bearer ${githubToken}`,
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ attempt_id: attemptId, confirmation: 'PUBLISH_STANDARD_PRESENTATION_TO_GITHUB' }),
+    });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
+    return { value };
+  }
   dashboard(id, operationId) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`); }
   epistemic(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/epistemic`); }
   epistemicPolicy() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/epistemic/policy?situation_id=${this.config.situation}`); }

@@ -10,6 +10,7 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('connect to GitHub');
     expect(source).toContain('Remote publish performed: no');
     expect(source).toContain('GitHub has not been contacted.');
+    expect(source).toContain('report success only after the remote commit SHA matches');
   });
 
   it('records exact scope before future provider authorization', () => {
@@ -17,6 +18,16 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('requested_ref');
     expect(source).toContain('Record publication intent — does not upload');
     expect(source).toContain('Provider connection verified: no');
+  });
+
+  it('keeps provider authorization transient and explicit', () => {
+    expect(source).toContain('type="password"');
+    expect(source).toContain('autoComplete="off"');
+    expect(source).toContain('Transient token cleared from this UI.');
+    expect(source).toContain('setGithubToken(\'\')');
+    expect(source).toContain('I authorize publishing this exact standard package');
+    expect(source).toContain('pendingPublish.current?.signature !== signature');
+    expect(source).not.toContain('localStorage');
   });
 
   it('reuses IDs for interrupted target and intent responses', () => {
