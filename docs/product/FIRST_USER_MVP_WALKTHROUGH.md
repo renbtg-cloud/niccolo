@@ -172,6 +172,14 @@ non-evidence historical context, keeps the original human selector/rationale, an
 become part of the frozen Situation input. Review shows selected imported context separately so the
 provenance boundary remains visible.
 
+## 10. Optional: record a deterministic heuristic score
+
+In **Review**, a claim with recorded source links can be given an explicit, human-directed heuristic weighting. Choose the claim, assign each linked source a bounded strength (0–100) and explain the rationale. Niccolò derives the source stance and recorded dependence from PostgreSQL rather than trusting the browser to declare them.
+
+Recording is a separate write action. It creates an immutable score artifact containing the exact policy, declared strengths, provenance-aware deterministic result, graph revision and result SHA-256. Reusing the same score ID with different contents fails closed.
+
+The recorded score is **not** a probability of truth, proof, documentary evidence or certification of witness independence. It does not rewrite the published analysis. It can later be inspected and included in the portable analysis export.
+
 ## What to record during a human usability test
 
 Do not teach the tester the architecture first. Record where they hesitate or ask for help:
