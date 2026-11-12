@@ -143,6 +143,7 @@ The current Aurelius & Finch acceptance path already exercises the properties th
 - operator-assisted behavior with interventions recorded instead of hidden;
 - optional operational-event identity for defensive suppression of exact retry/replay duplicates;
 - per-event delivery-count diagnostics and an explicit warning that upstream deduplication remains preferred;
+- read-only workspace aggregate integration diagnostics for retry amplification, repeated payloads without operational identity, and multiple operational IDs bound to one document, with no conversion of those counters into evidence quality, credibility, independence, or truth;
 - append-only Situation purpose history, with the current declared purpose frozen into each analysis snapshot so later purpose changes do not rewrite earlier analysis context.
 
 These are epistemic properties. They do not imply that arbitrary upstream transport behavior is efficient.
@@ -183,21 +184,11 @@ A service account, administrator, CIO, or highly privileged integration process 
 
 ## Near-term Niccolò hardening still planned
 
-The MVP now suppresses exact operational retries when the integrator supplies a stable operational event identity, records the delivery count, and returns a per-delivery warning. It also persists append-only purpose history and freezes the current declared purpose into analysis snapshots.
+The MVP now suppresses exact operational retries when the integrator supplies a stable operational event identity, records the delivery count, returns a per-delivery warning, and exposes a read-only aggregate integration diagnostic for directly observable redundancy/identity patterns. It also persists append-only purpose history and freezes the current declared purpose into analysis snapshots.
+
+The aggregate diagnostic deliberately reports only persisted transport facts: total and duplicate delivery counts, repeated identical payload groups that have no operational identity, and documents associated with more than one operational ID. Its warning codes are descriptive, not scores. It does **not** infer evidence quality, source credibility, independence, sabotage, or truth from those counts.
 
 The following broader hardening remains deliberately outside the MVP freeze.
-
-### Aggregate redundancy diagnostics
-
-Niccolò should add aggregate warnings or metrics for conditions such as:
-
-- suspicious duplicate ratios across many operational IDs;
-- repeated identical payloads without a reliable operational identity;
-- ingestion amplification;
-- abnormal retry/replay patterns across a pipeline;
-- unusually high source fan-out.
-
-The goal is to identify an integration defect before it turns into avoidable cost or latency. This is broader than the per-event duplicate diagnostic implemented now.
 
 ### Explicit upstream-processing declarations
 
