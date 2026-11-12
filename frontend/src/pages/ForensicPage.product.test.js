@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+const page = readFileSync(new URL('./ForensicPage.jsx', import.meta.url), 'utf8');
+
+describe('prior Niccolò export quarantine surface', () => {
+  it('keeps prior exports under Technical rather than the primary Situation → Analyze → Review path', () => {
+    expect(app).toContain("['/forensic','Prior exports']");
+    expect(app).toContain('<Route path="/forensic" element={<ForensicPage/>}/>');
+    expect(app).toContain('<details className="advanced-nav">');
+  });
+
+  it('makes quarantine semantics unavoidable before import or binding', () => {
+    expect(page).toContain('untrusted historical material');
+    expect(page).toContain('does <strong>not</strong> make its claims true');
+    expect(page).toContain('non-evidence historical context');
+    expect(page).toContain('does not rewrite the frozen analysis input');
+    expect(page).toContain('Reanalyze if you want a new published answer to consider it.');
+  });
+
+  it('reuses stable batch and binding IDs after an interrupted response', () => {
+    expect(page).toContain('pendingImport.current?.signature !== signature');
+    expect(page).toContain('pendingImport.current.batchId');
+    expect(page).toContain('pendingBinding.current?.signature !== signature');
+    expect(page).toContain('pendingBinding.current.bindingId');
+  });
+
+  it('supports bounded pagination over batches and items', () => {
+    expect(page).toContain('Previous imports');
+    expect(page).toContain('Next imports');
+    expect(page).toContain('Previous items');
+    expect(page).toContain('Next items');
+    expect(page).toContain('next_before_batch_id');
+    expect(page).toContain('next_after_source_path');
+  });
+});
