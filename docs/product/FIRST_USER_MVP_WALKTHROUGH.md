@@ -59,7 +59,9 @@ Expected output includes:
 Open the prepared URL.
 
 The browser receives only the non-secret identifiers. Copy the bearer token from
-`.niccolo-local/token.txt` into the password field and choose **Connect**.
+`.niccolo-local/token.txt` into the password field and choose **Connect**. Niccolò first performs
+a bounded workspace read to validate the token/workspace pair; a rejected token does not create a
+connected browser session or require you to recreate the prepared Situation.
 
 ## 4. Create the first Situation
 
@@ -131,6 +133,12 @@ Review should make it possible to inspect, as available for that analysis:
 - useful next leads;
 - whether the Situation changed after the frozen input;
 - a portable analysis export.
+
+The standard portable ZIP contains recorded analysis state and source identifiers but no source
+text. Review also offers a separate **Sensitive export** action that can include only source
+fragments recorded as examined by that analysis. That action requires write authorization, is
+bounded, excludes original uploaded files, and warns that excerpts may contain private
+communications and do not establish truth.
 
 The answer is provisional reasoning over recorded input, not a declaration of truth.
 
