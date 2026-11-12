@@ -106,8 +106,8 @@ piece of human context.
 
 Supported MVP source files include:
 
-- `.eml` email;
-- `.txt` WhatsApp/plain-text export.
+- `.eml` plain-text email;
+- `.txt` WhatsApp chat export.
 
 Choose one or several files and then **Import and attach**. A browser batch is prevalidated
 before the first upload, is bounded to 32 files / 64 MiB total, and each file still keeps the
