@@ -9,12 +9,18 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 : "${NICCOLO_PG_ADMIN_URL:?Set an admin URL for a new dedicated PostgreSQL database}"
-for program in psql node; do
+for program in psql node npm cargo rustc; do
   command -v "$program" >/dev/null || {
     printf 'Missing executable: %s\n' "$program" >&2
     exit 1
   }
 done
+
+server_version_num="$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c 'SHOW server_version_num')"
+if ! [[ "$server_version_num" =~ ^[0-9]+$ ]] || (( server_version_num < 170000 || server_version_num >= 180000 )); then
+  printf 'Niccolò local MVP requires PostgreSQL 17; connected server reports version_num=%s.\n' "$server_version_num" >&2
+  exit 2
+fi
 
 # The runtime database credential is an implementation secret, not something a
 # first user should have to invent. Generate a high-entropy value unless an
