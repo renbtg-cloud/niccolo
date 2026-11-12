@@ -3,7 +3,8 @@
 use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
-    bff_operations, model_adapter, model_artifacts, operation_budget, reasoning_handoff,
+    bff_operations, model_adapter, model_artifacts, operation_budget, operation_checkpoint,
+    reasoning_handoff,
     reasoning_packet, reasoning_updates, observation_retrieval, observation_query_ledger,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
@@ -34,6 +35,8 @@ pub enum RuntimeError {
     Challenge(#[from] adversarial_challenge::ChallengeError),
     #[error("operation budget unavailable: {0}")]
     Budget(#[from] operation_budget::BudgetError),
+    #[error("operation checkpoint unavailable: {0}")]
+    Checkpoint(#[from] operation_checkpoint::CheckpointError),
     #[error("analysis coverage unavailable: {0}")]
     Coverage(#[from] analysis_coverage::AnalysisCoverageError),
     #[error("reasoning handoff unavailable: {0}")]
@@ -51,6 +54,91 @@ pub struct RunOutcome {
     pub completed_steps: usize,
     pub waiting_for_human: bool,
     pub terminal: bool,
+}
+
+async fn record_step_checkpoint(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    step: &agentic_controller::StepView,
+) -> Result<(), RuntimeError> {
+    let op = bff_operations::get(pool, scope).await?;
+    let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
+    let controller = agentic_controller::view(pool, scope).await?;
+    let budget = operation_budget::view(pool, scope).await?;
+    let quality = analysis_quality::report(
+        pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace: scope.workspace,
+            situation: scope.situation,
+            analysis,
+        },
+    )
+    .await?;
+    let succeeded_steps = controller
+        .steps
+        .iter()
+        .filter(|candidate| candidate.state == "SUCCEEDED")
+        .count();
+    let failed_steps = controller
+        .steps
+        .iter()
+        .filter(|candidate| candidate.state == "FAILED")
+        .count();
+    let summary = json!({
+        "operation_state": op.state,
+        "analysis_id": analysis,
+        "plan_revision": controller.plan_revision,
+        "plan_sha256": controller.plan_sha256,
+        "completed_step_id": step.step_id,
+        "completed_step_kind": step.kind,
+        "completed_step_label": step.label,
+        "controller_complete": controller.complete,
+        "controller_waiting_for_human": controller.waiting_for_human,
+        "controller_blocked": controller.blocked,
+        "succeeded_step_count": succeeded_steps,
+        "failed_step_count": failed_steps,
+        "total_step_count": controller.steps.len(),
+        "operation_budget": {
+            "max_invocations": budget.max_invocations,
+            "used_invocations": budget.used_invocations,
+            "remaining_invocations": budget.remaining_invocations,
+            "max_total_tokens": budget.max_total_tokens,
+            "used_total_tokens": budget.used_total_tokens,
+            "remaining_total_tokens": budget.remaining_total_tokens,
+            "unreported_token_usage_invocations": budget.unreported_token_usage_invocations,
+            "token_usage_complete": budget.token_usage_complete,
+            "remaining_total_tokens_is_upper_bound": budget.remaining_total_tokens_is_upper_bound,
+            "stop_reasons": budget.stop_reasons,
+            "can_start_model_call": budget.can_start_model_call,
+            "budget_is_quality_score": false
+        },
+        "quality": quality,
+        "checkpoint_is_provisional": true,
+        "checkpoint_establishes_truth": false,
+        "checkpoint_proves_completeness": false
+    });
+    let kind = if controller.waiting_for_human {
+        "HUMAN_BOUNDARY"
+    } else {
+        "STEP_COMPLETED"
+    };
+    operation_checkpoint::record(
+        pool,
+        scope,
+        &operation_checkpoint::NewCheckpoint {
+            checkpoint_id: step.step_id,
+            analysis_id: Some(analysis),
+            checkpoint_kind: kind.into(),
+            step_id: Some(step.step_id),
+            summary,
+            provisional: true,
+            terminal: false,
+            recorded_by: actor,
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn ensure_default_plan(
@@ -400,5 +488,6 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             .clone();
         execute_step(pool, scope, actor, model, &step, view.plan_revision).await?;
         completed += 1;
+        record_step_checkpoint(pool, scope, actor, &step).await?;
     }
 }

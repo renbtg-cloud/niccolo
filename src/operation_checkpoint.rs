@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-const MAX_CHECKPOINTS_PER_OPERATION: i64 = 1024;
+const MAX_CHECKPOINTS_PER_OPERATION: i64 = 10_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CheckpointError {
