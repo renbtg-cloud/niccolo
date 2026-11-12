@@ -16,7 +16,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp dev-flow/patches/checkpoint-git-remote-20261112.patch /tmp/checkpoint-git-remote.patch
+          base64 -d dev-flow/patches/checkpoint-git-remote-20261112.patch.b64 > /tmp/checkpoint-git-remote.patch
+          echo 'b9c22a07d361a8a55055b7f906d74a29da63484f7f81e6c64bd955c35c114aa4  /tmp/checkpoint-git-remote.patch' | sha256sum -c -
           git fetch origin ci/mvp-checkpoint
           test "$(git rev-parse origin/ci/mvp-checkpoint)" = 'a7f4408e9f8bffcdf76c4348b0809458b0132b11'
           git checkout -B feat/checkpoint-git-remote-20261112 origin/ci/mvp-checkpoint
