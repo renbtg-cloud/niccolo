@@ -343,6 +343,112 @@ async fn weighting_uses_only_real_claim_links_and_stored_relation() {
     );
 }
 #[tokio::test]
+async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
+    let h = setup().await;
+    let s = seed(&h).await;
+    let score = Uuid::new_v4();
+    let path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/claims/{}/epistemic/records/{score}",
+        h.workspace, h.situation, s.analysis, s.claim
+    );
+    let request_body = body(s.evidence[0], s.evidence[1]);
+
+    assert_eq!(
+        call(
+            h.router.clone(),
+            req("POST", &path, &h.reader, Some(request_body.clone()))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let (status, created) = call(
+        h.router.clone(),
+        req("POST", &path, &h.writer, Some(request_body.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["replayed"], false);
+    assert_eq!(created["is_immutable_record"], true);
+    assert_eq!(created["score_is_probability_of_truth"], false);
+    assert_eq!(created["establishes_claim_truth"], false);
+    assert_eq!(created["modifies_published_analysis"], false);
+    assert_eq!(created["record"]["score_id"], score.to_string());
+    assert_eq!(created["record"]["claim_id"], s.claim.to_string());
+    assert_eq!(created["record"]["policy_source"], "BUILTIN_DEFAULT");
+    assert_eq!(
+        created["record"]["human_declared_confidence_percent"],
+        90
+    );
+    assert_eq!(created["record"]["immutable_record"], true);
+    assert_eq!(created["record"]["score_is_probability_of_truth"], false);
+    assert_eq!(created["record"]["establishes_claim_truth"], false);
+    assert_eq!(created["record"]["is_documentary_evidence"], false);
+    assert_eq!(created["record"]["modifies_published_analysis"], false);
+    assert_eq!(
+        created["record"]["result"]["report"]["support_points"],
+        80
+    );
+    assert_eq!(
+        created["record"]["result"]["report"]["counter_points"],
+        60
+    );
+    let digest = created["record"]["result_sha256"].as_str().unwrap();
+    assert_eq!(digest.len(), 64);
+
+    let (status, replay) = call(
+        h.router.clone(),
+        req("POST", &path, &h.writer, Some(request_body.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["record"]["result_sha256"], digest);
+
+    let mut changed = request_body.clone();
+    changed["evidence"][0]["declared_strength"] = json!(79);
+    let (status, conflict) = call(
+        h.router.clone(),
+        req("POST", &path, &h.writer, Some(changed)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(conflict["error"], "grounded score ID conflict");
+
+    let list_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/epistemic/records?limit=100",
+        h.workspace, h.situation, s.analysis
+    );
+    let (status, page) = call(
+        h.router.clone(),
+        req("GET", &list_path, &h.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let records = page["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["score_id"], score.to_string());
+    assert_eq!(records[0]["result_sha256"], digest);
+
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+           FROM niccolo.situation_analysis_grounded_score_records
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND claim_id=$4 AND score_id=$5",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(s.analysis)
+    .bind(s.claim)
+    .bind(score)
+    .fetch_one(&h.admin)
+    .await
+    .unwrap();
+    assert_eq!(rows, 1);
+}
+
+#[tokio::test]
 async fn ambiguous_claim_evidence_links_fail_closed() {
     let h = setup().await;
     let s = seed(&h).await;
