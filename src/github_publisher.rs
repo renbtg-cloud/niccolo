@@ -19,6 +19,7 @@ use std::{
 use uuid::Uuid;
 
 const MAX_PROVIDER_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_REMOTE_PACKAGE_FILES: usize = 256;
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum GitHubPublishError {
@@ -137,6 +138,7 @@ fn validate_local_material(
         || package.includes_examined_source_fragment_contents
         || package.published_to_git
         || package.files.is_empty()
+        || package.files.len() > MAX_REMOTE_PACKAGE_FILES
         || package.files.len() != intent.file_count as usize
         || total_text_bytes(package)? != intent.total_text_bytes
         || package.files.keys().any(|path| !safe_package_path(path))
@@ -837,6 +839,30 @@ mod tests {
             ),
             Err(GitHubPublishError::VerificationMismatch)
         );
+    }
+
+    #[test]
+    fn excessive_remote_file_fanout_is_rejected_before_network_calls() {
+        let mut package = package();
+        package.files.clear();
+        for index in 0..=MAX_REMOTE_PACKAGE_FILES {
+            package
+                .files
+                .insert(format!("data/{index:03}.txt"), "x".into());
+        }
+        let intent = intent(&package);
+        let transport = ScriptedTransport::new(vec![]);
+        assert_eq!(
+            publish_standard_package(
+                &transport,
+                &target(),
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
+            Err(GitHubPublishError::LocalIntegrity)
+        );
+        assert!(transport.calls.lock().unwrap().is_empty());
     }
 
     #[test]
