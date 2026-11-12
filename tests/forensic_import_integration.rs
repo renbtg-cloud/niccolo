@@ -1011,6 +1011,187 @@ async fn selected_quarantined_item_reaches_reasoning_as_current_non_evidence_con
 }
 
 #[tokio::test]
+async fn human_approved_reanalysis_inherits_selected_quarantined_context_before_reasoning() {
+    let f = fixture().await;
+    let package = exported(&f).await;
+    let batch = Uuid::new_v4();
+    assert_eq!(
+        call(
+            f.router.clone(),
+            import_request(
+                &f,
+                batch,
+                &f.destination_token,
+                "fixture://reanalysis-inherits-context",
+                &package,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let digest = authz::credential_digest(&f.destination_token).unwrap();
+    let imported_item = authz::with_auth_digest(digest.clone(), async {
+        forensic_import::list_items(&f.secure, f.destination_workspace, batch, None, 50)
+            .await
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|item| item.source_kind == "LOGICAL_ROW")
+            .unwrap()
+            .item_id
+    })
+    .await;
+
+    let situation = Uuid::new_v4();
+    let parent = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.situations
+         (workspace_id,situation_id,focus,created_by_principal_id,current_revision)
+         VALUES($1,$2,'Reanalysis should carry selected old context',$3,1)",
+    )
+    .bind(f.destination_workspace)
+    .bind(situation)
+    .bind(f.destination_principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_revisions
+         (workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause)
+         VALUES($1,$2,1,'Reanalysis should carry selected old context',$3,$4,'CREATED')",
+    )
+    .bind(f.destination_workspace)
+    .bind(situation)
+    .bind("d".repeat(64))
+    .bind(f.destination_principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    authz::with_auth_digest(digest.clone(), async {
+        analysis_snapshot::begin(
+            &f.secure,
+            f.destination_workspace,
+            f.destination_principal,
+            situation,
+            parent,
+            "Original analysis",
+            None,
+        )
+        .await
+        .unwrap();
+        forensic_context::bind(
+            &f.secure,
+            AnalysisScope {
+                workspace: f.destination_workspace,
+                situation,
+                analysis: parent,
+            },
+            f.destination_principal,
+            &forensic_context::BindingInput {
+                binding_id: Uuid::new_v4(),
+                import_batch_id: batch,
+                item_id: imported_item,
+                note: Some("Carry this human-selected historical context into reanalysis.".into()),
+            },
+        )
+        .await
+        .unwrap();
+    })
+    .await;
+
+    let child = Uuid::new_v4();
+    let operation = Uuid::new_v4();
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/v1/workspaces/{}/situations/{situation}/bff/operations/{operation}/sync",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_token),
+        )
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "kind":"REANALYZE",
+                "target_analysis_id":parent,
+                "parent_operation_id":null,
+                "idempotency_key":format!("reanalysis-context-{operation}"),
+                "input":{"new_analysis_id":child,"goal":"Revisit with selected historical context"},
+                "deadline_at":null,
+                "step_budget":32
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let (status, result) = call(f.router.clone(), request).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["result"]["new_analysis_id"], child.to_string());
+    assert_eq!(result["result"]["inherited_forensic_context_count"], 1);
+    assert_eq!(
+        result["result"]["inherited_forensic_context_is_documentary_evidence"],
+        false
+    );
+
+    let child_scope = AnalysisScope {
+        workspace: f.destination_workspace,
+        situation,
+        analysis: child,
+    };
+    let child_packet = authz::with_auth_digest(digest.clone(), async {
+        reasoning_packet::build(&f.secure, child_scope).await.unwrap()
+    })
+    .await;
+    assert_eq!(child_packet.current_human_control.imported_context.len(), 1);
+    let inherited = &child_packet.current_human_control.imported_context[0];
+    assert_eq!(inherited.import_batch_id, batch);
+    assert_eq!(inherited.item_id, imported_item);
+    assert!(!inherited.establishes_truth);
+    assert!(!inherited.documentary_evidence);
+    assert!(!child_packet.current_human_control.imported_context_was_part_of_frozen_input);
+
+    let replay = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/v1/workspaces/{}/situations/{situation}/bff/operations/{operation}/sync",
+            f.destination_workspace
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_token),
+        )
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "kind":"REANALYZE",
+                "target_analysis_id":parent,
+                "parent_operation_id":null,
+                "idempotency_key":format!("reanalysis-context-{operation}"),
+                "input":{"new_analysis_id":child,"goal":"Revisit with selected historical context"},
+                "deadline_at":null,
+                "step_budget":32
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    assert_eq!(call(f.router.clone(), replay).await.0, StatusCode::OK);
+    let inherited_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.analysis_forensic_context
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(f.destination_workspace)
+    .bind(situation)
+    .bind(child)
+    .fetch_one(&f.admin)
+    .await
+    .unwrap();
+    assert_eq!(inherited_count, 1);
+}
+
+#[tokio::test]
 async fn same_package_with_conflicting_declared_origin_fails_closed() {
     let f = fixture().await;
     let package = exported(&f).await;

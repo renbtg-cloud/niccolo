@@ -153,9 +153,11 @@ credentials vouch for old statements. Imported rows are not copied into native e
 configuration, source, or analysis tables.
 
 Selecting an imported item for an analysis also does not rewrite the frozen input or any published
-answer. Use **Reanalysis** if you want a new answer to consider that newly selected historical
-context. Review shows selected imported context separately so the provenance boundary remains
-visible.
+answer. When you explicitly approve **Reanalysis**, Niccolò carries the parent analysis's selected
+quarantined context into the new analysis before reasoning starts. The copied selection remains
+non-evidence historical context, keeps the original human selector/rationale, and still does not
+become part of the frozen Situation input. Review shows selected imported context separately so the
+provenance boundary remains visible.
 
 ## What to record during a human usability test
 

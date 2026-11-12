@@ -3,6 +3,7 @@
 use crate::{
     analysis_snapshot,
     bff_operations::{self, OperationScope},
+    forensic_context,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -13,6 +14,8 @@ pub enum ReanalysisRuntimeError {
     Operation(#[from] bff_operations::BffOperationError),
     #[error("snapshot unavailable: {0}")]
     Snapshot(#[from] analysis_snapshot::AnalysisSnapshotError),
+    #[error("forensic context unavailable: {0}")]
+    Forensic(#[from] forensic_context::ForensicContextError),
     #[error("invalid reanalysis operation")]
     Invalid,
     #[error("invalid reanalysis input: {0}")]
@@ -62,6 +65,30 @@ pub async fn execute(
         Some(prior),
     )
     .await?;
-    let result = serde_json::json!({"new_analysis_id":snap.analysis_id,"prior_analysis_id":prior,"input_revision":snap.input_revision,"input_fingerprint":snap.input_fingerprint,"historical_output_preserved":true,"agentic_execution_started":false,"human_requested_operation":true});
+    let inherited_forensic_context_count = forensic_context::inherit_for_reanalysis(
+        pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace: scope.workspace,
+            situation: scope.situation,
+            analysis: prior,
+        },
+        crate::analysis_structure::AnalysisScope {
+            workspace: scope.workspace,
+            situation: scope.situation,
+            analysis: snap.analysis_id,
+        },
+    )
+    .await?;
+    let result = serde_json::json!({
+        "new_analysis_id":snap.analysis_id,
+        "prior_analysis_id":prior,
+        "input_revision":snap.input_revision,
+        "input_fingerprint":snap.input_fingerprint,
+        "historical_output_preserved":true,
+        "agentic_execution_started":false,
+        "human_requested_operation":true,
+        "inherited_forensic_context_count":inherited_forensic_context_count,
+        "inherited_forensic_context_is_documentary_evidence":false
+    });
     Ok(bff_operations::succeed(pool, scope, running.state_version, actor, &result).await?)
 }

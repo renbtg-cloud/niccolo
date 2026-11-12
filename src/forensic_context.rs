@@ -234,6 +234,90 @@ pub async fn list(
     Ok(views)
 }
 
+pub async fn inherit_for_reanalysis(
+    pool: &PgPool,
+    parent: AnalysisScope,
+    child: AnalysisScope,
+) -> Result<u64, ForensicContextError> {
+    if parent.workspace != child.workspace
+        || parent.situation != child.situation
+        || parent.analysis == child.analysis
+    {
+        return Err(ForensicContextError::Invalid);
+    }
+    let mut tx = scoped(pool, parent.workspace, false).await?;
+    let visible: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+           FROM niccolo.situation_analysis_snapshots
+          WHERE workspace_id=$1 AND situation_id=$2
+            AND analysis_id IN ($3,$4)",
+    )
+    .bind(parent.workspace)
+    .bind(parent.situation)
+    .bind(parent.analysis)
+    .bind(child.analysis)
+    .fetch_one(&mut *tx)
+    .await?;
+    if visible != 2 {
+        return Err(ForensicContextError::Invisible);
+    }
+
+    let parent_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+           FROM niccolo.analysis_forensic_context
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(parent.workspace)
+    .bind(parent.situation)
+    .bind(parent.analysis)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO niccolo.analysis_forensic_context
+         (workspace_id,situation_id,analysis_id,binding_id,import_batch_id,item_id,note,
+          bound_by_principal_id)
+         SELECT workspace_id,situation_id,$4,binding_id,import_batch_id,item_id,note,
+                bound_by_principal_id
+           FROM niccolo.analysis_forensic_context
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(parent.workspace)
+    .bind(parent.situation)
+    .bind(parent.analysis)
+    .bind(child.analysis)
+    .execute(&mut *tx)
+    .await?;
+
+    let verified: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+           FROM niccolo.analysis_forensic_context p
+           JOIN niccolo.analysis_forensic_context c
+             ON c.workspace_id=p.workspace_id
+            AND c.situation_id=p.situation_id
+            AND c.analysis_id=$4
+            AND c.binding_id=p.binding_id
+            AND c.import_batch_id=p.import_batch_id
+            AND c.item_id=p.item_id
+            AND c.note IS NOT DISTINCT FROM p.note
+            AND c.bound_by_principal_id=p.bound_by_principal_id
+          WHERE p.workspace_id=$1 AND p.situation_id=$2 AND p.analysis_id=$3",
+    )
+    .bind(parent.workspace)
+    .bind(parent.situation)
+    .bind(parent.analysis)
+    .bind(child.analysis)
+    .fetch_one(&mut *tx)
+    .await?;
+    if verified != parent_count {
+        return Err(ForensicContextError::Conflict);
+    }
+
+    tx.commit().await?;
+    Ok(parent_count as u64)
+}
+
 pub async fn bind(
     pool: &PgPool,
     scope: AnalysisScope,
