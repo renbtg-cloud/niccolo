@@ -1,0 +1,26 @@
+name: Apply checkpoint Git intent patch
+on:
+  push:
+    branches: [tmp/checkpoint-git-intent-apply-20261112]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/checkpoint-git-intent-apply-20261112
+          fetch-depth: 0
+      - name: Apply checkpoint publication intent slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dev-flow/patches/checkpoint-git-intent-20261112.patch /tmp/checkpoint-git-intent.patch
+          git fetch origin ci/mvp-checkpoint
+          test "$(git rev-parse origin/ci/mvp-checkpoint)" = '0abe17ae3dba2d335177b83608b82d2e0752ebad'
+          git checkout -B feat/checkpoint-git-intent-20261112 origin/ci/mvp-checkpoint
+          git config user.name 'ChatGPT autonomous worker'
+          git config user.email 'chatgpt-local@invalid'
+          git am /tmp/checkpoint-git-intent.patch
+          git push --force-with-lease origin HEAD:refs/heads/feat/checkpoint-git-intent-20261112
