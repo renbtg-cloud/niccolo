@@ -137,6 +137,16 @@ fn view(row: StoredRow) -> Result<GroundedScoreRecordView, GroundedScoreStoreErr
     let policy: WeightPolicy = serde_json::from_value(row.3)?;
     let declared_evidence: Vec<DeclaredEvidenceStrength> = serde_json::from_value(row.5)?;
     let result: GroundedBalance = serde_json::from_value(row.6)?;
+    let actual_digest = digest(&result)?;
+    if actual_digest != row.7
+        || result.claim_id != row.0
+        || result.report.score_is_probability_of_truth
+        || result.report.establishes_fact
+        || result.establishes_claim_truth
+        || result.modifies_historical_analysis
+    {
+        return Err(GroundedScoreStoreError::Conflict);
+    }
     Ok(GroundedScoreRecordView {
         claim_id: row.0,
         score_id: row.1,
@@ -260,6 +270,57 @@ pub async fn list_for_analysis(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stored_view_rejects_tampered_result_digest() {
+        let claim = Uuid::from_u128(4);
+        let result = GroundedBalance {
+            claim_id: claim,
+            report: crate::epistemic_weights::BalanceReport {
+                support_points: 40,
+                counter_points: 10,
+                net_points: 30,
+                input_item_count: 1,
+                origins: vec![],
+                human_declared_confidence_percent: None,
+                score_is_probability_of_truth: false,
+                independence_established: false,
+                human_confidence_is_documentary_evidence: false,
+                establishes_fact: false,
+            },
+            resolved_evidence: vec![],
+            recorded_dependence: crate::provenance_clusters::ClusterReport {
+                clusters: vec![],
+                selected_count: 0,
+                known_lineage_node_count: 0,
+                all_declared_ancestors_present: true,
+                different_clusters_establish_independence: false,
+                establishes_truth: false,
+            },
+            grouping_mode: "RECORDED_DEPENDENCE_COMPONENT".into(),
+            source_graph_revision: 1,
+            inputs_checked_against_database: true,
+            stance_derived_from_analysis_links: true,
+            origins_grouped_by_document_id: false,
+            derivation_graph_traversed: true,
+            independent_witnesses_established: false,
+            establishes_claim_truth: false,
+            modifies_historical_analysis: false,
+        };
+        let row: StoredRow = (
+            claim,
+            Uuid::from_u128(5),
+            "SITUATION".into(),
+            serde_json::to_value(WeightPolicy::default()).unwrap(),
+            None,
+            serde_json::json!([]),
+            serde_json::to_value(&result).unwrap(),
+            "0".repeat(64),
+            Uuid::from_u128(6),
+            "2026-11-12 00:00:00+00".into(),
+        );
+        assert!(matches!(view(row), Err(GroundedScoreStoreError::Conflict)));
+    }
 
     #[test]
     fn rejects_records_that_claim_probability_or_truth() {
