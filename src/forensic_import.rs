@@ -162,6 +162,13 @@ pub struct ImportItemDetail {
     pub original_bytes_retained: bool,
 }
 
+pub struct ImportOriginalBytes {
+    pub item_id: Uuid,
+    pub original_document_id: Uuid,
+    pub source_sha256: String,
+    pub bytes: Vec<u8>,
+}
+
 
 #[cfg(test)]
 fn sha256(bytes: &[u8]) -> String {
@@ -793,6 +800,43 @@ pub async fn get_item(
         },
         payload_json: row.11,
         original_bytes_retained: row.12,
+    })
+}
+
+pub async fn get_original_bytes(
+    pool: &PgPool,
+    workspace: Uuid,
+    batch: Uuid,
+    item: Uuid,
+) -> Result<ImportOriginalBytes, ForensicImportError> {
+    if batch.is_nil() || item.is_nil() {
+        return Err(ForensicImportError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let row: Option<(Uuid, Uuid, String, Vec<u8>)> = sqlx::query_as(
+        "SELECT item_id,original_document_id,source_sha256,payload_bytes
+           FROM niccolo.forensic_import_items
+          WHERE workspace_id=$1 AND import_batch_id=$2 AND item_id=$3
+            AND source_kind='ORIGINAL_SOURCE_BYTES'",
+    )
+    .bind(workspace)
+    .bind(batch)
+    .bind(item)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let (item_id, original_document_id, source_sha256, bytes) =
+        row.ok_or(ForensicImportError::Invisible)?;
+    if format!("{:x}", Sha256::digest(&bytes)) != source_sha256 {
+        return Err(ForensicImportError::Structure(
+            situation_forensic_export::ForensicExportError::CorruptOriginal,
+        ));
+    }
+    Ok(ImportOriginalBytes {
+        item_id,
+        original_document_id,
+        source_sha256,
+        bytes,
     })
 }
 

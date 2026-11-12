@@ -356,6 +356,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_forensic_import_item),
         )
         .route(
+            "/v1/workspaces/{workspace}/forensic-imports/{batch}/items/{item}/original",
+            get(download_forensic_import_original),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/intents/{operation}/sync",
             post(bff_intent_sync),
         )
@@ -1617,6 +1621,37 @@ async fn get_forensic_import_item(
         .await
         .map_err(forensic_import_error)?;
     Ok(no_store(json!(detail), StatusCode::OK))
+}
+
+async fn download_forensic_import_original(
+    State(state): State<AppState>,
+    Path((workspace, batch, item)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let retained = forensic_import::get_original_bytes(&state.pool, workspace, batch, item)
+        .await
+        .map_err(forensic_import_error)?;
+    let filename = format!(
+        "attachment; filename=\"niccolo-quarantine-source-{}.bin\"",
+        retained.original_document_id
+    );
+    let mut response = Bytes::from(retained.bytes).into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/octet-stream".parse().unwrap(),
+    );
+    headers.insert(header::CONTENT_DISPOSITION, filename.parse().unwrap());
+    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
+    headers.insert("x-niccolo-quarantine", "true".parse().unwrap());
+    headers.insert("x-niccolo-documentary-evidence", "false".parse().unwrap());
+    headers.insert(
+        "x-niccolo-source-sha256",
+        retained.source_sha256.parse().unwrap(),
+    );
+    Ok(response)
 }
 
 #[derive(Deserialize)]

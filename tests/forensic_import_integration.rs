@@ -14,6 +14,7 @@ use niccolo_evidence::{
     reasoning_packet, situation_forensic_export,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -23,6 +24,7 @@ struct Fixture {
     secure: PgPool,
     source_workspace: Uuid,
     source_situation: Uuid,
+    source_principal: Uuid,
     source_token: String,
     destination_workspace: Uuid,
     destination_principal: Uuid,
@@ -122,6 +124,7 @@ async fn fixture() -> Fixture {
         secure,
         source_workspace,
         source_situation,
+        source_principal,
         source_token,
         destination_workspace,
         destination_principal,
@@ -129,6 +132,54 @@ async fn fixture() -> Fixture {
         destination_read_token,
         router,
     }
+}
+
+async fn add_retained_source(f: &Fixture, original: &[u8]) -> Uuid {
+    let document = Uuid::new_v4();
+    let digest = format!("{:x}", Sha256::digest(original));
+    sqlx::query(
+        "INSERT INTO niccolo.source_documents
+         (workspace_id,document_id,format,locator,sha256,byte_length)
+         VALUES($1,$2,'WHATSAPP_EXPORT','fixture://forensic-original-download',$3,$4)",
+    )
+    .bind(f.source_workspace)
+    .bind(document)
+    .bind(digest)
+    .bind(original.len() as i64)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) VALUES($1,$2,$3)",
+    )
+    .bind(f.source_workspace)
+    .bind(document)
+    .bind(original)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_sources
+         (workspace_id,situation_id,document_id,added_by_principal_id) VALUES($1,$2,$3,$4)",
+    )
+    .bind(f.source_workspace)
+    .bind(f.source_situation)
+    .bind(document)
+    .bind(f.source_principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_revision_sources
+         (workspace_id,situation_id,revision,document_id) VALUES($1,$2,1,$3)",
+    )
+    .bind(f.source_workspace)
+    .bind(f.source_situation)
+    .bind(document)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    document
 }
 
 async fn exported(f: &Fixture) -> situation_forensic_export::ForensicSituationExport {
@@ -470,6 +521,112 @@ async fn untrusted_import_is_quarantined_and_exact_replay_is_idempotent() {
     .await
     .unwrap();
     assert_eq!(batches, 1);
+}
+
+#[tokio::test]
+async fn retained_original_bytes_can_be_downloaded_only_as_quarantined_material() {
+    let f = fixture().await;
+    let original = b"[01/01/2026, 10:00] Alice: retained exact source bytes\n";
+    let document = add_retained_source(&f, original).await;
+    let package = exported(&f).await;
+    assert!(
+        package
+            .original_source_payloads
+            .iter()
+            .any(|p| p.document_id == document)
+    );
+    let batch = Uuid::new_v4();
+
+    let (status, _) = call(
+        f.router.clone(),
+        import_request(
+            &f,
+            batch,
+            &f.destination_token,
+            "fixture://retained-original-download",
+            &package,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let digest = authz::credential_digest(&f.destination_read_token).unwrap();
+    let page = authz::with_auth_digest(digest, async {
+        forensic_import::list_items(&f.secure, f.destination_workspace, batch, None, 100)
+            .await
+            .unwrap()
+    })
+    .await;
+    let original_item = page
+        .items
+        .iter()
+        .find(|item| item.source_kind == "ORIGINAL_SOURCE_BYTES")
+        .expect("retained original quarantine item");
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}/items/{}/original",
+            f.destination_workspace, original_item.item_id
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let response = f.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/octet-stream"
+    );
+    assert_eq!(
+        response.headers().get("x-niccolo-quarantine").unwrap(),
+        "true"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("x-niccolo-documentary-evidence")
+            .unwrap(),
+        "false"
+    );
+    assert_eq!(
+        response.headers().get(header::CACHE_CONTROL).unwrap(),
+        "no-store"
+    );
+    let downloaded = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(downloaded.as_ref(), original);
+
+    let native_destination_sources: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.source_documents WHERE workspace_id=$1",
+    )
+    .bind(f.destination_workspace)
+    .fetch_one(&f.admin)
+    .await
+    .unwrap();
+    assert_eq!(native_destination_sources, 0);
+
+    let logical_item = page
+        .items
+        .iter()
+        .find(|item| item.source_kind != "ORIGINAL_SOURCE_BYTES")
+        .expect("logical quarantine item");
+    let wrong_kind = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/v1/workspaces/{}/forensic-imports/{batch}/items/{}/original",
+            f.destination_workspace, logical_item.item_id
+        ))
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", f.destination_read_token),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let response = f.router.clone().oneshot(wrong_kind).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
