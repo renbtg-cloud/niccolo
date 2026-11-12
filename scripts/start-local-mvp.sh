@@ -53,7 +53,7 @@ chmod 600 "$url_file" 2>/dev/null || true
 
 echo "Niccolo local session"
 echo "Open: $prepared_url"
-echo "Bearer token: $token_file"
+echo "Bearer token fallback: $token_file"
 llm_base="${NICCOLO_LLM_BASE_URL:-}"
 llm_model="${NICCOLO_LLM_MODEL:-}"
 llm_key="${NICCOLO_LLM_API_KEY:-}"
