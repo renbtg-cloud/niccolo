@@ -42,6 +42,11 @@ describe('ReviewPage hook order', () => {
     expect(source).toContain('documentary evidence: no');
   });
 
+  it('offers explicit immutable grounded scoring without presenting it as truth', () => {
+    expect(source).toContain('<GroundedScorePanel />');
+    expect(source).toContain("import { GroundedScorePanel }");
+  });
+
   it('declares React and TanStack hooks before conditional returns', () => {
     const firstConditionalReturn = source.indexOf("if(!client)return");
     expect(firstConditionalReturn).toBeGreaterThan(0);
