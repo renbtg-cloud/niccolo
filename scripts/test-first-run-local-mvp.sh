@@ -34,6 +34,26 @@ chmod +x "$TMP/repo/scripts/"*.sh
 
 export NICCOLO_TEST_TRACE="$TMP/trace"
 
+# Missing local build tools fail before asking for or validating database-owner credentials.
+preflight_bin="$TMP/preflight-bin"
+mkdir -p "$preflight_bin"
+cp "$(command -v dirname)" "$preflight_bin/dirname"
+for name in psql node npm rustc; do
+  cat > "$preflight_bin/$name" <<'SH'
+#!/bin/bash
+exit 0
+SH
+  chmod +x "$preflight_bin/$name"
+done
+unset NICCOLO_PG_ADMIN_URL || true
+set +e
+PATH="$preflight_bin" /bin/bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser >"$TMP/preflight-out" 2>"$TMP/preflight-err"
+preflight_status=$?
+set -e
+[[ "$preflight_status" == 1 ]]
+grep -q 'Missing executable: cargo' "$TMP/preflight-err"
+! grep -q 'database-owner URL' "$TMP/preflight-err"
+
 # Non-interactive bootstrap requires the owner URL through the environment and never prompts into a pipe/log.
 unset NICCOLO_PG_ADMIN_URL || true
 set +e
