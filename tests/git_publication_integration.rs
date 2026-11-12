@@ -261,7 +261,10 @@ async fn remote_event_history_is_scoped_bounded_and_secret_free() {
             f.router.clone(),
             request(
                 "POST",
-                format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace),
+                format!(
+                    "/v1/workspaces/{}/git-publication-targets/{target}",
+                    f.workspace
+                ),
                 &f.writer,
                 Some(json!({
                     "repository_owner":"owner",
@@ -305,14 +308,9 @@ async fn remote_event_history_is_scoped_bounded_and_secret_free() {
             failure_class: Some(class.into()),
         };
         authz::with_auth_digest(digest.clone(), async {
-            git_publication::record_remote_event(
-                &f.secure,
-                f.workspace,
-                f.writer_principal,
-                &event,
-            )
-            .await
-            .unwrap()
+            git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &event)
+                .await
+                .unwrap()
         })
         .await;
     }
@@ -330,7 +328,10 @@ async fn remote_event_history_is_scoped_bounded_and_secret_free() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["events"].as_array().unwrap().len(), 1);
     assert_eq!(body["provider_secret_stored"], false);
-    assert_eq!(body["event_payloads_include_provider_response_bodies"], false);
+    assert_eq!(
+        body["event_payloads_include_provider_response_bodies"],
+        false
+    );
     let event = &body["events"][0];
     assert!(event.get("token").is_none());
     assert!(event.get("provider_response").is_none());
@@ -619,7 +620,10 @@ async fn remote_status_counts_beyond_old_preview_bound_and_reports_last_failure_
             f.router.clone(),
             request(
                 "POST",
-                format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace),
+                format!(
+                    "/v1/workspaces/{}/git-publication-targets/{target}",
+                    f.workspace
+                ),
                 &f.writer,
                 Some(json!({
                     "repository_owner":"owner",
@@ -663,14 +667,9 @@ async fn remote_status_counts_beyond_old_preview_bound_and_reports_last_failure_
             failure_class: Some("TRANSPORT".into()),
         };
         authz::with_auth_digest(digest.clone(), async {
-            git_publication::record_remote_event(
-                &f.secure,
-                f.workspace,
-                f.writer_principal,
-                &event,
-            )
-            .await
-            .unwrap()
+            git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &event)
+                .await
+                .unwrap()
         })
         .await;
     }
@@ -751,26 +750,16 @@ async fn failed_publish_attempt_event_is_retry_idempotent() {
         failure_class: Some("TRANSPORT".into()),
     };
     let first = authz::with_auth_digest(digest.clone(), async {
-        git_publication::record_remote_event(
-            &f.secure,
-            f.workspace,
-            f.writer_principal,
-            &failed,
-        )
-        .await
-        .unwrap()
+        git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &failed)
+            .await
+            .unwrap()
     })
     .await;
     assert!(!first.1);
     let replay = authz::with_auth_digest(digest, async {
-        git_publication::record_remote_event(
-            &f.secure,
-            f.workspace,
-            f.writer_principal,
-            &failed,
-        )
-        .await
-        .unwrap()
+        git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &failed)
+            .await
+            .unwrap()
     })
     .await;
     assert!(replay.1);
