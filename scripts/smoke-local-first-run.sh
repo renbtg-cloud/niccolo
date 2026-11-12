@@ -5,7 +5,6 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 : "${NICCOLO_PG_ADMIN_URL:?new disposable DB required}"
-: "${NICCOLO_PG_SECURE_PASSWORD:?disposable service password required}"
 command -v curl >/dev/null
 command -v node >/dev/null
 if [[ -e .niccolo-local/local.env ]]; then
@@ -17,6 +16,7 @@ test -s .niccolo-local/local.env
 test -s .niccolo-local/identifiers.txt
 test -s .niccolo-local/token.txt
 test -s .niccolo-local/prepared-url.txt
+grep -Fq 'NICCOLO_PG_SECURE_URL=' .niccolo-local/local.env
 # Both files are generated locally with UUIDs / shell-escaped values, never with arbitrary user input.
 # shellcheck disable=SC1091
 source .niccolo-local/local.env
