@@ -38,6 +38,17 @@ describe('primary analysis path', () => {
     expect(operations).toContain('run.isPending||modelUnavailable||readiness.isPending||readiness.isError');
   });
 
+  it('exposes bounded model resource budgets only under advanced execution', () => {
+    expect(operations).toContain("maxInvocations:32");
+    expect(operations).toContain("maxTotalTokens:200000");
+    expect(operations).toContain("finalizationReserveMs:5000");
+    expect(operations).toContain("max_invocations:v.maxInvocations");
+    expect(operations).toContain("max_total_tokens:v.maxTotalTokens");
+    expect(operations).toContain("finalization_reserve_ms:v.finalizationReserveMs");
+    expect(operations).toContain('hard resource limits, not a quality score');
+    expect(operations).toContain('preserves a provisional result');
+  });
+
   it('reuses operation and analysis IDs after a lost response to avoid duplicate billing', () => {
     expect(operations).toContain('const pendingLaunch=useRef(null)');
     expect(operations).toContain('pendingLaunch.current?.signature!==signature');
