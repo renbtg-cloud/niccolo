@@ -25,6 +25,8 @@ pub enum GroundedScoreStoreError {
     Invalid,
     #[error("grounded score ID replay conflicts with recorded artifact")]
     Conflict,
+    #[error("grounded score record limit reached")]
+    TooMany,
     #[error("privileged SQL session is prohibited")]
     Privileged,
 }
@@ -180,6 +182,33 @@ pub async fn record(
     let confidence = input.human_declared_confidence_percent.map(i16::from);
 
     let mut tx = scoped(pool, input.scope.workspace, false).await?;
+    let existing_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+           FROM niccolo.situation_analysis_grounded_score_records
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(input.scope.workspace)
+    .bind(input.scope.situation)
+    .bind(input.scope.analysis)
+    .fetch_one(&mut *tx)
+    .await?;
+    let same_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+             SELECT 1 FROM niccolo.situation_analysis_grounded_score_records
+              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+                AND claim_id=$4 AND score_id=$5
+         )",
+    )
+    .bind(input.scope.workspace)
+    .bind(input.scope.situation)
+    .bind(input.scope.analysis)
+    .bind(input.claim_id)
+    .bind(input.score_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !same_exists && existing_count >= 512 {
+        return Err(GroundedScoreStoreError::TooMany);
+    }
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_grounded_score_records
          (workspace_id,situation_id,analysis_id,claim_id,score_id,policy_source,policy,
@@ -255,10 +284,13 @@ pub async fn list_for_analysis(
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.analysis)
-    .bind(limit)
+    .bind(limit + 1)
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
+    if rows.len() as i64 > limit {
+        return Err(GroundedScoreStoreError::TooMany);
+    }
     Ok(GroundedScoreRecordPage {
         records: rows
             .into_iter()
