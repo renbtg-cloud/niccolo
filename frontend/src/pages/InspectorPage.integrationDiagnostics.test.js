@@ -8,4 +8,8 @@ describe('Inspector integration diagnostics', () => {
     expect(source).toContain("['integration diagnostics',()=>client.integrationDiagnostics(),true]");
     expect(source).toContain('enabled:!!client&&(always||!!analysis)');
   });
+
+  it('keeps attributed upstream-processing declarations visible without treating them as analysis output', () => {
+    expect(source).toContain("['upstream processing declarations',()=>client.integrationProcessingDeclarations(0,100),true]");
+  });
 });
