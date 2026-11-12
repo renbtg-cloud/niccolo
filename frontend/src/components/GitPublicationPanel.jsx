@@ -194,7 +194,7 @@ export function GitPublicationPanel() {
         <li>Original uploads included: no</li>
         <li>Remote publish performed: no</li>
         <li>Provider connection verified: no</li>
-        <li>Ready for explicit remote publish after recording an intent and supplying transient authorization: {preview.data.ready_for_remote_publish?'yes':'no'}</li>
+        <li>Ready for remote publish now: {preview.data.ready_for_remote_publish?'yes':'no'} — transient provider authorization is still required.</li>
       </ul>
       <button disabled={plan.isPending} onClick={() => plan.mutate()}>{plan.isPending?'Recording intent…':'Record publication intent — does not upload'}</button>
       {plan.error && <p className="error" role="alert">Publication intent could not be recorded: {plan.error.message}</p>}

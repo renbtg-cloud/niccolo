@@ -300,7 +300,7 @@ pub async fn preview(
         includes_original_uploads: false,
         remote_publish_performed: false,
         requires_transient_provider_authorization: true,
-        ready_for_remote_publish: true,
+        ready_for_remote_publish: false,
     })
 }
 
