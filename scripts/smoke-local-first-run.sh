@@ -70,7 +70,7 @@ if NICCOLO_PG_ADMIN_URL="$NICCOLO_PG_SECURE_URL" \
   exit 1
 fi
 grep -Fq 'database-owner or BYPASSRLS login' .niccolo-local/runtime-provision.log
-./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
+NICCOLO_OPEN_BROWSER=0 bash scripts/start-local-mvp.sh > .niccolo-local/ci-server.log 2>&1 &
 pid=$!
 cleanup(){ kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
 trap cleanup EXIT
