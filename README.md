@@ -259,6 +259,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - Provenance-aware source and evidence representation, including multi-parent derivations and withdrawal-sensitive traversal.
 - Import and attribution primitives for bounded plain-text email and WhatsApp exports; source revision and fragment tracking.
 - Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
+- Deterministic Situation forensic export plus untrusted re-import quarantine, bounded inspection, retained-byte recovery, and explicit non-evidence context selection for later analyses.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
 - Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.
@@ -285,6 +286,7 @@ The direction is not a roadmap guarantee or a claim that all these integrations 
 - **Attribution before assertion.** A statement about someone's beliefs remains attributed; repeated copies are not independent witnesses.
 - **Uncertainty must survive.** The system should say what it does not know, present plausible alternatives, and ask questions when evidence matters.
 - **History is not rewritten.** New context can justify reanalysis without retroactively changing what an earlier answer saw.
+- **Imported history stays imported history.** A valid prior Niccolò package is inspectable and selectable, but it is not silently promoted to evidence or allowed to inherit trust from current credentials.
 - **Security must be demonstrated.** Workspace scoping and RLS are components of a security architecture, not a substitute for a reviewed deployment boundary.
 
 ## Further reading

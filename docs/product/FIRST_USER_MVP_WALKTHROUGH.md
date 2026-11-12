@@ -134,6 +134,29 @@ Review should make it possible to inspect, as available for that analysis:
 
 The answer is provisional reasoning over recorded input, not a declaration of truth.
 
+## 9. Optional: bring back a prior Niccolò export
+
+This is an advanced recovery/continuity path, not part of the basic first-run funnel. Open
+**Technical → Prior exports** when you need to preserve or inspect historical Niccolò material.
+
+From there you can:
+
+- download a forensic JSON export of the current Situation;
+- import a prior Niccolò forensic JSON package into a workspace quarantine;
+- inspect the imported batch, its provenance, logical rows and retained original bytes;
+- download retained original bytes without promoting them into the current source catalog;
+- explicitly select an imported item as **non-evidence historical context** for a current analysis.
+
+The quarantine boundary is intentional. A structurally valid package does **not** make historical
+claims true, does not turn old model output into documentary evidence, and does not let current
+credentials vouch for old statements. Imported rows are not copied into native evidence, identity,
+configuration, source, or analysis tables.
+
+Selecting an imported item for an analysis also does not rewrite the frozen input or any published
+answer. Use **Reanalysis** if you want a new answer to consider that newly selected historical
+context. Review shows selected imported context separately so the provenance boundary remains
+visible.
+
 ## What to record during a human usability test
 
 Do not teach the tester the architecture first. Record where they hesitate or ask for help:
