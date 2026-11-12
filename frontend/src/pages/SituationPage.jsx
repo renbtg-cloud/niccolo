@@ -44,6 +44,7 @@ export function SituationPage(){
 function ConnectedSituation({client}){
   const qc = useQueryClient();
   const [files, setFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [sourceCursor, setSourceCursor] = useState(null);
   const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve each document identity across retries after a partial multi-file import.
@@ -134,8 +135,10 @@ function ConnectedSituation({client}){
     mutationFn: async (selectedFiles) => {
       const descriptors = sourceBatchDescriptors(selectedFiles);
       const imported = [];
+      setUploadProgress({ done: 0, total: selectedFiles.length, current: null });
       for (const [index, selected] of selectedFiles.entries()) {
         const descriptor = descriptors[index];
+        setUploadProgress({ done: index, total: selectedFiles.length, current: selected.name });
         const signature = JSON.stringify([
           selected.name,
           selected.size,
@@ -154,11 +157,13 @@ function ConnectedSituation({client}){
         });
         const attached = await client.addSituationSource(documentId);
         imported.push({ documentId, ingest: ingested.value, situation: attached.value });
+        setUploadProgress({ done: index + 1, total: selectedFiles.length, current: null });
       }
       return { imported };
     },
     onSuccess: async () => {
       setFiles([]);
+      setUploadProgress(null);
       pendingDocumentIds.current.clear();
       await refresh();
     },
@@ -215,6 +220,7 @@ function ConnectedSituation({client}){
         onChange={(event) => {
           pendingDocumentIds.current.clear();
           upload.reset();
+          setUploadProgress(null);
           setFiles(Array.from(event.target.files ?? []));
         }}
       />
@@ -222,7 +228,8 @@ function ConnectedSituation({client}){
         {upload.isPending ? `Importing ${files.length} record(s)…` : `Import and attach ${files.length || ''} record${files.length === 1 ? '' : 's'}`}
       </button>
       {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
-      {upload.error && <p className="error">{upload.error.message}</p>}
+      {uploadProgress && <p role="status"><small>Imported and attached {uploadProgress.done}/{uploadProgress.total}{uploadProgress.current ? <> · processing <strong>{uploadProgress.current}</strong></> : ''}.</small></p>}
+      {upload.error && <p className="error">{upload.error.message} Successfully completed files remain attached and will replay safely if you retry the same selection.</p>}
       {upload.data && <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>}
     </article>
 

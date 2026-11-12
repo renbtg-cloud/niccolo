@@ -18,6 +18,13 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('retrying the same selection replays rather than duplicates');
   });
 
+  it('shows bounded per-file progress and preserves completed work after a partial failure', () => {
+    expect(source).toContain('setUploadProgress({ done: 0, total: selectedFiles.length');
+    expect(source).toContain('processing <strong>{uploadProgress.current}</strong>');
+    expect(source).toContain('Successfully completed files remain attached');
+    expect(source).toContain('will replay safely if you retry the same selection');
+  });
+
   it('clears retry identities only after the whole selected batch succeeds or the user changes selection', () => {
     expect(source).toContain('pendingDocumentIds.current.clear()');
     expect(source).toContain('setFiles([])');
