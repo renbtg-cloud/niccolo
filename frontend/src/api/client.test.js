@@ -132,6 +132,16 @@ describe('BFF client',()=>{
    expect(calls[1][0]).not.toContain('Preserve bounded partial result for review');
  });
 
+ it('binds meaningful milestone publication to the exact declared milestone without putting its reason in the URL',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{scope_kind:'OPERATION_MILESTONE',milestone_id:'milestone'});});
+   await x.operationCheckpointGitPublicationPreview('operation','checkpoint','target','milestone');
+   await x.recordOperationCheckpointGitPublicationIntent('operation','checkpoint','publication','target','milestone');
+   expect(calls[0][0]).toContain('/checkpoints/checkpoint/git-publication-preview?target_id=target&milestone_id=milestone');
+   expect(calls[1][0]).toContain('/git-publication-intents/publication');
+   expect(JSON.parse(calls[1][1].body)).toEqual({target_id:'target',milestone_id:'milestone'});
+ });
+
  it('binds checkpoint publication to exact checkpoint scope and keeps provider authorization transient',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{remote_publish_verified:true,status:{state:'VERIFIED_PUBLISHED'}});});

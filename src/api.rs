@@ -4957,13 +4957,18 @@ fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> Api
         CheckpointGitPublicationError::Git(GitPublicationError::Invisible) => {
             ApiError(StatusCode::NOT_FOUND, "git publication target unavailable")
         }
+        CheckpointGitPublicationError::Milestone(MilestoneError::Invisible) => {
+            ApiError(StatusCode::NOT_FOUND, "checkpoint milestone unavailable")
+        }
         CheckpointGitPublicationError::Checkpoint(CheckpointError::Invalid)
         | CheckpointGitPublicationError::Git(GitPublicationError::Invalid)
+        | CheckpointGitPublicationError::Milestone(MilestoneError::Invalid)
         | CheckpointGitPublicationError::Package(CheckpointPackageError::Invalid) => ApiError(
             StatusCode::BAD_REQUEST,
             "invalid checkpoint git publication request",
         ),
         CheckpointGitPublicationError::Checkpoint(CheckpointError::Conflict)
+        | CheckpointGitPublicationError::Milestone(MilestoneError::Conflict)
         | CheckpointGitPublicationError::Package(CheckpointPackageError::Integrity)
         | CheckpointGitPublicationError::Git(GitPublicationError::Conflict)
         | CheckpointGitPublicationError::Git(GitPublicationError::Stale) => ApiError(
@@ -4977,6 +4982,7 @@ fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> Api
         CheckpointGitPublicationError::Database(_)
         | CheckpointGitPublicationError::Privileged
         | CheckpointGitPublicationError::Checkpoint(_)
+        | CheckpointGitPublicationError::Milestone(_)
         | CheckpointGitPublicationError::Package(_)
         | CheckpointGitPublicationError::Git(_) => ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -4989,6 +4995,7 @@ fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> Api
 #[serde(deny_unknown_fields)]
 struct CheckpointGitPublicationPreviewQuery {
     target_id: Uuid,
+    milestone_id: Option<Uuid>,
 }
 
 async fn get_bff_operation_checkpoint_git_publication_preview(
@@ -5007,6 +5014,7 @@ async fn get_bff_operation_checkpoint_git_publication_preview(
         },
         checkpoint,
         query.target_id,
+        query.milestone_id,
     )
     .await
     .map_err(checkpoint_git_publication_error)?;
@@ -5017,6 +5025,7 @@ async fn get_bff_operation_checkpoint_git_publication_preview(
 #[serde(deny_unknown_fields)]
 struct CheckpointGitPublicationIntentRequest {
     target_id: Uuid,
+    milestone_id: Option<Uuid>,
 }
 
 async fn record_bff_operation_checkpoint_git_publication_intent(
@@ -5044,6 +5053,7 @@ async fn record_bff_operation_checkpoint_git_publication_intent(
         actor,
         publication,
         request.target_id,
+        request.milestone_id,
     )
     .await
     .map_err(checkpoint_git_publication_error)?;

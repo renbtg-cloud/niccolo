@@ -7,6 +7,7 @@
 use crate::{
     authz,
     bff_operations::OperationScope,
+    checkpoint_milestone::{self, MilestoneError, MilestoneView},
     checkpoint_package::{self, CheckpointPackageError},
     git_publication::{
         self, GitPublicationError, RemoteEventInput, RemoteEventKind, RemotePublicationEventView,
@@ -26,6 +27,8 @@ pub enum CheckpointGitPublicationError {
     Checkpoint(#[from] CheckpointError),
     #[error("checkpoint package unavailable: {0}")]
     Package(#[from] CheckpointPackageError),
+    #[error("checkpoint milestone unavailable: {0}")]
+    Milestone(#[from] MilestoneError),
     #[error("git target unavailable: {0}")]
     Git(#[from] GitPublicationError),
     #[error("invalid checkpoint publication request")]
@@ -52,6 +55,9 @@ pub struct CheckpointPublicationPreview {
     pub provisional: bool,
     pub terminal: bool,
     pub checkpoint_summary_sha256: String,
+    pub milestone_id: Option<Uuid>,
+    pub milestone_kind: Option<String>,
+    pub milestone_reason: Option<String>,
     pub scope_kind: String,
     pub package_sha256: String,
     pub file_count: u32,
@@ -79,6 +85,7 @@ pub struct CheckpointPublicationIntentView {
     pub provisional: bool,
     pub terminal: bool,
     pub checkpoint_summary_sha256: String,
+    pub milestone_id: Option<Uuid>,
     pub package_sha256: String,
     pub file_count: u32,
     pub total_text_bytes: u64,
@@ -129,17 +136,44 @@ fn package_shape(
     Ok((file_count, total_text_bytes))
 }
 
+async fn package_for_scope(
+    pool: &PgPool,
+    scope: OperationScope,
+    checkpoint: &operation_checkpoint::CheckpointView,
+    milestone_id: Option<Uuid>,
+) -> Result<
+    (checkpoint_package::CheckpointPackage, Option<MilestoneView>),
+    CheckpointGitPublicationError,
+> {
+    match milestone_id {
+        Some(id) => {
+            if id.is_nil() {
+                return Err(CheckpointGitPublicationError::Invalid);
+            }
+            let milestone =
+                checkpoint_milestone::get(pool, scope, checkpoint.checkpoint_id).await?;
+            if milestone.milestone_id != id {
+                return Err(CheckpointGitPublicationError::Conflict);
+            }
+            let package = checkpoint_package::build_milestone(scope, checkpoint, &milestone)?;
+            Ok((package, Some(milestone)))
+        }
+        None => Ok((checkpoint_package::build(scope, checkpoint)?, None)),
+    }
+}
+
 pub async fn preview(
     pool: &PgPool,
     scope: OperationScope,
     checkpoint_id: Uuid,
     target_id: Uuid,
+    milestone_id: Option<Uuid>,
 ) -> Result<CheckpointPublicationPreview, CheckpointGitPublicationError> {
     if checkpoint_id.is_nil() || target_id.is_nil() {
         return Err(CheckpointGitPublicationError::Invalid);
     }
     let checkpoint = operation_checkpoint::get(pool, scope, checkpoint_id).await?;
-    let package = checkpoint_package::build(scope, &checkpoint)?;
+    let (package, milestone) = package_for_scope(pool, scope, &checkpoint, milestone_id).await?;
     let target = git_publication::get_target(pool, scope.workspace, target_id).await?;
     // Checkpoint summaries may contain sensitive human/investigative context even
     // though the bounded package excludes original uploads and examined source text.
@@ -160,7 +194,10 @@ pub async fn preview(
         provisional: checkpoint.provisional,
         terminal: checkpoint.terminal,
         checkpoint_summary_sha256: checkpoint.summary_sha256,
-        scope_kind: "OPERATION_CHECKPOINT".into(),
+        milestone_id: milestone.as_ref().map(|value| value.milestone_id),
+        milestone_kind: milestone.as_ref().map(|value| value.milestone_kind.clone()),
+        milestone_reason: milestone.as_ref().map(|value| value.reason.clone()),
+        scope_kind: package.scope_kind.clone(),
         package_sha256: checkpoint_package::package_sha256(&package),
         file_count,
         total_text_bytes,
@@ -186,6 +223,7 @@ struct IntentRow {
     provisional: bool,
     terminal: bool,
     checkpoint_summary_sha256: String,
+    milestone_id: Option<Uuid>,
     package_sha256: String,
     file_count: i32,
     total_text_bytes: i64,
@@ -210,6 +248,7 @@ fn decode_intent_row(row: PgRow) -> Result<IntentRow, sqlx::Error> {
         provisional: row.try_get("provisional")?,
         terminal: row.try_get("terminal")?,
         checkpoint_summary_sha256: row.try_get("checkpoint_summary_sha256")?,
+        milestone_id: row.try_get("milestone_id")?,
         package_sha256: row.try_get("package_sha256")?,
         file_count: row.try_get("file_count")?,
         total_text_bytes: row.try_get("total_text_bytes")?,
@@ -237,6 +276,7 @@ fn intent_from_row(
         provisional: row.provisional,
         terminal: row.terminal,
         checkpoint_summary_sha256: row.checkpoint_summary_sha256,
+        milestone_id: row.milestone_id,
         package_sha256: row.package_sha256,
         file_count: u32::try_from(row.file_count)
             .map_err(|_| CheckpointGitPublicationError::Conflict)?,
@@ -260,18 +300,20 @@ pub async fn record_intent(
     actor: Uuid,
     publication_id: Uuid,
     target_id: Uuid,
+    milestone_id: Option<Uuid>,
 ) -> Result<(CheckpointPublicationIntentView, bool), CheckpointGitPublicationError> {
     if actor.is_nil() || publication_id.is_nil() || target_id.is_nil() || checkpoint_id.is_nil() {
         return Err(CheckpointGitPublicationError::Invalid);
     }
-    let preview = preview(pool, scope, checkpoint_id, target_id).await?;
+    let preview = preview(pool, scope, checkpoint_id, target_id, milestone_id).await?;
     let mut tx = scoped(pool, scope.workspace).await?;
     let inserted = sqlx::query(
         "INSERT INTO niccolo.checkpoint_git_publication_intents
          (workspace_id,publication_id,target_id,situation_id,operation_id,checkpoint_id,
           checkpoint_seq,checkpoint_kind,provisional,terminal,checkpoint_summary_sha256,
-          package_sha256,file_count,total_text_bytes,requested_ref,requested_by_principal_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          milestone_id,package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
+          requested_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          ON CONFLICT DO NOTHING",
     )
     .bind(scope.workspace)
@@ -285,6 +327,7 @@ pub async fn record_intent(
     .bind(preview.provisional)
     .bind(preview.terminal)
     .bind(&preview.checkpoint_summary_sha256)
+    .bind(preview.milestone_id)
     .bind(&preview.package_sha256)
     .bind(i32::try_from(preview.file_count).map_err(|_| CheckpointGitPublicationError::Invalid)?)
     .bind(
@@ -292,6 +335,7 @@ pub async fn record_intent(
             .map_err(|_| CheckpointGitPublicationError::Invalid)?,
     )
     .bind(&preview.requested_ref)
+    .bind(&preview.scope_kind)
     .bind(actor)
     .execute(&mut *tx)
     .await?
@@ -301,7 +345,7 @@ pub async fn record_intent(
     let row = sqlx::query(
         "SELECT publication_id,target_id,situation_id,operation_id,checkpoint_id,
                 checkpoint_seq,checkpoint_kind,provisional,terminal,checkpoint_summary_sha256,
-                package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
+                milestone_id,package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
                 includes_examined_source_text,includes_original_uploads,publication_state,
                 requested_by_principal_id,created_at::text AS created_at
            FROM niccolo.checkpoint_git_publication_intents
@@ -323,6 +367,7 @@ pub async fn record_intent(
         || row.provisional != preview.provisional
         || row.terminal != preview.terminal
         || row.checkpoint_summary_sha256 != preview.checkpoint_summary_sha256
+        || row.milestone_id != preview.milestone_id
         || row.package_sha256 != preview.package_sha256
         || row.file_count
             != i32::try_from(preview.file_count)
@@ -331,7 +376,7 @@ pub async fn record_intent(
             != i64::try_from(preview.total_text_bytes)
                 .map_err(|_| CheckpointGitPublicationError::Invalid)?
         || row.requested_ref != preview.requested_ref
-        || row.scope_kind != "OPERATION_CHECKPOINT"
+        || row.scope_kind != preview.scope_kind
         || row.includes_examined_source_text
         || row.includes_original_uploads
         || row.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
@@ -361,7 +406,7 @@ async fn load_intent(
     let row = sqlx::query(
         "SELECT publication_id,target_id,situation_id,operation_id,checkpoint_id,
                 checkpoint_seq,checkpoint_kind,provisional,terminal,checkpoint_summary_sha256,
-                package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
+                milestone_id,package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
                 includes_examined_source_text,includes_original_uploads,publication_state,
                 requested_by_principal_id,created_at::text AS created_at
            FROM niccolo.checkpoint_git_publication_intents
@@ -392,12 +437,14 @@ pub async fn publication_material(
     }
     let intent = load_intent(pool, scope, checkpoint_id, publication_id).await?;
     let checkpoint = operation_checkpoint::get(pool, scope, checkpoint_id).await?;
-    let package = checkpoint_package::build(scope, &checkpoint)?;
+    let (package, milestone) =
+        package_for_scope(pool, scope, &checkpoint, intent.milestone_id).await?;
     let target = git_publication::get_target(pool, scope.workspace, intent.target_id).await?;
     let (file_count, total_text_bytes) = package_shape(&package)?;
     let digest = checkpoint_package::package_sha256(&package);
     if target.repository_visibility != "PRIVATE"
-        || intent.scope_kind != "OPERATION_CHECKPOINT"
+        || intent.scope_kind != package.scope_kind
+        || intent.milestone_id != milestone.as_ref().map(|value| value.milestone_id)
         || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
         || intent.includes_examined_source_text
         || intent.includes_original_uploads

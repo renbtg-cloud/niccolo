@@ -172,6 +172,27 @@ fn validate_checkpoint_material(
     package: &CheckpointPackage,
     token: &str,
 ) -> Result<String, GitHubPublishError> {
+    let milestone_shape_ok = match package.scope_kind.as_str() {
+        "OPERATION_CHECKPOINT" => {
+            package.milestone_id.is_none()
+                && package.milestone_kind.is_none()
+                && package.milestone_reason.is_none()
+                && !package.files.contains_key("milestone.json")
+        }
+        "OPERATION_MILESTONE" => {
+            package.milestone_id.is_some()
+                && package
+                    .milestone_kind
+                    .as_deref()
+                    .is_some_and(|value| !value.is_empty())
+                && package
+                    .milestone_reason
+                    .as_deref()
+                    .is_some_and(|value| !value.is_empty())
+                && package.files.contains_key("milestone.json")
+        }
+        _ => false,
+    };
     if !valid_token(token)
         || target.provider != "GITHUB"
         || target.authorization_mode != "TRANSIENT_PROVIDER_AUTHORIZATION"
@@ -179,7 +200,9 @@ fn validate_checkpoint_material(
         || target.repository_visibility != "PRIVATE"
         || intent.target_id != target.target_id
         || intent.requested_ref != target.ref_name
-        || intent.scope_kind != "OPERATION_CHECKPOINT"
+        || intent.scope_kind != package.scope_kind
+        || intent.milestone_id != package.milestone_id
+        || !milestone_shape_ok
         || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
         || intent.includes_examined_source_text
         || intent.includes_original_uploads
@@ -191,7 +214,6 @@ fn validate_checkpoint_material(
         || intent.provisional != package.provisional
         || intent.terminal != package.terminal
         || intent.checkpoint_summary_sha256 != package.checkpoint_summary_sha256
-        || package.scope_kind != "OPERATION_CHECKPOINT"
         || package.published_to_git
         || package.includes_original_uploads
         || package.includes_examined_source_text
@@ -922,6 +944,9 @@ mod tests {
             provisional: true,
             terminal: true,
             checkpoint_summary_sha256: "a".repeat(64),
+            milestone_id: None,
+            milestone_kind: None,
+            milestone_reason: None,
             files: [
                 ("README.md".into(), "checkpoint summary".into()),
                 ("checkpoint.json".into(), "{\"bounded\":true}\n".into()),
@@ -949,6 +974,7 @@ mod tests {
             provisional: package.provisional,
             terminal: package.terminal,
             checkpoint_summary_sha256: package.checkpoint_summary_sha256.clone(),
+            milestone_id: package.milestone_id,
             package_sha256: checkpoint_package::package_sha256(package),
             file_count: package.files.len() as u32,
             total_text_bytes: checkpoint_total_text_bytes(package).unwrap(),
@@ -1008,6 +1034,54 @@ mod tests {
                 })
         }));
         assert!(!format!("{calls:?}").contains("test-secret-token"));
+    }
+
+    #[test]
+    fn milestone_package_is_committed_with_human_reason_and_verified() {
+        let mut package = checkpoint_package_fixture();
+        package.scope_kind = "OPERATION_MILESTONE".into();
+        package.milestone_id = Some(Uuid::from_u128(17));
+        package.milestone_kind = Some("FIRST_PASS".into());
+        package.milestone_reason = Some("First coherent pass worth preserving".into());
+        package.files.insert(
+            "milestone.json".into(),
+            "{\"milestone_kind\":\"FIRST_PASS\",\"reason\":\"First coherent pass worth preserving\"}\n".into(),
+        );
+        let mut intent = checkpoint_intent(&package);
+        intent.scope_kind = "OPERATION_MILESTONE".into();
+        intent.milestone_id = package.milestone_id;
+        let expected_message = expected_checkpoint_commit_message(&intent);
+        let transport = ScriptedTransport::new(vec![
+            json!({"full_name":"owner/history","private":true}),
+            json!({"object":{"sha":"1".repeat(40)}}),
+            json!({"tree":{"sha":"2".repeat(40)},"message":"older"}),
+            json!({"sha":"3".repeat(40)}),
+            json!({"sha":"4".repeat(40)}),
+            json!({"sha":"5".repeat(40)}),
+            json!({"sha":"6".repeat(40)}),
+            json!({"sha":"7".repeat(40)}),
+            json!({"object":{"sha":"7".repeat(40)}}),
+            json!({"object":{"sha":"7".repeat(40)}}),
+            json!({"tree":{"sha":"6".repeat(40)},"message":expected_message}),
+        ]);
+        let target = target();
+        let published =
+            publish_checkpoint_package(&transport, &target, &intent, &package, "test-secret-token")
+                .unwrap();
+        assert_eq!(published.commit_sha, "7".repeat(40));
+        let calls = transport.calls.lock().unwrap();
+        let tree_call = calls
+            .iter()
+            .find(|(_, path, body)| path.ends_with("/git/trees") && body.is_some())
+            .expect("tree creation call");
+        let body = tree_call.2.as_ref().unwrap();
+        let paths = body["tree"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|item| item["path"].as_str())
+            .collect::<Vec<_>>();
+        assert!(paths.iter().any(|path| path.ends_with("/milestone.json")));
     }
 
     #[test]

@@ -2,7 +2,10 @@
 //!
 //! This is a local/exportable progress artifact and deliberately performs no
 //! remote publication. A provisional checkpoint remains provisional after export.
-use crate::{bff_operations::OperationScope, operation_checkpoint::CheckpointView};
+use crate::{
+    bff_operations::OperationScope, checkpoint_milestone::MilestoneView,
+    operation_checkpoint::CheckpointView,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -39,6 +42,12 @@ pub struct CheckpointPackage {
     pub provisional: bool,
     pub terminal: bool,
     pub checkpoint_summary_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone_reason: Option<String>,
     pub files: BTreeMap<String, String>,
     pub includes_original_uploads: bool,
     pub includes_examined_source_text: bool,
@@ -97,6 +106,23 @@ fn package_bytes(files: &BTreeMap<String, String>) -> usize {
         .sum()
 }
 
+fn finalize_files(
+    mut files: BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, CheckpointPackageError> {
+    files.remove("SHA256SUMS");
+    let sums = files
+        .iter()
+        .map(|(path, value)| format!("{}  {}", file_digest(value), path))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    files.insert("SHA256SUMS".to_owned(), sums);
+    if package_bytes(&files) > MAX_PACKAGE_BYTES {
+        return Err(CheckpointPackageError::TooLarge);
+    }
+    Ok(files)
+}
+
 pub fn package_sha256(package: &CheckpointPackage) -> String {
     let mut digest = Sha256::new();
     for (path, value) in &package.files {
@@ -152,16 +178,7 @@ pub fn build(
     let mut files = BTreeMap::new();
     files.insert("README.md".to_owned(), readme);
     files.insert("checkpoint.json".to_owned(), checkpoint_json);
-    let sums = files
-        .iter()
-        .map(|(path, value)| format!("{}  {}", file_digest(value), path))
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
-    files.insert("SHA256SUMS".to_owned(), sums);
-    if package_bytes(&files) > MAX_PACKAGE_BYTES {
-        return Err(CheckpointPackageError::TooLarge);
-    }
+    let files = finalize_files(files)?;
 
     Ok(CheckpointPackage {
         format: FORMAT.to_owned(),
@@ -177,6 +194,9 @@ pub fn build(
         provisional: checkpoint.provisional,
         terminal: checkpoint.terminal,
         checkpoint_summary_sha256: checkpoint.summary_sha256.clone(),
+        milestone_id: None,
+        milestone_kind: None,
+        milestone_reason: None,
         files,
         includes_original_uploads: false,
         includes_examined_source_text: false,
@@ -185,6 +205,58 @@ pub fn build(
         proves_completeness: false,
         authorizes_real_world_action: false,
     })
+}
+
+pub fn build_milestone(
+    scope: OperationScope,
+    checkpoint: &CheckpointView,
+    milestone: &MilestoneView,
+) -> Result<CheckpointPackage, CheckpointPackageError> {
+    if milestone.workspace_id != scope.workspace
+        || milestone.situation_id != scope.situation
+        || milestone.operation_id != scope.operation
+        || milestone.checkpoint_id != checkpoint.checkpoint_id
+        || milestone.checkpoint_seq != checkpoint.checkpoint_seq
+        || milestone.checkpoint_kind != checkpoint.checkpoint_kind
+        || milestone.checkpoint_provisional != checkpoint.provisional
+        || milestone.checkpoint_terminal != checkpoint.terminal
+        || milestone.checkpoint_summary_sha256 != checkpoint.summary_sha256
+        || milestone.milestone_id.is_nil()
+        || milestone.milestone_kind.is_empty()
+        || milestone.reason.trim().is_empty()
+        || milestone.reason != milestone.reason.trim()
+        || milestone.remote_publish_performed
+        || milestone.establishes_truth
+        || milestone.proves_completeness
+        || milestone.authorizes_real_world_action
+    {
+        return Err(CheckpointPackageError::Invalid);
+    }
+
+    let mut package = build(scope, checkpoint)?;
+    package.scope_kind = "OPERATION_MILESTONE".to_owned();
+    package.milestone_id = Some(milestone.milestone_id);
+    package.milestone_kind = Some(milestone.milestone_kind.clone());
+    package.milestone_reason = Some(milestone.reason.clone());
+
+    let milestone_json = serde_json::to_string_pretty(milestone)? + "\n";
+    let readme = format!(
+        "# Niccolò operation milestone\n\nThis package preserves a human-declared meaningful milestone for checkpoint {} (sequence {}) from operation {}.\n\n- Milestone kind: {}\n- Why it matters: {}\n- Checkpoint kind: {}\n- Provisional: {}\n- Terminal: {}\n- Establishes truth: no\n- Proves completeness: no\n- Authorizes real-world action: no\n- Remote publication performed by package construction: no\n\nThe milestone declaration records why a human chose to preserve this checkpoint. It does not upgrade the checkpoint's evidentiary or epistemic status.\n",
+        checkpoint.checkpoint_id,
+        checkpoint.checkpoint_seq,
+        scope.operation,
+        milestone.milestone_kind,
+        milestone.reason,
+        checkpoint.checkpoint_kind,
+        checkpoint.provisional,
+        checkpoint.terminal,
+    );
+    package.files.insert("README.md".to_owned(), readme);
+    package
+        .files
+        .insert("milestone.json".to_owned(), milestone_json);
+    package.files = finalize_files(package.files)?;
+    Ok(package)
 }
 
 #[cfg(test)]
@@ -242,6 +314,45 @@ mod tests {
         assert!(!package.includes_original_uploads);
         assert!(!package.includes_examined_source_text);
         assert!(package.files["README.md"].contains("Remote publication performed: no"));
+    }
+
+    fn milestone(item: &CheckpointView) -> MilestoneView {
+        MilestoneView {
+            milestone_id: Uuid::from_u128(8),
+            workspace_id: Uuid::from_u128(1),
+            situation_id: Uuid::from_u128(2),
+            operation_id: Uuid::from_u128(3),
+            checkpoint_id: item.checkpoint_id,
+            checkpoint_seq: item.checkpoint_seq,
+            checkpoint_kind: item.checkpoint_kind.clone(),
+            checkpoint_provisional: item.provisional,
+            checkpoint_terminal: item.terminal,
+            checkpoint_summary_sha256: item.summary_sha256.clone(),
+            milestone_kind: "FIRST_PASS".into(),
+            reason: "First coherent pass worth preserving".into(),
+            declared_by_principal_id: Uuid::from_u128(9),
+            created_at: "2026-11-12 12:05:00+00".into(),
+            remote_publish_performed: false,
+            establishes_truth: false,
+            proves_completeness: false,
+            authorizes_real_world_action: false,
+        }
+    }
+
+    #[test]
+    fn milestone_package_preserves_reason_without_upgrading_checkpoint() {
+        let item = checkpoint(json!({"progress":"bounded"}));
+        let package = build_milestone(scope(), &item, &milestone(&item)).unwrap();
+        assert_eq!(package.scope_kind, "OPERATION_MILESTONE");
+        assert_eq!(package.milestone_id, Some(Uuid::from_u128(8)));
+        assert_eq!(package.milestone_kind.as_deref(), Some("FIRST_PASS"));
+        assert!(package.provisional);
+        assert!(!package.establishes_truth);
+        assert!(!package.proves_completeness);
+        assert!(!package.authorizes_real_world_action);
+        assert!(package.files.contains_key("milestone.json"));
+        assert!(package.files["README.md"].contains("does not upgrade"));
+        assert!(package.files["SHA256SUMS"].contains("milestone.json"));
     }
 
     #[test]

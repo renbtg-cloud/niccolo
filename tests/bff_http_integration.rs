@@ -551,14 +551,22 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(target_response["registration_publishes_nothing"], true);
 
-    let preview_path = format!("{checkpoint_base}/git-publication-preview?target_id={target}");
+    let preview_path = format!(
+        "{checkpoint_base}/git-publication-preview?target_id={target}&milestone_id={milestone}"
+    );
     let (status, _, preview) = invoke(
         s.router.clone(),
         req("GET", &preview_path, &s.token, None, None),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(preview["scope_kind"], "OPERATION_CHECKPOINT");
+    assert_eq!(preview["scope_kind"], "OPERATION_MILESTONE");
+    assert_eq!(preview["milestone_id"], milestone.to_string());
+    assert_eq!(preview["milestone_kind"], "TIMED_PARTIAL");
+    assert_eq!(
+        preview["milestone_reason"],
+        "Invocation budget ended; preserve this bounded partial result for review"
+    );
     assert_eq!(preview["checkpoint_id"], checkpoint_id);
     assert_eq!(preview["checkpoint_summary_sha256"], checkpoint_digest);
     assert_eq!(preview["checkpoint_kind"], "BUDGET_BOUNDARY");
@@ -575,7 +583,7 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
 
     let publication = Uuid::new_v4();
     let intent_path = format!("{checkpoint_base}/git-publication-intents/{publication}");
-    let intent_body = json!({"target_id":target});
+    let intent_body = json!({"target_id":target,"milestone_id":milestone});
     let (status, _, recorded) = invoke(
         s.router.clone(),
         req(
@@ -591,7 +599,8 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert_eq!(recorded["replayed"], false);
     assert_eq!(recorded["remote_publish_performed"], false);
     assert_eq!(recorded["checkpoint_status_preserved"], true);
-    assert_eq!(recorded["intent"]["scope_kind"], "OPERATION_CHECKPOINT");
+    assert_eq!(recorded["intent"]["scope_kind"], "OPERATION_MILESTONE");
+    assert_eq!(recorded["intent"]["milestone_id"], milestone.to_string());
     assert_eq!(recorded["intent"]["checkpoint_id"], checkpoint_id);
     assert_eq!(
         recorded["intent"]["package_sha256"],
