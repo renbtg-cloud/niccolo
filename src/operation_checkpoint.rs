@@ -111,10 +111,11 @@ fn valid(input: &NewCheckpoint) -> bool {
         input.checkpoint_kind.as_str(),
         "STEP_COMPLETED" | "HUMAN_BOUNDARY" | "BUDGET_BOUNDARY" | "FINAL"
     );
-    let state_ok = if input.checkpoint_kind == "FINAL" {
-        input.terminal && !input.provisional
-    } else {
-        !input.terminal
+    let state_ok = match input.checkpoint_kind.as_str() {
+        "FINAL" => input.terminal && !input.provisional,
+        "BUDGET_BOUNDARY" => input.terminal && input.provisional,
+        "STEP_COMPLETED" | "HUMAN_BOUNDARY" => !input.terminal && input.provisional,
+        _ => false,
     };
     kind_ok
         && state_ok

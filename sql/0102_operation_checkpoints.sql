@@ -30,7 +30,8 @@ CREATE TABLE niccolo.bff_operation_checkpoints (
     REFERENCES niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id),
   CHECK (
     (checkpoint_kind='FINAL' AND terminal AND NOT provisional)
-    OR (checkpoint_kind<>'FINAL' AND NOT terminal)
+    OR (checkpoint_kind='BUDGET_BOUNDARY' AND terminal AND provisional)
+    OR (checkpoint_kind IN ('STEP_COMPLETED','HUMAN_BOUNDARY') AND NOT terminal AND provisional)
   )
 );
 CREATE INDEX bff_operation_checkpoints_cursor
