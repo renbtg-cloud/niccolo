@@ -420,6 +420,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_presentation_source_preview),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package/export-events",
+            get(list_presentation_export_events),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
             get(get_adversarial_dossier),
         )
@@ -5271,6 +5275,12 @@ fn presentation_api_error(err: PresentationError) -> ApiError {
             StatusCode::PAYLOAD_TOO_LARGE,
             "presentation package too large",
         ),
+        PresentationError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid presentation export request")
+        }
+        PresentationError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "presentation export event conflict")
+        }
         _ => ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
             "presentation package unavailable",
@@ -5297,8 +5307,34 @@ async fn get_presentation_source_preview(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PresentationExportEventsQuery {
+    limit: Option<i64>,
+}
+
+async fn list_presentation_export_events(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<PresentationExportEventsQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = presentation_package::list_sensitive_export_events(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.limit.unwrap_or(25),
+    )
+    .await
+    .map_err(presentation_api_error)?;
+    Ok(no_store(json!(page), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PresentationPackageRequest {
     include_examined_source_fragments: bool,
+    export_event_id: Uuid,
 }
 
 async fn post_presentation_package_with_examined_sources(
@@ -5307,18 +5343,29 @@ async fn post_presentation_package_with_examined_sources(
     headers: HeaderMap,
     Json(request): Json<PresentationPackageRequest>,
 ) -> Result<Response, ApiError> {
-    guard(&state, &headers, workspace, Capability::Write).await?;
-    if !request.include_examined_source_fragments {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    if !request.include_examined_source_fragments || request.export_event_id.is_nil() {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "explicit examined-source inclusion required",
         ));
     }
-    let package = presentation_package::build_with_examined_sources(
+    let (package, preview) = presentation_package::build_with_examined_sources_and_preview(
         &state.pool,
         workspace,
         situation,
         analysis,
+    )
+    .await
+    .map_err(presentation_api_error)?;
+    presentation_package::record_sensitive_export_event(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        request.export_event_id,
+        actor,
+        &preview,
     )
     .await
     .map_err(presentation_api_error)?;

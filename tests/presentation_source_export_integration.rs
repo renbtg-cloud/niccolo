@@ -201,13 +201,18 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     assert_eq!(preview["exposes_source_text"], false);
     assert!(preview.get("content").is_none());
 
+    let export_event = Uuid::new_v4();
+    let sensitive_body = json!({
+        "include_examined_source_fragments":true,
+        "export_event_id":export_event
+    });
     let (status, _) = call(
         f.router.clone(),
         json_request(
             "POST",
             package_path.clone(),
             &f.reader,
-            Some(json!({"include_examined_source_fragments":true})),
+            Some(sensitive_body.clone()),
         ),
     )
     .await;
@@ -219,7 +224,10 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
             "POST",
             package_path.clone(),
             &f.writer,
-            Some(json!({"include_examined_source_fragments":false})),
+            Some(json!({
+                "include_examined_source_fragments":false,
+                "export_event_id":Uuid::new_v4()
+            })),
         ),
     )
     .await;
@@ -229,9 +237,9 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
         f.router.clone(),
         json_request(
             "POST",
-            package_path,
+            package_path.clone(),
             &f.writer,
-            Some(json!({"include_examined_source_fragments":true})),
+            Some(sensitive_body.clone()),
         ),
     )
     .await;
@@ -271,4 +279,58 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
             .unwrap()
             .contains("do not establish truth")
     );
+
+    let (status, replayed) = call(
+        f.router.clone(),
+        json_request(
+            "POST",
+            package_path.clone(),
+            &f.writer,
+            Some(sensitive_body),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        replayed["files"]["data/examined_source_fragments.json"],
+        sensitive["files"]["data/examined_source_fragments.json"]
+    );
+
+    let (status, events) = call(
+        f.router.clone(),
+        json_request(
+            "GET",
+            format!("{package_path}/export-events?limit=25"),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let events = events["events"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["export_event_id"], export_event.to_string());
+    assert_eq!(events[0]["analysis_id"], analysis.to_string());
+    assert_eq!(events[0]["examined_fragment_count"], 1);
+    assert!(events[0]["examined_source_text_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(events[0]["includes_original_uploads"], false);
+    assert_eq!(events[0]["establishes_truth"], false);
+
+    let audit_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.analysis_export_events
+          WHERE workspace_id=$1 AND analysis_id=$2 AND export_event_id=$3",
+    )
+    .bind(f.workspace)
+    .bind(analysis)
+    .bind(export_event)
+    .fetch_one(
+        &PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+            .await
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(audit_rows, 1);
 }

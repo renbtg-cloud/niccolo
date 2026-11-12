@@ -26,6 +26,12 @@ pub enum PresentationError {
     TooLarge,
     #[error("examined source extract selection exceeds the configured export budget")]
     SourceExtractTooLarge,
+    #[error("invalid presentation export request")]
+    Invalid,
+    #[error("presentation export event conflicts with recorded scope")]
+    Conflict,
+    #[error("presentation export audit database unavailable: {0}")]
+    Database(#[from] sqlx::Error),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +45,29 @@ pub struct ExaminedSourceExportPreview {
     pub includes_original_uploads: bool,
     pub establishes_truth: bool,
     pub exposes_source_text: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SensitiveExportEventView {
+    pub export_event_id: Uuid,
+    pub analysis_id: Uuid,
+    pub requested_by_principal_id: Uuid,
+    pub examined_fragment_count: u64,
+    pub examined_source_text_bytes: u64,
+    pub includes_original_uploads: bool,
+    pub establishes_truth: bool,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SensitiveExportEventPage {
+    pub events: Vec<SensitiveExportEventView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SensitiveExportRecord {
+    pub event: SensitiveExportEventView,
+    pub replayed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -491,6 +520,28 @@ async fn scoped(
     Ok(tx)
 }
 
+fn preview_from_counts(
+    examined_fragment_count: u64,
+    examined_source_text_bytes: u64,
+) -> Result<ExaminedSourceExportPreview, PresentationError> {
+    let max_examined_fragments =
+        u64::try_from(MAX_SOURCE_EXTRACTS).map_err(|_| PresentationError::SourceExtractTooLarge)?;
+    let max_examined_source_text_bytes = u64::try_from(MAX_SOURCE_EXTRACT_BYTES)
+        .map_err(|_| PresentationError::SourceExtractTooLarge)?;
+    Ok(ExaminedSourceExportPreview {
+        examined_fragment_count,
+        examined_source_text_bytes,
+        max_examined_fragments,
+        max_examined_source_text_bytes,
+        within_export_bounds: examined_fragment_count <= max_examined_fragments
+            && examined_source_text_bytes <= max_examined_source_text_bytes,
+        selection: "RECORDED_EXAMINED_ONLY".into(),
+        includes_original_uploads: false,
+        establishes_truth: false,
+        exposes_source_text: false,
+    })
+}
+
 pub async fn examined_source_export_preview(
     pool: &PgPool,
     workspace: Uuid,
@@ -530,26 +581,10 @@ pub async fn examined_source_export_preview(
     if count < 0 || bytes < 0 {
         return Err(PresentationError::SourceExtractTooLarge);
     }
-    let examined_fragment_count =
-        u64::try_from(count).map_err(|_| PresentationError::SourceExtractTooLarge)?;
-    let examined_source_text_bytes =
-        u64::try_from(bytes).map_err(|_| PresentationError::SourceExtractTooLarge)?;
-    let max_examined_fragments =
-        u64::try_from(MAX_SOURCE_EXTRACTS).map_err(|_| PresentationError::SourceExtractTooLarge)?;
-    let max_examined_source_text_bytes = u64::try_from(MAX_SOURCE_EXTRACT_BYTES)
-        .map_err(|_| PresentationError::SourceExtractTooLarge)?;
-    Ok(ExaminedSourceExportPreview {
-        examined_fragment_count,
-        examined_source_text_bytes,
-        max_examined_fragments,
-        max_examined_source_text_bytes,
-        within_export_bounds: examined_fragment_count <= max_examined_fragments
-            && examined_source_text_bytes <= max_examined_source_text_bytes,
-        selection: "RECORDED_EXAMINED_ONLY".into(),
-        includes_original_uploads: false,
-        establishes_truth: false,
-        exposes_source_text: false,
-    })
+    preview_from_counts(
+        u64::try_from(count).map_err(|_| PresentationError::SourceExtractTooLarge)?,
+        u64::try_from(bytes).map_err(|_| PresentationError::SourceExtractTooLarge)?,
+    )
 }
 
 async fn examined_source_extracts(
@@ -650,15 +685,191 @@ pub async fn build(
     from_bundle(&bundle)
 }
 
+pub async fn build_with_examined_sources_and_preview(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<(PresentationPackage, ExaminedSourceExportPreview), PresentationError> {
+    let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
+    let extracts = examined_source_extracts(pool, workspace, situation, analysis).await?;
+    let source_bytes = extracts
+        .iter()
+        .try_fold(0u64, |total, item| {
+            total.checked_add(
+                u64::try_from(item.content.len())
+                    .map_err(|_| PresentationError::SourceExtractTooLarge)?,
+            )
+            .ok_or(PresentationError::SourceExtractTooLarge)
+        })?;
+    let preview = preview_from_counts(
+        u64::try_from(extracts.len()).map_err(|_| PresentationError::SourceExtractTooLarge)?,
+        source_bytes,
+    )?;
+    Ok((from_bundle_and_extracts(&bundle, &extracts)?, preview))
+}
+
 pub async fn build_with_examined_sources(
     pool: &PgPool,
     workspace: Uuid,
     situation: Uuid,
     analysis: Uuid,
 ) -> Result<PresentationPackage, PresentationError> {
-    let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
-    let extracts = examined_source_extracts(pool, workspace, situation, analysis).await?;
-    from_bundle_and_extracts(&bundle, &extracts)
+    Ok(
+        build_with_examined_sources_and_preview(pool, workspace, situation, analysis)
+            .await?
+            .0,
+    )
+}
+
+async fn audit_scoped(
+    pool: &PgPool,
+    workspace: Uuid,
+) -> Result<Transaction<'_, Postgres>, PresentationError> {
+    let mut tx = pool.begin().await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(PresentationError::Manifest(ManifestError::Privileged));
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx)
+        .await
+        .map_err(ManifestError::from)?;
+    Ok(tx)
+}
+
+pub async fn record_sensitive_export_event(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    export_event_id: Uuid,
+    actor: Uuid,
+    preview: &ExaminedSourceExportPreview,
+) -> Result<SensitiveExportRecord, PresentationError> {
+    if export_event_id.is_nil() || actor.is_nil() || !preview.within_export_bounds {
+        return Err(PresentationError::Invalid);
+    }
+    let count =
+        i64::try_from(preview.examined_fragment_count).map_err(|_| PresentationError::Invalid)?;
+    let bytes =
+        i64::try_from(preview.examined_source_text_bytes).map_err(|_| PresentationError::Invalid)?;
+    let mut tx = audit_scoped(pool, workspace).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.analysis_export_events
+         (workspace_id,export_event_id,situation_id,analysis_id,export_kind,
+          requested_by_principal_id,examined_fragment_count,examined_source_text_bytes,
+          includes_original_uploads,establishes_truth)
+         VALUES($1,$2,$3,$4,'EXAMINED_SOURCE_PRESENTATION',$5,$6,$7,FALSE,FALSE)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(export_event_id)
+    .bind(situation)
+    .bind(analysis)
+    .bind(actor)
+    .bind(count)
+    .bind(bytes)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+
+    type Row = (Uuid, Uuid, Uuid, i64, i64, bool, bool, String);
+    let row: Row = sqlx::query_as(
+        "SELECT export_event_id,analysis_id,requested_by_principal_id,
+                examined_fragment_count,examined_source_text_bytes,
+                includes_original_uploads,establishes_truth,created_at::text
+           FROM niccolo.analysis_export_events
+          WHERE workspace_id=$1 AND export_event_id=$2",
+    )
+    .bind(workspace)
+    .bind(export_event_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(PresentationError::Conflict)?;
+    if row.1 != analysis
+        || row.2 != actor
+        || row.3 != count
+        || row.4 != bytes
+        || row.5
+        || row.6
+    {
+        return Err(PresentationError::Conflict);
+    }
+    let event = SensitiveExportEventView {
+        export_event_id: row.0,
+        analysis_id: row.1,
+        requested_by_principal_id: row.2,
+        examined_fragment_count: u64::try_from(row.3).map_err(|_| PresentationError::Conflict)?,
+        examined_source_text_bytes: u64::try_from(row.4)
+            .map_err(|_| PresentationError::Conflict)?,
+        includes_original_uploads: row.5,
+        establishes_truth: row.6,
+        created_at: row.7,
+    };
+    tx.commit().await?;
+    Ok(SensitiveExportRecord {
+        event,
+        replayed: !inserted,
+    })
+}
+
+pub async fn list_sensitive_export_events(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    limit: i64,
+) -> Result<SensitiveExportEventPage, PresentationError> {
+    if !(1..=100).contains(&limit) {
+        return Err(PresentationError::Invalid);
+    }
+    analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
+    let mut tx = scoped(pool, workspace).await?;
+    type Row = (Uuid, Uuid, Uuid, i64, i64, bool, bool, String);
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT export_event_id,analysis_id,requested_by_principal_id,
+                examined_fragment_count,examined_source_text_bytes,
+                includes_original_uploads,establishes_truth,created_at::text
+           FROM niccolo.analysis_export_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+          ORDER BY created_at DESC,export_event_id DESC
+          LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
+    tx.commit().await.map_err(ManifestError::from)?;
+    let events = rows
+        .into_iter()
+        .map(|row| {
+            Ok(SensitiveExportEventView {
+                export_event_id: row.0,
+                analysis_id: row.1,
+                requested_by_principal_id: row.2,
+                examined_fragment_count: u64::try_from(row.3)
+                    .map_err(|_| PresentationError::Conflict)?,
+                examined_source_text_bytes: u64::try_from(row.4)
+                    .map_err(|_| PresentationError::Conflict)?,
+                includes_original_uploads: row.5,
+                establishes_truth: row.6,
+                created_at: row.7,
+            })
+        })
+        .collect::<Result<Vec<_>, PresentationError>>()?;
+    Ok(SensitiveExportEventPage { events })
 }
 
 #[cfg(test)]
