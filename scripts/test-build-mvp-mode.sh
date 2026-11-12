@@ -45,4 +45,19 @@ line="$(grep '^npm <ci>' "$log")"
 [[ "$line" != *'<--offline>'* ]]
 grep -Fq 'cargo <test> <--locked> <--lib>' "$log"
 ! grep -Fq '<--offline>' "$log"
-echo 'PASS: build-mvp online/offline dependency mode contract'
+
+: > "$log"
+rm -rf frontend/dist
+rm -f target/release/niccolo-api target/release/niccolo-provision
+NPM="$fixture/bin/npm" CARGO="$fixture/bin/cargo" NICCOLO_BUILD_VERIFY=0 bash scripts/build-mvp.sh >/dev/null
+! grep -Fq 'npm <test>' "$log"
+! grep -Fq 'cargo <test>' "$log"
+grep -Fq 'npm <run> <build>' "$log"
+grep -Fq 'cargo <build> <--locked> <--release>' "$log"
+
+if NPM="$fixture/bin/npm" CARGO="$fixture/bin/cargo" NICCOLO_BUILD_VERIFY=maybe bash scripts/build-mvp.sh >/dev/null 2>&1; then
+  echo 'Invalid NICCOLO_BUILD_VERIFY unexpectedly accepted' >&2
+  exit 1
+fi
+
+echo 'PASS: build-mvp online/offline/install dependency mode contract'
