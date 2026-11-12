@@ -88,6 +88,12 @@ describe('primary analysis path', () => {
     expect(operations).toContain('milestone?.milestone_id??null');
   });
 
+  it('offers dedicated explicit publication for the declared milestone', () => {
+    expect(operations).toContain('CheckpointMilestonePublicationPanel');
+    expect(operations).toContain('operationId={active}');
+    expect(operations).toContain('milestone={latestMilestone.data}');
+  });
+
   it('keeps meaningful milestone declaration explicit and non-epistemic', () => {
     expect(operations).toContain('Meaningful milestone');
     expect(operations).toContain('Declare latest checkpoint a milestone');
