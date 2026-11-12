@@ -711,12 +711,8 @@ mod tests {
         target.ref_name = "niccolo-history".into();
         let mut intent = intent(&package);
         intent.requested_ref = target.ref_name.clone();
-        let transport = ScriptedTransport::new(vec![
-            json!({"full_name":"owner/history","private":true,"default_branch":"main"}),
-            // Requested branch is absent.
-            // Scripted transport can represent a provider error only through a dedicated transport,
-            // so exercise the branch-creation shape below with the focused transport.
-        ]);
+        // Exercise the provider-404 path with a transport that reports the
+        // requested branch as absent exactly once.
         struct MissingBranchTransport {
             calls: Mutex<Vec<(String, String, Option<Value>)>>,
             responses: Mutex<VecDeque<Value>>,
@@ -743,7 +739,6 @@ mod tests {
                     .ok_or(GitHubPublishError::Transport)
             }
         }
-        drop(transport);
         let transport = MissingBranchTransport {
             calls: Mutex::new(Vec::new()),
             responses: Mutex::new(
