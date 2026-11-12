@@ -35,6 +35,7 @@ use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
+use crate::operation_checkpoint::{self, CheckpointError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::presentation_package::{self, PresentationError};
@@ -395,6 +396,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/events",
             get(get_bff_operation_events),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints",
+            get(get_bff_operation_checkpoints),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
@@ -4671,6 +4676,49 @@ async fn get_bff_operation_events(
     .map_err(bff_error)?;
     Ok(no_store(json!(page), StatusCode::OK))
 }
+fn checkpoint_error(error: CheckpointError) -> ApiError {
+    match error {
+        CheckpointError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid checkpoint query"),
+        CheckpointError::Invisible => ApiError(StatusCode::NOT_FOUND, "checkpoint unavailable"),
+        CheckpointError::Conflict => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint integrity or replay conflict",
+        ),
+        CheckpointError::TooMany => ApiError(
+            StatusCode::CONFLICT,
+            "operation checkpoint limit reached",
+        ),
+        CheckpointError::Database(_) | CheckpointError::Json(_) | CheckpointError::Privileged => {
+            ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "operation checkpoints unavailable",
+            )
+        }
+    }
+}
+
+async fn get_bff_operation_checkpoints(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(q): Query<BffEventsQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let page = operation_checkpoint::list(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        q.after.unwrap_or(0),
+        q.limit.unwrap_or(50),
+    )
+    .await
+    .map_err(checkpoint_error)?;
+    Ok(no_store(json!(page), StatusCode::OK))
+}
+
 async fn wait_bff_operation(
     State(state): State<AppState>,
     Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
