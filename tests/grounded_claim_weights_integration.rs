@@ -428,8 +428,14 @@ async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(package["includes_deterministic_grounded_score_results"], true);
-    assert_eq!(package["epistemic_control_history_proves_policy_used_for_output"], false);
+    assert_eq!(
+        package["includes_deterministic_grounded_score_results"],
+        true
+    );
+    assert_eq!(
+        package["epistemic_control_history_proves_policy_used_for_output"],
+        false
+    );
     let exported_scores: Value = serde_json::from_str(
         package["files"]["data/grounded_scores.json"]
             .as_str()
