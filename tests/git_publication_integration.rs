@@ -1,7 +1,7 @@
 #![cfg(feature = "pg-integration")]
 use axum::{Router, body::Body, http::{Request, StatusCode, header}};
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz};
+use niccolo_evidence::{api, authz, git_publication};
 use serde_json::{Value, json};
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
@@ -10,7 +10,9 @@ use uuid::Uuid;
 struct Fixture {
     router: Router,
     admin: sqlx::PgPool,
+    secure: sqlx::PgPool,
     workspace: Uuid,
+    writer_principal: Uuid,
     writer: String,
     reader: String,
 }
@@ -23,9 +25,10 @@ async fn setup() -> Fixture {
     let workspace = Uuid::new_v4();
     sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES($1,'git-publication')")
         .bind(workspace).execute(&admin).await.unwrap();
-    let writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1).await.unwrap();
+    let writer_principal = Uuid::new_v4();
+    let writer = authz::provision_token(&admin, writer_principal, workspace, true, true, 1).await.unwrap();
     let reader = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, false, 1).await.unwrap();
-    Fixture { router: api::router(secure), admin, workspace, writer, reader }
+    Fixture { router: api::router(secure.clone()), admin, secure, workspace, writer_principal, writer, reader }
 }
 
 async fn call(router: Router, request: Request<Body>) -> (StatusCode, Value) {
@@ -126,6 +129,116 @@ async fn publication_planning_is_explicit_idempotent_and_never_claims_remote_suc
     assert_eq!(listed["remote_publish_performed"], false);
     assert_eq!(listed["intents"].as_array().unwrap().len(), 1);
     assert_eq!(listed["intents"][0]["publication_id"], publication.to_string());
+}
+
+#[tokio::test]
+async fn remote_status_changes_only_after_append_only_verified_observation() {
+    let f = setup().await;
+    let (situation, analysis) = published_analysis(&f).await;
+    let target = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    let target_uri = format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace);
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request("POST", target_uri, &f.writer, Some(json!({
+                "repository_owner":"owner",
+                "repository_name":"history",
+                "ref_name":"main",
+                "repository_visibility":"PRIVATE",
+                "sensitive_exports_allowed":false
+            }))),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let analysis_path = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("{analysis_path}/git-publication-intents/{publication}"),
+                &f.writer,
+                Some(json!({"target_id":target})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let digest = authz::credential_digest(&f.writer).unwrap();
+    let push_event = Uuid::new_v4();
+    let pushed = git_publication::RemoteEventInput {
+        event_id: push_event,
+        publication_id: publication,
+        kind: git_publication::RemoteEventKind::PushAccepted,
+        remote_commit_sha: Some("a".repeat(40)),
+        observed_ref: None,
+        failure_class: None,
+    };
+    let first = authz::with_auth_digest(digest.clone(), async {
+        git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &pushed)
+            .await
+            .unwrap()
+    })
+    .await;
+    assert!(!first.1);
+    let replay = authz::with_auth_digest(digest.clone(), async {
+        git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &pushed)
+            .await
+            .unwrap()
+    })
+    .await;
+    assert!(replay.1);
+
+    let status_uri = format!("{analysis_path}/git-publication-intents/{publication}/remote-status");
+    let (status, body) = call(
+        f.router.clone(),
+        request("GET", status_uri.clone(), &f.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["state"], "PUSHED_UNVERIFIED");
+    assert_eq!(body["remote_publish_verified"], false);
+
+    let verified = git_publication::RemoteEventInput {
+        event_id: Uuid::new_v4(),
+        publication_id: publication,
+        kind: git_publication::RemoteEventKind::RefVerified,
+        remote_commit_sha: Some("a".repeat(40)),
+        observed_ref: Some("main".into()),
+        failure_class: None,
+    };
+    authz::with_auth_digest(digest, async {
+        git_publication::record_remote_event(&f.secure, f.workspace, f.writer_principal, &verified)
+            .await
+            .unwrap()
+    })
+    .await;
+
+    let (status, body) = call(f.router.clone(), request("GET", status_uri, &f.reader, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["state"], "VERIFIED_PUBLISHED");
+    assert_eq!(body["remote_publish_verified"], true);
+    assert_eq!(body["verified_commit_sha"], "a".repeat(40));
+    assert_eq!(body["verified_ref"], "main");
+    assert_eq!(body["event_count"], 2);
+
+    let wrong_analysis = Uuid::new_v4();
+    let wrong = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{wrong_analysis}/git-publication-intents/{publication}/remote-status",
+        f.workspace
+    );
+    assert_eq!(
+        call(f.router.clone(), request("GET", wrong, &f.reader, None)).await.0,
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]
