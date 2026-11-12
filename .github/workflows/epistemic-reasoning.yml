@@ -39,13 +39,15 @@ jobs:
       - name: Validate local MVP shell syntax before compiling
         run: |
           set -euo pipefail
-          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/start-local-mvp.sh scripts/open-local-mvp-browser.sh scripts/configure-local-model.sh scripts/test-configure-local-model.sh scripts/test-build-mvp-mode.sh scripts/smoke-local-first-run.sh; do
+          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/setup-local-mvp.sh scripts/start-local-mvp.sh scripts/open-local-mvp-browser.sh scripts/configure-local-model.sh scripts/test-configure-local-model.sh scripts/test-build-mvp-mode.sh scripts/test-setup-local-mvp.sh scripts/smoke-local-first-run.sh; do
             bash -n "$script"
           done
       - name: Test private local-model configuration boundaries
         run: bash scripts/test-configure-local-model.sh
       - name: Test online/offline MVP build dependency modes
         run: bash scripts/test-build-mvp-mode.sh
+      - name: Test one-command local setup orchestration
+        run: bash scripts/test-setup-local-mvp.sh
       - name: Standalone Python export template tests
         run: python3 -m unittest discover -s tests -p "test_presentation_inspector.py" -v
       - name: Unit tests
