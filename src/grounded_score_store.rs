@@ -273,7 +273,7 @@ pub async fn list_for_analysis(
         return Err(GroundedScoreStoreError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, true).await?;
-    let rows: Vec<StoredRow> = sqlx::query_as(
+    let mut rows: Vec<StoredRow> = sqlx::query_as(
         "SELECT claim_id,score_id,policy_source,policy,human_declared_confidence_percent,
                 declared_evidence,result,result_sha256,recorded_by_principal_id,created_at::text
            FROM niccolo.situation_analysis_grounded_score_records
@@ -289,7 +289,10 @@ pub async fn list_for_analysis(
     .await?;
     tx.commit().await?;
     if rows.len() as i64 > limit {
-        return Err(GroundedScoreStoreError::TooMany);
+        if limit == 512 {
+            return Err(GroundedScoreStoreError::TooMany);
+        }
+        rows.truncate(limit as usize);
     }
     Ok(GroundedScoreRecordPage {
         records: rows
