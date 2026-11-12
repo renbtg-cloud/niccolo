@@ -30,6 +30,8 @@ pub enum PresentationError {
     Invalid,
     #[error("presentation export event conflicts with recorded scope")]
     Conflict,
+    #[error("stored presentation material failed integrity validation")]
+    Integrity,
     #[error("presentation export audit database unavailable: {0}")]
     Database(#[from] sqlx::Error),
 }
@@ -779,7 +781,7 @@ async fn epistemic_context(
         512,
     )
     .await
-    .map_err(|_| PresentationError::Conflict)?;
+    .map_err(|_| PresentationError::Integrity)?;
     let grounded_scores = score_page
         .records
         .into_iter()
