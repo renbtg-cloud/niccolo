@@ -49,6 +49,7 @@ use crate::presentation_package::{self, PresentationError};
 use crate::purpose_history::{self, NewPurpose, PurposeError};
 use crate::question_refs::{self, ReferenceError};
 use crate::reanalysis_revision;
+use crate::resource_diagnostics;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_forensic_export::{self, ForensicExportError, ForensicSituationExport};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
@@ -308,6 +309,10 @@ fn router_with_model_and_handoff(
         .route(
             "/v1/workspaces/{workspace}/integration-diagnostics",
             get(get_integration_diagnostics),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/runtime-resources",
+            get(get_runtime_resources),
         )
         .route(
             "/v1/workspaces/{workspace}/integration-processing-declarations",
@@ -1083,6 +1088,21 @@ async fn list_upstream_processing_declarations(
         }),
         StatusCode::OK,
     ))
+}
+
+async fn get_runtime_resources(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let diagnostic = resource_diagnostics::current().map_err(|_| {
+        ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "runtime resource diagnostic unavailable",
+        )
+    })?;
+    Ok(no_store(json!(diagnostic), StatusCode::OK))
 }
 
 async fn get_integration_diagnostics(
