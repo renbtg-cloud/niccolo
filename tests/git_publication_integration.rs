@@ -242,6 +242,117 @@ async fn remote_status_changes_only_after_append_only_verified_observation() {
 }
 
 #[tokio::test]
+async fn publish_endpoint_requires_explicit_transient_authorization_and_replays_verified_state_without_it() {
+    let f = setup().await;
+    let (situation, analysis) = published_analysis(&f).await;
+    let target = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    let target_uri = format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace);
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request("POST", target_uri, &f.writer, Some(json!({
+                "repository_owner":"owner",
+                "repository_name":"history",
+                "ref_name":"main",
+                "repository_visibility":"PRIVATE",
+                "sensitive_exports_allowed":false
+            }))),
+        ).await.0,
+        StatusCode::CREATED
+    );
+    let base = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                format!("{base}/git-publication-intents/{publication}"),
+                &f.writer,
+                Some(json!({"target_id":target})),
+            ),
+        ).await.0,
+        StatusCode::CREATED
+    );
+
+    let publish_uri = format!("{base}/git-publication-intents/{publication}/publish");
+    let bad_confirmation = request(
+        "POST",
+        publish_uri.clone(),
+        &f.writer,
+        Some(json!({"attempt_id":Uuid::new_v4(),"confirmation":"NO"})),
+    );
+    assert_eq!(
+        call(f.router.clone(), bad_confirmation).await.0,
+        StatusCode::BAD_REQUEST
+    );
+
+    let missing_provider_auth = request(
+        "POST",
+        publish_uri.clone(),
+        &f.writer,
+        Some(json!({
+            "attempt_id":Uuid::new_v4(),
+            "confirmation":"PUBLISH_STANDARD_PRESENTATION_TO_GITHUB"
+        })),
+    );
+    assert_eq!(
+        call(f.router.clone(), missing_provider_auth).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+
+    let digest = authz::credential_digest(&f.writer).unwrap();
+    let attempt = Uuid::new_v4();
+    for (kind, observed_ref) in [
+        (git_publication::RemoteEventKind::PushAccepted, None),
+        (
+            git_publication::RemoteEventKind::RefVerified,
+            Some("main".to_string()),
+        ),
+    ] {
+        authz::with_auth_digest(digest.clone(), async {
+            git_publication::record_remote_event(
+                &f.secure,
+                f.workspace,
+                f.writer_principal,
+                &git_publication::RemoteEventInput {
+                    event_id: attempt,
+                    publication_id: publication,
+                    kind,
+                    remote_commit_sha: Some("b".repeat(40)),
+                    observed_ref,
+                    failure_class: None,
+                },
+            )
+            .await
+            .unwrap()
+        })
+        .await;
+    }
+
+    // A verified publication is replay-safe and needs no provider credential:
+    // no second network side effect is attempted.
+    let verified_replay = request(
+        "POST",
+        publish_uri,
+        &f.writer,
+        Some(json!({
+            "attempt_id":Uuid::new_v4(),
+            "confirmation":"PUBLISH_STANDARD_PRESENTATION_TO_GITHUB"
+        })),
+    );
+    let (status, body) = call(f.router.clone(), verified_replay).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["replayed_verified_publication"], true);
+    assert_eq!(body["provider_secret_stored"], false);
+    assert_eq!(body["status"]["remote_publish_verified"], true);
+    assert_eq!(body["status"]["verified_commit_sha"], "b".repeat(40));
+}
+
+#[tokio::test]
 async fn target_registration_rejects_urls_and_public_sensitive_scope() {
     let f = setup().await;
     let target = Uuid::new_v4();
