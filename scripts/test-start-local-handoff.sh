@@ -45,6 +45,7 @@ prepared="$(cat .niccolo-local/prepared-url.txt)"
 ! grep -Fq 'ncl_aaaaaaaa' <<< "$output"
 ! grep -Fq "$code" <<< "$output"
 grep -Fq 'one-shot local handoff' <<< "$output"
+grep -Fq 'Bearer token fallback: .niccolo-local/token.txt' <<< "$output"
 
 export NICCOLO_TEST_EXPECT_HANDOFF=0
 rm -f "$TMP/browser-url" "$TMP/server-code"
