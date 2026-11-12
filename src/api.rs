@@ -5788,9 +5788,10 @@ async fn get_git_publication_remote_status(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let status = git_publication::remote_status(&state.pool, workspace, situation, analysis, publication)
-        .await
-        .map_err(git_publication_error)?;
+    let status =
+        git_publication::remote_status(&state.pool, workspace, situation, analysis, publication)
+            .await
+            .map_err(git_publication_error)?;
     Ok(no_store(json!(status), StatusCode::OK))
 }
 
@@ -5806,10 +5807,7 @@ fn transient_github_token(headers: &HeaderMap) -> Result<String, ApiError> {
         StatusCode::UNAUTHORIZED,
         "transient GitHub authorization required",
     ))?;
-    if token.trim().is_empty()
-        || token.len() > 4096
-        || token.contains(['\r', '\n', '\0'])
-    {
+    if token.trim().is_empty() || token.len() > 4096 || token.contains(['\r', '\n', '\0']) {
         return Err(ApiError(
             StatusCode::UNAUTHORIZED,
             "transient GitHub authorization required",
@@ -5820,9 +5818,10 @@ fn transient_github_token(headers: &HeaderMap) -> Result<String, ApiError> {
 
 fn github_publish_error(error: GitHubPublishError) -> ApiError {
     match error {
-        GitHubPublishError::Invalid => {
-            ApiError(StatusCode::BAD_REQUEST, "invalid GitHub publication request")
-        }
+        GitHubPublishError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid GitHub publication request",
+        ),
         GitHubPublishError::LocalIntegrity => ApiError(
             StatusCode::CONFLICT,
             "publication package changed; preview and record a new intent",
@@ -5861,15 +5860,10 @@ async fn publish_git_publication_intent(
         ));
     }
 
-    let existing = git_publication::remote_status(
-        &state.pool,
-        workspace,
-        situation,
-        analysis,
-        publication,
-    )
-    .await
-    .map_err(git_publication_error)?;
+    let existing =
+        git_publication::remote_status(&state.pool, workspace, situation, analysis, publication)
+            .await
+            .map_err(git_publication_error)?;
     if existing.remote_publish_verified {
         return Ok(no_store(
             json!({
@@ -5959,15 +5953,10 @@ async fn publish_git_publication_intent(
         .map_err(git_publication_error)?;
     }
 
-    let status = git_publication::remote_status(
-        &state.pool,
-        workspace,
-        situation,
-        analysis,
-        publication,
-    )
-    .await
-    .map_err(git_publication_error)?;
+    let status =
+        git_publication::remote_status(&state.pool, workspace, situation, analysis, publication)
+            .await
+            .map_err(git_publication_error)?;
     if !status.remote_publish_verified
         || status.verified_commit_sha.as_deref() != Some(verified.commit_sha.as_str())
         || status.verified_ref.as_deref() != Some(verified.ref_name.as_str())
