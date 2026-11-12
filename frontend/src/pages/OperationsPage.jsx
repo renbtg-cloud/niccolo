@@ -98,7 +98,7 @@ export function OperationsPage(){
  {situationMissing&&<p className="error" role="alert"><strong>This prepared Situation has not been created yet.</strong> <Link to="/">Start the Situation first →</Link></p>}
  {situationUnavailable&&<p className="error" role="alert">Niccolò cannot load this Situation: {situation.error.message}</p>}
  {guide&&!guide.hasGroundingMaterial&&<p className="focus-only-note"><strong>Focus-only first pass.</strong> This is allowed. Niccolò will reason from the Situation focus without attached records or active human context. <Link to="/">Add material first</Link> if that would make the answer better grounded.</p>}
- {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. Configure a local or remote OpenAI-compatible model and restart the Niccolò service before analyzing.</p>}
+ {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. For the local MVP, run bash scripts/configure-local-model.sh, restart Niccolò, then return here.</p>}
  {readiness.error&&<p className="error" role="alert">Niccolò is not ready to analyze: {readiness.error.message}</p>}
  <form onSubmit={handleSubmit(v=>run.mutate(v))}>
    <label>What are you trying to do?<select {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
