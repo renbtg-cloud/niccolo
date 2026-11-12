@@ -40,18 +40,21 @@ Expected result:
 
 Private local files are written under `.niccolo-local/`.
 
-## 2. Configure a reasoning model
+## 2. Reasoning model (normally handled by first run)
 
 Niccolò can prepare Situations and retain sources without a reasoning model, but **Analyze**
 requires an OpenAI-compatible model.
 
-The shortest path is the private configuration helper:
+On a normal interactive first run, `bash scripts/first-run-local-mvp.sh` already invokes the
+private model configurator when no model is stored, so there is no second setup command to remember.
+Use the helper directly only when reconfiguring later or when setup and startup are deliberately
+separated:
 
     bash scripts/configure-local-model.sh
 
-It prompts for the OpenAI-compatible base URL and model name, hides API-key input, rejects remote
-plain HTTP, and writes `.niccolo-local/model.env` with restrictive permissions where the platform
-supports them. A loopback HTTP model may be keyless; remote HTTPS providers require an API key.
+The helper prompts for the OpenAI-compatible base URL and model name, hides API-key input, rejects
+remote plain HTTP, and writes `.niccolo-local/model.env` with restrictive permissions where the
+platform supports them. A loopback HTTP model may be keyless; remote HTTPS providers require an API key.
 
 For scripted or temporary overrides, export `NICCOLO_LLM_BASE_URL`, `NICCOLO_LLM_MODEL` and any
 other `NICCOLO_LLM_*` settings before starting. Explicit process-environment values override the
