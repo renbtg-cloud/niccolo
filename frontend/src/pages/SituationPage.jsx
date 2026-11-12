@@ -19,14 +19,14 @@ function ContributionItem({ item, pending, onCorrect, onRetract }) {
   </li>;
 }
 
-function FocusForm({ initial = '', label, pending, onSubmit }) {
+function FocusForm({ initial = '', label, pending, onSubmit, autoFocus = false }) {
   const [value, setValue] = useState(initial);
   return <form onSubmit={(event) => {
     event.preventDefault();
     const focus = value.trim();
     if (focus) onSubmit(focus);
   }}>
-    <label>{label}<textarea value={value} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
+    <label>{label}<textarea autoFocus={autoFocus} value={value} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
     <button disabled={pending}>{pending ? 'Saving…' : 'Save'}</button>
   </form>;
 }
@@ -178,7 +178,7 @@ function ConnectedSituation({client}){
     return <section>
       <h2>Start a Situation</h2>
       <p>Give Niccolò the question, concern or project you want to examine. Records can be added immediately afterward.</p>
-      <FocusForm label="Initial focus" pending={create.isPending} onSubmit={(focus) => create.mutate(focus)}/>
+      <FocusForm label="Initial focus" autoFocus pending={create.isPending} onSubmit={(focus) => create.mutate(focus)}/>
       {create.error && <p className="error">{create.error.message}</p>}
     </section>;
   }
