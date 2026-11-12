@@ -166,9 +166,11 @@ async fn history_exposes_reanalysis_lineage_outputs_and_currentness() {
     assert_eq!(analyses[0]["analysis_id"], second.to_string());
     assert_eq!(analyses[0]["reanalysis_of"], first.to_string());
     assert_eq!(analyses[0]["input_is_current"], true);
+    assert_eq!(analyses[0]["imported_context_count"], 0);
     assert!(analyses[0]["answer_text"].is_null());
     assert_eq!(analyses[1]["analysis_id"], first.to_string());
     assert_eq!(analyses[1]["answer_text"], "old answer");
+    assert_eq!(analyses[1]["imported_context_count"], 0);
     assert_eq!(analyses[1]["input_is_current"], false);
     assert_eq!(analyses[1]["historical_output_preserved"], true);
 }

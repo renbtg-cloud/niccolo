@@ -1444,6 +1444,7 @@ async fn list_analysis_history(
                 "answer_text": entry.answer_text,
                 "coverage_note": entry.coverage_note,
                 "published_by_principal_id": entry.published_by,
+                "imported_context_count": entry.imported_context_count,
                 "current_situation_revision": entry.current_revision,
                 "input_is_current": entry.input_is_current,
                 "historical_output_preserved": entry.answer_text.is_some()

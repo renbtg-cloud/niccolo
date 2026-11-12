@@ -451,6 +451,7 @@ pub struct AnalysisHistoryEntry {
     pub answer_text: Option<String>,
     pub coverage_note: Option<String>,
     pub published_by: Option<Uuid>,
+    pub imported_context_count: i64,
     pub current_revision: i64,
     pub input_is_current: bool,
 }
@@ -465,6 +466,7 @@ type HistoryRow = (
     Option<String>,
     Option<String>,
     Option<Uuid>,
+    i64,
     i64,
 );
 
@@ -508,7 +510,11 @@ pub async fn history(
     let rows: Vec<HistoryRow> = sqlx::query_as(
         "SELECT s.analysis_id,s.input_revision,s.input_fingerprint,s.goal,\
                 s.requested_by_principal_id,s.reanalysis_of,\
-                o.answer_text,o.coverage_note,o.published_by_principal_id,z.current_revision \
+                o.answer_text,o.coverage_note,o.published_by_principal_id,\
+                (SELECT count(*)::bigint FROM niccolo.analysis_forensic_context f \
+                  WHERE f.workspace_id=s.workspace_id AND f.situation_id=s.situation_id \
+                    AND f.analysis_id=s.analysis_id),\
+                z.current_revision \
          FROM niccolo.situation_analysis_snapshots s \
          JOIN niccolo.situations z USING(workspace_id,situation_id) \
          LEFT JOIN niccolo.situation_analysis_outputs o USING(workspace_id,situation_id,analysis_id) \
@@ -542,6 +548,7 @@ pub async fn history(
                 answer_text,
                 coverage_note,
                 published_by,
+                imported_context_count,
                 current_revision,
             )| AnalysisHistoryEntry {
                 analysis_id,
@@ -553,6 +560,7 @@ pub async fn history(
                 answer_text,
                 coverage_note,
                 published_by,
+                imported_context_count,
                 current_revision,
                 input_is_current: current_revision == input_revision,
             },

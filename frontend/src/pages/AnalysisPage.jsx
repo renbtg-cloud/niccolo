@@ -39,7 +39,7 @@ export function AnalysisPage(){
      {!history.isLoading&&rows.length===0&&<p>No analyses have been recorded yet.</p>}
      <ul>{rows.map(entry=><li key={entry.analysis_id} style={{marginLeft:`${entry.depth*18}px`}}>
        <button className={entry.analysis_id===analysis?'history-selected':''} onClick={()=>setAnalysis(entry.analysis_id)}>{entry.goal||'Analysis without explicit goal'}</button>
-       <div><small>Revision {entry.input_revision} · {analysisHistoryLabel(entry)}{entry.reanalysis_of?` · reanalysis of ${entry.reanalysis_of}`:''}</small></div>
+       <div><small>Revision {entry.input_revision} · {analysisHistoryLabel(entry)}{entry.imported_context_count?` · ${entry.imported_context_count} selected prior-context item(s)`:''}{entry.reanalysis_of?` · reanalysis of ${entry.reanalysis_of}`:''}</small></div>
      </li>)}</ul>
      <small>Lineage shown here is recorded lineage only; missing links are not inferred.</small>
    </article>
