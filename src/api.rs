@@ -24,6 +24,7 @@ use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::forensic_context::{self, ForensicContextError};
 use crate::forensic_import::{self, ForensicImportError};
+use crate::git_publication::{self, GitPublicationError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::grounded_score_store::{self, GroundedScoreStoreError, NewGroundedScoreRecord};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
@@ -436,6 +437,26 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package/export-events",
             get(list_presentation_export_events),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/git-publication-targets",
+            get(list_git_publication_targets),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/git-publication-targets/{target}",
+            post(register_git_publication_target),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-preview",
+            get(get_git_publication_preview),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents",
+            get(list_git_publication_intents),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}",
+            post(record_git_publication_intent),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
@@ -5558,6 +5579,183 @@ async fn get_presentation_package(
         .await
         .map_err(presentation_api_error)?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+
+fn git_publication_error(error: GitPublicationError) -> ApiError {
+    match error {
+        GitPublicationError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid git publication request"),
+        GitPublicationError::Invisible => ApiError(StatusCode::NOT_FOUND, "git publication target unavailable"),
+        GitPublicationError::Conflict => ApiError(StatusCode::CONFLICT, "git publication ID conflict"),
+        GitPublicationError::Presentation(PresentationError::Manifest(
+            crate::analysis_manifest::ManifestError::Invisible,
+        )) => ApiError(StatusCode::NOT_FOUND, "published analysis unavailable"),
+        GitPublicationError::Presentation(PresentationError::Invalid)
+        | GitPublicationError::Presentation(PresentationError::SourceExtractTooLarge)
+        | GitPublicationError::Presentation(PresentationError::TooLarge) => {
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "presentation unavailable for git planning")
+        }
+        GitPublicationError::Presentation(_)
+        | GitPublicationError::Database(_)
+        | GitPublicationError::Privileged => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "git publication planning unavailable",
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitPublicationTargetRequest {
+    repository_owner: String,
+    repository_name: String,
+    ref_name: String,
+    repository_visibility: String,
+    sensitive_exports_allowed: bool,
+}
+
+async fn register_git_publication_target(
+    State(state): State<AppState>,
+    Path((workspace, target)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<GitPublicationTargetRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (target, replayed) = git_publication::register_target(
+        &state.pool,
+        workspace,
+        actor,
+        &git_publication::TargetInput {
+            target_id: target,
+            repository_owner: request.repository_owner,
+            repository_name: request.repository_name,
+            ref_name: request.ref_name,
+            repository_visibility: request.repository_visibility,
+            sensitive_exports_allowed: request.sensitive_exports_allowed,
+        },
+    )
+    .await
+    .map_err(git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "target": target,
+            "replayed": replayed,
+            "provider_connection_verified": false,
+            "provider_secret_stored": false,
+            "registration_publishes_nothing": true
+        }),
+        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+async fn list_git_publication_targets(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let targets = git_publication::list_targets(&state.pool, workspace)
+        .await
+        .map_err(git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "targets": targets,
+            "provider_connection_verified": false,
+            "listing_publishes_nothing": true
+        }),
+        StatusCode::OK,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitPublicationPreviewQuery {
+    target_id: Uuid,
+}
+
+async fn get_git_publication_preview(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<GitPublicationPreviewQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let preview = git_publication::preview(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.target_id,
+    )
+    .await
+    .map_err(git_publication_error)?;
+    Ok(no_store(json!(preview), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitPublicationIntentRequest {
+    target_id: Uuid,
+}
+
+async fn record_git_publication_intent(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, publication)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<GitPublicationIntentRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (intent, replayed) = git_publication::record_intent(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        actor,
+        publication,
+        request.target_id,
+    )
+    .await
+    .map_err(git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "intent": intent,
+            "replayed": replayed,
+            "remote_publish_performed": false,
+            "requires_provider_authorization_before_publish": true
+        }),
+        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitPublicationIntentListQuery {
+    limit: Option<i64>,
+}
+
+async fn list_git_publication_intents(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<GitPublicationIntentListQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let intents = git_publication::list_intents(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+        query.limit.unwrap_or(25),
+    )
+    .await
+    .map_err(git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "intents": intents,
+            "remote_publish_performed": false
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn get_adversarial_dossier(
