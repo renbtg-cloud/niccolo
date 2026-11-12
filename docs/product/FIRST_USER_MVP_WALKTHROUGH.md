@@ -136,9 +136,11 @@ Review should make it possible to inspect, as available for that analysis:
 
 The standard portable ZIP contains recorded analysis state and source identifiers but no source
 text. Review also offers a separate **Sensitive export** action that can include only source
-fragments recorded as examined by that analysis. That action requires write authorization, is
-bounded, excludes original uploaded files, and warns that excerpts may contain private
-communications and do not establish truth.
+fragments recorded as examined by that analysis. That action requires write authorization, is bounded, excludes original uploaded files, and warns
+that excerpts may contain private communications and do not establish truth. Before the sensitive
+download is enabled, Review shows a read-only scope preview with the number of recorded examined
+fragments and the UTF-8 byte count that would be included; the preview itself exposes no source
+text.
 
 The answer is provisional reasoning over recorded input, not a declaration of truth.
 
