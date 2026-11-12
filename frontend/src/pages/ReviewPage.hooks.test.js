@@ -17,6 +17,14 @@ describe('ReviewPage hook order', () => {
     expect(source).toContain('pendingReceipt.current=null;');
   });
 
+  it('surfaces explicitly selected prior-export context without calling it evidence', () => {
+    expect(source).toContain('useForensicContext()');
+    expect(source).toContain('Imported historical context');
+    expect(source).toContain('current non-evidence context');
+    expect(source).toContain('not part of the frozen analysis input');
+    expect(source).toContain('documentary evidence: no');
+  });
+
   it('declares React and TanStack hooks before conditional returns', () => {
     const firstConditionalReturn = source.indexOf("if(!client)return");
     expect(firstConditionalReturn).toBeGreaterThan(0);
