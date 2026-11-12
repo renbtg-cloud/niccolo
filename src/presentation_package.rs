@@ -768,58 +768,40 @@ async fn epistemic_context(
     .fetch_all(&mut *tx)
     .await
     .map_err(ManifestError::from)?;
-    type ScoreRow = (
-        Uuid,
-        Uuid,
-        String,
-        Value,
-        Option<i16>,
-        Value,
-        Value,
-        String,
-        Uuid,
-        String,
-    );
-    let grounded_scores: Vec<ScoreRow> = sqlx::query_as(
-        "SELECT claim_id,score_id,policy_source,policy,human_declared_confidence_percent,
-                declared_evidence,result,result_sha256,recorded_by_principal_id,created_at::text
-           FROM niccolo.situation_analysis_grounded_score_records
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
-          ORDER BY created_at,claim_id,score_id
-          LIMIT 512",
-    )
-    .bind(workspace)
-    .bind(situation)
-    .bind(analysis)
-    .fetch_all(&mut *tx)
-    .await
-    .map_err(ManifestError::from)?;
     tx.commit().await.map_err(ManifestError::from)?;
-    let grounded_scores = grounded_scores
+    let score_page = crate::grounded_score_store::list_for_analysis(
+        pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+        512,
+    )
+    .await
+    .map_err(|_| PresentationError::Conflict)?;
+    let grounded_scores = score_page
+        .records
         .into_iter()
-        .map(|row| {
-            Ok(ExportedGroundedScore {
-                claim_id: row.0,
-                score_id: row.1,
-                policy_source: row.2,
-                policy: row.3,
-                human_declared_confidence_percent: row
-                    .4
-                    .map(|value| u8::try_from(value).map_err(|_| PresentationError::Invalid))
-                    .transpose()?,
-                declared_evidence: row.5,
-                result: row.6,
-                result_sha256: row.7,
-                recorded_by_principal_id: row.8,
-                created_at: row.9,
-                immutable_record: true,
-                score_is_probability_of_truth: false,
-                establishes_claim_truth: false,
-                is_documentary_evidence: false,
-                modifies_published_analysis: false,
-            })
+        .map(|record| ExportedGroundedScore {
+            claim_id: record.claim_id,
+            score_id: record.score_id,
+            policy_source: record.policy_source,
+            policy: serde_json::to_value(record.policy).unwrap_or(Value::Null),
+            human_declared_confidence_percent: record.human_declared_confidence_percent,
+            declared_evidence: serde_json::to_value(record.declared_evidence)
+                .unwrap_or(Value::Null),
+            result: serde_json::to_value(record.result).unwrap_or(Value::Null),
+            result_sha256: record.result_sha256,
+            recorded_by_principal_id: record.recorded_by_principal_id,
+            created_at: record.created_at,
+            immutable_record: record.immutable_record,
+            score_is_probability_of_truth: record.score_is_probability_of_truth,
+            establishes_claim_truth: record.establishes_claim_truth,
+            is_documentary_evidence: record.is_documentary_evidence,
+            modifies_published_analysis: record.modifies_published_analysis,
         })
-        .collect::<Result<Vec<_>, PresentationError>>()?;
+        .collect::<Vec<_>>();
     let deterministic_scores_exported = !grounded_scores.is_empty();
     Ok(PresentationEpistemicContext {
         policies: policies
