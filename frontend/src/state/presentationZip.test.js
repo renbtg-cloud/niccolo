@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { presentationZip } from './presentationZip.js';
+import { checkpointZip, presentationZip } from './presentationZip.js';
 
 function pkg(files) {
   return { format: 'niccolo.presentation-package', published_to_git: false, files };
@@ -34,5 +34,20 @@ describe('portable analysis ZIP', () => {
     expect(() => presentationZip(pkg({ 'README.md': 'x'.repeat(8 * 1024 * 1024 + 1) }))).toThrow();
     expect(() => presentationZip({ ...pkg({ 'README.md': 'ok' }), published_to_git: true })).toThrow();
     expect(() => presentationZip(pkg({}))).toThrow();
+  });
+});
+
+
+describe('operation checkpoint ZIP', () => {
+  it('reuses the bounded safe ZIP writer only for local checkpoint packages', async () => {
+    const archive = checkpointZip({
+      format: 'niccolo.operation-checkpoint-package',
+      published_to_git: false,
+      files: { 'README.md': 'Provisional only', 'checkpoint.json': '{"provisional":true}' },
+    });
+    expect(archive.type).toBe('application/zip');
+    expect(new Uint8Array(await archive.arrayBuffer()).length).toBeGreaterThan(22);
+    expect(() => checkpointZip({ format: 'niccolo.operation-checkpoint-package', published_to_git: true, files: { 'README.md': 'bad' } })).toThrow();
+    expect(() => checkpointZip({ format: 'wrong', published_to_git: false, files: { 'README.md': 'bad' } })).toThrow();
   });
 });
