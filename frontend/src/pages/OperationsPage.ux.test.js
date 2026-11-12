@@ -83,6 +83,14 @@ describe('primary analysis path', () => {
     expect(operations).toContain('client.operationCheckpointPackage(active,checkpoint.checkpoint_id)');
   });
 
+  it('keeps meaningful milestone declaration explicit and non-epistemic', () => {
+    expect(operations).toContain('Meaningful milestone');
+    expect(operations).toContain('Declare latest checkpoint a milestone');
+    expect(operations).toContain('historical label, not an epistemic upgrade');
+    expect(operations).toContain('client.operationCheckpointMilestone(active,latestCheckpoint.checkpoint_id)');
+    expect(operations).toContain('client.declareOperationCheckpointMilestone(active,latestCheckpoint.checkpoint_id');
+  });
+
   it('keeps observing a transiently complete plan until the durable operation settles', () => {
     expect(operations).toContain('useAgenticPlan(active,observed.operation?.state)');
   });

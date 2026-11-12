@@ -119,6 +119,19 @@ describe('BFF client',()=>{
    expect(calls[1][1].cache).toBe('no-store');
  });
 
+ it('keeps explicit milestone declaration separate from checkpoint epistemic and remote-publication state',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{milestone:{checkpoint_provisional:true,remote_publish_performed:false}});});
+   await x.operationCheckpointMilestone('operation','checkpoint');
+   await x.declareOperationCheckpointMilestone('operation','checkpoint','milestone','TIMED_PARTIAL','Preserve bounded partial result for review');
+   expect(calls[0][0]).toContain('/operations/operation/checkpoints/checkpoint/milestone');
+   expect(calls[0][1].method).toBe('GET');
+   expect(calls[1][0]).toContain('/checkpoints/checkpoint/milestones/milestone');
+   expect(calls[1][1].method).toBe('POST');
+   expect(JSON.parse(calls[1][1].body)).toEqual({milestone_kind:'TIMED_PARTIAL',reason:'Preserve bounded partial result for review'});
+   expect(calls[1][0]).not.toContain('Preserve bounded partial result for review');
+ });
+
  it('binds checkpoint publication to exact checkpoint scope and keeps provider authorization transient',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{remote_publish_verified:true,status:{state:'VERIFIED_PUBLISHED'}});});

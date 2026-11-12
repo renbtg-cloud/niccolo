@@ -13,6 +13,7 @@ use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
 use crate::checkpoint_git_publication::{self, CheckpointGitPublicationError};
+use crate::checkpoint_milestone::{self, MilestoneError};
 use crate::checkpoint_package::{self, CheckpointPackageError};
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
@@ -408,6 +409,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/package",
             get(get_bff_operation_checkpoint_package),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/milestone",
+            get(get_bff_operation_checkpoint_milestone),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/milestones/{milestone}",
+            post(declare_bff_operation_checkpoint_milestone),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-preview",
@@ -4820,6 +4829,108 @@ async fn get_bff_operation_checkpoint_package(
     let package =
         checkpoint_package::build(scope, &checkpoint).map_err(checkpoint_package_error)?;
     Ok(no_store(json!(package), StatusCode::OK))
+}
+
+fn checkpoint_milestone_error(error: MilestoneError) -> ApiError {
+    match error {
+        MilestoneError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid checkpoint milestone request",
+        ),
+        MilestoneError::Conflict => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint already has a different milestone declaration",
+        ),
+        MilestoneError::Invisible | MilestoneError::Checkpoint(CheckpointError::Invisible) => {
+            ApiError(StatusCode::NOT_FOUND, "checkpoint milestone unavailable")
+        }
+        MilestoneError::Checkpoint(CheckpointError::Invalid) => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid checkpoint milestone request",
+        ),
+        MilestoneError::Checkpoint(CheckpointError::Conflict) => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint milestone source is inconsistent",
+        ),
+        MilestoneError::Database(_)
+        | MilestoneError::Privileged
+        | MilestoneError::Checkpoint(_) => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "checkpoint milestones unavailable",
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckpointMilestoneRequest {
+    milestone_kind: String,
+    reason: String,
+}
+
+async fn get_bff_operation_checkpoint_milestone(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let milestone = checkpoint_milestone::get(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        checkpoint,
+    )
+    .await
+    .map_err(checkpoint_milestone_error)?;
+    Ok(no_store(json!(milestone), StatusCode::OK))
+}
+
+async fn declare_bff_operation_checkpoint_milestone(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint, milestone)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(request): Json<CheckpointMilestoneRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (milestone, replayed) = checkpoint_milestone::declare(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        checkpoint,
+        &checkpoint_milestone::NewMilestone {
+            milestone_id: milestone,
+            milestone_kind: request.milestone_kind,
+            reason: request.reason,
+            declared_by: actor,
+        },
+    )
+    .await
+    .map_err(checkpoint_milestone_error)?;
+    Ok(no_store(
+        json!({
+            "milestone": milestone,
+            "replayed": replayed,
+            "remote_publish_performed": false,
+            "checkpoint_epistemic_status_changed": false
+        }),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> ApiError {

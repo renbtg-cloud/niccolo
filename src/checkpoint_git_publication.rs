@@ -1,8 +1,9 @@
-//! Immutable local publication planning for exact operation-checkpoint packages.
+//! Immutable publication planning and verified remote publication for exact
+//! operation-checkpoint packages.
 //!
-//! This GIT-002 slice deliberately performs no provider request. It binds an
-//! immutable checkpoint package digest to a user-owned Git target and requested
-//! ref so a later explicit publisher can retry without ambiguity.
+//! GIT-002 records the exact package digest, target and ref before any provider
+//! request. Explicit publication then uses transient authorization, a non-force
+//! ref update and an append-only verification ledger so retries stay auditable.
 use crate::{
     authz,
     bff_operations::OperationScope,

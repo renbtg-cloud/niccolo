@@ -218,6 +218,8 @@ Recording a target or publication intent is still local-only: it does not contac
 
 Niccolò does not persist that token. The remote operation uses a non-force Git ref update, then re-reads the ref and records append-only publication observations in PostgreSQL. The UI says **verified published** only when the observed remote ref points at the exact commit Niccolò just constructed. Failed attempts keep only a bounded failure classification; provider response bodies and credentials are not recorded. PostgreSQL remains the authoritative publication ledger even when the package has been copied to user-owned GitHub.
 
+During analysis, the technical operation view also exposes durable anytime checkpoints. A user may explicitly mark the latest checkpoint as a **meaningful milestone** and record why it matters (for example, first pass, timed partial, or human-acknowledged review). That label is historical metadata only: it does not make a provisional checkpoint final, does not establish truth or completeness, and does not itself publish anything remotely.
+
 The current Git planning scope deliberately excludes examined source text and original uploads.
 
 ## What to record during a human usability test

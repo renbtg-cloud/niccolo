@@ -490,6 +490,7 @@ pub mod adversarial_challenge;
 
 pub mod operation_budget;
 pub mod checkpoint_git_publication;
+pub mod checkpoint_milestone;
 pub mod checkpoint_package;
 pub mod operation_checkpoint;
 

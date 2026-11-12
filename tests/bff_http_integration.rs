@@ -444,6 +444,88 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert!(package["files"]["checkpoint.json"].as_str().is_some());
     assert!(package["files"]["SHA256SUMS"].as_str().is_some());
 
+    // A human may explicitly declare this durable checkpoint meaningful without
+    // changing its provisional epistemic status or claiming remote publication.
+    let checkpoint_base = format!("{}/checkpoints/{checkpoint_id}", path(&s, id, ""));
+    let milestone = Uuid::new_v4();
+    let milestone_path = format!("{checkpoint_base}/milestones/{milestone}");
+    let milestone_body = json!({
+        "milestone_kind":"TIMED_PARTIAL",
+        "reason":"Invocation budget ended; preserve this bounded partial result for review"
+    });
+    let (status, _, declared) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &milestone_path,
+            &s.token,
+            Some(milestone_body.clone()),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(declared["replayed"], false);
+    assert_eq!(declared["remote_publish_performed"], false);
+    assert_eq!(declared["checkpoint_epistemic_status_changed"], false);
+    assert_eq!(declared["milestone"]["milestone_id"], milestone.to_string());
+    assert_eq!(declared["milestone"]["checkpoint_id"], checkpoint_id);
+    assert_eq!(declared["milestone"]["checkpoint_provisional"], true);
+    assert_eq!(declared["milestone"]["checkpoint_terminal"], true);
+    assert_eq!(declared["milestone"]["remote_publish_performed"], false);
+    assert_eq!(declared["milestone"]["establishes_truth"], false);
+    assert_eq!(declared["milestone"]["proves_completeness"], false);
+    assert_eq!(declared["milestone"]["authorizes_real_world_action"], false);
+
+    let (status, _, replayed_milestone) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &milestone_path,
+            &s.token,
+            Some(milestone_body),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed_milestone["replayed"], true);
+
+    let (status, _, fetched_milestone) = invoke(
+        s.router.clone(),
+        req(
+            "GET",
+            &format!("{checkpoint_base}/milestone"),
+            &s.token,
+            None,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fetched_milestone["milestone_id"], milestone.to_string());
+    assert_eq!(
+        fetched_milestone["checkpoint_summary_sha256"],
+        checkpoint_digest
+    );
+
+    let conflicting_milestone = Uuid::new_v4();
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &format!("{checkpoint_base}/milestones/{conflicting_milestone}"),
+            &s.token,
+            Some(json!({
+                "milestone_kind":"OTHER",
+                "reason":"Conflicting redeclaration must not overwrite history"
+            })),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
     let target = Uuid::new_v4();
     let target_path = format!(
         "/v1/workspaces/{}/git-publication-targets/{target}",
@@ -469,7 +551,6 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(target_response["registration_publishes_nothing"], true);
 
-    let checkpoint_base = format!("{}/checkpoints/{checkpoint_id}", path(&s, id, ""));
     let preview_path = format!("{checkpoint_base}/git-publication-preview?target_id={target}");
     let (status, _, preview) = invoke(
         s.router.clone(),
