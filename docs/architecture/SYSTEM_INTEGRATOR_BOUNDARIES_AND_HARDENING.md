@@ -192,17 +192,9 @@ The following broader hardening remains deliberately outside the MVP freeze.
 
 ### Explicit upstream-processing declarations
 
-An integration should be able to declare:
+Implemented as append-only workspace declarations with bounded kinds for filtering, deduplication, sampling, source selection, exclusions, transformations, and aggregation. A declaration can describe a collection-level scope or optionally reference one retained source document.
 
-- filters applied;
-- deduplication rules;
-- sampling;
-- source-selection criteria;
-- excluded source families;
-- transformations;
-- aggregation rules.
-
-These remain attributed metadata, not automatically trusted facts.
+The API records the authenticated principal that made the declaration, supports idempotent replay by declaration ID, and exposes the history read-only in the Inspector. Responses state explicitly that declarations are **not verified** and are **not evidence**. The declaration records what the integration says it did; it does not prove that the process was correct, complete, unbiased, or faithfully executed.
 
 ### Richer purpose and downstream-use policy
 
