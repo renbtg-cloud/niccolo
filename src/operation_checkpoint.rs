@@ -271,6 +271,34 @@ pub async fn record(
     Ok((stored, !inserted))
 }
 
+pub async fn get(
+    pool: &PgPool,
+    scope: OperationScope,
+    checkpoint_id: Uuid,
+) -> Result<CheckpointView, CheckpointError> {
+    if checkpoint_id.is_nil() {
+        return Err(CheckpointError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let row: Row = sqlx::query_as(
+        "SELECT checkpoint_id,checkpoint_seq,analysis_id,checkpoint_kind,step_id,
+                summary_json,summary_sha256,provisional,terminal,
+                recorded_by_principal_id,created_at::text
+           FROM niccolo.bff_operation_checkpoints
+          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+            AND checkpoint_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(checkpoint_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(CheckpointError::Invisible)?;
+    tx.commit().await?;
+    view(row)
+}
+
 pub async fn list(
     pool: &PgPool,
     scope: OperationScope,
