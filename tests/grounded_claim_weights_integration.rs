@@ -431,6 +431,42 @@ async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
     assert_eq!(records[0]["score_id"], score.to_string());
     assert_eq!(records[0]["result_sha256"], digest);
 
+    let presentation_path = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/presentation-package",
+        h.workspace, h.situation, s.analysis
+    );
+    let (status, package) = call(
+        h.router.clone(),
+        req("GET", &presentation_path, &h.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(package["includes_deterministic_grounded_score_results"], true);
+    assert_eq!(package["epistemic_control_history_proves_policy_used_for_output"], false);
+    let exported_scores: Value = serde_json::from_str(
+        package["files"]["data/grounded_scores.json"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(exported_scores.as_array().unwrap().len(), 1);
+    assert_eq!(exported_scores[0]["score_id"], score.to_string());
+    assert_eq!(exported_scores[0]["claim_id"], s.claim.to_string());
+    assert_eq!(exported_scores[0]["result_sha256"], digest);
+    assert_eq!(exported_scores[0]["immutable_record"], true);
+    assert_eq!(exported_scores[0]["score_is_probability_of_truth"], false);
+    assert_eq!(exported_scores[0]["establishes_claim_truth"], false);
+    assert_eq!(exported_scores[0]["is_documentary_evidence"], false);
+    assert_eq!(exported_scores[0]["modifies_published_analysis"], false);
+    let export_scope: Value = serde_json::from_str(
+        package["files"]["data/epistemic_export_scope.json"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(export_scope["recorded_grounded_score_count"], 1);
+    assert_eq!(export_scope["deterministic_scores_exported"], true);
+
     let rows: i64 = sqlx::query_scalar(
         "SELECT count(*)::bigint
            FROM niccolo.situation_analysis_grounded_score_records
