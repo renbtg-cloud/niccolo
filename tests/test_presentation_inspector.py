@@ -67,6 +67,60 @@ class PresentationInspectorTests(unittest.TestCase):
         self.assertIn("CONTRADICTS", result.stdout)
         self.assertIn("NOT evidence weights", result.stdout)
 
+    def test_recorded_epistemic_controls_are_explained_without_probability_claims(self):
+        policies = self.root / "data" / "epistemic_policies.json"
+        policies.write_text(json.dumps([{
+            "policy_id": "policy-1",
+            "situation_id": "situation-1",
+            "scope": "SITUATION",
+            "support_multiplier_pct": 80,
+            "counter_multiplier_pct": 140,
+            "per_origin_cap": 75,
+            "rationale": "Conservative counter-weighting",
+            "recorded_by_principal_id": "principal-1",
+            "created_at": "2026-11-11 00:00:00+00",
+            "is_probability_model": False,
+            "proves_policy_was_used_for_published_output": False,
+        }]), encoding="utf-8")
+        credence = self.root / "data" / "human_credence.json"
+        credence.write_text(json.dumps([{
+            "claim_id": "c1",
+            "credence_id": "credence-1",
+            "confidence_percent": 63,
+            "usage_policy": "SUBJECTIVE_BELIEF",
+            "rationale": "Human context",
+            "recorded_by_principal_id": "principal-1",
+            "created_at": "2026-11-11 00:00:01+00",
+            "is_human_declaration": True,
+            "is_calibrated_probability": False,
+            "is_documentary_evidence": False,
+            "makes_claim_a_fact": False,
+            "part_of_frozen_analysis_input": False,
+        }]), encoding="utf-8")
+        scope = self.root / "data" / "epistemic_export_scope.json"
+        scope.write_text(json.dumps({
+            "recorded_policy_count": 1,
+            "recorded_human_credence_count": 1,
+            "deterministic_scores_exported": False,
+            "policy_history_proves_policy_used_for_output": False,
+            "human_credence_is_documentary_evidence": False,
+            "human_credence_is_calibrated_probability": False,
+        }), encoding="utf-8")
+        sums = json.loads((self.root / "SHA256SUMS.json").read_text())
+        for path in [policies, credence, scope]:
+            sums[str(path.relative_to(self.root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        (self.root / "SHA256SUMS.json").write_text(json.dumps(sums), encoding="utf-8")
+
+        result = self.run_inspector()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Recorded epistemic controls:", result.stdout)
+        self.assertIn("policy records relevant to this Situation: 1", result.stdout)
+        self.assertIn("human credence records for this analysis: 1", result.stdout)
+        self.assertIn("deterministic grounded scores exported: False", result.stdout)
+        self.assertIn("policy history proves policy used for output: False", result.stdout)
+        self.assertIn("63% SUBJECTIVE_BELIEF", result.stdout)
+        self.assertIn("not documentary evidence or calibrated truth probabilities", result.stdout)
+
     def test_optional_examined_source_extracts_are_disclosed_without_truth_claims(self):
         extracts = self.root / "data" / "examined_source_fragments.json"
         extracts.write_text(
