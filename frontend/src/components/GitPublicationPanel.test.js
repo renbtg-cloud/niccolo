@@ -59,6 +59,13 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain("onChange={(event) => selectTarget(event.target.value)}");
   });
 
+  it('selecting an old publication intent restores its recorded target', () => {
+    expect(source).toContain("const selectPublicationIntent = (intent) =>");
+    expect(source).toContain("setSelectedTarget(intent.target_id)");
+    expect(source).toContain("setSelectedPublication(intent.publication_id)");
+    expect(source).toContain("targetById.get(intent.target_id)");
+  });
+
   it('reuses IDs for interrupted target and intent responses', () => {
     expect(source).toContain('pendingTarget.current?.signature !== signature');
     expect(source).toContain('pendingIntent.current?.signature !== signature');

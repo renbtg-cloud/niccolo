@@ -171,6 +171,16 @@ export function GitPublicationPanel() {
     setSelectedTarget(targetId);
   };
   const rows = targets.data?.targets ?? [];
+  const targetById = new Map(rows.map((target) => [target.target_id, target]));
+  const selectPublicationIntent = (intent) => {
+    pendingPublish.current = null;
+    publish.reset();
+    setVerificationToken('');
+    setGithubToken('');
+    setPublishConfirmed(false);
+    setSelectedTarget(intent.target_id);
+    setSelectedPublication(intent.publication_id);
+  };
   const history = intents.data?.intents ?? [];
   const canRegister = owner.trim() && repository.trim() && refName.trim();
 
@@ -266,9 +276,9 @@ export function GitPublicationPanel() {
       {intents.error && <p className="error">Intent history unavailable: {intents.error.message}</p>}
       {history.length===0 ? <p>No publication intent has been recorded for this analysis.</p> :
         <ul>{history.map((intent) => <li key={intent.publication_id}>
-          <button className={selectedPublication===intent.publication_id?'history-selected':''} onClick={() => { pendingPublish.current=null; publish.reset(); setGithubToken(''); setPublishConfirmed(false); setSelectedPublication(intent.publication_id); }}><strong>{intent.publication_state}</strong> · select intent</button>
+          <button className={selectedPublication===intent.publication_id?'history-selected':''} onClick={() => selectPublicationIntent(intent)}><strong>{intent.publication_state}</strong> · select intent</button>
           <div><code>{intent.package_sha256}</code></div>
-          <div><small>Ref {intent.requested_ref} · verified remote state is tracked separately · original uploads: no</small></div>
+          <div><small>{targetById.get(intent.target_id) ? `${targetById.get(intent.target_id).repository_owner}/${targetById.get(intent.target_id).repository_name}` : `target ${intent.target_id}`} · ref {intent.requested_ref} · verified remote state is tracked separately · original uploads: no</small></div>
         </li>)}</ul>}
     </details>
   </article>;
