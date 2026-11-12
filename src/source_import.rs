@@ -382,7 +382,13 @@ fn looks_like_datetime(dt: &str) -> bool {
     valid_whatsapp_date(date) && valid_whatsapp_time(time, meridiem)
 }
 
-fn message_speaker(line: &str) -> Option<&str> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WhatsappLine<'a> {
+    Attributed(&'a str),
+    System,
+}
+
+fn whatsapp_line(line: &str) -> Option<WhatsappLine<'_>> {
     let rest = if let Some(tail) = line.strip_prefix('[') {
         let (stamp, rest) = tail.split_once("] ")?;
         if !looks_like_datetime(stamp) {
@@ -396,16 +402,20 @@ fn message_speaker(line: &str) -> Option<&str> {
         }
         rest
     };
-    let (speaker, _) = rest.split_once(": ")?;
+    let Some((speaker, _)) = rest.split_once(": ") else {
+        return Some(WhatsappLine::System);
+    };
     let speaker = speaker.trim();
     if speaker.is_empty() || speaker.len() > 512 {
-        None
+        Some(WhatsappLine::System)
     } else {
-        Some(speaker)
+        Some(WhatsappLine::Attributed(speaker))
     }
 }
+
 fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     let mut pending: Option<(usize, String)> = None;
+    let mut saw_timestamped_boundary = false;
     let mut results = Vec::new();
     let mut finish = |start: usize, end: usize, label: String| -> Result<(), ParseError> {
         if results.len() >= MAX_FRAGMENTS || end <= start || end - start > MAX_FRAGMENT_BYTES {
@@ -423,19 +433,33 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         Ok(())
     };
     for (start, _, line) in iter_lines(src) {
-        // BOM is legitimate only at byte offset zero. Stripping one from
-        // later lines can forge an apparent message boundary in quoted text.
+        // BOM is legitimate only at byte offset zero. Directional marks, unlike
+        // BOMs, are emitted by some WhatsApp exports and are ignored only for
+        // boundary recognition; the original fragment bytes remain untouched.
         let header = if start == 0 {
             line.strip_prefix('\u{feff}').unwrap_or(line)
         } else {
             line
         };
-        if let Some(speaker) = message_speaker(header) {
-            if let Some((old, label)) = pending.replace((start, speaker.to_owned())) {
-                finish(old, start, label)?;
+        let header =
+            header.trim_start_matches(|ch| matches!(ch, '\u{200e}' | '\u{200f}'));
+        match whatsapp_line(header) {
+            Some(WhatsappLine::Attributed(speaker)) => {
+                if let Some((old, label)) = pending.replace((start, speaker.to_owned())) {
+                    finish(old, start, label)?;
+                }
+                saw_timestamped_boundary = true;
             }
-        } else if pending.is_none() {
-            return Err(ParseError::Unsupported("unattributed WhatsApp preamble"));
+            Some(WhatsappLine::System) => {
+                if let Some((old, label)) = pending.take() {
+                    finish(old, start, label)?;
+                }
+                saw_timestamped_boundary = true;
+            }
+            None if pending.is_none() && !saw_timestamped_boundary => {
+                return Err(ParseError::Unsupported("unattributed WhatsApp preamble"));
+            }
+            None => {}
         }
     }
     if let Some((start, label)) = pending {
