@@ -37,6 +37,7 @@ use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
+use crate::integration_diagnostics::{self, IntegrationDiagnosticsError};
 use crate::local_handoff::{LocalHandoff, LocalHandoffError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
@@ -303,6 +304,10 @@ fn router_with_model_and_handoff(
         .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
+        .route(
+            "/v1/workspaces/{workspace}/integration-diagnostics",
+            get(get_integration_diagnostics),
+        )
         .route(
             "/v1/workspaces/{workspace}/sources/{document}/speakers",
             get(list_source_speakers),
@@ -972,6 +977,27 @@ struct SourceQuery {
     limit: Option<i64>,
     after: Option<Uuid>,
 }
+async fn get_integration_diagnostics(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let diagnostics = integration_diagnostics::summarize(&state.pool, workspace)
+        .await
+        .map_err(|error| match error {
+            IntegrationDiagnosticsError::Privileged => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "integration diagnostics unavailable",
+            ),
+            IntegrationDiagnosticsError::Database(_) => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "integration diagnostics unavailable",
+            ),
+        })?;
+    Ok(no_store(json!(diagnostics), StatusCode::OK))
+}
+
 async fn list_sources(
     State(state): State<AppState>,
     Path(workspace): Path<Uuid>,
