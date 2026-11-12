@@ -110,6 +110,36 @@ async fn seed(f: &F) -> (Uuid, Uuid, Uuid) {
     (s, c, a)
 }
 #[tokio::test]
+async fn dashboard_exposes_human_briefing_without_granting_authority() {
+    let f = setup().await;
+    let (s, _c, a) = seed(&f).await;
+    let (status, v) = call(
+        f.router.clone(),
+        req(
+            "GET",
+            format!("{}/bff/dashboard", ana(&f, s, a)),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let briefing = &v["briefing"];
+    assert_eq!(briefing["input_is_current"], true);
+    assert_eq!(briefing["assumption_count"], 0);
+    assert_eq!(briefing["alternative_count"], 0);
+    assert_eq!(briefing["decision_count"], 0);
+    assert_eq!(briefing["open_question_count"], 0);
+    assert_eq!(briefing["open_condition_count"], 0);
+    assert_eq!(briefing["unresolved_uncertainty_count"], 0);
+    assert_eq!(briefing["undecided_action_count"], 0);
+    assert_eq!(briefing["automatically_ranked"], false);
+    assert_eq!(briefing["briefing_decides_for_human"], false);
+    assert_eq!(briefing["briefing_starts_analysis"], false);
+    assert_eq!(briefing["briefing_executes_actions"], false);
+}
+
+#[tokio::test]
 async fn review_starts_with_honest_zero_usage() {
     let f = setup().await;
     let (s, _c, a) = seed(&f).await;

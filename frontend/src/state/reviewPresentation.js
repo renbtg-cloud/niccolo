@@ -29,6 +29,40 @@ export function proactiveLeads(dashboard) {
   }));
 }
 
+export function proactiveBriefingMeta(dashboard) {
+  const proactive = dashboard?.proactive;
+  const shownCount = proactive?.leads?.length ?? 0;
+  const candidateCount = Math.max(
+    shownCount,
+    Number.isInteger(proactive?.candidate_count) ? proactive.candidate_count : shownCount,
+  );
+  return {
+    shownCount,
+    candidateCount,
+    truncated: proactive?.truncated === true,
+    userOwnsChoice: proactive?.user_owns_which_lead_to_pursue === true,
+  };
+}
+
+export function humanBriefingSummary(dashboard) {
+  const briefing = dashboard?.briefing;
+  if (!briefing) return null;
+  return {
+    inputIsCurrent: briefing.input_is_current === true,
+    assumptionCount: briefing.assumption_count ?? 0,
+    alternativeCount: briefing.alternative_count ?? 0,
+    decisionCount: briefing.decision_count ?? 0,
+    openQuestionCount: briefing.open_question_count ?? 0,
+    openConditionCount: briefing.open_condition_count ?? 0,
+    unresolvedUncertaintyCount: briefing.unresolved_uncertainty_count ?? 0,
+    undecidedActionCount: briefing.undecided_action_count ?? 0,
+    automaticallyRanked: briefing.automatically_ranked === true,
+    decidesForHuman: briefing.briefing_decides_for_human === true,
+    startsAnalysis: briefing.briefing_starts_analysis === true,
+    executesActions: briefing.briefing_executes_actions === true,
+  };
+}
+
 export function reanalysisPrompt(dashboard) {
   const r = dashboard?.reanalysis;
   if (!r?.recommended) return null;

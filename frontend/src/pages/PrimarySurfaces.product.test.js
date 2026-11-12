@@ -157,6 +157,16 @@ describe('buyer-facing primary surfaces', () => {
     expect(review).toContain('function ReviewContent()');
   });
 
+  it('shows a compact human briefing and transparent bounded lead prioritization', () => {
+    expect(review).toContain('<h3>At a glance</h3>');
+    expect(review).toContain('This briefing is descriptive only');
+    expect(review).toContain('does not rank for you, decide for you, start another analysis or execute an action');
+    expect(review).toContain('Showing ${leadMeta.shownCount} prioritized leads from ${leadMeta.candidateCount} recorded candidates.');
+    expect(review).toContain('deterministic information-value heuristic');
+    expect(review).toContain('not confidence, probability or truth');
+    expect(review).toContain('You choose whether any lead is worth pursuing.');
+  });
+
   it('keeps Review self-contained with answer and concrete competing interpretations', () => {
     expect(review).toContain("<h3>Niccolò's answer</h3>");
     expect(review).toContain('Competing interpretations considered');
