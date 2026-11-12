@@ -5703,6 +5703,9 @@ async fn verify_git_publication_target(
             "ref_name": verified.ref_name,
             "head_commit_sha": verified.head_commit_sha,
             "repository_private": verified.repository_private,
+            "requested_ref_exists": verified.requested_ref_exists,
+            "creation_base_ref": verified.creation_base_ref,
+            "creation_base_commit_sha": verified.creation_base_commit_sha,
             "remote_changes_performed": false,
             "verification_persisted": false,
             "provider_secret_stored": false

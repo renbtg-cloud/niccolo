@@ -243,7 +243,7 @@ export function GitPublicationPanel() {
         </label>
         <button disabled={!verificationToken || verifyTarget.isPending} onClick={() => verifyTarget.mutate()}>{verifyTarget.isPending?'Verifying repository/ref…':'Verify repository/ref without publishing'}</button>
         {verifyTarget.error && <p className="error" role="alert">Target verification failed: {verifyTarget.error.message} The transient token was cleared.</p>}
-        {verifyTarget.data && <p role="status"><strong>Remote target verified without changes.</strong> {verifyTarget.data.repository_full_name} · ref <code>{verifyTarget.data.ref_name}</code> · head <code>{verifyTarget.data.head_commit_sha}</code>. Token cleared.</p>}
+        {verifyTarget.data && <div role="status"><p><strong>Remote target verified without changes.</strong> {verifyTarget.data.repository_full_name} · requested ref <code>{verifyTarget.data.ref_name}</code>. Token cleared.</p>{verifyTarget.data.requested_ref_exists ? <p><small>Existing ref head: <code>{verifyTarget.data.head_commit_sha}</code>.</small></p> : <p><small>The requested ref does not exist yet. Explicit publication may create it from <code>{verifyTarget.data.creation_base_ref}</code> at <code>{verifyTarget.data.creation_base_commit_sha}</code>; this preflight itself created nothing.</small></p>}</div>}
       </details>
       <button disabled={plan.isPending} onClick={() => plan.mutate()}>{plan.isPending?'Recording intent…':'Record publication intent — does not upload'}</button>
       {plan.error && <p className="error" role="alert">Publication intent could not be recorded: {plan.error.message}</p>}

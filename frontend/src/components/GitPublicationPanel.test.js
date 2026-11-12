@@ -18,6 +18,9 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('verifyGitPublicationTarget');
     expect(source).toContain('Verify repository/ref without publishing');
     expect(source).toContain('does not create commits, update refs, or persist the token');
+    expect(source).toContain('requested_ref_exists');
+    expect(source).toContain('Explicit publication may create it from');
+    expect(source).toContain('this preflight itself created nothing');
     expect(source).toContain("onError: () => setVerificationToken('')");
     expect(source).toContain("onSuccess: () => setVerificationToken('')");
   });
