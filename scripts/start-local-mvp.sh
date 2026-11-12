@@ -86,7 +86,7 @@ if (( open_browser == 1 )); then
   (
     # The opener needs only the generated loopback URL and port. Do not expose
     # database or model credentials to the short-lived helper process.
-    unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL
+    unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_SECURE_PASSWORD NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL PGPASSWORD
     exec bash scripts/open-local-mvp-browser.sh "$prepared_url" "$NICCOLO_API_PORT"
   ) >/dev/null 2>&1 &
 else
