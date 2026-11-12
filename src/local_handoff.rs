@@ -92,7 +92,10 @@ impl LocalHandoff {
         if !valid_code(code) {
             return Err(LocalHandoffError::NotFound);
         }
-        let mut slot = self.inner.lock().map_err(|_| LocalHandoffError::SecretUnavailable)?;
+        let mut slot = self
+            .inner
+            .lock()
+            .map_err(|_| LocalHandoffError::SecretUnavailable)?;
         let Some(entry) = slot.as_ref() else {
             return Err(LocalHandoffError::NotFound);
         };
@@ -121,7 +124,11 @@ mod tests {
         let path = std::env::temp_dir().join(format!("niccolo-handoff-{}.token", Uuid::new_v4()));
         fs::write(
             &path,
-            format!("ncl_{}{}\n", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
+            format!(
+                "ncl_{}{}\n",
+                Uuid::new_v4().simple(),
+                Uuid::new_v4().simple()
+            ),
         )
         .unwrap();
         path
@@ -131,7 +138,8 @@ mod tests {
     fn wrong_code_does_not_consume_and_correct_code_is_one_shot() {
         let path = token_file();
         let code = "a".repeat(64);
-        let handoff = LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
+        let handoff =
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
         assert_eq!(
             handoff.consume(&"b".repeat(64)),
             Err(LocalHandoffError::NotFound)
@@ -147,14 +155,19 @@ mod tests {
         let path = std::env::temp_dir().join(format!("niccolo-handoff-{}.token", Uuid::new_v4()));
         fs::write(&path, "not-a-token\n").unwrap();
         let code = "c".repeat(64);
-        let handoff = LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
+        let handoff =
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
         assert_eq!(
             handoff.consume(&code),
             Err(LocalHandoffError::SecretUnavailable)
         );
         fs::write(
             &path,
-            format!("ncl_{}{}\n", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
+            format!(
+                "ncl_{}{}\n",
+                Uuid::new_v4().simple(),
+                Uuid::new_v4().simple()
+            ),
         )
         .unwrap();
         assert!(handoff.consume(&code).is_ok());
