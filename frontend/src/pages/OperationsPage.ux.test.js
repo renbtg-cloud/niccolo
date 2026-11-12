@@ -48,6 +48,19 @@ describe('primary analysis path', () => {
     expect(operations).toContain('response_id:pendingHumanResponse.current.responseId');
   });
 
+  it('shows budget-limited work as provisional instead of pretending synthesis is complete', () => {
+    expect(operations).toContain("PARTIAL_BUDGET_BOUNDARY");
+    expect(operations).toContain('Useful work so far');
+    expect(operations).toContain('does <strong>not</strong> claim completeness or factual truth');
+    expect(operations).toContain('Next unexecuted reasoning step');
+  });
+
+  it('keeps durable anytime checkpoints in technical inspection with explicit non-truth semantics', () => {
+    expect(operations).toContain('useOperationCheckpoints(active)');
+    expect(operations).toContain('Anytime checkpoints');
+    expect(operations).toContain('A provisional checkpoint is not truth, proof or completeness.');
+  });
+
   it('keeps observing a transiently complete plan until the durable operation settles', () => {
     expect(operations).toContain('useAgenticPlan(active,observed.operation?.state)');
   });
