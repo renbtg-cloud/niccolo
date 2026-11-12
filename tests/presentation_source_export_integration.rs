@@ -16,6 +16,7 @@ struct Fixture {
     router: Router,
     admin: sqlx::PgPool,
     workspace: Uuid,
+    writer_principal: Uuid,
     writer: String,
     reader: String,
 }
@@ -37,7 +38,8 @@ async fn setup() -> Fixture {
         .execute(&admin)
         .await
         .unwrap();
-    let writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1)
+    let writer_principal = Uuid::new_v4();
+    let writer = authz::provision_token(&admin, writer_principal, workspace, true, true, 1)
         .await
         .unwrap();
     let reader = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, false, 1)
@@ -47,6 +49,7 @@ async fn setup() -> Fixture {
         router: api::router(secure),
         admin,
         workspace,
+        writer_principal,
         writer,
         reader,
     }
@@ -77,6 +80,179 @@ fn analysis_path(f: &Fixture, situation: Uuid, analysis: Uuid) -> String {
         "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}",
         f.workspace
     )
+}
+
+#[tokio::test]
+async fn presentation_exports_recorded_policy_history_and_human_credence_without_truth_claims() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let claim = Uuid::new_v4();
+    let policy = Uuid::new_v4();
+    let credence = Uuid::new_v4();
+
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                format!("/v1/workspaces/{}/situations/{situation}", f.workspace),
+                &f.writer,
+                Some(json!({"focus":"Test recorded epistemic controls"})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                analysis_path(&f, situation, analysis),
+                &f.writer,
+                Some(json!({"goal":"Publish an answer with separately recorded controls"})),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                format!("{}/output", analysis_path(&f, situation, analysis)),
+                &f.writer,
+                Some(json!({
+                    "answer_text":"Published before the later control records.",
+                    "coverage_note":"No claim that later controls generated this answer."
+                })),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_claims
+         (workspace_id,situation_id,analysis_id,claim_id,ordinal,claim_kind,claim_text,created_by_principal_id)
+         VALUES($1,$2,$3,$4,1,'POSSIBILITY','A bounded possibility',$5)",
+    )
+    .bind(f.workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(claim)
+    .bind(f.writer_principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                format!("/v1/workspaces/{}/epistemic/policies/{policy}", f.workspace),
+                &f.writer,
+                Some(json!({
+                    "situation_id":situation,
+                    "policy":{
+                        "support_multiplier_pct":80,
+                        "counter_multiplier_pct":140,
+                        "per_origin_cap":75
+                    },
+                    "rationale":"Deliberately conservative counter-weighting"
+                })),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            json_request(
+                "POST",
+                format!(
+                    "{}/claims/{claim}/credence/{credence}",
+                    analysis_path(&f, situation, analysis)
+                ),
+                &f.writer,
+                Some(json!({
+                    "confidence_percent":63,
+                    "usage_policy":"SUBJECTIVE_BELIEF",
+                    "rationale":"Human context unavailable to the model"
+                })),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let (status, package) = call(
+        f.router.clone(),
+        json_request(
+            "GET",
+            format!("{}/presentation-package", analysis_path(&f, situation, analysis)),
+            &f.reader,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let policies: Value = serde_json::from_str(
+        package["files"]["data/epistemic_policies.json"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(policies.as_array().unwrap().len(), 1);
+    assert_eq!(policies[0]["policy_id"], policy.to_string());
+    assert_eq!(policies[0]["scope"], "SITUATION");
+    assert_eq!(policies[0]["support_multiplier_pct"], 80);
+    assert_eq!(policies[0]["counter_multiplier_pct"], 140);
+    assert_eq!(policies[0]["per_origin_cap"], 75);
+    assert_eq!(policies[0]["is_probability_model"], false);
+    assert_eq!(
+        policies[0]["proves_policy_was_used_for_published_output"],
+        false
+    );
+
+    let human: Value = serde_json::from_str(
+        package["files"]["data/human_credence.json"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(human.as_array().unwrap().len(), 1);
+    assert_eq!(human[0]["claim_id"], claim.to_string());
+    assert_eq!(human[0]["credence_id"], credence.to_string());
+    assert_eq!(human[0]["confidence_percent"], 63);
+    assert_eq!(human[0]["is_human_declaration"], true);
+    assert_eq!(human[0]["is_calibrated_probability"], false);
+    assert_eq!(human[0]["is_documentary_evidence"], false);
+    assert_eq!(human[0]["makes_claim_a_fact"], false);
+    assert_eq!(human[0]["part_of_frozen_analysis_input"], false);
+
+    let scope: Value = serde_json::from_str(
+        package["files"]["data/epistemic_export_scope.json"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(scope["recorded_policy_count"], 1);
+    assert_eq!(scope["recorded_human_credence_count"], 1);
+    assert_eq!(scope["deterministic_scores_exported"], false);
+    assert_eq!(scope["policy_history_proves_policy_used_for_output"], false);
+    assert_eq!(scope["human_credence_is_documentary_evidence"], false);
+    assert_eq!(scope["human_credence_is_calibrated_probability"], false);
 }
 
 #[tokio::test]
