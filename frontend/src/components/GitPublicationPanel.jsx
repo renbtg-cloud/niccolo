@@ -146,9 +146,9 @@ export function GitPublicationPanel() {
   const canRegister = owner.trim() && repository.trim() && refName.trim();
 
   return <article className="review-panel git-publication-panel">
-    <h3>GitHub publication planning — no upload yet</h3>
-    <p>Record where this portable analysis may later be published. This page stores repository coordinates and an exact package digest only. It does <strong>not</strong> connect to GitHub, accept a provider token, push a commit, or prove remote preservation.</p>
-    <p><small>PostgreSQL remains authoritative. Provider authorization and remote commit/ref verification are deliberately required before any future publisher may say “published”.</small></p>
+    <h3>User-owned GitHub publication</h3>
+    <p>First record a target and an exact package digest locally. Those planning actions perform <strong>no upload</strong>. Only the separately confirmed remote-publish action below accepts a transient GitHub token or changes a remote ref.</p>
+    <p><small>PostgreSQL remains authoritative. Niccolò says “verified published” only after GitHub accepts the non-force ref update and a fresh ref read points at the exact commit that was built from the recorded package.</small></p>
 
     <details>
       <summary>Add a user-owned GitHub target</summary>

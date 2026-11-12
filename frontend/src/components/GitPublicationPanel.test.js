@@ -5,7 +5,7 @@ const source = readFileSync(new URL('./GitPublicationPanel.jsx', import.meta.url
 
 describe('GitPublicationPanel safety boundary', () => {
   it('never presents a local target or intent as a remote publication', () => {
-    expect(source).toContain('no upload yet');
+    expect(source).toContain('perform <strong>no upload</strong>');
     expect(source).toContain('does not');
     expect(source).toContain('connect to GitHub');
     expect(source).toContain('Remote publish performed: no');
