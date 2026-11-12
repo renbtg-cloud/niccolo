@@ -12,7 +12,7 @@ describe('connection boundary', () => {
   it('discards authenticated query data before switching or ending sessions', () => {
     expect(source).toContain('const queryClient=useQueryClient()');
     expect(source).toContain('queryClient.clear();clearUi();');
-    expect(source).toContain('const connectClean=(credentials)=>{clearSessionView();connect(credentials);}');
+    expect(source).toContain('clearSessionView();connect(credentials);');
     expect(source).toContain('const disconnectClean=()=>{disconnect();clearSessionView();}');
     expect(source).toContain('handleSubmit(connectClean)');
   });

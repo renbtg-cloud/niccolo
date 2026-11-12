@@ -16,7 +16,7 @@ describe('prior Niccolò export quarantine surface', () => {
     expect(page).toContain('does <strong>not</strong> make its claims true');
     expect(page).toContain('non-evidence historical context');
     expect(page).toContain('does not rewrite the frozen analysis input');
-    expect(page).toContain('Reanalyze if you want a new published answer to consider it.');
+    expect(page).toContain('published answer, if any, remains unchanged.');
   });
 
   it('reuses stable batch and binding IDs after an interrupted response', () => {
