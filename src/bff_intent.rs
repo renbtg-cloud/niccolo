@@ -36,6 +36,7 @@ impl HumanIntent {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelBudgetRequest {
     pub max_invocations: Option<i64>,
     pub max_total_tokens: Option<i64>,
@@ -262,6 +263,21 @@ mod tests {
             validate_request(&input, operation),
             Err(IntentError::Invalid)
         ));
+    }
+
+    #[test]
+    fn misspelled_model_budget_fields_are_rejected_instead_of_silently_defaulting() {
+        let value = json!({
+            "analysis_id": Uuid::new_v4(),
+            "intent": "UNDERSTAND",
+            "goal": null,
+            "reanalysis_of": null,
+            "idempotency_key": null,
+            "step_budget": 32,
+            "model_budget": {"max_invocatoins": 7},
+            "context": {}
+        });
+        assert!(serde_json::from_value::<IntentRequest>(value).is_err());
     }
 
     #[test]
