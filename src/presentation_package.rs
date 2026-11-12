@@ -141,6 +141,10 @@ pub struct PresentationPackage {
     pub examined_source_extracts_establish_truth: bool,
     pub reproduces_model_reasoning: bool,
     pub contains_complete_investigation_event_log: bool,
+    pub includes_recorded_epistemic_policy_history: bool,
+    pub includes_recorded_human_credence: bool,
+    pub includes_deterministic_grounded_score_results: bool,
+    pub epistemic_control_history_proves_policy_used_for_output: bool,
     pub published_to_git: bool,
 }
 
@@ -625,6 +629,11 @@ fn from_bundle_and_extracts(
         examined_source_extracts_establish_truth: false,
         reproduces_model_reasoning: false,
         contains_complete_investigation_event_log: false,
+        includes_recorded_epistemic_policy_history: !epistemic.policies.is_empty(),
+        includes_recorded_human_credence: !epistemic.human_credence.is_empty(),
+        includes_deterministic_grounded_score_results: epistemic.deterministic_scores_exported,
+        epistemic_control_history_proves_policy_used_for_output:
+            epistemic.policy_history_proves_policy_used_for_output,
         published_to_git: false,
     })
 }
@@ -1174,6 +1183,10 @@ mod tests {
         assert!(!a.examined_source_extracts_are_original_uploads);
         assert!(!a.examined_source_extracts_establish_truth);
         assert!(!a.reproduces_model_reasoning);
+        assert!(!a.includes_recorded_epistemic_policy_history);
+        assert!(!a.includes_recorded_human_credence);
+        assert!(!a.includes_deterministic_grounded_score_results);
+        assert!(!a.epistemic_control_history_proves_policy_used_for_output);
         assert!(a.authoritative_state_remains_in_postgresql);
     }
 
