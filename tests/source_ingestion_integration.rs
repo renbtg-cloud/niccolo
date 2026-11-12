@@ -78,6 +78,62 @@ async fn attributed_import_and_workspace_graph_are_connected() {
     }
 }
 #[tokio::test]
+async fn whatsapp_variants_and_system_events_preserve_only_attributed_fragments() {
+    let (admin, service) = pools().await;
+    let w = workspace(&admin).await;
+    let id = Uuid::new_v4();
+    let raw = concat!(
+        "30/04/2022 08:30 - Messages and calls are end-to-end encrypted.\n",
+        "30/04/2022 08:31 - Ana: Before\n",
+        "30/04/2022 08:32 - You changed the group description\n",
+        "3/15/24, 2:30 PM - Bob: US layout\n",
+        "[15.03.24, 10:30] Carla: iOS dotted layout\n",
+    )
+    .as_bytes();
+
+    let imported = ingest_source(
+        &service,
+        w,
+        id,
+        SourceFormat::WhatsappExport,
+        "fixture://whatsapp/variants",
+        raw,
+    )
+    .await
+    .unwrap();
+    assert_eq!(imported.fragment_ids.len(), 3);
+
+    let stored: Vec<(i32, i32, i32, String, String)> = sqlx::query_as(
+        "SELECT f.ordinal,f.byte_start,f.byte_end,f.speaker_label,e.content
+           FROM niccolo.source_fragments f
+           JOIN niccolo.evidence e USING(workspace_id,evidence_id)
+          WHERE f.workspace_id=$1 AND f.document_id=$2
+          ORDER BY f.ordinal",
+    )
+    .bind(w)
+    .bind(id)
+    .fetch_all(&admin)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        stored
+            .iter()
+            .map(|(_, _, _, speaker, _)| speaker.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Ana", "Bob", "Carla"]
+    );
+    for (_, start, end, _, content) in &stored {
+        assert_eq!(
+            content.as_bytes(),
+            &raw[*start as usize..*end as usize]
+        );
+        assert!(!content.contains("end-to-end encrypted"));
+        assert!(!content.contains("changed the group description"));
+    }
+}
+
+#[tokio::test]
 async fn canonical_email_thread_stores_each_sender_as_a_separate_attributed_fragment() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;
