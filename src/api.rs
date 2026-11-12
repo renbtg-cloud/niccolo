@@ -5581,20 +5581,26 @@ async fn get_presentation_package(
     Ok(no_store(json!(package), StatusCode::OK))
 }
 
-
 fn git_publication_error(error: GitPublicationError) -> ApiError {
     match error {
-        GitPublicationError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid git publication request"),
-        GitPublicationError::Invisible => ApiError(StatusCode::NOT_FOUND, "git publication target unavailable"),
-        GitPublicationError::Conflict => ApiError(StatusCode::CONFLICT, "git publication ID conflict"),
+        GitPublicationError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid git publication request")
+        }
+        GitPublicationError::Invisible => {
+            ApiError(StatusCode::NOT_FOUND, "git publication target unavailable")
+        }
+        GitPublicationError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "git publication ID conflict")
+        }
         GitPublicationError::Presentation(PresentationError::Manifest(
             crate::analysis_manifest::ManifestError::Invisible,
         )) => ApiError(StatusCode::NOT_FOUND, "published analysis unavailable"),
         GitPublicationError::Presentation(PresentationError::Invalid)
         | GitPublicationError::Presentation(PresentationError::SourceExtractTooLarge)
-        | GitPublicationError::Presentation(PresentationError::TooLarge) => {
-            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "presentation unavailable for git planning")
-        }
+        | GitPublicationError::Presentation(PresentationError::TooLarge) => ApiError(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "presentation unavailable for git planning",
+        ),
         GitPublicationError::Presentation(_)
         | GitPublicationError::Database(_)
         | GitPublicationError::Privileged => ApiError(
@@ -5644,7 +5650,11 @@ async fn register_git_publication_target(
             "provider_secret_stored": false,
             "registration_publishes_nothing": true
         }),
-        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
@@ -5680,15 +5690,10 @@ async fn get_git_publication_preview(
     Query(query): Query<GitPublicationPreviewQuery>,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let preview = git_publication::preview(
-        &state.pool,
-        workspace,
-        situation,
-        analysis,
-        query.target_id,
-    )
-    .await
-    .map_err(git_publication_error)?;
+    let preview =
+        git_publication::preview(&state.pool, workspace, situation, analysis, query.target_id)
+            .await
+            .map_err(git_publication_error)?;
     Ok(no_store(json!(preview), StatusCode::OK))
 }
 
