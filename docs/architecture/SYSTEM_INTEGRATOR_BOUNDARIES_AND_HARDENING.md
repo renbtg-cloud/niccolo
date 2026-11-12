@@ -120,6 +120,8 @@ A deployment should define supported operational limits for at least:
 
 If an integration sends massive avoidable redundancy, Niccolò should eventually be able to warn, throttle, reject, or degrade visibly instead of silently consuming unbounded resources.
 
+The current operator surface now exposes an authenticated, read-only runtime resource diagnostic derived from native process/cgroup observations and the existing resource policy. It reports memory pressure/headroom, effective CPU capacity, throttling and PID-limit observations when available, plus conservative parallelism advice. Raw cgroup paths are omitted. The diagnostic neither mutates resource limits nor claims that more or less compute establishes epistemic quality.
+
 A useful diagnostic is conceptually:
 
 > Input is structurally valid, but operational redundancy exceeds the supported integration envelope. Deduplicate before ingestion.
