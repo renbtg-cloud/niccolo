@@ -50,8 +50,11 @@ pub struct VerifiedGitHubPublication {
 pub struct VerifiedGitHubTarget {
     pub repository_full_name: String,
     pub ref_name: String,
-    pub head_commit_sha: String,
+    pub head_commit_sha: Option<String>,
     pub repository_private: bool,
+    pub requested_ref_exists: bool,
+    pub creation_base_ref: Option<String>,
+    pub creation_base_commit_sha: Option<String>,
 }
 
 pub trait GitHubTransport {
@@ -195,22 +198,56 @@ pub fn verify_target<T: GitHubTransport>(
     {
         return Err(GitHubPublishError::VerificationMismatch);
     }
-    let current_ref = transport.json(
+
+    match transport.json(
         "GET",
         &format!("{repo_path}/git/ref/heads/{branch}"),
         token,
         None,
-    )?;
-    let head_commit_sha = response_string(&current_ref, "/object/sha")?.to_owned();
-    if !valid_remote_sha(&head_commit_sha) {
-        return Err(GitHubPublishError::InvalidProviderResponse);
+    ) {
+        Ok(current_ref) => {
+            let head_commit_sha = response_string(&current_ref, "/object/sha")?.to_owned();
+            if !valid_remote_sha(&head_commit_sha) {
+                return Err(GitHubPublishError::InvalidProviderResponse);
+            }
+            Ok(VerifiedGitHubTarget {
+                repository_full_name: remote_full_name.to_owned(),
+                ref_name: branch.to_owned(),
+                head_commit_sha: Some(head_commit_sha),
+                repository_private: private,
+                requested_ref_exists: true,
+                creation_base_ref: None,
+                creation_base_commit_sha: None,
+            })
+        }
+        Err(GitHubPublishError::ProviderRejected(404)) => {
+            let default_branch = response_string(&repo, "/default_branch")?;
+            let default_branch = branch_name(default_branch)?;
+            if default_branch == branch {
+                return Err(GitHubPublishError::InvalidProviderResponse);
+            }
+            let default_ref = transport.json(
+                "GET",
+                &format!("{repo_path}/git/ref/heads/{default_branch}"),
+                token,
+                None,
+            )?;
+            let base_sha = response_string(&default_ref, "/object/sha")?.to_owned();
+            if !valid_remote_sha(&base_sha) {
+                return Err(GitHubPublishError::InvalidProviderResponse);
+            }
+            Ok(VerifiedGitHubTarget {
+                repository_full_name: remote_full_name.to_owned(),
+                ref_name: branch.to_owned(),
+                head_commit_sha: None,
+                repository_private: private,
+                requested_ref_exists: false,
+                creation_base_ref: Some(default_branch.to_owned()),
+                creation_base_commit_sha: Some(base_sha),
+            })
+        }
+        Err(error) => Err(error),
     }
-    Ok(VerifiedGitHubTarget {
-        repository_full_name: remote_full_name.to_owned(),
-        ref_name: branch.to_owned(),
-        head_commit_sha,
-        repository_private: private,
-    })
 }
 
 pub fn publish_standard_package<T: GitHubTransport>(
@@ -652,12 +689,71 @@ mod tests {
         let verified = verify_target(&transport, &target(), "test-secret-token").unwrap();
         assert_eq!(verified.repository_full_name, "owner/history");
         assert_eq!(verified.ref_name, "main");
-        assert_eq!(verified.head_commit_sha, "a".repeat(40));
+        assert_eq!(verified.head_commit_sha, Some("a".repeat(40)));
         assert!(verified.repository_private);
+        assert!(verified.requested_ref_exists);
+        assert!(verified.creation_base_ref.is_none());
         let calls = transport.calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
         assert!(calls.iter().all(|call| call.0 == "GET"));
         assert!(!format!("{calls:?}").contains("test-secret-token"));
+    }
+
+    #[test]
+    fn target_preflight_reports_missing_branch_without_mutating_remote_state() {
+        struct MissingRefTransport {
+            calls: Mutex<Vec<(String, String, Option<Value>)>>,
+            responses: Mutex<VecDeque<Value>>,
+        }
+        impl GitHubTransport for MissingRefTransport {
+            fn json(
+                &self,
+                method: &str,
+                path: &str,
+                token: &str,
+                body: Option<&Value>,
+            ) -> Result<Value, GitHubPublishError> {
+                assert_eq!(token, "test-secret-token");
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push((method.into(), path.into(), body.cloned()));
+                if path.ends_with("/git/ref/heads/archive") {
+                    return Err(GitHubPublishError::ProviderRejected(404));
+                }
+                self.responses
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .ok_or(GitHubPublishError::Transport)
+            }
+        }
+        let transport = MissingRefTransport {
+            calls: Mutex::new(Vec::new()),
+            responses: Mutex::new(
+                vec![
+                    json!({"full_name":"owner/history","private":true,"default_branch":"main"}),
+                    json!({"object":{"sha":"b".repeat(40)}}),
+                ]
+                .into(),
+            ),
+        };
+        let mut target = target();
+        target.ref_name = "archive".into();
+        let verified = verify_target(&transport, &target, "test-secret-token").unwrap();
+        assert!(!verified.requested_ref_exists);
+        assert_eq!(verified.head_commit_sha, None);
+        assert_eq!(verified.creation_base_ref.as_deref(), Some("main"));
+        assert_eq!(
+            verified.creation_base_commit_sha,
+            Some("b".repeat(40))
+        );
+        assert!(transport
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|call| call.0 == "GET"));
     }
 
     #[test]
