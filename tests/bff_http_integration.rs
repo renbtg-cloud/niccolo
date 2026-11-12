@@ -509,6 +509,53 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
         checkpoint_digest
     );
 
+    let (status, _, milestone_package) = invoke(
+        s.router.clone(),
+        req(
+            "GET",
+            &format!("{package_path}?milestone_id={milestone}"),
+            &s.token,
+            None,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(milestone_package["scope_kind"], "OPERATION_MILESTONE");
+    assert_eq!(milestone_package["milestone_id"], milestone.to_string());
+    assert_eq!(milestone_package["milestone_kind"], "TIMED_PARTIAL");
+    assert_eq!(
+        milestone_package["milestone_reason"],
+        "Invocation budget ended; preserve this bounded partial result for review"
+    );
+    assert!(
+        milestone_package["files"]["milestone.json"]
+            .as_str()
+            .is_some()
+    );
+    assert!(
+        milestone_package["files"]["SHA256SUMS"]
+            .as_str()
+            .unwrap()
+            .contains("milestone.json")
+    );
+    assert_eq!(milestone_package["published_to_git"], false);
+    assert_eq!(milestone_package["establishes_truth"], false);
+
+    let wrong_milestone = Uuid::new_v4();
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "GET",
+            &format!("{package_path}?milestone_id={wrong_milestone}"),
+            &s.token,
+            None,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
     let conflicting_milestone = Uuid::new_v4();
     let (status, _, _) = invoke(
         s.router.clone(),
@@ -639,11 +686,6 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    let scope = niccolo_evidence::bff_operations::OperationScope {
-        workspace: s.workspace,
-        situation: s.situation,
-        operation: id,
-    };
     let remote_attempt = Uuid::new_v4();
     let remote_sha = "c".repeat(40);
     let digest = authz::credential_digest(&s.token).unwrap();

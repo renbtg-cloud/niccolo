@@ -80,7 +80,12 @@ describe('primary analysis path', () => {
     expect(operations).toContain('Anytime checkpoints');
     expect(operations).toContain('A provisional checkpoint is not truth, proof or completeness.');
     expect(operations).toContain('Download latest checkpoint package');
-    expect(operations).toContain('client.operationCheckpointPackage(active,checkpoint.checkpoint_id)');
+    expect(operations).toContain('client.operationCheckpointPackage(active,checkpoint.checkpoint_id,milestone?.milestone_id??null)');
+  });
+
+  it('lets the user inspect the exact milestone package before remote publication', () => {
+    expect(operations).toContain('Download exact milestone package');
+    expect(operations).toContain('milestone?.milestone_id??null');
   });
 
   it('keeps meaningful milestone declaration explicit and non-epistemic', () => {

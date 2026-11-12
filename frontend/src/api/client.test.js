@@ -132,6 +132,13 @@ describe('BFF client',()=>{
    expect(calls[1][0]).not.toContain('Preserve bounded partial result for review');
  });
 
+ it('downloads an exact milestone package only when a milestone id is selected',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.operation-checkpoint-package',scope_kind:'OPERATION_MILESTONE'});});
+   await x.operationCheckpointPackage('operation','checkpoint','milestone id');
+   expect(calls[0][0]).toContain('/checkpoints/checkpoint/package?milestone_id=milestone%20id');
+ });
+
  it('binds meaningful milestone publication to the exact declared milestone without putting its reason in the URL',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{scope_kind:'OPERATION_MILESTONE',milestone_id:'milestone'});});

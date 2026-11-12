@@ -4812,10 +4812,17 @@ fn checkpoint_package_error(error: CheckpointPackageError) -> ApiError {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckpointPackageQuery {
+    milestone_id: Option<Uuid>,
+}
+
 async fn get_bff_operation_checkpoint_package(
     State(state): State<AppState>,
     Path((workspace, situation, operation, checkpoint)): Path<(Uuid, Uuid, Uuid, Uuid)>,
     headers: HeaderMap,
+    Query(query): Query<CheckpointPackageQuery>,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
     let scope = OperationScope {
@@ -4826,8 +4833,28 @@ async fn get_bff_operation_checkpoint_package(
     let checkpoint = operation_checkpoint::get(&state.pool, scope, checkpoint)
         .await
         .map_err(checkpoint_error)?;
-    let package =
-        checkpoint_package::build(scope, &checkpoint).map_err(checkpoint_package_error)?;
+    let package = match query.milestone_id {
+        Some(milestone_id) => {
+            if milestone_id.is_nil() {
+                return Err(ApiError(
+                    StatusCode::BAD_REQUEST,
+                    "invalid checkpoint milestone package request",
+                ));
+            }
+            let milestone = checkpoint_milestone::get(&state.pool, scope, checkpoint.checkpoint_id)
+                .await
+                .map_err(checkpoint_milestone_error)?;
+            if milestone.milestone_id != milestone_id {
+                return Err(ApiError(
+                    StatusCode::CONFLICT,
+                    "checkpoint milestone identity mismatch",
+                ));
+            }
+            checkpoint_package::build_milestone(scope, &checkpoint, &milestone)
+                .map_err(checkpoint_package_error)?
+        }
+        None => checkpoint_package::build(scope, &checkpoint).map_err(checkpoint_package_error)?,
+    };
     Ok(no_store(json!(package), StatusCode::OK))
 }
 

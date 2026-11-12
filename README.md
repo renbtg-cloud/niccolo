@@ -285,7 +285,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - User-owned GitHub publication: bounded repository/ref metadata, exact standard-package scope and SHA-256 preview, immutable local publication intents, explicit one-shot transient provider authorization, non-force Git-data publication, remote ref re-verification, and an append-only secret-free publication event ledger.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
-- Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives, immutable anytime checkpoints, deterministic bounded local checkpoint export packages, and explicit human milestone declarations that preserve provisional/final status instead of silently upgrading it.
+- Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives, immutable anytime checkpoints, deterministic bounded checkpoint/milestone export packages, and explicit human milestone declarations that preserve provisional/final status instead of silently upgrading it.
 - A first-party React interface and associated client-state/test infrastructure.
 
 These foundations are not equivalent to a complete consumer onboarding, production-ready data security, or end-to-end autonomous analysis service.
