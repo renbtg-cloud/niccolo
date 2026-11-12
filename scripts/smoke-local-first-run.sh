@@ -91,7 +91,15 @@ fi
 grep -Fq 'database-owner or BYPASSRLS login' .niccolo-local/runtime-provision.log
 NICCOLO_OPEN_BROWSER=0 bash scripts/start-local-mvp.sh > .niccolo-local/ci-server.log 2>&1 &
 pid=$!
-cleanup(){ kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
+handoff_pid=''
+cleanup(){
+  if [[ -n "$handoff_pid" ]]; then
+    kill "$handoff_pid" 2>/dev/null || true
+    wait "$handoff_pid" 2>/dev/null || true
+  fi
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 trap cleanup EXIT
 started=0
 for _ in $(seq 1 40); do
@@ -112,6 +120,61 @@ if [[ "$started" != 1 ]]; then
   exit 1
 fi
 curl --max-time 5 --silent --show-error --fail http://127.0.0.1:38080/ >/dev/null
+
+# The ordinary server has no bearer-redemption capability unless startup
+# explicitly created one for a local browser handoff.
+default_handoff_status="$(curl --max-time 5 --silent --output /dev/null --write-out '%{http_code}' \
+  -H 'Content-Type: application/json' \
+  --data '{"code":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}' \
+  http://127.0.0.1:38080/v1/local-handoff)"
+[[ "$default_handoff_status" == 404 ]]
+
+# Exercise the real binary with an isolated one-shot capability on a second
+# loopback port. Wrong guesses do not burn it; a successful redemption does.
+handoff_code='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+wrong_handoff='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+NICCOLO_API_PORT=38081 \
+NICCOLO_LOCAL_HANDOFF_CODE="$handoff_code" \
+NICCOLO_LOCAL_HANDOFF_TOKEN_FILE="$ROOT/.niccolo-local/token.txt" \
+  ./target/release/niccolo-api > .niccolo-local/ci-handoff-server.log 2>&1 &
+handoff_pid=$!
+handoff_started=0
+for _ in $(seq 1 40); do
+  if curl --max-time 2 --silent --fail http://127.0.0.1:38081/healthz >/dev/null; then
+    handoff_started=1
+    break
+  fi
+  if ! kill -0 "$handoff_pid" 2>/dev/null; then
+    echo 'Niccolò handoff test server exited unexpectedly' >&2
+    tail -n 30 .niccolo-local/ci-handoff-server.log >&2
+    exit 1
+  fi
+  sleep .25
+done
+[[ "$handoff_started" == 1 ]]
+wrong_handoff_status="$(curl --max-time 5 --silent --output /dev/null --write-out '%{http_code}' \
+  -H 'Content-Type: application/json' \
+  --data "{"code":"$wrong_handoff"}" \
+  http://127.0.0.1:38081/v1/local-handoff)"
+[[ "$wrong_handoff_status" == 404 ]]
+handoff_result="$(curl --max-time 5 --silent --show-error --fail \
+  -H 'Content-Type: application/json' \
+  --data "{"code":"$handoff_code"}" \
+  http://127.0.0.1:38081/v1/local-handoff)"
+EXPECTED_TOKEN="$token" node -e '
+let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
+ const j=JSON.parse(s);if(j.token!==process.env.EXPECTED_TOKEN)process.exit(1);
+});' <<< "$handoff_result"
+replay_handoff_status="$(curl --max-time 5 --silent --output /dev/null --write-out '%{http_code}' \
+  -H 'Content-Type: application/json' \
+  --data "{"code":"$handoff_code"}" \
+  http://127.0.0.1:38081/v1/local-handoff)"
+[[ "$replay_handoff_status" == 404 ]]
+kill "$handoff_pid" 2>/dev/null || true
+wait "$handoff_pid" 2>/dev/null || true
+handoff_pid=''
+echo 'PASS: real loopback bearer handoff is disabled by default and one-shot when configured'
+
 path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/situations/${SITUATION_UUID}"
 curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" \
