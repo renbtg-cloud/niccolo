@@ -333,7 +333,12 @@ pub async fn list(
         .take(limit as usize)
         .map(view)
         .collect::<Result<Vec<_>, CheckpointError>>()?;
-    let next_after = more.then(|| checkpoints.last().expect("non-empty checkpoint page").checkpoint_seq);
+    let next_after = more.then(|| {
+        checkpoints
+            .last()
+            .expect("non-empty checkpoint page")
+            .checkpoint_seq
+    });
     Ok(CheckpointPage {
         checkpoints,
         next_after,
