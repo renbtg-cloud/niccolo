@@ -1114,16 +1114,29 @@ pub fn package_sha256(package: &PresentationPackage) -> Result<String, Presentat
     ))
 }
 
+pub struct SensitiveExportRequest<'a> {
+    pub workspace: Uuid,
+    pub situation: Uuid,
+    pub analysis: Uuid,
+    pub export_event_id: Uuid,
+    pub actor: Uuid,
+    pub preview: &'a ExaminedSourceExportPreview,
+    pub package_sha256: &'a str,
+}
+
 pub async fn record_sensitive_export_event(
     pool: &PgPool,
-    workspace: Uuid,
-    situation: Uuid,
-    analysis: Uuid,
-    export_event_id: Uuid,
-    actor: Uuid,
-    preview: &ExaminedSourceExportPreview,
-    package_sha256: &str,
+    request: SensitiveExportRequest<'_>,
 ) -> Result<SensitiveExportRecord, PresentationError> {
+    let SensitiveExportRequest {
+        workspace,
+        situation,
+        analysis,
+        export_event_id,
+        actor,
+        preview,
+        package_sha256,
+    } = request;
     if export_event_id.is_nil()
         || actor.is_nil()
         || !preview.within_export_bounds

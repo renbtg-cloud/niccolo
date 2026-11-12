@@ -5372,13 +5372,15 @@ async fn post_presentation_package_with_examined_sources(
         presentation_package::package_sha256(&package).map_err(presentation_api_error)?;
     presentation_package::record_sensitive_export_event(
         &state.pool,
-        workspace,
-        situation,
-        analysis,
-        request.export_event_id,
-        actor,
-        &preview,
-        &package_sha256,
+        presentation_package::SensitiveExportRequest {
+            workspace,
+            situation,
+            analysis,
+            export_event_id: request.export_event_id,
+            actor,
+            preview: &preview,
+            package_sha256: &package_sha256,
+        },
     )
     .await
     .map_err(presentation_api_error)?;
