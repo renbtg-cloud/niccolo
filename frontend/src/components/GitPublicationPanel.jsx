@@ -17,6 +17,7 @@ export function GitPublicationPanel() {
   const [visibility, setVisibility] = useState('PRIVATE');
   const [selectedTarget, setSelectedTarget] = useState('');
   const [selectedPublication, setSelectedPublication] = useState('');
+  const [verificationToken, setVerificationToken] = useState('');
   const [githubToken, setGithubToken] = useState('');
   const [publishConfirmed, setPublishConfirmed] = useState(false);
 
@@ -73,6 +74,16 @@ export function GitPublicationPanel() {
       setSelectedTarget(targetId);
       await qc.invalidateQueries({ queryKey: qk.gitPublicationTargets(client.config) });
     },
+  });
+
+  const verifyTarget = useMutation({
+    mutationFn: async () => {
+      if (!selectedTarget) throw new Error('Select a recorded target first.');
+      if (!verificationToken) throw new Error('Paste a transient GitHub fine-grained token.');
+      return (await client.verifyGitPublicationTarget(selectedTarget, verificationToken)).value;
+    },
+    onError: () => setVerificationToken(''),
+    onSuccess: () => setVerificationToken(''),
   });
 
   const plan = useMutation({
@@ -196,6 +207,16 @@ export function GitPublicationPanel() {
         <li>Provider connection verified: no</li>
         <li>Ready for remote publish now: {preview.data.ready_for_remote_publish?'yes':'no'} — transient provider authorization is still required.</li>
       </ul>
+      <details>
+        <summary>Optional remote preflight — read only</summary>
+        <p><small>Verify that the recorded repository/ref exists and that its actual visibility matches the declaration. This performs GitHub GET requests only and does not create commits, update refs, or persist the token.</small></p>
+        <label>Transient GitHub fine-grained token
+          <input type="password" autoComplete="off" value={verificationToken} onChange={(event) => { verifyTarget.reset(); setVerificationToken(event.target.value); }} placeholder="Fine-grained token with Contents: read on this repository"/>
+        </label>
+        <button disabled={!verificationToken || verifyTarget.isPending} onClick={() => verifyTarget.mutate()}>{verifyTarget.isPending?'Verifying repository/ref…':'Verify repository/ref without publishing'}</button>
+        {verifyTarget.error && <p className="error" role="alert">Target verification failed: {verifyTarget.error.message} The transient token was cleared.</p>}
+        {verifyTarget.data && <p role="status"><strong>Remote target verified without changes.</strong> {verifyTarget.data.repository_full_name} · ref <code>{verifyTarget.data.ref_name}</code> · head <code>{verifyTarget.data.head_commit_sha}</code>. Token cleared.</p>}
+      </details>
       <button disabled={plan.isPending} onClick={() => plan.mutate()}>{plan.isPending?'Recording intent…':'Record publication intent — does not upload'}</button>
       {plan.error && <p className="error" role="alert">Publication intent could not be recorded: {plan.error.message}</p>}
       {plan.isSuccess && <p role="status">Intent recorded locally. GitHub has not been contacted.</p>}

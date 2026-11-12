@@ -87,6 +87,21 @@ export class NiccoloClient {
   presentationPackageWithExaminedSources(id, exportEventId) { return this.request('POST', `${analysisPath(this.config,id)}/presentation-package`, { body: { include_examined_source_fragments: true, export_event_id: exportEventId } }); }
   gitPublicationTargets() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/git-publication-targets`); }
   registerGitPublicationTarget(targetId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/git-publication-targets/${targetId}`, { body }); }
+  async verifyGitPublicationTarget(targetId, githubToken) {
+    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\r\n\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
+    const response = await this.fetch(`/v1/workspaces/${this.config.workspace}/git-publication-targets/${targetId}/verify`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.config.token}`,
+        'X-Niccolo-GitHub-Authorization': `Bearer ${githubToken}`,
+      },
+      cache: 'no-store',
+    });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
+    return { value };
+  }
   gitPublicationPreview(id, targetId) { return this.request('GET', `${analysisPath(this.config,id)}/git-publication-preview?target_id=${targetId}`); }
   gitPublicationIntents(id, limit = 25) { return this.request('GET', `${analysisPath(this.config,id)}/git-publication-intents?limit=${limit}`); }
   recordGitPublicationIntent(id, publicationId, targetId) { return this.request('POST', `${analysisPath(this.config,id)}/git-publication-intents/${publicationId}`, { body: { target_id: targetId } }); }

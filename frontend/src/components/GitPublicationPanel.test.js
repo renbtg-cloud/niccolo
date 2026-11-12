@@ -13,6 +13,15 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).toContain('report success only after the remote commit SHA matches');
   });
 
+  it('offers a read-only transient target preflight before publication', () => {
+    expect(source).toContain('Optional remote preflight — read only');
+    expect(source).toContain('verifyGitPublicationTarget');
+    expect(source).toContain('Verify repository/ref without publishing');
+    expect(source).toContain('does not create commits, update refs, or persist the token');
+    expect(source).toContain("onError: () => setVerificationToken('')");
+    expect(source).toContain("onSuccess: () => setVerificationToken('')");
+  });
+
   it('records exact scope before future provider authorization', () => {
     expect(source).toContain('package_sha256');
     expect(source).toContain('requested_ref');
