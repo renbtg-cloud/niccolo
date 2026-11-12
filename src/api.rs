@@ -766,15 +766,11 @@ fn import_error_for_format(error: ImportError, format: SourceFormat) -> ApiError
         ImportError::Locator | ImportError::OperationalEventInvalid => {
             ApiError(StatusCode::BAD_REQUEST, "invalid source metadata")
         }
-        ImportError::DocumentConflict => {
-            ApiError(StatusCode::CONFLICT, "source document conflict")
-        }
+        ImportError::DocumentConflict => ApiError(StatusCode::CONFLICT, "source document conflict"),
         ImportError::OperationalEventConflict => {
             ApiError(StatusCode::CONFLICT, "operational event identity conflict")
         }
-        ImportError::WorkspaceInvisible => {
-            ApiError(StatusCode::NOT_FOUND, "workspace unavailable")
-        }
+        ImportError::WorkspaceInvisible => ApiError(StatusCode::NOT_FOUND, "workspace unavailable"),
         _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source unavailable"),
     }
 }
