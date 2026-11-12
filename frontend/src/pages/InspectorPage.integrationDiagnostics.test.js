@@ -12,4 +12,8 @@ describe('Inspector integration diagnostics', () => {
   it('keeps attributed upstream-processing declarations visible without treating them as analysis output', () => {
     expect(source).toContain("['upstream processing declarations',()=>client.integrationProcessingDeclarations(0,100),true]");
   });
+  it('keeps runtime resource advice visible as an operator diagnostic', () => {
+    expect(source).toContain("['runtime resources',()=>client.runtimeResources(),true]");
+  });
+
 });
