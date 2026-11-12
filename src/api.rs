@@ -5597,6 +5597,10 @@ fn git_publication_error(error: GitPublicationError) -> ApiError {
         GitPublicationError::Conflict => {
             ApiError(StatusCode::CONFLICT, "git publication ID conflict")
         }
+        GitPublicationError::Stale => ApiError(
+            StatusCode::CONFLICT,
+            "git publication intent is stale; preview and record a new intent",
+        ),
         GitPublicationError::Presentation(PresentationError::Manifest(
             crate::analysis_manifest::ManifestError::Invisible,
         )) => ApiError(StatusCode::NOT_FOUND, "published analysis unavailable"),

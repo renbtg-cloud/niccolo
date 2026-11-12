@@ -20,6 +20,8 @@ pub enum GitPublicationError {
     Invisible,
     #[error("git publication identity conflicts with recorded scope")]
     Conflict,
+    #[error("git publication intent no longer matches the current deterministic package")]
+    Stale,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -426,6 +428,82 @@ pub async fn list_intents(
 }
 
 
+
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicationMaterial {
+    pub target: TargetView,
+    pub intent: PublicationIntentView,
+    pub package: presentation_package::PresentationPackage,
+}
+
+pub async fn publication_material(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    publication_id: Uuid,
+) -> Result<PublicationMaterial, GitPublicationError> {
+    if publication_id.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    let package = presentation_package::build(pool, workspace, situation, analysis).await?;
+    let digest = presentation_package::package_sha256(&package)?;
+    let file_count = u32::try_from(package.files.len()).map_err(|_| GitPublicationError::Stale)?;
+    let total_text_bytes = package.files.values().try_fold(0_u64, |total, value| {
+        total
+            .checked_add(value.len() as u64)
+            .ok_or(GitPublicationError::Stale)
+    })?;
+
+    let mut tx = scoped(pool, workspace).await?;
+    let intent_row: IntentRow = sqlx::query_as(
+        "SELECT publication_id,target_id,situation_id,analysis_id,scope_kind,
+                package_sha256,file_count,total_text_bytes,requested_ref,
+                includes_examined_source_text,includes_original_uploads,publication_state,
+                requested_by_principal_id,created_at::text
+           FROM niccolo.git_publication_intents
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND publication_id=$4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(publication_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Invisible)?;
+    let intent = intent_from_row(intent_row)?;
+    let target_row: TargetRow = sqlx::query_as(
+        "SELECT target_id,provider,repository_owner,repository_name,ref_name,
+                repository_visibility,sensitive_exports_allowed,authorization_mode,
+                created_by_principal_id,created_at::text
+           FROM niccolo.git_publication_targets
+          WHERE workspace_id=$1 AND target_id=$2",
+    )
+    .bind(workspace)
+    .bind(intent.target_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Invisible)?;
+    let target = target_from_row(target_row);
+    tx.commit().await?;
+
+    if intent.scope_kind != "STANDARD_PRESENTATION"
+        || intent.includes_examined_source_text
+        || intent.includes_original_uploads
+        || intent.package_sha256 != digest
+        || intent.file_count != file_count
+        || intent.total_text_bytes != total_text_bytes
+        || intent.requested_ref != target.ref_name
+    {
+        return Err(GitPublicationError::Stale);
+    }
+    Ok(PublicationMaterial {
+        target,
+        intent,
+        package,
+    })
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RemoteEventKind {
