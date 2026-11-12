@@ -210,7 +210,7 @@ function ConnectedSituation({client}){
 
     <article className="source-upload">
       <h3>Add records</h3>
-      <p>Upload an email (.eml) or a plain-text WhatsApp/text export (.txt). Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
+      <p>Upload a plain-text email (.eml) or a WhatsApp chat export (.txt). Generic text files are not interpreted as WhatsApp conversations. Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
       <input
         aria-label="Source file"
         type="file"
