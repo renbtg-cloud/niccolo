@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coverageSignals, proactiveBriefingMeta, recordedChanges, proactiveLeads, reanalysisPrompt } from './reviewPresentation.js';
+import { coverageSignals, humanBriefingSummary, proactiveBriefingMeta, recordedChanges, proactiveLeads, reanalysisPrompt } from './reviewPresentation.js';
 
 describe('review presentation', () => {
   it('presents recorded coverage without converting counts into completeness', () => {
@@ -14,6 +14,40 @@ describe('review presentation', () => {
       'Focus changed', '2 source(s) added', '1 context contribution(s) added', '1 context contribution(s) removed',
     ]);
     expect(recordedChanges({ input_is_current: true, focus_changed: true, added_source_count: 9 })).toEqual([]);
+  });
+
+  it('maps entry briefing counts without inventing authority', () => {
+    const dashboard = {
+      briefing: {
+        input_is_current: false,
+        assumption_count: 2,
+        alternative_count: 3,
+        decision_count: 1,
+        open_question_count: 4,
+        open_condition_count: 1,
+        unresolved_uncertainty_count: 2,
+        undecided_action_count: 1,
+        automatically_ranked: false,
+        briefing_decides_for_human: false,
+        briefing_starts_analysis: false,
+        briefing_executes_actions: false,
+      },
+    };
+    expect(humanBriefingSummary(dashboard)).toEqual({
+      inputIsCurrent: false,
+      assumptionCount: 2,
+      alternativeCount: 3,
+      decisionCount: 1,
+      openQuestionCount: 4,
+      openConditionCount: 1,
+      unresolvedUncertaintyCount: 2,
+      undecidedActionCount: 1,
+      automaticallyRanked: false,
+      decidesForHuman: false,
+      startsAnalysis: false,
+      executesActions: false,
+    });
+    expect(humanBriefingSummary({})).toBeNull();
   });
 
   it('keeps proactive lead selection bounded and transparent without treating ranking as truth', () => {
