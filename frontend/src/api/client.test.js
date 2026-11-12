@@ -88,12 +88,15 @@ describe('BFF client',()=>{
  it('separates standard analysis export from explicitly authorized examined-source export',async()=>{
    const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.presentation-package',files:{'README.md':'x'},published_to_git:false});});
    await x.presentationPackage('a');
+   await x.presentationSourceExportPreview('a');
    await x.presentationPackageWithExaminedSources('a');
    expect(calls[0][0]).toContain('/analysis-snapshots/a/presentation-package');
    expect(calls[0][1].method).toBe('GET');
-   expect(calls[1][0]).toContain('/analysis-snapshots/a/presentation-package');
-   expect(calls[1][1].method).toBe('POST');
-   expect(JSON.parse(calls[1][1].body)).toEqual({include_examined_source_fragments:true});
+   expect(calls[1][0]).toContain('/analysis-snapshots/a/presentation-package/source-preview');
+   expect(calls[1][1].method).toBe('GET');
+   expect(calls[2][0]).toContain('/analysis-snapshots/a/presentation-package');
+   expect(calls[2][1].method).toBe('POST');
+   expect(JSON.parse(calls[2][1].body)).toEqual({include_examined_source_fragments:true});
  });
 
  it('submits explicit human-approved reanalysis without rewriting the prior analysis',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{kind:'REANALYZE',state:'SUCCEEDED',result:{prior_analysis_id:'old',new_analysis_id:'new',historical_output_preserved:true,human_requested_operation:true}});});const r=await x.runReanalysisSync('op-re','old','new','Revisit with new evidence');expect(calls[0][0]).toContain('/bff/operations/op-re/sync');const body=JSON.parse(calls[0][1].body);expect(body.kind).toBe('REANALYZE');expect(body.target_analysis_id).toBe('old');expect(body.input).toEqual({new_analysis_id:'new',goal:'Revisit with new evidence'});expect(r.value.result.historical_output_preserved).toBe(true);});

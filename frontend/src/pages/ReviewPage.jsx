@@ -48,6 +48,7 @@ function ReviewContent(){
  const observed=useOperationObserver(activeOperation);
  const clarifications=useClarifications(); const reasoningInput=useReasoningInput(); const forensicContext=useForensicContext(); const handoff=useReasoningHandoff(); const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
+ const sourceExportPreview=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'presentation-source-preview'):['presentation-source-preview','none'],enabled:!!client&&!!analysis&&!!output.data,queryFn:async()=> (await client.presentationSourceExportPreview(analysis)).value,retry:false});
  const r=review.data; const d=dashboard.data; const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
  const [clarificationDrafts,setClarificationDrafts]=useState({});
  // Keep every hook above conditional returns so connect/selection transitions never change hook order.
@@ -109,7 +110,11 @@ function ReviewContent(){
        {exportPackage.isSuccess&&<p role="status">Archive prepared with {exportPackage.data} files. Keep it private unless you choose to share it.</p>}
        <details className="sensitive-export"><summary>Include examined source text</summary>
          <p><strong>Sensitive export.</strong> This explicitly includes only source fragments recorded as examined by this analysis. It does not include original uploaded files, does not prove those excerpts are true, and may expose private communications. Inspect the ZIP before sharing it.</p>
-         <button disabled={!output.data||exportPackage.isPending||exportPackageWithSources.isPending} onClick={()=>exportPackageWithSources.mutate()}>{exportPackageWithSources.isPending?'Preparing sensitive ZIP…':'Download ZIP with examined source excerpts'}</button>
+         {sourceExportPreview.isPending&&<p>Checking sensitive export scope…</p>}
+         {sourceExportPreview.error&&<p className="error" role="alert">Sensitive export scope unavailable: {sourceExportPreview.error.message}</p>}
+         {sourceExportPreview.data&&<p><strong>Scope preview:</strong> {sourceExportPreview.data.examined_fragment_count} examined fragment(s) · {sourceExportPreview.data.examined_source_text_bytes} UTF-8 byte(s) of excerpt text. Original uploads: no. Establishes truth: no.</p>}
+         {sourceExportPreview.data&&!sourceExportPreview.data.within_export_bounds&&<p className="error" role="alert">This examined-source selection exceeds the bounded sensitive-export limit. Reduce the examined set before exporting source text.</p>}
+         <button disabled={!output.data||exportPackage.isPending||exportPackageWithSources.isPending||sourceExportPreview.isPending||sourceExportPreview.isError||!sourceExportPreview.data?.within_export_bounds} onClick={()=>exportPackageWithSources.mutate()}>{exportPackageWithSources.isPending?'Preparing sensitive ZIP…':'Download ZIP with examined source excerpts'}</button>
          {exportPackageWithSources.error&&<p className="error" role="alert">Sensitive export unavailable: {exportPackageWithSources.error.message}</p>}
          {exportPackageWithSources.isSuccess&&<p role="status">Sensitive archive prepared with {exportPackageWithSources.data} files. No remote publication occurred.</p>}
        </details>

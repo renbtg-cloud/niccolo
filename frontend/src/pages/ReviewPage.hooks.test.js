@@ -18,8 +18,12 @@ describe('ReviewPage hook order', () => {
   });
 
   it('requires a separate explicit action before exporting examined source text', () => {
+    expect(source).toContain('presentationSourceExportPreview(analysis)');
     expect(source).toContain('presentationPackageWithExaminedSources(analysis)');
     expect(source).toContain('Include examined source text');
+    expect(source).toContain('Scope preview:');
+    expect(source).toContain('examined_source_text_bytes');
+    expect(source).toContain('within_export_bounds');
     expect(source).toContain('Sensitive export.');
     expect(source).toContain('only source fragments recorded as examined by this analysis');
     expect(source).toContain('does not prove those excerpts are true');

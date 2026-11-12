@@ -82,6 +82,7 @@ export class NiccoloClient {
   analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
   analysisOutput(id) { return this.request('GET', `${analysisPath(this.config,id)}/output`); }
   presentationPackage(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package`); }
+  presentationSourceExportPreview(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package/source-preview`); }
   presentationPackageWithExaminedSources(id) { return this.request('POST', `${analysisPath(this.config,id)}/presentation-package`, { body: { include_examined_source_fragments: true } }); }
   dashboard(id, operationId) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`); }
   epistemic(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/epistemic`); }
