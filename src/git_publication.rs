@@ -283,6 +283,147 @@ pub async fn preview(
     })
 }
 
+
+type IntentRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    Uuid,
+    String,
+    String,
+    i32,
+    i64,
+    String,
+    bool,
+    bool,
+    String,
+    Uuid,
+    String,
+);
+
+fn intent_from_row(row: IntentRow) -> Result<PublicationIntentView, GitPublicationError> {
+    Ok(PublicationIntentView {
+        publication_id: row.0,
+        target_id: row.1,
+        situation_id: row.2,
+        analysis_id: row.3,
+        scope_kind: row.4,
+        package_sha256: row.5,
+        file_count: u32::try_from(row.6).map_err(|_| GitPublicationError::Conflict)?,
+        total_text_bytes: u64::try_from(row.7).map_err(|_| GitPublicationError::Conflict)?,
+        requested_ref: row.8,
+        includes_examined_source_text: row.9,
+        includes_original_uploads: row.10,
+        publication_state: row.11,
+        requested_by_principal_id: row.12,
+        created_at: row.13,
+        remote_publish_performed: false,
+    })
+}
+
+pub async fn record_intent(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    actor: Uuid,
+    publication_id: Uuid,
+    target_id: Uuid,
+) -> Result<(PublicationIntentView, bool), GitPublicationError> {
+    if publication_id.is_nil() || target_id.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    let preview = preview(pool, workspace, situation, analysis, target_id).await?;
+    let mut tx = scoped(pool, workspace).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.git_publication_intents
+         (workspace_id,publication_id,target_id,situation_id,analysis_id,scope_kind,
+          package_sha256,file_count,total_text_bytes,requested_ref,
+          includes_examined_source_text,includes_original_uploads,requested_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,'STANDARD_PRESENTATION',$6,$7,$8,$9,FALSE,FALSE,$10)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .bind(target_id)
+    .bind(situation)
+    .bind(analysis)
+    .bind(&preview.package_sha256)
+    .bind(i32::try_from(preview.file_count).map_err(|_| GitPublicationError::Invalid)?)
+    .bind(i64::try_from(preview.total_text_bytes).map_err(|_| GitPublicationError::Invalid)?)
+    .bind(&preview.requested_ref)
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    let row: IntentRow = sqlx::query_as(
+        "SELECT publication_id,target_id,situation_id,analysis_id,scope_kind,
+                package_sha256,file_count,total_text_bytes,requested_ref,
+                includes_examined_source_text,includes_original_uploads,publication_state,
+                requested_by_principal_id,created_at::text
+           FROM niccolo.git_publication_intents
+          WHERE workspace_id=$1 AND publication_id=$2",
+    )
+    .bind(workspace)
+    .bind(publication_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Conflict)?;
+    if row.1 != target_id
+        || row.2 != situation
+        || row.3 != analysis
+        || row.4 != "STANDARD_PRESENTATION"
+        || row.5 != preview.package_sha256
+        || row.6 != i32::try_from(preview.file_count).map_err(|_| GitPublicationError::Invalid)?
+        || row.7 != i64::try_from(preview.total_text_bytes).map_err(|_| GitPublicationError::Invalid)?
+        || row.8 != preview.requested_ref
+        || row.9
+        || row.10
+        || row.11 != "AWAITING_REMOTE_AUTHORIZATION"
+        || row.12 != actor
+    {
+        return Err(GitPublicationError::Conflict);
+    }
+    let view = intent_from_row(row)?;
+    tx.commit().await?;
+    Ok((view, !inserted))
+}
+
+pub async fn list_intents(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    limit: i64,
+) -> Result<Vec<PublicationIntentView>, GitPublicationError> {
+    if !(1..=100).contains(&limit) {
+        return Err(GitPublicationError::Invalid);
+    }
+    // Loading the package first proves the analysis is visible and published.
+    let _ = presentation_package::build(pool, workspace, situation, analysis).await?;
+    let mut tx = scoped(pool, workspace).await?;
+    let rows: Vec<IntentRow> = sqlx::query_as(
+        "SELECT publication_id,target_id,situation_id,analysis_id,scope_kind,
+                package_sha256,file_count,total_text_bytes,requested_ref,
+                includes_examined_source_text,includes_original_uploads,publication_state,
+                requested_by_principal_id,created_at::text
+           FROM niccolo.git_publication_intents
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+          ORDER BY created_at DESC,publication_id DESC
+          LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    rows.into_iter().map(intent_from_row).collect()
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
