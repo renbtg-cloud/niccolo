@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { redeemLocalHandoff, takeLocalHandoffFromFragment } from './localHandoff.js';
+import { hasLocalHandoffFragment, redeemLocalHandoff, takeLocalHandoffFromFragment } from './localHandoff.js';
 
 const code = 'a'.repeat(64);
 const token = `ncl_${'b'.repeat(64)}`;
 
 describe('local one-shot handoff', () => {
+  it('detects only a complete standalone handoff fragment', () => {
+    expect(hasLocalHandoffFragment({ hash: `#handoff=${code}` })).toBe(true);
+    expect(hasLocalHandoffFragment({ hash: '#handoff=short' })).toBe(false);
+    expect(hasLocalHandoffFragment({ hash: `#handoff=${code}&extra=1` })).toBe(false);
+    expect(hasLocalHandoffFragment({ hash: '' })).toBe(false);
+  });
+
   it('removes a valid fragment before returning its capability', () => {
     const calls = [];
     const history = { state: { keep: true }, replaceState: (...args) => calls.push(args) };
