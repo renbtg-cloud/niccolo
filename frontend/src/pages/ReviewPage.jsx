@@ -17,6 +17,7 @@ import { useForensicContext } from '../hooks/useForensicContext.js';
 import { handoffSummary, receiptSummary } from '../state/handoffPresentation.js';
 import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
 import { presentationZip } from '../state/presentationZip.js';
+import { GroundedScorePanel } from '../components/GroundedScorePanel.jsx';
 
 function downloadPresentationPackage(pkg, filename) {
  const files=pkg?.files;
@@ -134,6 +135,7 @@ function ReviewContent(){
      {reasoningInput.data&&<article className={`review-panel ${reasoningInput.data.source_packet_truncated?'input-warning':''}`}><h3>What reached the reasoning model</h3><p><strong>{reasoningInput.data.source_fragment_count_included}/{reasoningInput.data.source_fragment_count_total}</strong> frozen source fragment(s) included · {reasoningInput.data.source_bytes_included} source byte(s).</p>{reasoningInput.data.source_packet_truncated&&<p><strong>Input was truncated by the explicit reasoning budget.</strong> The model did not receive every frozen source fragment.</p>}<p><strong>{reasoningInput.data.identity_binding_count??0}</strong> human-confirmed identity binding(s) frozen at identity event #{reasoningInput.data.identity_event_no_max??0}.</p><p><small>Matching speaker labels do not imply the same person. Frozen revision {reasoningInput.data.input_revision} · packet SHA-256 <code>{reasoningInput.data.reasoning_packet_sha256}</code>. This is input observability, not a truth or completeness score.</small></p></article>}
      {forensicContext.error&&<p className="error">Imported historical context unavailable: {forensicContext.error.message}</p>}
      {forensicContext.data?.items?.length>0&&<article className="review-panel"><h3>Imported historical context</h3><p><strong>{forensicContext.data.items.length}</strong> quarantined item(s) were explicitly selected by a human for this analysis.</p><ul>{forensicContext.data.items.slice(0,8).map(item=><li key={item.binding_id}><strong>{item.source_path}</strong>{item.note&&<div>{item.note}</div>}<small>{item.origin_class.replaceAll('_',' ').toLowerCase()} · quarantine provenance: yes · documentary evidence: no · establishes truth: no</small></li>)}</ul>{forensicContext.data.items.length>8&&<p><small>{forensicContext.data.items.length-8} additional imported context item(s) are hidden from this compact review.</small></p>}<p><small>These items are current non-evidence context. They are not part of the frozen analysis input, do not upgrade historical assertions to facts, and never rewrite a published answer.</small></p><a href="/forensic">Inspect or add prior-export context</a></article>}
+     <GroundedScorePanel />
      <div className="review-grid">
        <article><h3>What Niccolò actually used</h3>{coverage.map(x=><p key={x.label}><strong>{x.used}/{x.total}</strong> {x.label.toLowerCase()}</p>)}<p><small>These are recorded coverage counts, not a completeness or truth score.</small></p></article>
        <article><h3>What changed afterward</h3>{changes.length? <ul>{changes.map(x=><li key={x}>{x}</li>)}</ul> : <p>No recorded Situation delta after the frozen input.</p>}</article>
