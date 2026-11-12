@@ -79,63 +79,86 @@ fn check_fragment(f: &SourceFragment) -> Result<(), ParseError> {
         Ok(())
     }
 }
-fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EmailHeader {
+    speaker_label: String,
+    body_start: usize,
+}
+
+fn invalid_email_header<T>(nested: bool, reason: &'static str) -> Result<Option<T>, ParseError> {
+    if nested {
+        Ok(None)
+    } else {
+        Err(ParseError::Unsupported(reason))
+    }
+}
+
+fn parse_email_header(
+    src: &str,
+    start: usize,
+    nested: bool,
+) -> Result<Option<EmailHeader>, ParseError> {
     let mut from: Option<&str> = None;
     let mut content_type: Option<&str> = None;
     let mut transfer: Option<&str> = None;
     let mut body_start = None;
-    for (start, end, line) in iter_lines(src) {
-        let line = if start == 0 {
+    let mut has_date = false;
+    let mut has_subject = false;
+
+    for (relative_start, relative_end, line) in iter_lines(&src[start..]) {
+        let line = if start == 0 && relative_start == 0 {
             line.strip_prefix('\u{feff}').unwrap_or(line)
         } else {
             line
         };
         if line.is_empty() {
-            body_start = Some(end);
+            body_start = Some(start + relative_end);
             break;
         }
-        // This deliberately rejects folded headers rather than silently interpreting
-        // an incomplete RFC 5322 / MIME grammar as reliable structured data.
         if line.starts_with(' ') || line.starts_with('\t') {
-            return Err(ParseError::Unsupported("folded email header"));
+            return invalid_email_header(nested, "folded email header");
         }
-        let (key, value) = line
-            .split_once(':')
-            .ok_or(ParseError::Unsupported("email header"))?;
+        let Some((key, value)) = line.split_once(':') else {
+            return invalid_email_header(nested, "email header");
+        };
         if key.is_empty() || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
-            return Err(ParseError::Unsupported("email header name"));
+            return invalid_email_header(nested, "email header name");
         }
-        let val = value.trim();
-        let key_l = key.to_ascii_lowercase();
-        match key_l.as_str() {
-            "from" if from.replace(val).is_some() => {
-                return Err(ParseError::Unsupported("duplicate From"));
+        let value = value.trim();
+        match key.to_ascii_lowercase().as_str() {
+            "from" if from.replace(value).is_some() => {
+                return invalid_email_header(nested, "duplicate From");
             }
-            "content-type" if content_type.replace(val).is_some() => {
-                return Err(ParseError::Unsupported("duplicate Content-Type"));
+            "content-type" if content_type.replace(value).is_some() => {
+                return invalid_email_header(nested, "duplicate Content-Type");
             }
-            "content-transfer-encoding" if transfer.replace(val).is_some() => {
-                return Err(ParseError::Unsupported("duplicate transfer encoding"));
+            "content-transfer-encoding" if transfer.replace(value).is_some() => {
+                return invalid_email_header(nested, "duplicate transfer encoding");
             }
-            "from" => {
-                from = Some(val);
-            }
-            "content-type" => {
-                content_type = Some(val);
-            }
-            "content-transfer-encoding" => {
-                transfer = Some(val);
-            }
+            "from" => from = Some(value),
+            "content-type" => content_type = Some(value),
+            "content-transfer-encoding" => transfer = Some(value),
+            "date" => has_date = true,
+            "subject" => has_subject = true,
             _ => {}
         }
     }
-    let begin = body_start.ok_or(ParseError::Unsupported("email header/body delimiter"))?;
-    let label = from.ok_or(ParseError::Unsupported("email From"))?;
+
+    let Some(begin) = body_start else {
+        return invalid_email_header(nested, "email header/body delimiter");
+    };
+    let Some(label) = from else {
+        return invalid_email_header(nested, "email From");
+    };
+    if nested && (!has_date || !has_subject) {
+        return Ok(None);
+    }
+
     if let Some(ct) = content_type {
         let normalized = ct.to_ascii_lowercase();
         let mut pieces = normalized.split(';').map(str::trim);
         if pieces.next() != Some("text/plain") {
-            return Err(ParseError::Unsupported("non-plain-text MIME"));
+            return invalid_email_header(nested, "non-plain-text MIME");
         }
         for param in pieces {
             if !param.is_empty()
@@ -144,28 +167,92 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
                 && param != "charset=\"utf-8\""
                 && param != "charset=\"us-ascii\""
             {
-                return Err(ParseError::Unsupported("MIME parameter"));
+                return invalid_email_header(nested, "MIME parameter");
             }
         }
     }
     if let Some(encoding) = transfer
         && !["7bit", "8bit"].contains(&encoding.to_ascii_lowercase().as_str())
     {
-        return Err(ParseError::Unsupported("encoded email body"));
+        return invalid_email_header(nested, "encoded email body");
     }
-    let content = &src[begin..];
-    if content.trim().is_empty() {
+
+    Ok(Some(EmailHeader {
+        speaker_label: label.to_owned(),
+        body_start: begin,
+    }))
+}
+
+fn email_thread_boundary(src: &str, start: usize) -> bool {
+    start > 0 && (src[..start].ends_with("\n\n") || src[..start].ends_with("\r\n\r\n"))
+}
+
+fn next_embedded_email_header(
+    src: &str,
+    body_start: usize,
+) -> Result<Option<(usize, EmailHeader)>, ParseError> {
+    for (relative_start, _, line) in iter_lines(&src[body_start..]) {
+        let start = body_start + relative_start;
+        if start == body_start || !email_thread_boundary(src, start) {
+            continue;
+        }
+        let Some((key, _)) = line.split_once(':') else {
+            continue;
+        };
+        if !key.trim().eq_ignore_ascii_case("from") {
+            continue;
+        }
+        if let Some(header) = parse_email_header(src, start, true)? {
+            return Ok(Some((start, header)));
+        }
+    }
+    Ok(None)
+}
+
+fn push_email_fragment(
+    fragments: &mut Vec<SourceFragment>,
+    src: &str,
+    start: usize,
+    end: usize,
+    speaker_label: String,
+) -> Result<(), ParseError> {
+    if fragments.len() >= MAX_FRAGMENTS || end <= start || end - start > MAX_FRAGMENT_BYTES {
+        return Err(ParseError::Limit);
+    }
+    if src[start..end].trim().is_empty() {
         return Err(ParseError::Empty);
     }
-    let f = SourceFragment {
-        ordinal: 0,
-        byte_start: begin as i32,
-        byte_end: src.len() as i32,
-        speaker_label: label.to_owned(),
-        content: content.to_owned(),
+    let fragment = SourceFragment {
+        ordinal: fragments.len() as i32,
+        byte_start: start as i32,
+        byte_end: end as i32,
+        speaker_label,
+        content: src[start..end].to_owned(),
     };
-    check_fragment(&f)?;
-    Ok(vec![f])
+    check_fragment(&fragment)?;
+    fragments.push(fragment);
+    Ok(())
+}
+
+fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
+    let first =
+        parse_email_header(src, 0, false)?.ok_or(ParseError::Unsupported("email header"))?;
+    let mut speaker = first.speaker_label;
+    let mut body_start = first.body_start;
+    let mut fragments = Vec::new();
+
+    loop {
+        let next = next_embedded_email_header(src, body_start)?;
+        let body_end = next.as_ref().map_or(src.len(), |(start, _)| *start);
+        push_email_fragment(&mut fragments, src, body_start, body_end, speaker)?;
+        let Some((_, header)) = next else {
+            break;
+        };
+        speaker = header.speaker_label;
+        body_start = header.body_start;
+    }
+
+    Ok(fragments)
 }
 
 fn looks_like_datetime(dt: &str) -> bool {
@@ -185,16 +272,18 @@ fn looks_like_datetime(dt: &str) -> bool {
         return false;
     };
     let mut time_parts = time.trim().split(':');
-    let (Some(hour), Some(minute), None) = (
-        time_parts.next(),
-        time_parts.next(),
-        time_parts.next(),
-    ) else {
+    let (Some(hour), Some(minute), None) =
+        (time_parts.next(), time_parts.next(), time_parts.next())
+    else {
         return false;
     };
-    if ![day, month, year, hour, minute].iter().all(|v| {
-        !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit())
-    }) || hour.len() != 2 || minute.len() != 2 || year.len() < 2 {
+    if ![day, month, year, hour, minute]
+        .iter()
+        .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+        || hour.len() != 2
+        || minute.len() != 2
+        || year.len() < 2
+    {
         return false;
     }
     let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (
@@ -366,6 +455,59 @@ mod tests {
         assert!(!looks_like_datetime("29/02/2025, 12:01"));
         assert!(!looks_like_datetime("00/12/2025, 12:01"));
         assert!(!looks_like_datetime("01/13/2025, 12:01"));
+    }
+
+    #[test]
+    fn canonical_full_email_thread_preserves_sender_boundaries() {
+        let raw = include_bytes!("../fixtures/law-firm-mvp/sources/02_full_thread.eml");
+        let parsed = parse_source(SourceFormat::Eml, raw).unwrap();
+        assert_eq!(parsed.fragments.len(), 3);
+        assert_eq!(
+            parsed
+                .fragments
+                .iter()
+                .map(|fragment| fragment.speaker_label.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "julian.mercer@aurelius.example",
+                "adrian.kessler@aurelius.example",
+                "adrian.kessler@aurelius.example",
+            ]
+        );
+        assert!(
+            parsed.fragments[0]
+                .content
+                .contains("committee meets at noon")
+        );
+        assert!(
+            parsed.fragments[1]
+                .content
+                .contains("Push this through before the committee sees it.")
+        );
+        assert!(
+            parsed.fragments[2]
+                .content
+                .contains("I am not authorizing the settlement or bonus.")
+        );
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &raw[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
+    fn incomplete_from_like_body_text_is_not_promoted_to_an_email_boundary() {
+        let src = "From: root@example.org\nSubject: Actual message\n\nIntro\n\nFrom: quoted@example.org\nThis is prose, not a complete nested email header.\n";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "root@example.org");
+        assert!(
+            parsed.fragments[0]
+                .content
+                .contains("From: quoted@example.org")
+        );
     }
 
     #[test]
