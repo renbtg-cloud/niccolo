@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 const MAX_CHECKPOINTS_PER_OPERATION: i64 = 10_000;
@@ -126,8 +127,25 @@ fn valid(input: &NewCheckpoint) -> bool {
         && input.summary.is_object()
 }
 
+fn canonical(value: &Value) -> Value {
+    match value {
+        Value::Object(fields) => {
+            let sorted = fields
+                .iter()
+                .map(|(key, value)| (key.clone(), canonical(value)))
+                .collect::<BTreeMap<_, _>>();
+            Value::Object(sorted.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonical).collect()),
+        scalar => scalar.clone(),
+    }
+}
+
 fn digest(summary: &Value) -> Result<String, serde_json::Error> {
-    Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(summary)?)))
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&canonical(summary))?)
+    ))
 }
 
 fn view(row: Row) -> Result<CheckpointView, CheckpointError> {
@@ -298,6 +316,19 @@ pub async fn list(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn summary_digest_is_stable_across_object_key_order_and_jsonb_roundtrip_shape() {
+        let a = serde_json::from_str::<Value>(
+            r#"{"z":1,"nested":{"b":2,"a":1},"items":[{"y":2,"x":1}]}"#,
+        )
+        .unwrap();
+        let b = serde_json::from_str::<Value>(
+            r#"{"items":[{"x":1,"y":2}],"nested":{"a":1,"b":2},"z":1}"#,
+        )
+        .unwrap();
+        assert_eq!(digest(&a).unwrap(), digest(&b).unwrap());
+    }
 
     #[test]
     fn semantic_flags_never_turn_progress_into_truth() {
