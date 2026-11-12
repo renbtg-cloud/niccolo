@@ -167,6 +167,52 @@ async fn reader_cannot_create_targets_or_publication_intents() {
 }
 
 #[tokio::test]
+async fn write_only_credential_cannot_publish_an_analysis_it_cannot_read() {
+    let f = setup().await;
+    let (situation, analysis) = published_analysis(&f).await;
+    let target = Uuid::new_v4();
+    let target_uri = format!("/v1/workspaces/{}/git-publication-targets/{target}", f.workspace);
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request(
+                "POST",
+                target_uri,
+                &f.writer,
+                Some(json!({
+                    "repository_owner":"owner",
+                    "repository_name":"history",
+                    "ref_name":"main",
+                    "repository_visibility":"PRIVATE",
+                    "sensitive_exports_allowed":false
+                })),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let write_only = authz::provision_token(&f.admin, Uuid::new_v4(), f.workspace, false, true, 1)
+        .await
+        .unwrap();
+    let publication = Uuid::new_v4();
+    let uri = format!(
+        "/v1/workspaces/{}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-intents/{publication}",
+        f.workspace
+    );
+    assert_eq!(
+        call(
+            f.router.clone(),
+            request("POST", uri, &write_only, Some(json!({"target_id":target}))),
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
 async fn publication_metadata_is_workspace_isolated() {
     let f = setup().await;
     let target = Uuid::new_v4();
