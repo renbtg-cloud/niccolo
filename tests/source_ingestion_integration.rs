@@ -124,10 +124,7 @@ async fn whatsapp_variants_and_system_events_preserve_only_attributed_fragments(
         vec!["Ana", "Bob", "Carla"]
     );
     for (_, start, end, _, content) in &stored {
-        assert_eq!(
-            content.as_bytes(),
-            &raw[*start as usize..*end as usize]
-        );
+        assert_eq!(content.as_bytes(), &raw[*start as usize..*end as usize]);
         assert!(!content.contains("end-to-end encrypted"));
         assert!(!content.contains("changed the group description"));
     }

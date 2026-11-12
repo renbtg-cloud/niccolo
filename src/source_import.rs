@@ -256,10 +256,7 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
 }
 
 fn ascii_number(raw: &str, max_len: usize) -> Option<u32> {
-    if raw.is_empty()
-        || raw.len() > max_len
-        || !raw.bytes().all(|byte| byte.is_ascii_digit())
-    {
+    if raw.is_empty() || raw.len() > max_len || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
     raw.parse().ok()
@@ -298,11 +295,7 @@ fn valid_whatsapp_date(raw: &str) -> bool {
         return false;
     }
     let parts: Vec<&str> = raw.split(separator).collect();
-    if parts.len() != 3
-        || parts[0].len() > 4
-        || parts[1].len() > 2
-        || parts[2].len() > 4
-    {
+    if parts.len() != 3 || parts[0].len() > 4 || parts[1].len() > 2 || parts[2].len() > 4 {
         return false;
     }
     let Some(first) = ascii_number(parts[0], 4) else {
@@ -441,8 +434,7 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         } else {
             line
         };
-        let header =
-            header.trim_start_matches(|ch| matches!(ch, '\u{200e}' | '\u{200f}'));
+        let header = header.trim_start_matches(|ch| matches!(ch, '\u{200e}' | '\u{200f}'));
         match whatsapp_line(header) {
             Some(WhatsappLine::Attributed(speaker)) => {
                 if let Some((old, label)) = pending.replace((start, speaker.to_owned())) {
@@ -554,7 +546,10 @@ mod tests {
             "15.03.24, 24:00",
             "15.03.24, 10:30:60",
         ] {
-            assert!(!looks_like_datetime(invalid), "accepted invalid timestamp {invalid}");
+            assert!(
+                !looks_like_datetime(invalid),
+                "accepted invalid timestamp {invalid}"
+            );
         }
         for valid in [
             "30/04/2022 08:31",
@@ -563,7 +558,10 @@ mod tests {
             "2024/07/09, 08:01:49",
             "2026-03-02, 6:39:22 AM",
         ] {
-            assert!(looks_like_datetime(valid), "rejected valid timestamp {valid}");
+            assert!(
+                looks_like_datetime(valid),
+                "rejected valid timestamp {valid}"
+            );
         }
     }
 
@@ -623,7 +621,11 @@ mod tests {
         assert_eq!(parsed.fragments.len(), 2);
         assert_eq!(parsed.fragments[0].speaker_label, "Ana");
         assert_eq!(parsed.fragments[1].speaker_label, "Beto");
-        assert!(parsed.fragments[0].content.contains("continuation from Ana"));
+        assert!(
+            parsed.fragments[0]
+                .content
+                .contains("continuation from Ana")
+        );
         assert!(!parsed.fragments[0].content.contains("end-to-end encrypted"));
         assert!(!parsed.fragments[1].content.contains("system continuation"));
     }
