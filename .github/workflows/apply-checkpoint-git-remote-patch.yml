@@ -1,0 +1,26 @@
+name: Apply checkpoint remote publication patch
+on:
+  push:
+    branches: [tmp/checkpoint-git-remote-apply-20261112]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/checkpoint-git-remote-apply-20261112
+          fetch-depth: 0
+      - name: Apply verified checkpoint remote publication slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dev-flow/patches/checkpoint-git-remote-20261112.patch /tmp/checkpoint-git-remote.patch
+          git fetch origin ci/mvp-checkpoint
+          test "$(git rev-parse origin/ci/mvp-checkpoint)" = 'a7f4408e9f8bffcdf76c4348b0809458b0132b11'
+          git checkout -B feat/checkpoint-git-remote-20261112 origin/ci/mvp-checkpoint
+          git config user.name 'ChatGPT autonomous worker'
+          git config user.email 'chatgpt-local@invalid'
+          git am /tmp/checkpoint-git-remote.patch
+          git push --force-with-lease origin HEAD:refs/heads/feat/checkpoint-git-remote-20261112
