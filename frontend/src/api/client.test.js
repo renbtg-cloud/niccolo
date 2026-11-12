@@ -67,6 +67,9 @@ describe('BFF client',()=>{
    await x.importForensic('batch','file://prior-niccolo.json',{format:'NICCOLO_SITUATION_FORENSIC_EXPORT'});
    await x.forensicImportItems('batch','logical/tables/a row.json',20);
    await x.forensicImportItem('batch','item');
+   const rawBlob={size:3,type:'application/octet-stream'};
+   const downloadClient=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return {status:200,ok:true,headers:{get:()=>null},json:async()=>({}),blob:async()=>rawBlob};});
+   expect(await downloadClient.downloadForensicOriginal('batch','item')).toBe(rawBlob);
    await x.analysisForensicContext('analysis');
    await x.bindAnalysisForensicContext('analysis','binding','batch','item','Use only as historical context');
    expect(calls[0][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/forensic-export');
@@ -76,8 +79,10 @@ describe('BFF client',()=>{
    expect(JSON.parse(calls[4][1].body)).toEqual({declared_origin:'file://prior-niccolo.json',package:{format:'NICCOLO_SITUATION_FORENSIC_EXPORT'}});
    expect(calls[5][0]).toContain('/forensic-imports/batch/items?after=logical%2Ftables%2Fa%20row.json&limit=20');
    expect(calls[6][0]).toContain('/forensic-imports/batch/items/item');
-   expect(calls[7][0]).toContain('/analysis-snapshots/analysis/forensic-context');
-   expect(JSON.parse(calls[8][1].body)).toEqual({import_batch_id:'batch',item_id:'item',note:'Use only as historical context'});
+   expect(calls[7][0]).toContain('/forensic-imports/batch/items/item/original');
+   expect(calls[7][1].headers.Accept).toBe('application/octet-stream');
+   expect(calls[8][0]).toContain('/analysis-snapshots/analysis/forensic-context');
+   expect(JSON.parse(calls[9][1].body)).toEqual({import_batch_id:'batch',item_id:'item',note:'Use only as historical context'});
  });
 
  it('submits explicit human-approved reanalysis without rewriting the prior analysis',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{kind:'REANALYZE',state:'SUCCEEDED',result:{prior_analysis_id:'old',new_analysis_id:'new',historical_output_preserved:true,human_requested_operation:true}});});const r=await x.runReanalysisSync('op-re','old','new','Revisit with new evidence');expect(calls[0][0]).toContain('/bff/operations/op-re/sync');const body=JSON.parse(calls[0][1].body);expect(body.kind).toBe('REANALYZE');expect(body.target_analysis_id).toBe('old');expect(body.input).toEqual({new_analysis_id:'new',goal:'Revisit with new evidence'});expect(r.value.result.historical_output_preserved).toBe(true);});

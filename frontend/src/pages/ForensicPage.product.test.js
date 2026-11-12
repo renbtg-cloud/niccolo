@@ -26,6 +26,13 @@ describe('prior Niccolò export quarantine surface', () => {
     expect(page).toContain('pendingBinding.current.bindingId');
   });
 
+  it('allows retained bytes to be downloaded without presenting them as native evidence', () => {
+    expect(page).toContain('Download quarantined original bytes');
+    expect(page).toContain('not a native evidence record');
+    expect(page).toContain("source_kind === 'ORIGINAL_SOURCE_BYTES'");
+    expect(page).toContain('downloadForensicOriginal');
+  });
+
   it('supports bounded pagination over batches and items', () => {
     expect(page).toContain('Previous imports');
     expect(page).toContain('Next imports');

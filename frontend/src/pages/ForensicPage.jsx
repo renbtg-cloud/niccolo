@@ -13,8 +13,7 @@ import {
   validateForensicFile,
 } from '../state/forensicPackage.js';
 
-function downloadJson(value, filename) {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement('a');
@@ -26,6 +25,10 @@ function downloadJson(value, filename) {
   } finally {
     window.setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
+}
+
+function downloadJson(value, filename) {
+  downloadBlob(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }), filename);
 }
 
 function BatchSafety({ batch }) {
@@ -111,6 +114,13 @@ function ConnectedForensicPage({ client }) {
       setItemBackStack([]);
       await qc.invalidateQueries({ queryKey: qk.forensicImports(client.config) });
     },
+  });
+  const downloadOriginal = useMutation({
+    mutationFn: async () => {
+      if (!selectedBatch || !selectedItem) throw new Error('Select a retained original item first.');
+      return client.downloadForensicOriginal(selectedBatch, selectedItem);
+    },
+    onSuccess: (blob) => downloadBlob(blob, `niccolo-quarantine-source-${selectedItem}.bin`),
   });
   const bind = useMutation({
     mutationFn: async () => {
@@ -229,7 +239,12 @@ function ConnectedForensicPage({ client }) {
       {detail.data && <>
         <p><strong>{forensicOriginLabel(detail.data.item.origin_class)}</strong> · <code>{detail.data.item.source_path}</code></p>
         <ul className="compact-facts"><li>Quarantine provenance: {safety.quarantine ? 'yes' : 'no'}</li><li>Establishes truth: {safety.establishesTruth ? 'yes' : 'no'}</li><li>Documentary evidence: {safety.documentaryEvidence ? 'yes' : 'no'}</li><li>Original bytes retained: {detail.data.original_bytes_retained ? 'yes' : 'no'}</li></ul>
-        {detail.data.payload_json ? <details><summary>Inspect imported historical payload</summary><pre>{JSON.stringify(detail.data.payload_json,null,2)}</pre></details> : <p><small>The original bytes are retained in quarantine but are not exposed as a new native source record by this surface.</small></p>}
+        {detail.data.payload_json ? <details><summary>Inspect imported historical payload</summary><pre>{JSON.stringify(detail.data.payload_json,null,2)}</pre></details> : <p><small>This item has no JSON preview. Retained original bytes stay quarantined and are never promoted into the current source catalog by downloading them.</small></p>}
+        {detail.data.item.source_kind === 'ORIGINAL_SOURCE_BYTES' && detail.data.original_bytes_retained && <div>
+          <button disabled={downloadOriginal.isPending} onClick={() => downloadOriginal.mutate()}>{downloadOriginal.isPending ? 'Downloading quarantined bytes…' : 'Download quarantined original bytes'}</button>
+          <small> This is a byte-for-byte historical attachment from the imported package, not a native evidence record.</small>
+          {downloadOriginal.error && <p className="error" role="alert">{downloadOriginal.error.message}</p>}
+        </div>}
       </>}
     </article>}
 
