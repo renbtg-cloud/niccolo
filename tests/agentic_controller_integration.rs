@@ -7,7 +7,7 @@ use niccolo_evidence::{
     human_agency::{self, EvidenceGapInput},
     model_adapter::{self, InvocationPolicy, InvocationScope, ModelError, ModelFuture, ModelRequest, ModelResponse, ReasoningModel},
     model_adapter::DeterministicModel,
-    operation_budget::{self, BudgetError},
+    operation_budget,
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
