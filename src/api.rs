@@ -860,11 +860,22 @@ async fn readiness(State(state): State<AppState>) -> Response {
            WHERE n.nspname='niccolo' AND c.relkind='r' \
              AND a.attname='workspace_id' AND NOT a.attisdropped \
              AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity OR \
-              (SELECT count(*) FROM pg_policy p \
-               WHERE p.polrelid=c.oid AND NOT p.polpermissive \
-                 AND p.polname IN ('api_read_gate','api_write_insert_gate', \
-                                   'api_write_update_gate','api_write_delete_gate') \
-                 AND 'niccolo_api'::regrole::oid=ANY(p.polroles)) <> 4)) \
+              (has_table_privilege('niccolo_api',c.oid,'SELECT') AND NOT EXISTS ( \
+                 SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                   AND NOT p.polpermissive AND p.polname='api_read_gate' AND p.polcmd='r' \
+                   AND 'niccolo_api'::regrole::oid=ANY(p.polroles))) OR \
+              (has_table_privilege('niccolo_api',c.oid,'INSERT') AND NOT EXISTS ( \
+                 SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                   AND NOT p.polpermissive AND p.polname='api_write_insert_gate' AND p.polcmd='a' \
+                   AND 'niccolo_api'::regrole::oid=ANY(p.polroles))) OR \
+              (has_table_privilege('niccolo_api',c.oid,'UPDATE') AND NOT EXISTS ( \
+                 SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                   AND NOT p.polpermissive AND p.polname='api_write_update_gate' AND p.polcmd='w' \
+                   AND 'niccolo_api'::regrole::oid=ANY(p.polroles))) OR \
+              (has_table_privilege('niccolo_api',c.oid,'DELETE') AND NOT EXISTS ( \
+                 SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                   AND NOT p.polpermissive AND p.polname='api_write_delete_gate' AND p.polcmd='d' \
+                   AND 'niccolo_api'::regrole::oid=ANY(p.polroles)))) \
          FROM pg_roles r WHERE r.rolname=current_user",
     )
     .fetch_one(&state.pool)
