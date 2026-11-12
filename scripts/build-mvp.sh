@@ -8,8 +8,16 @@ cd "$ROOT"
 : "${NPM:=npm}"
 : "${CARGO:=cargo}"
 
+npm_ci=(ci)
+cargo_locked=(--locked)
+if [[ "${NICCOLO_OFFLINE:-0}" == "1" ]]; then
+  npm_ci+=(--offline --no-audit --no-fund)
+  cargo_locked+=(--offline)
+  echo "Offline dependency mode enabled."
+fi
+
 echo "[1/5] Install locked frontend dependencies"
-(cd frontend && "$NPM" ci)
+(cd frontend && "$NPM" "${npm_ci[@]}")
 echo "[2/5] Verify frontend regression tests"
 (cd frontend && "$NPM" test)
 echo "[3/5] Build the frontend that Rust embeds"
@@ -21,9 +29,9 @@ for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/a
   fi
 done
 echo "[4/5] Verify Rust unit tests"
-"$CARGO" test --locked --lib
+"$CARGO" test "${cargo_locked[@]}" --lib
 echo "[5/5] Compile the Niccolo API and provisioning CLI"
-"$CARGO" build --locked --release --bin niccolo-api --bin niccolo-provision
+"$CARGO" build "${cargo_locked[@]}" --release --bin niccolo-api --bin niccolo-provision
 
 ext=''
 case "$(uname -s)" in
