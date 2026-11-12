@@ -497,6 +497,102 @@ async fn v391_v430_human_intent_bff_creates_frozen_analysis_and_uses_same_agenti
     assert!(frozen["goal"].as_str().unwrap().contains("evidence"));
 }
 
+#[tokio::test]
+async fn human_intent_exposes_explicit_operation_wide_model_budget() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let request = json!({
+        "analysis_id": analysis,
+        "intent": "UNDERSTAND",
+        "goal": "Use a deliberately bounded reasoning budget.",
+        "reanalysis_of": null,
+        "idempotency_key": format!("intent-budget-{operation}"),
+        "step_budget": 32,
+        "model_budget": {
+            "max_invocations": 17,
+            "max_total_tokens": 54321,
+            "finalization_reserve_ms": 1234
+        },
+        "context": {"surface":"http-budget-integration"}
+    });
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(request),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _, budget) = invoke(
+        s.router.clone(),
+        req("GET", &path(&s, operation, "/budget"), &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(budget["budget"]["max_invocations"], 17);
+    assert_eq!(budget["budget"]["max_total_tokens"], 54321);
+    assert_eq!(budget["budget"]["finalization_reserve_ms"], 1234);
+    assert_eq!(budget["budget"]["budget_is_quality_score"], false);
+}
+
+#[tokio::test]
+async fn malformed_human_intent_model_budget_leaves_no_analysis_or_operation() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let request = json!({
+        "analysis_id": analysis,
+        "intent": "UNDERSTAND",
+        "goal": null,
+        "reanalysis_of": null,
+        "idempotency_key": format!("intent-bad-budget-{operation}"),
+        "step_budget": 32,
+        "model_budget": {"max_invocations": 0},
+        "context": {}
+    });
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(request),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let operation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.bff_operations
+          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(operation)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    let analysis_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.situation_analysis_snapshots
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(analysis)
+    .fetch_one(&s.admin)
+    .await
+    .unwrap();
+    assert_eq!(operation_count, 0);
+    assert_eq!(analysis_count, 0);
+}
+
 fn intent_request(operation: Uuid, analysis: Uuid, intent: &str) -> Value {
     json!({
         "analysis_id": analysis,
