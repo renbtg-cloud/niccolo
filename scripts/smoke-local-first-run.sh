@@ -5,7 +5,6 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 : "${NICCOLO_PG_ADMIN_URL:?new disposable DB required}"
-: "${NICCOLO_PG_SECURE_PASSWORD:?disposable service password required}"
 command -v curl >/dev/null
 command -v node >/dev/null
 if [[ -e .niccolo-local/local.env ]]; then
@@ -17,21 +16,69 @@ test -s .niccolo-local/local.env
 test -s .niccolo-local/identifiers.txt
 test -s .niccolo-local/token.txt
 test -s .niccolo-local/prepared-url.txt
+grep -Fq 'NICCOLO_PG_SECURE_URL=' .niccolo-local/local.env
 # Both files are generated locally with UUIDs / shell-escaped values, never with arbitrary user input.
 # shellcheck disable=SC1091
 source .niccolo-local/local.env
+runtime_password="$(NICCOLO_RUNTIME_URL="$NICCOLO_PG_SECURE_URL" node -e 'process.stdout.write(new URL(process.env.NICCOLO_RUNTIME_URL).password)')"
+admin_password="$(NICCOLO_ADMIN_URL="$NICCOLO_PG_ADMIN_URL" node -e 'process.stdout.write(new URL(process.env.NICCOLO_ADMIN_URL).password)')"
+[[ -n "$runtime_password" && "$runtime_password" != "$admin_password" ]]
+unset runtime_password admin_password
 # shellcheck disable=SC1091
 source .niccolo-local/identifiers.txt
+# Persist the already-exported loopback model configuration through the same
+# helper an ordinary local user can run, then prove start reads it back.
+bash scripts/configure-local-model.sh --from-env > .niccolo-local/model-config.log
+test -s .niccolo-local/model.env
+grep -Fq 'API key: not required for this loopback HTTP endpoint' .niccolo-local/model-config.log
+unset NICCOLO_LLM_BASE_URL NICCOLO_LLM_MODEL NICCOLO_LLM_PROVIDER NICCOLO_LLM_API_KEY NICCOLO_LLM_JSON_MODE
 prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
+grep -Fq 'Reasoning model: configured (niccolo-ci-protocol-smoke)' <<< "$prepared_output"
 grep -Fq "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
 grep -Fq "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
 ! grep -Fq "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
+# The browser opener must wait for readiness and pass only the non-secret prepared URL.
+opener_dir="$(mktemp -d)"
+opener_capture="$(mktemp)"
+cat > "$opener_dir/uname" <<'SH'
+#!/usr/bin/env bash
+printf 'Linux\n'
+SH
+cat > "$opener_dir/curl" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+cat > "$opener_dir/xdg-open" <<'SH'
+#!/usr/bin/env bash
+[[ -z "${NICCOLO_LLM_API_KEY:-}" && -z "${NICCOLO_PG_SECURE_PASSWORD:-}" && -z "${PGPASSWORD:-}" ]] || exit 90
+printf '%s\n' "$1" > "$NICCOLO_BROWSER_CAPTURE"
+SH
+chmod +x "$opener_dir/uname" "$opener_dir/curl" "$opener_dir/xdg-open"
+expected_prepared_url="http://127.0.0.1:38080/?workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}"
+DISPLAY=:99 NICCOLO_BROWSER_CAPTURE="$opener_capture" PATH="$opener_dir:$PATH" \
+  NICCOLO_LLM_API_KEY='must-not-reach-browser' NICCOLO_PG_SECURE_PASSWORD='must-not-reach-browser' \
+  PGPASSWORD='must-not-reach-browser' \
+  bash scripts/open-local-mvp-browser.sh "$expected_prepared_url" 38080
+grep -Fxq "$expected_prepared_url" "$opener_capture"
+! grep -Fq "$(cat .niccolo-local/token.txt)" "$opener_capture" 2>/dev/null || {
+  echo 'Browser opener leaked the bearer token' >&2
+  exit 1
+}
+rm -rf "$opener_dir" "$opener_capture"
 if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example-model' NICCOLO_LLM_API_KEY='' \
     bash scripts/start-local-mvp.sh --print-only > .niccolo-local/incomplete-model.log 2>&1; then
   echo 'Start helper accepted an incomplete remote model configuration' >&2
   exit 1
 fi
 grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' .niccolo-local/incomplete-model.log
+if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example-model' NICCOLO_LLM_API_KEY='' \
+    bash scripts/configure-local-model.sh --from-env > .niccolo-local/incomplete-config.log 2>&1; then
+  echo 'Model configuration helper accepted a remote provider without an API key' >&2
+  exit 1
+fi
+grep -Fq 'Remote HTTPS model providers require an API key.' .niccolo-local/incomplete-config.log
+# Failed reconfiguration must leave the last valid private configuration intact.
+grep -Fq 'niccolo-ci-protocol-smoke' .niccolo-local/model.env
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
 probe_principal="$(node -p "require('node:crypto').randomUUID()")"
@@ -42,7 +89,7 @@ if NICCOLO_PG_ADMIN_URL="$NICCOLO_PG_SECURE_URL" \
   exit 1
 fi
 grep -Fq 'database-owner or BYPASSRLS login' .niccolo-local/runtime-provision.log
-./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
+NICCOLO_OPEN_BROWSER=0 bash scripts/start-local-mvp.sh > .niccolo-local/ci-server.log 2>&1 &
 pid=$!
 cleanup(){ kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
 trap cleanup EXIT

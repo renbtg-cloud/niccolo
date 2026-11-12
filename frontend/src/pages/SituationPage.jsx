@@ -19,14 +19,14 @@ function ContributionItem({ item, pending, onCorrect, onRetract }) {
   </li>;
 }
 
-function FocusForm({ initial = '', label, pending, onSubmit }) {
+function FocusForm({ initial = '', label, pending, onSubmit, autoFocus = false }) {
   const [value, setValue] = useState(initial);
   return <form onSubmit={(event) => {
     event.preventDefault();
     const focus = value.trim();
     if (focus) onSubmit(focus);
   }}>
-    <label>{label}<textarea value={value} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
+    <label>{label}<textarea autoFocus={autoFocus} value={value} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
     <button disabled={pending}>{pending ? 'Saving…' : 'Save'}</button>
   </form>;
 }
@@ -178,7 +178,7 @@ function ConnectedSituation({client}){
     return <section>
       <h2>Start a Situation</h2>
       <p>Give Niccolò the question, concern or project you want to examine. Records can be added immediately afterward.</p>
-      <FocusForm label="Initial focus" pending={create.isPending} onSubmit={(focus) => create.mutate(focus)}/>
+      <FocusForm label="Initial focus" autoFocus pending={create.isPending} onSubmit={(focus) => create.mutate(focus)}/>
       {create.error && <p className="error">{create.error.message}</p>}
     </section>;
   }
@@ -289,7 +289,7 @@ function ConnectedSituation({client}){
         : readiness.error
           ? <p className="error">Niccolò cannot confirm reasoning readiness: {readiness.error.message}</p>
           : readiness.data?.model_configured === false
-            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting, or use .niccolo-local/model.env.</small></>
+            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, run bash scripts/configure-local-model.sh once, then restart Niccolò. The private settings are kept in .niccolo-local/model.env.</small></>
             : <><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></>}
     </article>
 

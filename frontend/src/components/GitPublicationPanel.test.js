@@ -7,7 +7,7 @@ describe('GitPublicationPanel safety boundary', () => {
   it('never presents a local target or intent as a remote publication', () => {
     expect(source).toContain('perform <strong>no upload</strong>');
     expect(source).toContain('does not');
-    expect(source).toContain('connect to GitHub');
+    expect(source).toContain('Only the separately confirmed remote-publish action below accepts a transient GitHub token');
     expect(source).toContain('Remote publish performed: no');
     expect(source).toContain('GitHub has not been contacted.');
     expect(source).toContain('report success only after the remote commit SHA matches');

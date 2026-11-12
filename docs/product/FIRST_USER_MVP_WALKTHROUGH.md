@@ -10,11 +10,15 @@ Use a new dedicated PostgreSQL 17 database. The setup login should own that data
 `CREATEROLE` so bootstrap can create the dedicated restricted runtime login. It does **not** need
 `SUPERUSER` or `BYPASSRLS`.
 
-Set the two required setup variables:
+Set the database-owner connection. Niccolò generates the restricted runtime-login password by
+default, so a first user does not need to invent or manage a second database password:
 
     export NICCOLO_PG_ADMIN_URL='...'
-    export NICCOLO_PG_SECURE_PASSWORD='...'
     bash scripts/bootstrap-local-mvp.sh
+
+Deployment automation may explicitly set `NICCOLO_PG_SECURE_PASSWORD` before bootstrap when it
+needs to control that credential. The value is never printed. The ordinary local path generates a
+random password and stores only the resulting runtime connection string in `.niccolo-local/local.env`.
 
 Bootstrap builds the first-party UI and Rust binaries, applies migrations, creates a restricted
 runtime login, creates one workspace plus one prepared Situation identifier, and mints a private
@@ -32,15 +36,18 @@ Private local files are written under `.niccolo-local/`.
 Niccolò can prepare Situations and retain sources without a reasoning model, but **Analyze**
 requires an OpenAI-compatible model.
 
-For a loopback model runtime, either export the settings before starting:
+The shortest path is the private configuration helper:
 
-    export NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1'
-    export NICCOLO_LLM_MODEL='your-model'
+    bash scripts/configure-local-model.sh
 
-or create the ignored private file `.niccolo-local/model.env` containing the corresponding
-`export` commands.
+It prompts for the OpenAI-compatible base URL and model name, hides API-key input, rejects remote
+plain HTTP, and writes `.niccolo-local/model.env` with restrictive permissions where the platform
+supports them. A loopback HTTP model may be keyless; remote HTTPS providers require an API key.
 
-Remote HTTPS providers additionally require `NICCOLO_LLM_API_KEY`.
+For scripted or temporary overrides, export `NICCOLO_LLM_BASE_URL`, `NICCOLO_LLM_MODEL` and any
+other `NICCOLO_LLM_*` settings before starting. Explicit process-environment values override the
+stored private defaults for that invocation. `--from-env` lets automation persist already-exported
+values without putting an API key on a command line.
 
 Do not put a bearer token or model API key in the prepared browser URL.
 
@@ -56,7 +63,12 @@ Expected output includes:
 - the path `.niccolo-local/token.txt`;
 - whether a reasoning model is configured.
 
-Open the prepared URL.
+On a local desktop, Niccolò waits for the service to become healthy and then makes a best-effort
+attempt to open that prepared URL in the default browser. Headless systems simply keep the printed
+URL as the fallback. Set `NICCOLO_OPEN_BROWSER=0` or pass `--no-browser` to suppress automatic
+opening.
+
+If the browser did not open automatically, open the prepared URL shown by the start command.
 
 The browser receives only the non-secret identifiers. Copy the bearer token from
 `.niccolo-local/token.txt` into the password field and choose **Connect**. Niccolò first performs

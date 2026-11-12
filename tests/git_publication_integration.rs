@@ -159,12 +159,21 @@ async fn target_preflight_requires_transient_provider_authorization_and_never_pe
     let (status, _) = call(f.router.clone(), verify).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    let targets = git_publication::list_targets(&f.secure, f.workspace)
-        .await
-        .unwrap();
+    let (status, listed) = call(
+        f.router.clone(),
+        request(
+            "GET",
+            format!("/v1/workspaces/{}/git-publication-targets", f.workspace),
+            &f.writer,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let targets = listed["targets"].as_array().unwrap();
     assert_eq!(targets.len(), 1);
-    assert!(!targets[0].provider_secret_stored);
-    assert!(!targets[0].remote_connection_verified);
+    assert_eq!(targets[0]["provider_secret_stored"], false);
+    assert_eq!(targets[0]["remote_connection_verified"], false);
 }
 
 #[tokio::test]
@@ -887,7 +896,7 @@ async fn reader_cannot_create_targets_or_publication_intents() {
 }
 
 #[tokio::test]
-async fn write_only_credential_cannot_publish_an_analysis_it_cannot_read() {
+async fn writer_without_explicit_read_flag_can_publish_under_writer_implies_read_policy() {
     let f = setup().await;
     let (situation, analysis) = published_analysis(&f).await;
     let target = Uuid::new_v4();
@@ -931,7 +940,7 @@ async fn write_only_credential_cannot_publish_an_analysis_it_cannot_read() {
         )
         .await
         .0,
-        StatusCode::FORBIDDEN
+        StatusCode::CREATED
     );
 }
 

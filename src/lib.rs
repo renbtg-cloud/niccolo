@@ -23,10 +23,10 @@ pub mod actors;
 pub mod postgres_ingest;
 pub mod postgres_repository;
 pub mod provenance_dag;
+pub mod purpose_history;
 pub mod question_refs;
 pub mod situation;
 pub mod situation_store;
-pub mod purpose_history;
 pub mod source_catalog;
 pub mod source_import;
 
@@ -422,7 +422,6 @@ pub mod analysis_compare;
 pub mod analysis_export;
 pub mod analysis_integrity;
 
-pub mod integrity_scope;
 pub mod analysis_manifest;
 pub mod analysis_read_models;
 pub mod analysis_structure;
@@ -430,6 +429,7 @@ pub mod analysis_timeline;
 pub mod attention_control;
 pub mod control_ledger;
 pub mod decision_points;
+pub mod integrity_scope;
 
 pub mod decision_readiness;
 pub mod human_agency;
@@ -488,6 +488,7 @@ pub mod analysis_quality;
 
 pub mod adversarial_challenge;
 
+pub mod checkpoint_package;
 pub mod operation_budget;
 pub mod operation_checkpoint;
 
@@ -513,9 +514,9 @@ pub mod provenance_clusters;
 
 pub mod grounded_lineage_store;
 
-pub mod presentation_package;
 pub mod git_publication;
 pub mod github_publisher;
+pub mod presentation_package;
 
 pub mod adversarial_dossier;
 
@@ -523,6 +524,6 @@ pub mod runtime_resources;
 
 pub mod resource_policy;
 
-pub mod situation_forensic_export;
-pub mod forensic_import;
 pub mod forensic_context;
+pub mod forensic_import;
+pub mod situation_forensic_export;
