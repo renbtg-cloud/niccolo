@@ -261,4 +261,14 @@ describe('original source downloads', () => {
    expect(JSON.parse(calls[1][1].body)).toEqual({processing_kind:'FILTER',scope_locator:'s3://mail',declaration_text:'Integrator reports a date filter.',source_document_id:null});
  });
 
+ it('reads authenticated runtime resource diagnostics',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{advice_is_operational_only:true,establishes_epistemic_quality:false});});
+   const r=await x.runtimeResources();
+   expect(calls[0][0]).toContain('/v1/workspaces/11111111-1111-4111-8111-111111111111/runtime-resources');
+   expect(calls[0][1]).toBe('GET');
+   expect(r.value.advice_is_operational_only).toBe(true);
+   expect(r.value.establishes_epistemic_quality).toBe(false);
+ });
+
 });
