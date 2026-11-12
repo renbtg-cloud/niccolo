@@ -79,6 +79,8 @@ describe('primary analysis path', () => {
     expect(operations).toContain('useOperationCheckpoints(active)');
     expect(operations).toContain('Anytime checkpoints');
     expect(operations).toContain('A provisional checkpoint is not truth, proof or completeness.');
+    expect(operations).toContain('Download latest checkpoint package');
+    expect(operations).toContain('client.operationCheckpointPackage(active,checkpoint.checkpoint_id)');
   });
 
   it('keeps observing a transiently complete plan until the durable operation settles', () => {
