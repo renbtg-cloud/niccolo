@@ -30,6 +30,13 @@ describe('GitPublicationPanel safety boundary', () => {
     expect(source).not.toContain('localStorage');
   });
 
+  it('shows a secret-free durable remote event trail', () => {
+    expect(source).toContain('Remote publication event log');
+    expect(source).toContain('gitPublicationRemoteEvents');
+    expect(source).toContain('never GitHub tokens or provider response bodies');
+    expect(source).toContain('last_failure_class');
+  });
+
   it('reuses IDs for interrupted target and intent responses', () => {
     expect(source).toContain('pendingTarget.current?.signature !== signature');
     expect(source).toContain('pendingIntent.current?.signature !== signature');

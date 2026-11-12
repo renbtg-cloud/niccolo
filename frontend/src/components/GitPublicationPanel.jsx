@@ -37,6 +37,13 @@ export function GitPublicationPanel() {
     enabled: !!client && !!analysis,
     queryFn: async () => (await client.gitPublicationIntents(analysis, 25)).value,
   });
+  const remoteEvents = useQuery({
+    queryKey: client && analysis && selectedPublication
+      ? ['git-publication-remote-events', client.config.workspace, client.config.situation, analysis, selectedPublication]
+      : ['git-publication-remote-events','none'],
+    enabled: !!client && !!analysis && !!selectedPublication,
+    queryFn: async () => (await client.gitPublicationRemoteEvents(analysis, selectedPublication, 25)).value,
+  });
   const remoteStatus = useQuery({
     queryKey: client && analysis && selectedPublication
       ? ['git-publication-remote-status', client.config.workspace, client.config.situation, analysis, selectedPublication]
@@ -124,6 +131,7 @@ export function GitPublicationPanel() {
       await Promise.all([
         qc.invalidateQueries({ queryKey: qk.gitPublicationIntents(client.config, analysis) }),
         qc.invalidateQueries({ queryKey: ['git-publication-remote-status', client.config.workspace, client.config.situation, analysis, selectedPublication] }),
+        qc.invalidateQueries({ queryKey: ['git-publication-remote-events', client.config.workspace, client.config.situation, analysis, selectedPublication] }),
       ]);
     },
   });
@@ -195,6 +203,9 @@ export function GitPublicationPanel() {
       {remoteStatus.isPending && <p>Checking durable remote status…</p>}
       {remoteStatus.data && <p><strong>{remoteStatus.data.state}</strong>{remoteStatus.data.verified_commit_sha && <> · commit <code>{remoteStatus.data.verified_commit_sha}</code></>}{remoteStatus.data.verified_ref && <> · ref <code>{remoteStatus.data.verified_ref}</code></>}</p>}
       {remoteStatus.error && <p className="error">Remote status unavailable: {remoteStatus.error.message}</p>}
+      {remoteStatus.data?.last_failure_class && <p className="error">Last remote attempt failed: <strong>{remoteStatus.data.last_failure_class}</strong>. No provider response body or token was persisted.</p>}
+      {remoteEvents.data?.events?.length>0 && <details><summary>Remote publication event log ({remoteStatus.data?.event_count ?? remoteEvents.data.events.length})</summary><ol>{remoteEvents.data.events.map((event)=><li key={`${event.event_id}:${event.event_kind}`}><strong>{event.event_kind}</strong>{event.remote_commit_sha&&<> · <code>{event.remote_commit_sha}</code></>}{event.observed_ref&&<> · ref <code>{event.observed_ref}</code></>}{event.failure_class&&<> · {event.failure_class}</>}<div><small>{event.created_at}</small></div></li>)}</ol><p><small>This ledger stores only bounded classification and verified commit/ref metadata, never GitHub tokens or provider response bodies.</small></p></details>}
+      {remoteEvents.error && <p className="error">Remote event history unavailable: {remoteEvents.error.message}</p>}
       {remoteStatus.data?.remote_publish_verified ? <p role="status"><strong>Verified published.</strong> PostgreSQL contains a ref-verification observation for the exact remote commit shown above.</p> : <>
         <label>Transient GitHub fine-grained token
           <input type="password" autoComplete="off" value={githubToken} onChange={(event) => { pendingPublish.current=null; publish.reset(); setGithubToken(event.target.value); }} placeholder="Fine-grained token with Contents: write on this repository"/>
