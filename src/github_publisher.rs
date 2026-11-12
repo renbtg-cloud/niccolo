@@ -744,16 +744,15 @@ mod tests {
         assert!(!verified.requested_ref_exists);
         assert_eq!(verified.head_commit_sha, None);
         assert_eq!(verified.creation_base_ref.as_deref(), Some("main"));
-        assert_eq!(
-            verified.creation_base_commit_sha,
-            Some("b".repeat(40))
+        assert_eq!(verified.creation_base_commit_sha, Some("b".repeat(40)));
+        assert!(
+            transport
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|call| call.0 == "GET")
         );
-        assert!(transport
-            .calls
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|call| call.0 == "GET"));
     }
 
     #[test]
@@ -824,9 +823,19 @@ mod tests {
                 body: Option<&Value>,
             ) -> Result<Value, GitHubPublishError> {
                 assert_eq!(token, "test-secret-token");
-                self.calls.lock().unwrap().push((method.into(), path.into(), body.cloned()));
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push((method.into(), path.into(), body.cloned()));
                 if path.ends_with("/git/ref/heads/niccolo-history")
-                    && self.calls.lock().unwrap().iter().filter(|call| call.1 == path).count() == 1
+                    && self
+                        .calls
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|call| call.1 == path)
+                        .count()
+                        == 1
                 {
                     return Err(GitHubPublishError::ProviderRejected(404));
                 }
@@ -855,14 +864,9 @@ mod tests {
                 .into(),
             ),
         };
-        let verified = publish_standard_package(
-            &transport,
-            &target,
-            &intent,
-            &package,
-            "test-secret-token",
-        )
-        .unwrap();
+        let verified =
+            publish_standard_package(&transport, &target, &intent, &package, "test-secret-token")
+                .unwrap();
         assert_eq!(verified.ref_name, "niccolo-history");
         let calls = transport.calls.lock().unwrap();
         let create_ref = calls

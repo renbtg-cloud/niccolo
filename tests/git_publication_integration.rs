@@ -155,16 +155,13 @@ async fn target_preflight_requires_transient_provider_authorization_and_never_pe
         StatusCode::CREATED
     );
 
-    let verify = request(
-        "POST",
-        format!("{target_uri}/verify"),
-        &f.reader,
-        None,
-    );
+    let verify = request("POST", format!("{target_uri}/verify"), &f.reader, None);
     let (status, _) = call(f.router.clone(), verify).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    let targets = git_publication::list_targets(&f.secure, f.workspace).await.unwrap();
+    let targets = git_publication::list_targets(&f.secure, f.workspace)
+        .await
+        .unwrap();
     assert_eq!(targets.len(), 1);
     assert!(!targets[0].provider_secret_stored);
     assert!(!targets[0].remote_connection_verified);

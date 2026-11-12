@@ -5695,7 +5695,12 @@ async fn verify_git_publication_target(
         github_publisher::verify_target(&transport, &target, &provider_token)
     })
     .await
-    .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "GitHub target verification task failed"))?
+    .map_err(|_| {
+        ApiError(
+            StatusCode::BAD_GATEWAY,
+            "GitHub target verification task failed",
+        )
+    })?
     .map_err(github_publish_error)?;
     Ok(no_store(
         json!({
