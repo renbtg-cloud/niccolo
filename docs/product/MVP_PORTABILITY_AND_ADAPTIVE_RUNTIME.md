@@ -39,9 +39,11 @@ A first package generated from the existing immutable analysis bundle **does not
 
 A bounded examined-source slice is now implemented: the ordinary portable package remains source-ID-only, while a separate write-authorized request can include only source fragment text that was explicitly recorded as examined by that immutable analysis. That sensitive variant is capped at 128 fragments and 512 KiB of excerpt text, excludes original uploaded document bytes, labels the excerpts as non-truth, and still performs no remote publication. A separate read-authorized scope preview reports only the recorded examined-fragment count, excerpt byte count and export bounds before the sensitive action is enabled; it does not expose source text. Successful sensitive exports write a workspace-scoped immutable authorization event containing the actor, bounded scope and SHA-256 of the exact package; retries with the same event ID must match that recorded scope and digest.
 
-The portable package now also exports the recorded epistemic-policy history relevant to the Situation plus human credence records attached to the selected analysis. Those records stay explicitly typed as human/configuration controls: human percentages are not evidence or calibrated truth probabilities, and policy history does not prove that a particular policy generated the published answer. Deterministic grounded-score evaluations are still not exported because they are currently computed on demand rather than persisted as immutable analysis artifacts.
+The portable package now also exports the recorded epistemic-policy history relevant to the Situation plus human credence records attached to the selected analysis. Those records stay explicitly typed as human/configuration controls: human percentages are not evidence or calibrated truth probabilities, and policy history does not prove that a particular policy generated the published answer.
 
-Subsequent bounded work: persist a deterministic grounded-score artifact when a user chooses to record one, then export that exact stored computation; expose explicit publication to the **user-owned GitHub repository** with retry and publication verification.
+An explicit write-authorized grounded claim evaluation can now be recorded as an immutable, retry-safe artifact. The record freezes the selected policy, human-declared confidence (if any), declared evidence strengths, database-validated grounded result, source-graph revision and SHA-256 of the deterministic result. The portable package exports those stored artifacts verbatim plus a compact CSV summary. A stored score remains a heuristic balance: it is not a probability of truth, proof, documentary evidence or a mutation of the published analysis.
+
+Subsequent bounded work: expose the record action cleanly in the human review UI, make recorded-vs-live weighting visually unmistakable, and implement explicit publication to the **user-owned GitHub repository** with retry and publication verification.
 
 ## Adaptive execution + bounded investigation time
 
@@ -61,7 +63,7 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
 | --- | --- | --- |
 | REX-001 | Record portable user-owned historical Git / Python+data MVP contract | This specification |
 | REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
-| REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Partial verified slice: explicit write-authorized export of recorded examined source text plus recorded Situation policy history and analysis human credence; original uploads and immutable grounded-score results remain omitted |
+| REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Verified bounded slices: examined source text export, Situation policy history, analysis human credence, and immutable explicitly recorded grounded-score artifacts; original uploaded document bytes remain omitted |
 | GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Not implemented |
 | GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Not implemented |
 | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
