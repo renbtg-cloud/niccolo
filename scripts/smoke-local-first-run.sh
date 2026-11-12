@@ -20,6 +20,10 @@ grep -Fq 'NICCOLO_PG_SECURE_URL=' .niccolo-local/local.env
 # Both files are generated locally with UUIDs / shell-escaped values, never with arbitrary user input.
 # shellcheck disable=SC1091
 source .niccolo-local/local.env
+runtime_password="$(NICCOLO_RUNTIME_URL="$NICCOLO_PG_SECURE_URL" node -e 'process.stdout.write(new URL(process.env.NICCOLO_RUNTIME_URL).password)')"
+admin_password="$(NICCOLO_ADMIN_URL="$NICCOLO_PG_ADMIN_URL" node -e 'process.stdout.write(new URL(process.env.NICCOLO_ADMIN_URL).password)')"
+[[ -n "$runtime_password" && "$runtime_password" != "$admin_password" ]]
+unset runtime_password admin_password
 # shellcheck disable=SC1091
 source .niccolo-local/identifiers.txt
 # Persist the already-exported loopback model configuration through the same
