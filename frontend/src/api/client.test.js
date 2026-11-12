@@ -87,6 +87,21 @@ describe('BFF client',()=>{
    expect(JSON.parse(calls[9][1].body)).toEqual({import_batch_id:'batch',item_id:'item',note:'Use only as historical context'});
  });
 
+ it('keeps Git publication planning local and explicit at the client boundary',async()=>{
+   const calls=[]; const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,{targets:[],intents:[],package_sha256:'a'.repeat(64)});});
+   await x.gitPublicationTargets();
+   await x.registerGitPublicationTarget('target',{repository_owner:'owner',repository_name:'history',ref_name:'main',repository_visibility:'PRIVATE',sensitive_exports_allowed:false});
+   await x.gitPublicationPreview('analysis','target');
+   await x.gitPublicationIntents('analysis',12);
+   await x.recordGitPublicationIntent('analysis','publication','target');
+   expect(calls[0][0]).toContain('/git-publication-targets');
+   expect(calls[1][0]).toContain('/git-publication-targets/target');
+   expect(calls[2][0]).toContain('/analysis-snapshots/analysis/git-publication-preview?target_id=target');
+   expect(calls[3][0]).toContain('/analysis-snapshots/analysis/git-publication-intents?limit=12');
+   expect(calls[4][0]).toContain('/analysis-snapshots/analysis/git-publication-intents/publication');
+   expect(JSON.parse(calls[4][1].body)).toEqual({target_id:'target'});
+ });
+
  it('separates standard analysis export from explicitly authorized examined-source export',async()=>{
    const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.presentation-package',files:{'README.md':'x'},published_to_git:false});});
    await x.presentationPackage('a');

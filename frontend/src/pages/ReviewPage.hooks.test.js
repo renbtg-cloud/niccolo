@@ -42,6 +42,11 @@ describe('ReviewPage hook order', () => {
     expect(source).toContain('documentary evidence: no');
   });
 
+  it('surfaces Git publication planning without claiming remote publication', () => {
+    expect(source).toContain('<GitPublicationPanel />');
+    expect(source).toContain("import { GitPublicationPanel }");
+  });
+
   it('offers explicit immutable grounded scoring without presenting it as truth', () => {
     expect(source).toContain('<GroundedScorePanel />');
     expect(source).toContain("import { GroundedScorePanel }");
