@@ -86,6 +86,45 @@ pub struct ExaminedSourceExtract {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportedEpistemicPolicy {
+    pub policy_id: Uuid,
+    pub situation_id: Option<Uuid>,
+    pub scope: String,
+    pub support_multiplier_pct: u16,
+    pub counter_multiplier_pct: u16,
+    pub per_origin_cap: u16,
+    pub rationale: String,
+    pub recorded_by_principal_id: Uuid,
+    pub created_at: String,
+    pub is_probability_model: bool,
+    pub proves_policy_was_used_for_published_output: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportedHumanCredence {
+    pub claim_id: Uuid,
+    pub credence_id: Uuid,
+    pub confidence_percent: i16,
+    pub usage_policy: String,
+    pub rationale: String,
+    pub recorded_by_principal_id: Uuid,
+    pub created_at: String,
+    pub is_human_declaration: bool,
+    pub is_calibrated_probability: bool,
+    pub is_documentary_evidence: bool,
+    pub makes_claim_a_fact: bool,
+    pub part_of_frozen_analysis_input: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct PresentationEpistemicContext {
+    pub policies: Vec<ExportedEpistemicPolicy>,
+    pub human_credence: Vec<ExportedHumanCredence>,
+    pub deterministic_scores_exported: bool,
+    pub policy_history_proves_policy_used_for_output: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PresentationPackage {
     pub format: String,
     pub format_version: u32,
@@ -153,6 +192,7 @@ fn csv(header: &[&str], rows: Vec<Vec<String>>) -> String {
 fn from_bundle_and_extracts(
     bundle: &AnalysisBundle,
     examined_source_extracts: &[ExaminedSourceExtract],
+    epistemic: &PresentationEpistemicContext,
 ) -> Result<PresentationPackage, PresentationError> {
     let mut files: BTreeMap<String, String> = BTreeMap::new();
 
@@ -370,6 +410,102 @@ fn from_bundle_and_extracts(
                 .collect(),
         ),
     );
+    files.insert(
+        "data/epistemic_policies.json".into(),
+        serde_json::to_string_pretty(&epistemic.policies)?,
+    );
+    files.insert(
+        "data/epistemic_policies.csv".into(),
+        csv(
+            &[
+                "policy_id",
+                "situation_id",
+                "scope",
+                "support_multiplier_pct",
+                "counter_multiplier_pct",
+                "per_origin_cap",
+                "rationale",
+                "recorded_by_principal_id",
+                "created_at",
+                "is_probability_model",
+                "proves_policy_was_used_for_published_output",
+            ],
+            epistemic
+                .policies
+                .iter()
+                .map(|policy| {
+                    vec![
+                        policy.policy_id.to_string(),
+                        policy.situation_id.map(|id| id.to_string()).unwrap_or_default(),
+                        policy.scope.clone(),
+                        policy.support_multiplier_pct.to_string(),
+                        policy.counter_multiplier_pct.to_string(),
+                        policy.per_origin_cap.to_string(),
+                        policy.rationale.clone(),
+                        policy.recorded_by_principal_id.to_string(),
+                        policy.created_at.clone(),
+                        policy.is_probability_model.to_string(),
+                        policy.proves_policy_was_used_for_published_output.to_string(),
+                    ]
+                })
+                .collect(),
+        ),
+    );
+    files.insert(
+        "data/human_credence.json".into(),
+        serde_json::to_string_pretty(&epistemic.human_credence)?,
+    );
+    files.insert(
+        "data/human_credence.csv".into(),
+        csv(
+            &[
+                "claim_id",
+                "credence_id",
+                "confidence_percent",
+                "usage_policy",
+                "rationale",
+                "recorded_by_principal_id",
+                "created_at",
+                "is_human_declaration",
+                "is_calibrated_probability",
+                "is_documentary_evidence",
+                "makes_claim_a_fact",
+                "part_of_frozen_analysis_input",
+            ],
+            epistemic
+                .human_credence
+                .iter()
+                .map(|entry| {
+                    vec![
+                        entry.claim_id.to_string(),
+                        entry.credence_id.to_string(),
+                        entry.confidence_percent.to_string(),
+                        entry.usage_policy.clone(),
+                        entry.rationale.clone(),
+                        entry.recorded_by_principal_id.to_string(),
+                        entry.created_at.clone(),
+                        entry.is_human_declaration.to_string(),
+                        entry.is_calibrated_probability.to_string(),
+                        entry.is_documentary_evidence.to_string(),
+                        entry.makes_claim_a_fact.to_string(),
+                        entry.part_of_frozen_analysis_input.to_string(),
+                    ]
+                })
+                .collect(),
+        ),
+    );
+    files.insert(
+        "data/epistemic_export_scope.json".into(),
+        serde_json::to_string_pretty(&json!({
+            "recorded_policy_count": epistemic.policies.len(),
+            "recorded_human_credence_count": epistemic.human_credence.len(),
+            "deterministic_scores_exported": epistemic.deterministic_scores_exported,
+            "policy_history_proves_policy_used_for_output": epistemic.policy_history_proves_policy_used_for_output,
+            "human_credence_is_documentary_evidence": false,
+            "human_credence_is_calibrated_probability": false
+        }))?,
+    );
+
     if !examined_source_extracts.is_empty() {
         files.insert(
             "data/examined_source_fragments.json".into(),
@@ -489,7 +625,83 @@ fn from_bundle_and_extracts(
 }
 
 pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, PresentationError> {
-    from_bundle_and_extracts(bundle, &[])
+    from_bundle_and_extracts(bundle, &[], &PresentationEpistemicContext::default())
+}
+
+async fn epistemic_context(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<PresentationEpistemicContext, PresentationError> {
+    let mut tx = scoped(pool, workspace).await?;
+    type PolicyRow = (Uuid, Option<Uuid>, i16, i16, i16, String, Uuid, String);
+    let policies: Vec<PolicyRow> = sqlx::query_as(
+        "SELECT policy_id,situation_id,support_multiplier_pct,counter_multiplier_pct,
+                per_origin_cap,rationale,recorded_by_principal_id,created_at::text
+           FROM niccolo.epistemic_weight_policies
+          WHERE workspace_id=$1 AND (situation_id IS NULL OR situation_id=$2)
+          ORDER BY created_at,policy_id
+          LIMIT 256",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
+    type CredenceRow = (Uuid, Uuid, i16, String, String, Uuid, String);
+    let human_credence: Vec<CredenceRow> = sqlx::query_as(
+        "SELECT claim_id,credence_id,confidence_percent,usage_policy,rationale,
+                recorded_by_principal_id,created_at::text
+           FROM niccolo.situation_analysis_human_credence
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+          ORDER BY claim_id,created_at,credence_id
+          LIMIT 512",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
+    tx.commit().await.map_err(ManifestError::from)?;
+    Ok(PresentationEpistemicContext {
+        policies: policies
+            .into_iter()
+            .map(|row| ExportedEpistemicPolicy {
+                policy_id: row.0,
+                situation_id: row.1,
+                scope: if row.1.is_some() { "SITUATION" } else { "WORKSPACE" }.into(),
+                support_multiplier_pct: row.2 as u16,
+                counter_multiplier_pct: row.3 as u16,
+                per_origin_cap: row.4 as u16,
+                rationale: row.5,
+                recorded_by_principal_id: row.6,
+                created_at: row.7,
+                is_probability_model: false,
+                proves_policy_was_used_for_published_output: false,
+            })
+            .collect(),
+        human_credence: human_credence
+            .into_iter()
+            .map(|row| ExportedHumanCredence {
+                claim_id: row.0,
+                credence_id: row.1,
+                confidence_percent: row.2,
+                usage_policy: row.3,
+                rationale: row.4,
+                recorded_by_principal_id: row.5,
+                created_at: row.6,
+                is_human_declaration: true,
+                is_calibrated_probability: false,
+                is_documentary_evidence: false,
+                makes_claim_a_fact: false,
+                part_of_frozen_analysis_input: false,
+            })
+            .collect(),
+        deterministic_scores_exported: false,
+        policy_history_proves_policy_used_for_output: false,
+    })
 }
 
 async fn scoped(
@@ -683,7 +895,8 @@ pub async fn build(
 ) -> Result<PresentationPackage, PresentationError> {
     // This load performs the authorized workspace-scoped PostgreSQL read.
     let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
-    from_bundle(&bundle)
+    let epistemic = epistemic_context(pool, workspace, situation, analysis).await?;
+    from_bundle_and_extracts(&bundle, &[], &epistemic)
 }
 
 pub async fn build_with_examined_sources_and_preview(
@@ -693,6 +906,7 @@ pub async fn build_with_examined_sources_and_preview(
     analysis: Uuid,
 ) -> Result<(PresentationPackage, ExaminedSourceExportPreview), PresentationError> {
     let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
+    let epistemic = epistemic_context(pool, workspace, situation, analysis).await?;
     let extracts = examined_source_extracts(pool, workspace, situation, analysis).await?;
     let source_bytes = extracts.iter().try_fold(0u64, |total, item| {
         total
@@ -706,7 +920,10 @@ pub async fn build_with_examined_sources_and_preview(
         u64::try_from(extracts.len()).map_err(|_| PresentationError::SourceExtractTooLarge)?,
         source_bytes,
     )?;
-    Ok((from_bundle_and_extracts(&bundle, &extracts)?, preview))
+    Ok((
+        from_bundle_and_extracts(&bundle, &extracts, &epistemic)?,
+        preview,
+    ))
 }
 
 pub async fn build_with_examined_sources(
