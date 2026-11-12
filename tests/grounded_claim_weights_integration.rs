@@ -397,6 +397,58 @@ async fn explicit_grounded_score_record_is_immutable_retry_safe_and_readable() {
     assert_eq!(replay["replayed"], true);
     assert_eq!(replay["record"]["result_sha256"], digest);
 
+    let second_claim = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_claims
+         (workspace_id,situation_id,analysis_id,claim_id,ordinal,claim_kind,claim_text,created_by_principal_id)
+         VALUES($1,$2,$3,$4,2,'INFERENCE','A second recorded claim',$5)",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(s.analysis)
+    .bind(second_claim)
+    .bind(h.principal)
+    .execute(&h.admin)
+    .await
+    .unwrap();
+    for (i, evidence_id) in s.evidence.iter().take(2).enumerate() {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_analysis_claim_fragments
+             (workspace_id,situation_id,analysis_id,claim_id,evidence_id,relation,recorded_by_principal_id)
+             VALUES($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(h.workspace)
+        .bind(h.situation)
+        .bind(s.analysis)
+        .bind(second_claim)
+        .bind(evidence_id)
+        .bind(if i == 0 {
+            "SUPPORTS_AS_USED"
+        } else {
+            "CONTRADICTS_AS_USED"
+        })
+        .bind(h.principal)
+        .execute(&h.admin)
+        .await
+        .unwrap();
+    }
+    let reused_on_other_claim = format!(
+        "/v1/workspaces/{}/situations/{}/analysis-snapshots/{}/claims/{}/epistemic/records/{score}",
+        h.workspace, h.situation, s.analysis, second_claim
+    );
+    let (status, conflict) = call(
+        h.router.clone(),
+        req(
+            "POST",
+            &reused_on_other_claim,
+            &h.writer,
+            Some(request_body.clone()),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(conflict["error"], "grounded score ID conflict");
+
     let mut changed = request_body.clone();
     changed["evidence"][0]["declared_strength"] = json!(79);
     let (status, conflict) = call(
