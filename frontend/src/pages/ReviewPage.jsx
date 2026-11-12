@@ -4,7 +4,7 @@ import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useDashboard } from '../hooks/useDashboard.js';
 import { useUiStore } from '../stores/ui.js';
-import { coverageSignals, proactiveBriefingMeta, recordedChanges, proactiveLeads, reanalysisPrompt } from '../state/reviewPresentation.js';
+import { coverageSignals, humanBriefingSummary, proactiveBriefingMeta, recordedChanges, proactiveLeads, reanalysisPrompt } from '../state/reviewPresentation.js';
 import { launchApprovedReanalysis } from '../state/reanalysisLaunch.js';
 import { useReanalysisRevision } from '../hooks/useReanalysisRevision.js';
 import { useClarifications } from '../hooks/useClarifications.js';
@@ -108,7 +108,7 @@ function ReviewContent(){
  if(!client)return <p>Connect first.</p>;
  if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
  if(review.error||dashboard.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {(review.error??dashboard.error).message}</p></section>;
- const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const leadMeta=proactiveBriefingMeta(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data);
+ const coverage=coverageSignals(r); const changes=recordedChanges(r); const briefing=humanBriefingSummary(d); const leads=proactiveLeads(d); const leadMeta=proactiveBriefingMeta(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data);
 
  return <section><h2>Human review</h2>
    {!r&&<p>Loading review…</p>}
@@ -116,6 +116,7 @@ function ReviewContent(){
      <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
      {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
      {output.error&&<p className="error">Answer unavailable: {output.error.message}</p>}
+     {briefing&&<article className="review-panel human-briefing"><h3>At a glance</h3><p><strong>{briefing.alternativeCount}</strong> competing interpretation(s) · <strong>{briefing.assumptionCount}</strong> explicit assumption(s) · <strong>{briefing.decisionCount}</strong> decision point(s).</p><p><strong>{briefing.openQuestionCount}</strong> open question(s) · <strong>{briefing.openConditionCount}</strong> open condition(s) · <strong>{briefing.unresolvedUncertaintyCount}</strong> unresolved uncertainty item(s) · <strong>{briefing.undecidedActionCount}</strong> undecided action(s).</p><p><small>{briefing.inputIsCurrent?'This briefing describes the current frozen analysis input.':'The Situation changed after this analysis input was frozen; these counts describe the preserved historical analysis.'}</small></p><p><small>{!briefing.automaticallyRanked&&!briefing.decidesForHuman&&!briefing.startsAnalysis&&!briefing.executesActions?'This briefing is descriptive only: it does not rank for you, decide for you, start another analysis or execute an action.':'Automated briefing behavior is present; inspect the recorded analysis state before relying on this summary.'}</small></p></article>}
      <article className="review-panel"><h3>Download this analysis</h3>
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. The standard package contains source IDs but not source text, original uploaded documents or complete model reasoning. This does not upload anything to GitHub or another service.</p>
        <button disabled={!output.data||exportPackage.isPending||exportPackageWithSources.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
