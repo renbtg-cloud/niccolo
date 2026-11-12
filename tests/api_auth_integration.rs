@@ -231,6 +231,44 @@ async fn service_role_cannot_query_auth_tables_or_modify_access() {
     );
 }
 #[tokio::test]
+async fn invalid_source_errors_name_the_selected_import_contract() {
+    let (_admin, _app, w, _, token, router) = setup().await;
+
+    let (text_status, text_error) = invoke(
+        router.clone(),
+        request(
+            "POST",
+            &source(w, Uuid::new_v4()),
+            Some(&token),
+            Some("text/plain"),
+            Some("notes.txt"),
+            b"ordinary notes without WhatsApp attribution\n",
+        ),
+    )
+    .await;
+    assert_eq!(text_status, StatusCode::BAD_REQUEST);
+    assert_eq!(text_error["error"], "invalid WhatsApp chat export");
+
+    let (email_status, email_error) = invoke(
+        router,
+        request(
+            "POST",
+            &source(w, Uuid::new_v4()),
+            Some(&token),
+            Some("message/rfc822"),
+            Some("mail.eml"),
+            b"Subject: no sender\r\n\r\nbody\r\n",
+        ),
+    )
+    .await;
+    assert_eq!(email_status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        email_error["error"],
+        "invalid or unsupported plain-text email source"
+    );
+}
+
+#[tokio::test]
 async fn source_is_atomic_replayable_and_provenance_is_returned_without_truth_claims() {
     let (_admin, _app, w, _, token, router) = setup().await;
     let id = Uuid::new_v4();
