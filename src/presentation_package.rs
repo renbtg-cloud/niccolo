@@ -955,6 +955,29 @@ mod tests {
     }
 
     #[test]
+    fn sensitive_export_scope_bounds_are_exact_and_preview_never_contains_text() {
+        let at_limit = preview_from_counts(128, 512 * 1024).unwrap();
+        assert!(at_limit.within_export_bounds);
+        assert!(!at_limit.exposes_source_text);
+        assert!(!at_limit.includes_original_uploads);
+        assert!(!at_limit.establishes_truth);
+
+        let too_many = preview_from_counts(129, 1).unwrap();
+        assert!(!too_many.within_export_bounds);
+        let too_large = preview_from_counts(1, 512 * 1024 + 1).unwrap();
+        assert!(!too_large.within_export_bounds);
+    }
+
+    #[test]
+    fn presentation_package_digest_is_deterministic_and_content_sensitive() {
+        let a = from_bundle(&example()).unwrap();
+        let mut b = a.clone();
+        assert_eq!(package_sha256(&a).unwrap(), package_sha256(&b).unwrap());
+        b.files.insert("extra.txt".into(), "different".into());
+        assert_ne!(package_sha256(&a).unwrap(), package_sha256(&b).unwrap());
+    }
+
+    #[test]
     fn explicitly_selected_examined_source_text_is_bounded_and_labeled_as_non_truth() {
         let source = ExaminedSourceExtract {
             document_id: Uuid::from_u128(10),
