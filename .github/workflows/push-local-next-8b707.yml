@@ -1,0 +1,28 @@
+name: Push local niccolo-next 8b707b6
+on:
+  push:
+    branches: [tmp/local-next-push-8b707b6]
+permissions:
+  contents: write
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reassemble, verify, apply, and push immediately
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat dev-flow/patches/local-next-8b707b6-part-*.b64 > /tmp/patch.b64
+          test "$(wc -c < /tmp/patch.b64)" = 2232828
+          base64 -d /tmp/patch.b64 | gzip -d > /tmp/8b707b6.mbox
+          git fetch origin ci/mvp-checkpoint
+          git checkout -B local-next-push FETCH_HEAD
+          test "$(git rev-parse HEAD^{tree})" = 56434d80d5bae741f91a0434294bfa1110e36e33
+          git config user.name "ChatGPT autonomous worker"
+          git config user.email "chatgpt-local@invalid"
+          git am /tmp/8b707b6.mbox
+          test "$(git rev-parse HEAD^{tree})" = 29f2e4597b68d797ce1987f731474b963654c73a
+          git push origin HEAD:refs/heads/ci/mvp-checkpoint
