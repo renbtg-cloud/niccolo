@@ -16,5 +16,7 @@ export const qk = {
   agentic: (c, id) => ['agentic-plan', c.workspace, c.situation, id],
   analysis: (c, id, view) => ['analysis', c.workspace, c.situation, id, view],
   groundedScores: (c, id) => ['grounded-scores', c.workspace, c.situation, id],
+  gitPublicationTargets: (c) => ['git-publication-targets', c.workspace],
+  gitPublicationIntents: (c, id) => ['git-publication-intents', c.workspace, c.situation, id],
   dashboard: (c, id, operation) => ['dashboard', c.workspace, c.situation, id, operation ?? null],
 };

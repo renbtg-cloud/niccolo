@@ -1,0 +1,154 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { qk } from '../api/keys.js';
+import { useClient } from '../hooks/useClient.js';
+import { useUiStore } from '../stores/ui.js';
+
+export function GitPublicationPanel() {
+  const client = useClient();
+  const analysis = useUiStore((state) => state.analysis);
+  const qc = useQueryClient();
+  const pendingTarget = useRef(null);
+  const pendingIntent = useRef(null);
+  const [owner, setOwner] = useState('');
+  const [repository, setRepository] = useState('');
+  const [refName, setRefName] = useState('main');
+  const [visibility, setVisibility] = useState('PRIVATE');
+  const [selectedTarget, setSelectedTarget] = useState('');
+
+  const targets = useQuery({
+    queryKey: client ? qk.gitPublicationTargets(client.config) : ['git-publication-targets','none'],
+    enabled: !!client,
+    queryFn: async () => (await client.gitPublicationTargets()).value,
+  });
+  const preview = useQuery({
+    queryKey: client && analysis && selectedTarget
+      ? ['git-publication-preview', client.config.workspace, client.config.situation, analysis, selectedTarget]
+      : ['git-publication-preview','none'],
+    enabled: !!client && !!analysis && !!selectedTarget,
+    queryFn: async () => (await client.gitPublicationPreview(analysis, selectedTarget)).value,
+  });
+  const intents = useQuery({
+    queryKey: client && analysis ? qk.gitPublicationIntents(client.config, analysis) : ['git-publication-intents','none'],
+    enabled: !!client && !!analysis,
+    queryFn: async () => (await client.gitPublicationIntents(analysis, 25)).value,
+  });
+
+  const register = useMutation({
+    mutationFn: async () => {
+      const body = {
+        repository_owner: owner.trim(),
+        repository_name: repository.trim(),
+        ref_name: refName.trim(),
+        repository_visibility: visibility,
+        sensitive_exports_allowed: false,
+      };
+      const signature = JSON.stringify(body);
+      if (pendingTarget.current?.signature !== signature) {
+        pendingTarget.current = { signature, targetId: crypto.randomUUID() };
+      }
+      return (await client.registerGitPublicationTarget(pendingTarget.current.targetId, body)).value;
+    },
+    onSuccess: async (value) => {
+      const targetId = value.target.target_id;
+      pendingTarget.current = null;
+      setSelectedTarget(targetId);
+      await qc.invalidateQueries({ queryKey: qk.gitPublicationTargets(client.config) });
+    },
+  });
+
+  const plan = useMutation({
+    mutationFn: async () => {
+      if (!preview.data || !selectedTarget) throw new Error('Preview this target first.');
+      const signature = JSON.stringify({
+        analysis,
+        target: selectedTarget,
+        sha256: preview.data.package_sha256,
+        ref: preview.data.requested_ref,
+      });
+      if (pendingIntent.current?.signature !== signature) {
+        pendingIntent.current = { signature, publicationId: crypto.randomUUID() };
+      }
+      return (await client.recordGitPublicationIntent(
+        analysis,
+        pendingIntent.current.publicationId,
+        selectedTarget,
+      )).value;
+    },
+    onSuccess: async () => {
+      pendingIntent.current = null;
+      await qc.invalidateQueries({ queryKey: qk.gitPublicationIntents(client.config, analysis) });
+    },
+  });
+
+  if (!client || !analysis) return null;
+  const rows = targets.data?.targets ?? [];
+  const history = intents.data?.intents ?? [];
+  const canRegister = owner.trim() && repository.trim() && refName.trim();
+
+  return <article className="review-panel git-publication-panel">
+    <h3>GitHub publication planning — no upload yet</h3>
+    <p>Record where this portable analysis may later be published. This page stores repository coordinates and an exact package digest only. It does <strong>not</strong> connect to GitHub, accept a provider token, push a commit, or prove remote preservation.</p>
+    <p><small>PostgreSQL remains authoritative. Provider authorization and remote commit/ref verification are deliberately required before any future publisher may say “published”.</small></p>
+
+    <details>
+      <summary>Add a user-owned GitHub target</summary>
+      <label>Owner or organization
+        <input value={owner} maxLength={100} onChange={(event) => { pendingTarget.current=null; register.reset(); setOwner(event.target.value); }} placeholder="your-github-owner"/>
+      </label>
+      <label>Repository
+        <input value={repository} maxLength={100} onChange={(event) => { pendingTarget.current=null; register.reset(); setRepository(event.target.value); }} placeholder="niccolo-history"/>
+      </label>
+      <label>Git ref
+        <input value={refName} maxLength={244} onChange={(event) => { pendingTarget.current=null; register.reset(); setRefName(event.target.value); }} />
+      </label>
+      <label>Declared repository visibility
+        <select value={visibility} onChange={(event) => { pendingTarget.current=null; register.reset(); setVisibility(event.target.value); }}>
+          <option value="PRIVATE">Private</option>
+          <option value="PUBLIC">Public</option>
+          <option value="UNKNOWN">Unknown</option>
+        </select>
+      </label>
+      {visibility !== 'PRIVATE' && <p className="historical-note"><strong>Warning:</strong> this target is not declared private. The current planning slice never includes source text and performs no upload.</p>}
+      <button disabled={!canRegister || register.isPending} onClick={() => register.mutate()}>{register.isPending?'Recording target…':'Record target metadata'}</button>
+      {register.error && <p className="error" role="alert">Target could not be recorded: {register.error.message}</p>}
+    </details>
+
+    <label>Publication target
+      <select value={selectedTarget} onChange={(event) => { pendingIntent.current=null; plan.reset(); setSelectedTarget(event.target.value); }}>
+        <option value="">Select a recorded target</option>
+        {rows.map((target) => <option key={target.target_id} value={target.target_id}>
+          {target.repository_owner}/{target.repository_name} → {target.ref_name}
+        </option>)}
+      </select>
+    </label>
+    {targets.error && <p className="error">Target list unavailable: {targets.error.message}</p>}
+
+    {preview.isPending && <p>Computing exact publication scope…</p>}
+    {preview.error && <p className="error">Publication preview unavailable: {preview.error.message}</p>}
+    {preview.data && <section className="git-publication-preview" aria-label="Git publication preview">
+      <h4>Exact local preview</h4>
+      <p><strong>{preview.data.file_count}</strong> file(s) · {preview.data.total_text_bytes} UTF-8 byte(s) · ref <code>{preview.data.requested_ref}</code></p>
+      <p>Package SHA-256 <code>{preview.data.package_sha256}</code></p>
+      <ul>
+        <li>Examined source text included: no</li>
+        <li>Original uploads included: no</li>
+        <li>Remote publish performed: no</li>
+        <li>Provider connection verified: no</li>
+      </ul>
+      <button disabled={plan.isPending} onClick={() => plan.mutate()}>{plan.isPending?'Recording intent…':'Record publication intent — does not upload'}</button>
+      {plan.error && <p className="error" role="alert">Publication intent could not be recorded: {plan.error.message}</p>}
+      {plan.isSuccess && <p role="status">Intent recorded locally. GitHub has not been contacted.</p>}
+    </section>}
+
+    <details>
+      <summary>Recent publication intents ({history.length})</summary>
+      {intents.error && <p className="error">Intent history unavailable: {intents.error.message}</p>}
+      {history.length===0 ? <p>No publication intent has been recorded for this analysis.</p> :
+        <ul>{history.map((intent) => <li key={intent.publication_id}>
+          <strong>{intent.publication_state}</strong> · <code>{intent.package_sha256}</code>
+          <div><small>Ref {intent.requested_ref} · remote publish performed: no · original uploads: no</small></div>
+        </li>)}</ul>}
+    </details>
+  </article>;
+}
