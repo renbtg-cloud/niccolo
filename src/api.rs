@@ -448,6 +448,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(register_git_publication_target),
         )
         .route(
+            "/v1/workspaces/{workspace}/git-publication-targets/{target}/verify",
+            post(verify_git_publication_target),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/git-publication-preview",
             get(get_git_publication_preview),
         )
@@ -5673,6 +5677,37 @@ async fn register_git_publication_target(
         } else {
             StatusCode::CREATED
         },
+    ))
+}
+
+async fn verify_git_publication_target(
+    State(state): State<AppState>,
+    Path((workspace, target)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let target = git_publication::get_target(&state.pool, workspace, target)
+        .await
+        .map_err(git_publication_error)?;
+    let provider_token = transient_github_token(&headers)?;
+    let verified = tokio::task::spawn_blocking(move || {
+        let transport = github_publisher::CurlGitHubTransport::default();
+        github_publisher::verify_target(&transport, &target, &provider_token)
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "GitHub target verification task failed"))?
+    .map_err(github_publish_error)?;
+    Ok(no_store(
+        json!({
+            "repository_full_name": verified.repository_full_name,
+            "ref_name": verified.ref_name,
+            "head_commit_sha": verified.head_commit_sha,
+            "repository_private": verified.repository_private,
+            "remote_changes_performed": false,
+            "verification_persisted": false,
+            "provider_secret_stored": false
+        }),
+        StatusCode::OK,
     ))
 }
 
