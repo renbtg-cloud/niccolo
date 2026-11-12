@@ -1,4 +1,5 @@
 name: Push archived local devrepo commit 2d9d900
+# byte-exact archive workflow restored
 on:
   push:
     branches: [tmp/local-devrepo-push-20261112]
