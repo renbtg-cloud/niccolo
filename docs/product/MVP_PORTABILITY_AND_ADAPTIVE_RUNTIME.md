@@ -37,7 +37,9 @@ The initial implementation can project a **published, workspace-authorized analy
 
 A first package generated from the existing immutable analysis bundle **does not yet include complete original source bytes, document excerpt text, human confidence trace, provenance clustering evaluations, all intermediary reasoning decisions, or the complete operational event log**. It must disclose those omissions prominently. It must not invent links or reconstruct LLM output that was never recorded.
 
-Subsequent bounded work: disclose selected approved inputs and investigated source extracts with verified authorization; add actual recorded deterministic scoring/weights and policies when stored, so Python can explain those particular computations; expose download packaging and explicit publication to the **user-owned GitHub repository** with retry and publication verification.
+A bounded examined-source slice is now implemented: the ordinary portable package remains source-ID-only, while a separate write-authorized request can include only source fragment text that was explicitly recorded as examined by that immutable analysis. That sensitive variant is capped at 128 fragments and 512 KiB of excerpt text, excludes original uploaded document bytes, labels the excerpts as non-truth, and still performs no remote publication. Recorded deterministic scoring/weight-policy export remains incomplete.
+
+Subsequent bounded work: add actual recorded deterministic scoring/weights and policies when stored, so Python can explain those particular computations; expose download packaging and explicit publication to the **user-owned GitHub repository** with retry and publication verification.
 
 ## Adaptive execution + bounded investigation time
 
@@ -57,7 +59,7 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
 | --- | --- | --- |
 | REX-001 | Record portable user-owned historical Git / Python+data MVP contract | This specification |
 | REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
-| REX-003 | Authorized extraction of select original inputs / scoring provenance | Not implemented |
+| REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Partial verified slice: explicit write-authorized export of recorded examined source text; original uploads and scoring provenance still omitted |
 | GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Not implemented |
 | GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Not implemented |
 | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
