@@ -589,6 +589,8 @@ pub async fn record_remote_event(
 pub async fn remote_status(
     pool: &PgPool,
     workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
     publication_id: Uuid,
 ) -> Result<RemotePublicationStatus, GitPublicationError> {
     if publication_id.is_nil() {
@@ -598,10 +600,12 @@ pub async fn remote_status(
     let intent_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(
              SELECT 1 FROM niccolo.git_publication_intents
-              WHERE workspace_id=$1 AND publication_id=$2
+              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND publication_id=$4
          )",
     )
     .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
     .bind(publication_id)
     .fetch_one(&mut *tx)
     .await?;

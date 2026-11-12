@@ -5775,11 +5775,11 @@ async fn list_git_publication_intents(
 
 async fn get_git_publication_remote_status(
     State(state): State<AppState>,
-    Path((workspace, _situation, _analysis, publication)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    Path((workspace, situation, analysis, publication)): Path<(Uuid, Uuid, Uuid, Uuid)>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let status = git_publication::remote_status(&state.pool, workspace, publication)
+    let status = git_publication::remote_status(&state.pool, workspace, situation, analysis, publication)
         .await
         .map_err(git_publication_error)?;
     Ok(no_store(json!(status), StatusCode::OK))
