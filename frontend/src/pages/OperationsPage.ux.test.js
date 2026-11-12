@@ -59,6 +59,15 @@ describe('primary analysis path', () => {
     expect(operations).toContain('response_id:pendingHumanResponse.current.responseId');
   });
 
+  it('shows live operation-wide budget accounting without presenting it as epistemic quality', () => {
+    expect(operations).toContain('client.operationBudget(active)');
+    expect(operations).toContain("refetchInterval:observed.operation?.terminal?false:2000");
+    expect(operations).toContain('<summary>Reasoning budget</summary>');
+    expect(operations).toContain('token_usage_complete');
+    expect(operations).toContain('used tokens are a lower bound');
+    expect(operations).toContain('not a quality, confidence, or truth score');
+  });
+
   it('shows budget-limited work as provisional instead of pretending synthesis is complete', () => {
     expect(operations).toContain("PARTIAL_BUDGET_BOUNDARY");
     expect(operations).toContain('Useful work so far');

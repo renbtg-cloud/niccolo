@@ -151,5 +151,6 @@ export class NiccoloClient {
   respondAgentic(operationId, stepId, body) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic/steps/${stepId}/human-response`, { body }); }
   operationEvents(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/events?after=${after}&limit=${limit}`); }
   operationCheckpoints(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints?after=${after}&limit=${limit}`); }
+  operationBudget(operationId) { return this.request('GET', `${operationPath(this.config,operationId)}/budget`); }
   cancelOperation(operationId, expectedVersion, reason) { return this.request('POST', `${operationPath(this.config,operationId)}/cancel`, { body: { expected_version: expectedVersion, reason } }); }
 }
