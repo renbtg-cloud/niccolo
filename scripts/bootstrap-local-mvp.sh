@@ -94,7 +94,7 @@ printf '%s\n' "$token" > .niccolo-local/token.txt
 chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt .niccolo-local/prepared-url.txt 2>/dev/null || true
 
 echo 'Local setup complete. Credentials are in .niccolo-local/ (never commit or share).'
-echo 'Set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL to enable local inference.'
+echo 'Configure reasoning: bash scripts/configure-local-model.sh'
 echo 'Start: bash scripts/start-local-mvp.sh'
 echo 'Prepared browser URL: .niccolo-local/prepared-url.txt'
 echo 'Bearer token: .niccolo-local/token.txt'
