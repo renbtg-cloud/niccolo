@@ -11,12 +11,10 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::VecDeque,
     fs::{self, OpenOptions},
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     process::Command,
-    sync::Mutex,
 };
 use uuid::Uuid;
 
@@ -67,8 +65,10 @@ fn branch_name(ref_name: &str) -> Result<&str, GitHubPublishError> {
     let name = ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name);
     if name.is_empty()
         || name.len() > 240
-        || name.starts_with(['/', '.'])
-        || name.ends_with(['/', '.'])
+        || name.starts_with('/')
+        || name.starts_with('.')
+        || name.ends_with('/')
+        || name.ends_with('.')
         || name.ends_with(".lock")
         || name.contains("..")
         || name.contains("@{")
@@ -117,7 +117,11 @@ fn validate_local_material(
     token: &str,
 ) -> Result<String, GitHubPublishError> {
     if !valid_token(token)
+        || target.provider != "GITHUB"
+        || target.authorization_mode != "TRANSIENT_PROVIDER_AUTHORIZATION"
+        || target.provider_secret_stored
         || intent.target_id != target.target_id
+        || intent.requested_ref != target.ref_name
         || intent.scope_kind != "STANDARD_PRESENTATION"
         || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
         || intent.includes_examined_source_text
@@ -434,7 +438,10 @@ impl GitHubTransport for CurlGitHubTransport {
 mod tests {
     use super::*;
     use crate::git_publication::{PublicationIntentView, TargetView};
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::{
+        collections::VecDeque,
+        sync::Mutex,
+    };
 
     struct ScriptedTransport {
         responses: Mutex<VecDeque<Value>>,
