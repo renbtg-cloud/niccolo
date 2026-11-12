@@ -48,6 +48,8 @@ pub struct ExaminedSourceExtract {
     pub ordinal: i32,
     pub format: String,
     pub locator: String,
+    pub document_sha256: String,
+    pub fragment_sha256: String,
     pub speaker_label: String,
     pub content: String,
     pub source_class: String,
@@ -352,6 +354,8 @@ fn from_bundle_and_extracts(
                     "ordinal",
                     "format",
                     "locator",
+                    "document_sha256",
+                    "fragment_sha256",
                     "speaker_label",
                     "source_class",
                     "content",
@@ -365,6 +369,8 @@ fn from_bundle_and_extracts(
                             x.ordinal.to_string(),
                             x.format.clone(),
                             x.locator.clone(),
+                            x.document_sha256.clone(),
+                            x.fragment_sha256.clone(),
                             x.speaker_label.clone(),
                             x.source_class.clone(),
                             x.content.clone(),
@@ -553,9 +559,9 @@ async fn examined_source_extracts(
     analysis: Uuid,
 ) -> Result<Vec<ExaminedSourceExtract>, PresentationError> {
     let mut tx = scoped(pool, workspace).await?;
-    type Row = (Uuid, Uuid, i32, String, String, String, String, String);
+    type Row = (Uuid, Uuid, i32, String, String, String, String, String, String);
     let rows: Vec<Row> = sqlx::query_as(
-        "SELECT d.document_id,f.evidence_id,f.ordinal,d.format,d.locator,
+        "SELECT d.document_id,f.evidence_id,f.ordinal,d.format,d.locator,d.sha256,
                 f.speaker_label,e.content,e.source_class
            FROM niccolo.situation_analysis_snapshots a
            JOIN niccolo.situation_analysis_examined_fragments x
@@ -597,6 +603,7 @@ async fn examined_source_extracts(
         ordinal,
         format,
         locator,
+        document_sha256,
         speaker_label,
         content,
         source_class,
@@ -612,6 +619,8 @@ async fn examined_source_extracts(
             ordinal,
             format,
             locator,
+            document_sha256,
+            fragment_sha256: format!("{:x}", Sha256::digest(content.as_bytes())),
             speaker_label,
             content,
             source_class,
@@ -714,6 +723,11 @@ mod tests {
             ordinal: 1,
             format: "WHATSAPP_EXPORT".into(),
             locator: "chat.txt".into(),
+            document_sha256: "a".repeat(64),
+            fragment_sha256: format!(
+                "{:x}",
+                Sha256::digest(b"=not a spreadsheet command, just untrusted source text")
+            ),
             speaker_label: "Alice".into(),
             content: "=not a spreadsheet command, just untrusted source text".into(),
             source_class: "HUMAN_COMMUNICATION".into(),

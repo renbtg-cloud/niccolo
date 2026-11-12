@@ -7,6 +7,7 @@ use axum::{
 use http_body_util::BodyExt;
 use niccolo_evidence::{api, authz};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -251,6 +252,17 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["evidence_id"], examined.to_string());
     assert_ne!(rows[0]["evidence_id"], unexamined.to_string());
+    assert_eq!(
+        rows[0]["document_sha256"],
+        imported["sha256"].as_str().unwrap()
+    );
+    assert_eq!(
+        rows[0]["fragment_sha256"],
+        format!(
+            "{:x}",
+            Sha256::digest(rows[0]["content"].as_str().unwrap().as_bytes())
+        )
+    );
     assert!(rows[0]["content"].as_str().unwrap().contains("examined private text"));
     assert!(!rows[0]["content"].as_str().unwrap().contains("unexamined private text"));
     assert!(
