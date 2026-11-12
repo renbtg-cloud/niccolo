@@ -15,10 +15,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin 82beed9f9cde794bf29d5c4a6e0d7267fcff2bbb
-          test "$(git rev-parse FETCH_HEAD)" = '82beed9f9cde794bf29d5c4a6e0d7267fcff2bbb'
+          git fetch --no-tags --depth=1 origin df21772d54446836192c85f58e59286026e07efd
+          test "$(git rev-parse FETCH_HEAD)" = 'df21772d54446836192c85f58e59286026e07efd'
           git archive --format=tar.gz --output=niccolo-vm-source.tar.gz FETCH_HEAD
-          printf '%s\n' '82beed9f9cde794bf29d5c4a6e0d7267fcff2bbb' > niccolo-source-commit.txt
+          printf '%s\n' 'df21772d54446836192c85f58e59286026e07efd' > niccolo-source-commit.txt
           sha256sum niccolo-vm-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
