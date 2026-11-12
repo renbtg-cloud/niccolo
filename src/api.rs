@@ -5729,7 +5729,11 @@ async fn record_git_publication_intent(
             "remote_publish_performed": false,
             "requires_provider_authorization_before_publish": true
         }),
-        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
