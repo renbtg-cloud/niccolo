@@ -12,6 +12,7 @@ import { useOperationObserver } from '../hooks/useOperationObserver.js';
 import { useAgenticPlan } from '../hooks/useAgenticPlan.js';
 import { useAnalysisOutput } from '../hooks/useAnalysisOutput.js';
 import { useOperationCheckpoints } from '../hooks/useOperationCheckpoints.js';
+import { checkpointZip } from '../state/presentationZip.js';
 
 const intentSchema=z.object({
   mode:z.enum(['sync','async']),
@@ -23,6 +24,22 @@ const intentSchema=z.object({
   finalizationReserveMs:z.coerce.number().int().min(0).max(300000),
 });
 const humanSchema=z.object({decision:z.enum(['CONTINUE','STOP','REPLAN']),responseText:z.string().trim().max(4096)}).refine(v=>v.decision==='STOP'||v.responseText.length>0,{path:['responseText']});
+
+function downloadCheckpointPackage(pkg, filename) {
+ const archive=checkpointZip(pkg);
+ const url=URL.createObjectURL(archive);
+ try {
+   const anchor=document.createElement('a');
+   anchor.href=url;
+   anchor.download=filename;
+   document.body.append(anchor);
+   anchor.click();
+   anchor.remove();
+ } finally {
+   window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+ }
+ return Object.keys(pkg?.files??{}).length;
+}
 
 function AnswerPanel({ output, operation, error }) {
  if(error)return <p className="error">Answer unavailable: {error.message}</p>;
@@ -72,6 +89,8 @@ export function OperationsPage(){
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const checkpoints=useOperationCheckpoints(active); const output=useAnalysisOutput(analysis,observed.operation);
  const budget=useQuery({queryKey:client&&active?['operation-budget',client.config.workspace,client.config.situation,active]:['operation-budget','none'],enabled:!!client&&!!active,queryFn:async()=> (await client.operationBudget(active)).value,refetchInterval:observed.operation?.terminal?false:2000});
+ const latestCheckpoint=checkpoints.data?.checkpoints?.at(-1)??null;
+ const exportCheckpoint=useMutation({mutationFn:async(checkpoint)=>{if(!active)throw new Error('No active operation');const result=await client.operationCheckpointPackage(active,checkpoint.checkpoint_id);return downloadCheckpointPackage(result.value,'niccolo-operation-'+active+'-checkpoint-'+checkpoint.checkpoint_seq+'.zip');}});
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32,maxInvocations:32,maxTotalTokens:200000,finalizationReserveMs:5000}});
  const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:{decision:'CONTINUE',responseText:''}});
  const run=useMutation({mutationFn:async(v)=>{
@@ -110,6 +129,6 @@ export function OperationsPage(){
  {budget.data?.budget&&<details className="budget-status"><summary>Reasoning budget</summary><p><strong>{budget.data.budget.used_invocations}/{budget.data.budget.max_invocations}</strong> model call(s) used · <strong>{budget.data.budget.used_total_tokens}/{budget.data.budget.max_total_tokens}</strong> reported token(s) used.</p>{!budget.data.budget.token_usage_complete&&<p><small>Some provider calls did not report token usage; used tokens are a lower bound and remaining tokens are an upper bound.</small></p>}{budget.data.budget.stop_reasons?.length>0&&<p><strong>Model-call boundary:</strong> {budget.data.budget.stop_reasons.join(', ').replaceAll('_',' ').toLowerCase()}</p>}<small>Budget accounting limits resource use; it is not a quality, confidence, or truth score.</small></details>}
  {budget.error&&<p className="error">Reasoning budget unavailable: {budget.error.message}</p>}
  {waitingStep&&<form className="human-boundary" onSubmit={humanForm.handleSubmit(v=>respond.mutate(v))}><h3>Niccolò needs your input</h3><p>{waitingStep.label}</p><p><small>Reasoning pauses here until you respond. Your input is recorded; it is not inferred consent for any external action.</small></p><label>What should happen next?<select {...humanForm.register('decision')}><option value="CONTINUE">Continue with this understanding</option><option value="REPLAN">Reconsider the reasoning plan</option><option value="STOP">Stop this analysis</option></select></label><label>Your input<textarea aria-label="Human response" {...humanForm.register('responseText')} placeholder="Clarify, correct, or explain what you want Niccolò to consider."/></label><button disabled={respond.isPending}>{respond.isPending?'Sending…':'Send input'}</button>{humanForm.formState.errors.responseText&&<p className="error">A response is required to continue or replan, but not to stop.</p>}{respond.error&&<p className="error">{respond.error.message}</p>}</form>}
- <details className="desktop-only technical-details"><summary>Technical execution details</summary><div className="inspector-grid"><article><h3>Operation</h3><p><small>Transport: {observed.phase}{observed.stale?' · stale':''}</small></p><pre>{JSON.stringify(observed.operation??run.data?.operation??null,null,2)}</pre></article><article><h3>Agentic plan</h3><pre>{JSON.stringify(plan.data??null,null,2)}</pre></article><article><h3>Operation events</h3>{observed.eventsTruncated&&<p><small>Showing the most recent 500 events. Earlier events remain in the server history.</small></p>}<pre>{JSON.stringify(observed.events??[],null,2)}</pre></article><article><h3>Anytime checkpoints</h3><p><small>Durable progress observations. A provisional checkpoint is not truth, proof or completeness.</small></p><pre>{JSON.stringify(checkpoints.data?.checkpoints??[],null,2)}</pre></article></div></details>
+ <details className="desktop-only technical-details"><summary>Technical execution details</summary><div className="inspector-grid"><article><h3>Operation</h3><p><small>Transport: {observed.phase}{observed.stale?' · stale':''}</small></p><pre>{JSON.stringify(observed.operation??run.data?.operation??null,null,2)}</pre></article><article><h3>Agentic plan</h3><pre>{JSON.stringify(plan.data??null,null,2)}</pre></article><article><h3>Operation events</h3>{observed.eventsTruncated&&<p><small>Showing the most recent 500 events. Earlier events remain in the server history.</small></p>}<pre>{JSON.stringify(observed.events??[],null,2)}</pre></article><article><h3>Anytime checkpoints</h3><p><small>Durable progress observations. A provisional checkpoint is not truth, proof or completeness.</small></p>{latestCheckpoint&&<button disabled={exportCheckpoint.isPending} onClick={()=>exportCheckpoint.mutate(latestCheckpoint)}>{exportCheckpoint.isPending?'Preparing checkpoint ZIP…':'Download latest checkpoint package'}</button>}{exportCheckpoint.error&&<p className="error">Checkpoint export unavailable: {exportCheckpoint.error.message}</p>}<pre>{JSON.stringify(checkpoints.data?.checkpoints??[],null,2)}</pre></article></div></details>
  <small>Advanced delivery choices use the same durable server-side intent semantics. They do not change the meaning of the analysis.</small></section>;
 }
