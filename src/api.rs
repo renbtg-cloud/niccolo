@@ -12,6 +12,7 @@ use crate::analysis_snapshot::{self, AnalysisSnapshotError};
 use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
+use crate::checkpoint_package::{self, CheckpointPackageError};
 use crate::clarification::{self, ClarificationError};
 use crate::clarification_answer::{self, ClarificationAnswerError};
 use crate::collection_provenance::{self, CollectionEventInput, CollectionProvenanceError};
@@ -37,7 +38,6 @@ use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
-use crate::checkpoint_package::{self, CheckpointPackageError};
 use crate::operation_checkpoint::{self, CheckpointError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
