@@ -494,6 +494,56 @@ mod tests {
         );
     }
     #[test]
+    fn common_whatsapp_timestamp_variants_preserve_message_boundaries() {
+        let src = concat!(
+            "30/04/2022 08:31 - Ana: Brazilian no-comma format\n",
+            "3/15/24, 2:30 PM - Bob: US 12-hour format\n",
+            "[15.03.24, 10:30] Carla: dotted iOS-style format\n",
+            "[2024/07/09, 08:01:49] Davi: year-first with seconds\n",
+            "[2026-03-02, 6:39:22 AM] Eva: year-first 12-hour\n",
+        );
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 5);
+        assert_eq!(
+            parsed
+                .fragments
+                .iter()
+                .map(|fragment| fragment.speaker_label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ana", "Bob", "Carla", "Davi", "Eva"]
+        );
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
+    fn flexible_whatsapp_timestamp_detection_still_rejects_impossible_boundaries() {
+        for invalid in [
+            "31/04/2025 12:01",
+            "13/13/2025, 12:01",
+            "2025-02-29, 12:01",
+            "3/15/24, 13:30 PM",
+            "15.03.24, 24:00",
+            "15.03.24, 10:30:60",
+        ] {
+            assert!(!looks_like_datetime(invalid), "accepted invalid timestamp {invalid}");
+        }
+        for valid in [
+            "30/04/2022 08:31",
+            "3/15/24, 2:30 PM",
+            "15.03.24, 10:30",
+            "2024/07/09, 08:01:49",
+            "2026-03-02, 6:39:22 AM",
+        ] {
+            assert!(looks_like_datetime(valid), "rejected valid timestamp {valid}");
+        }
+    }
+
+    #[test]
     fn utf8_bom_export_preserves_original_byte_offsets() {
         let src = "\u{feff}[02/11/2026, 17:01] Ana: Olá\n[02/11/2026, 17:02] Beto: Sim\n";
         let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
@@ -528,7 +578,7 @@ mod tests {
         assert!(looks_like_datetime("29/02/2024, 12:01"));
         assert!(!looks_like_datetime("29/02/2025, 12:01"));
         assert!(!looks_like_datetime("00/12/2025, 12:01"));
-        assert!(!looks_like_datetime("01/13/2025, 12:01"));
+        assert!(!looks_like_datetime("13/13/2025, 12:01"));
     }
 
     #[test]
