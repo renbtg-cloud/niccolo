@@ -1,4 +1,6 @@
 export const MAX_SOURCE_BYTES = 4 * 1024 * 1024;
+export const MAX_SOURCE_BATCH_FILES = 32;
+export const MAX_SOURCE_BATCH_BYTES = 64 * 1024 * 1024;
 
 export function sourceDescriptor(file) {
   if (!file || typeof file.name !== 'string' || !file.name.trim()) {
@@ -25,4 +27,19 @@ export function sourceDescriptor(file) {
     throw new Error('Unsupported source type. Use .eml or .txt.');
   }
   return { locator: name, contentType };
+}
+
+
+export function sourceBatchDescriptors(files) {
+  const selected = Array.from(files ?? []);
+  if (selected.length === 0) throw new Error('Choose at least one source file.');
+  if (selected.length > MAX_SOURCE_BATCH_FILES) {
+    throw new Error(`Choose at most ${MAX_SOURCE_BATCH_FILES} source files at once.`);
+  }
+  const descriptors = selected.map(sourceDescriptor);
+  const totalBytes = selected.reduce((sum, file) => sum + file.size, 0);
+  if (!Number.isSafeInteger(totalBytes) || totalBytes > MAX_SOURCE_BATCH_BYTES) {
+    throw new Error('Selected source batch must be at most 64 MiB.');
+  }
+  return descriptors;
 }

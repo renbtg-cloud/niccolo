@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useSessionStore } from '../stores/session.js';
-import { sourceDescriptor } from '../state/sourceUpload.js';
+import { sourceBatchDescriptors } from '../state/sourceUpload.js';
 import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
@@ -132,10 +132,10 @@ function ConnectedSituation({client}){
   });
   const upload = useMutation({
     mutationFn: async (selectedFiles) => {
-      if (!selectedFiles.length) throw new Error('Choose at least one source file.');
+      const descriptors = sourceBatchDescriptors(selectedFiles);
       const imported = [];
-      for (const selected of selectedFiles) {
-        const descriptor = sourceDescriptor(selected);
+      for (const [index, selected] of selectedFiles.entries()) {
+        const descriptor = descriptors[index];
         const signature = JSON.stringify([
           selected.name,
           selected.size,

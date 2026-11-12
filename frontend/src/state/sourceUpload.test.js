@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SOURCE_BYTES, sourceDescriptor } from './sourceUpload.js';
+import {
+  MAX_SOURCE_BATCH_BYTES,
+  MAX_SOURCE_BATCH_FILES,
+  MAX_SOURCE_BYTES,
+  sourceBatchDescriptors,
+  sourceDescriptor,
+} from './sourceUpload.js';
 
 describe('source upload boundary', () => {
   it('maps eml and text exports to the backend media types', () => {
@@ -21,5 +27,33 @@ describe('source upload boundary', () => {
     expect(() => sourceDescriptor({ name: 'é'.repeat(520) + '.txt', type: 'text/plain', size: 12 })).toThrow(/1024/);
     expect(() => sourceDescriptor({ name: 'chat.txt', type: 'text/plain', size: 0 })).toThrow(/non-empty/);
     expect(() => sourceDescriptor({ name: 'chat.txt', type: 'text/plain', size: MAX_SOURCE_BYTES + 1 })).toThrow(/4 MiB/);
+  });
+});
+
+
+describe('sourceBatchDescriptors', () => {
+  const file = (name, size = 128) => ({ name, size });
+
+  it('validates the entire batch before upload and preserves descriptor order', () => {
+    expect(sourceBatchDescriptors([file('a.txt'), file('b.eml')])).toEqual([
+      { locator: 'a.txt', contentType: 'text/plain' },
+      { locator: 'b.eml', contentType: 'message/rfc822' },
+    ]);
+  });
+
+  it('bounds file count and aggregate selected bytes', () => {
+    expect(() => sourceBatchDescriptors([])).toThrow(/at least one/);
+    expect(() =>
+      sourceBatchDescriptors(Array.from({ length: MAX_SOURCE_BATCH_FILES + 1 }, (_, i) => file(`${i}.txt`)))
+    ).toThrow(/at most/);
+    const chunk = Math.floor(MAX_SOURCE_BATCH_BYTES / 17) + 1;
+    expect(chunk).toBeLessThanOrEqual(MAX_SOURCE_BYTES);
+    expect(() =>
+      sourceBatchDescriptors(Array.from({ length: 17 }, (_, i) => file(`${i}.txt`, chunk)))
+    ).toThrow(/64 MiB/);
+  });
+
+  it('rejects any invalid member before a caller starts network work', () => {
+    expect(() => sourceBatchDescriptors([file('good.txt'), file('bad.pdf')])).toThrow(/Unsupported source type/);
   });
 });
