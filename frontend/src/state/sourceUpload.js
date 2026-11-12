@@ -4,7 +4,7 @@ export const MAX_SOURCE_BATCH_BYTES = 64 * 1024 * 1024;
 
 export function sourceDescriptor(file) {
   if (!file || typeof file.name !== 'string' || !file.name.trim()) {
-    throw new Error('Choose an email (.eml) or WhatsApp/text export (.txt).');
+    throw new Error('Choose an email (.eml) or WhatsApp export (.txt).');
   }
   if (!Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_SOURCE_BYTES) {
     throw new Error('Source must be non-empty and at most 4 MiB.');
@@ -24,7 +24,7 @@ export function sourceDescriptor(file) {
   } else if (lower.endsWith('.txt')) {
     contentType = 'text/plain';
   } else {
-    throw new Error('Unsupported source type. Use .eml or .txt.');
+    throw new Error('Unsupported source type. Use an .eml email or .txt WhatsApp export.');
   }
   return { locator: name, contentType };
 }
