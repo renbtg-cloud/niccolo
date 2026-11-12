@@ -5,6 +5,7 @@
 //! domain semantics into React or creating separate sync/async implementations.
 use crate::analysis_snapshot::{self, AnalysisInputSnapshot};
 use crate::bff_operations::{self, NewOperation, OperationScope, OperationView};
+use crate::operation_budget;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -34,6 +35,13 @@ impl HumanIntent {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelBudgetRequest {
+    pub max_invocations: Option<i64>,
+    pub max_total_tokens: Option<i64>,
+    pub finalization_reserve_ms: Option<i64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntentRequest {
     pub analysis_id: Uuid,
@@ -42,6 +50,8 @@ pub struct IntentRequest {
     pub reanalysis_of: Option<Uuid>,
     pub idempotency_key: Option<String>,
     pub step_budget: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_budget: Option<ModelBudgetRequest>,
     #[serde(default)]
     pub context: Value,
 }
@@ -92,6 +102,7 @@ fn validate_request(request: &IntentRequest, operation: Uuid) -> Result<String, 
     }
     let goal = cleaned_goal(request)?;
     let payload = operation_input(request, &goal);
+    operation_budget::validate_input(&payload).map_err(|_| IntentError::Invalid)?;
     let encoded = serde_json::to_vec(&payload).map_err(|_| IntentError::Invalid)?;
     if encoded.len() > 262_144 {
         return Err(IntentError::Invalid);
@@ -100,7 +111,7 @@ fn validate_request(request: &IntentRequest, operation: Uuid) -> Result<String, 
 }
 
 fn operation_input(request: &IntentRequest, goal: &str) -> Value {
-    json!({
+    let mut payload = json!({
         "human_intent": request.intent,
         "analysis_id": request.analysis_id,
         "reanalysis_of": request.reanalysis_of,
@@ -109,7 +120,21 @@ fn operation_input(request: &IntentRequest, goal: &str) -> Value {
         "context": request.context,
         "human_owns_project": true,
         "automatic_external_action_allowed": false
-    })
+    });
+    if let Some(budget) = &request.model_budget {
+        let mut fields = serde_json::Map::new();
+        if let Some(value) = budget.max_invocations {
+            fields.insert("max_invocations".into(), json!(value));
+        }
+        if let Some(value) = budget.max_total_tokens {
+            fields.insert("max_total_tokens".into(), json!(value));
+        }
+        if let Some(value) = budget.finalization_reserve_ms {
+            fields.insert("finalization_reserve_ms".into(), json!(value));
+        }
+        payload["model_budget"] = Value::Object(fields);
+    }
+    payload
 }
 
 /// Prepare one human-facing Niccolo task. Sync and async delivery surfaces call
@@ -184,6 +209,7 @@ mod tests {
             reanalysis_of: None,
             idempotency_key: None,
             step_budget: None,
+            model_budget: None,
             context: json!({}),
         }
     }
@@ -209,6 +235,29 @@ mod tests {
             Err(IntentError::Invalid)
         ));
         input.idempotency_key = Some("x".repeat(257));
+        assert!(matches!(
+            validate_request(&input, operation),
+            Err(IntentError::Invalid)
+        ));
+    }
+
+    #[test]
+    fn explicit_model_budget_is_bound_into_operation_input_and_validated_early() {
+        let operation = Uuid::new_v4();
+        let mut input = request();
+        input.model_budget = Some(ModelBudgetRequest {
+            max_invocations: Some(7),
+            max_total_tokens: Some(12_345),
+            finalization_reserve_ms: Some(2_000),
+        });
+        let goal = cleaned_goal(&input).unwrap();
+        let payload = operation_input(&input, &goal);
+        assert_eq!(payload["model_budget"]["max_invocations"], 7);
+        assert_eq!(payload["model_budget"]["max_total_tokens"], 12_345);
+        assert_eq!(payload["model_budget"]["finalization_reserve_ms"], 2_000);
+        assert!(validate_request(&input, operation).is_ok());
+
+        input.model_budget.as_mut().unwrap().max_invocations = Some(0);
         assert!(matches!(
             validate_request(&input, operation),
             Err(IntentError::Invalid)
