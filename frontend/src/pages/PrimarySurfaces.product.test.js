@@ -25,6 +25,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(connect).toContain('Send the bearer token separately.');
   });
 
+  it('focuses the first Situation question only while creating it', () => {
+    expect(situation).toContain("function FocusForm({ initial = '', label, pending, onSubmit, autoFocus = false })");
+    expect(situation).toContain('<textarea autoFocus={autoFocus}');
+    expect(situation).toContain('<FocusForm label="Initial focus" autoFocus');
+  });
+
   it('describes Situation preparation without blocking a first pass', () => {
     expect(situation).toContain('What Niccolò has to work with');
     expect(situation).toContain('not a completeness score and not a gate');
