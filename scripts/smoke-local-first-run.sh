@@ -39,11 +39,14 @@ exit 0
 SH
 cat > "$opener_dir/xdg-open" <<'SH'
 #!/usr/bin/env bash
+[[ -z "${NICCOLO_LLM_API_KEY:-}" && -z "${NICCOLO_PG_SECURE_PASSWORD:-}" && -z "${PGPASSWORD:-}" ]] || exit 90
 printf '%s\n' "$1" > "$NICCOLO_BROWSER_CAPTURE"
 SH
 chmod +x "$opener_dir/uname" "$opener_dir/curl" "$opener_dir/xdg-open"
 expected_prepared_url="http://127.0.0.1:38080/?workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}"
 DISPLAY=:99 NICCOLO_BROWSER_CAPTURE="$opener_capture" PATH="$opener_dir:$PATH" \
+  NICCOLO_LLM_API_KEY='must-not-reach-browser' NICCOLO_PG_SECURE_PASSWORD='must-not-reach-browser' \
+  PGPASSWORD='must-not-reach-browser' \
   bash scripts/open-local-mvp-browser.sh "$expected_prepared_url" 38080
 grep -Fxq "$expected_prepared_url" "$opener_capture"
 ! grep -Fq "$(cat .niccolo-local/token.txt)" "$opener_capture" 2>/dev/null || {
