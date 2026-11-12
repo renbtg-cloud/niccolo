@@ -267,6 +267,20 @@ pub fn publish_standard_package<T: GitHubTransport>(
     if response_string(&verified, "/object/sha")? != commit_sha {
         return Err(GitHubPublishError::VerificationMismatch);
     }
+    let verified_commit = transport.json(
+        "GET",
+        &format!("{repo_path}/git/commits/{commit_sha}"),
+        token,
+        None,
+    )?;
+    if response_string(&verified_commit, "/tree/sha")? != tree_sha
+        || verified_commit
+            .get("message")
+            .and_then(Value::as_str)
+            .is_none_or(|message| message != commit_message)
+    {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
 
     Ok(VerifiedGitHubPublication {
         commit_sha,
@@ -557,6 +571,7 @@ mod tests {
             json!({"sha":"6".repeat(40)}),
             json!({"object":{"sha":"6".repeat(40)}}),
             json!({"object":{"sha":"6".repeat(40)}}),
+            json!({"tree":{"sha":"5".repeat(40)},"message":expected_commit_message(&intent)}),
         ]);
         let verified = publish_standard_package(
             &transport,
@@ -618,6 +633,34 @@ mod tests {
                 .any(|call| call.1.ends_with("/git/commits") && call.0 == "POST")
         );
         assert!(!calls.iter().any(|call| call.0 == "PATCH"));
+    }
+
+    #[test]
+    fn ref_match_without_matching_commit_tree_is_not_verified() {
+        let package = package();
+        let intent = intent(&package);
+        let transport = ScriptedTransport::new(vec![
+            json!({"full_name":"owner/history","private":true}),
+            json!({"object":{"sha":"1".repeat(40)}}),
+            json!({"tree":{"sha":"2".repeat(40)},"message":"older"}),
+            json!({"sha":"3".repeat(40)}),
+            json!({"sha":"4".repeat(40)}),
+            json!({"sha":"5".repeat(40)}),
+            json!({"sha":"6".repeat(40)}),
+            json!({"object":{"sha":"6".repeat(40)}}),
+            json!({"object":{"sha":"6".repeat(40)}}),
+            json!({"tree":{"sha":"9".repeat(40)},"message":expected_commit_message(&intent)}),
+        ]);
+        assert_eq!(
+            publish_standard_package(
+                &transport,
+                &target(),
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
+            Err(GitHubPublishError::VerificationMismatch)
+        );
     }
 
     #[test]
