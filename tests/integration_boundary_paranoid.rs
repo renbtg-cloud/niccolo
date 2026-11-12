@@ -398,3 +398,90 @@ one unsupported assertion",
     assert!(assessment.traceable_roots.contains(&root));
     assert!(!assessment.independence_established);
 }
+
+
+#[tokio::test]
+async fn aggregate_integration_diagnostics_report_transport_patterns_without_truth_claims() {
+    let f = setup().await;
+
+    let retry_raw = b"From: Queue\n\nretry storm";
+    let retry_document = Uuid::new_v4();
+    for attempt in 0..3 {
+        let result = ingest_source_with_operational_id(
+            &f.service,
+            f.workspace,
+            if attempt == 0 { retry_document } else { Uuid::new_v4() },
+            SourceFormat::Eml,
+            "fixture://aggregate/retry",
+            retry_raw,
+            Some("aggregate-retry-1"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.delivery_count, attempt + 1);
+    }
+
+    let repeated_raw = b"From: Manual\n\nsame manually imported payload";
+    for n in 0..2 {
+        ingest_source_with_operational_id(
+            &f.service,
+            f.workspace,
+            Uuid::new_v4(),
+            SourceFormat::Eml,
+            &format!("fixture://aggregate/unidentified/{n}"),
+            repeated_raw,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    let fanout_document = Uuid::new_v4();
+    let fanout_raw = b"From: Integrator\n\none document, two operational identities";
+    for operational_id in ["fanout-a", "fanout-b"] {
+        ingest_source_with_operational_id(
+            &f.service,
+            f.workspace,
+            fanout_document,
+            SourceFormat::Eml,
+            "fixture://aggregate/fanout",
+            fanout_raw,
+            Some(operational_id),
+        )
+        .await
+        .unwrap();
+    }
+
+    let path = format!("/v1/workspaces/{}/integration-diagnostics", f.workspace);
+    let (status, body) = call(
+        f.router.clone(),
+        req("GET", path, &f.writer, None, &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["source_document_count"], 4);
+    assert_eq!(body["operational_event_count"], 3);
+    assert_eq!(body["total_delivery_count"], 5);
+    assert_eq!(body["duplicate_delivery_count"], 2);
+    assert_eq!(body["duplicate_operational_event_count"], 1);
+    assert_eq!(body["max_delivery_count"], 3);
+    assert_eq!(body["documents_with_operational_identity"], 2);
+    assert_eq!(body["documents_without_operational_identity"], 2);
+    assert_eq!(body["repeated_unidentified_payload_group_count"], 1);
+    assert_eq!(body["repeated_unidentified_payload_document_count"], 2);
+    assert_eq!(body["max_repeated_unidentified_payload_documents"], 2);
+    assert_eq!(body["documents_with_multiple_operational_ids"], 1);
+    assert_eq!(body["max_operational_ids_per_document"], 2);
+    assert_eq!(
+        body["warning_codes"],
+        json!([
+            "DUPLICATE_OPERATIONAL_DELIVERIES",
+            "REPEATED_PAYLOAD_WITHOUT_OPERATIONAL_IDENTITY",
+            "MULTIPLE_OPERATIONAL_IDS_FOR_DOCUMENT"
+        ])
+    );
+    assert_eq!(
+        body["interpretation"],
+        "Integration diagnostics describe delivery and identity patterns only; they do not measure evidence quality, credibility, independence, or truth."
+    );
+}
