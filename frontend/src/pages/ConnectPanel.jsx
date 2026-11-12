@@ -8,10 +8,10 @@ import { useUiStore } from '../stores/ui.js';
 import { connectionHints, hasPreparedConnectionHints } from '../state/connectionHints.js';
 import { preparedDemoUrl } from '../state/preparedDemoLink.js';
 import { connectionFailureMessage, validateConnection } from '../state/connectionProbe.js';
-import { redeemLocalHandoff, takeLocalHandoffFromFragment } from '../state/localHandoff.js';
+import { hasLocalHandoffFragment, redeemLocalHandoff, takeLocalHandoffFromFragment } from '../state/localHandoff.js';
 export function ConnectPanel(){
  const queryClient=useQueryClient();
- const [checking,setChecking]=useState(false); const [connectionError,setConnectionError]=useState('');
+ const [checking,setChecking]=useState(()=>hasLocalHandoffFragment(window.location)); const [connectionError,setConnectionError]=useState('');
  const hints=connectionHints(window.location.search); const prepared=hasPreparedConnectionHints(hints);
  const {register,handleSubmit,getValues,formState:{errors}}=useForm({resolver:zodResolver(connectionSchema),defaultValues:hints});
  const handoffAttempted=useRef(false);
@@ -56,7 +56,7 @@ export function ConnectPanel(){
    {prepared
     ? <div className="prepared-session"><strong>Prepared Situation</strong><small>Workspace and Situation are already selected by this demo link.</small><details><summary>Connection identifiers</summary><div className="row"><input aria-label="Workspace" placeholder="Workspace UUID" {...register('workspace')}/><input aria-label="Situation" placeholder="Situation UUID" {...register('situation')}/></div></details></div>
     : <><input aria-label="Workspace" placeholder="Workspace UUID" {...register('workspace')}/><input aria-label="Situation" placeholder="Situation UUID" {...register('situation')}/></>}
-   <input aria-label="Bearer token" type="password" placeholder="Bearer token" {...register('token')}/>
+   <input aria-label="Bearer token" type="password" placeholder="Bearer token" disabled={checking} {...register('token')}/>
    <button type="submit" disabled={checking}>{checking?'Connecting…':'Connect'}</button>
    {connectionError&&<span className="error" role="alert">{connectionError}</span>}
    <small>{prepared?'Workspace and Situation are ready. A local one-shot handoff connects automatically when present; otherwise paste the bearer token from .niccolo-local/token.txt and Connect.':'Workspace and Situation may be prefilled by a prepared demo link.'} Bearer tokens are never placed in the URL or persisted.</small>
