@@ -39,7 +39,7 @@ jobs:
       - name: Validate local MVP shell syntax before compiling
         run: |
           set -euo pipefail
-          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/start-local-mvp.sh scripts/smoke-local-first-run.sh; do
+          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/start-local-mvp.sh scripts/open-local-mvp-browser.sh scripts/smoke-local-first-run.sh; do
             bash -n "$script"
           done
       - name: Standalone Python export template tests
@@ -194,7 +194,7 @@ jobs:
       - name: Check every MVP setup shell script
         run: |
           set -euo pipefail
-          for script in scripts/smoke-local-first-run.sh scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh; do
+          for script in scripts/smoke-local-first-run.sh scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/start-local-mvp.sh scripts/open-local-mvp-browser.sh; do
             bash -n "$script"
           done
           node --check scripts/ci-openai-compatible-mock.mjs
