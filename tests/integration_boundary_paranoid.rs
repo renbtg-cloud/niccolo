@@ -626,3 +626,27 @@ async fn upstream_processing_declarations_are_attributed_metadata_not_evidence()
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+
+#[tokio::test]
+async fn runtime_resource_diagnostic_is_authenticated_sanitized_and_operational_only() {
+    let f = setup().await;
+    let path = format!("/v1/workspaces/{}/runtime-resources", f.workspace);
+    let (status, body) = call(
+        f.router.clone(),
+        req("GET", path.clone(), &f.writer, None, &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["mutates_resource_limits"], false);
+    assert_eq!(body["establishes_epistemic_quality"], false);
+    assert_eq!(body["advice_is_operational_only"], true);
+    assert!(body.get("cgroup_path").is_none());
+
+    let (status, _) = call(
+        f.router.clone(),
+        req("GET", path, "not-a-valid-token", None, &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
