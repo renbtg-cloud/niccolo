@@ -1,0 +1,25 @@
+name: Apply autonomous MVP patch
+on:
+  push:
+    branches: [tmp/autonomous-patch-20261112]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/autonomous-patch-20261112
+          fetch-depth: 0
+      - name: Apply verified patch series to MVP checkpoint branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dev-flow/patches/autonomous-20261112.patch /tmp/niccolo-autonomous.patch
+          git fetch origin ci/mvp-checkpoint
+          git checkout -B autonomous/mvp-first-user-20261112 origin/ci/mvp-checkpoint
+          git config user.name 'ChatGPT autonomous worker'
+          git config user.email 'chatgpt-local@invalid'
+          git am /tmp/niccolo-autonomous.patch
+          git push --force-with-lease origin HEAD:refs/heads/autonomous/mvp-first-user-20261112
