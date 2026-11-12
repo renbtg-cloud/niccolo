@@ -14,10 +14,10 @@ jobs:
       - name: Pack pinned MVP development snapshot
         shell: bash
         run: |
-          git fetch --no-tags --depth=1 origin 92e903eae2fade0a32b4ed1dadfb8eb6b89e1471
-          test "$(git rev-parse FETCH_HEAD)" = '92e903eae2fade0a32b4ed1dadfb8eb6b89e1471'
+          git fetch --no-tags --depth=1 origin 0abe17ae3dba2d335177b83608b82d2e0752ebad
+          test "$(git rev-parse FETCH_HEAD)" = '0abe17ae3dba2d335177b83608b82d2e0752ebad'
           git archive --format=tar.gz --output=niccolo-vm-source.tar.gz FETCH_HEAD
-          printf '%s\n' '92e903eae2fade0a32b4ed1dadfb8eb6b89e1471' > niccolo-source-commit.txt
+          printf '%s\n' '0abe17ae3dba2d335177b83608b82d2e0752ebad' > niccolo-source-commit.txt
           sha256sum niccolo-vm-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
