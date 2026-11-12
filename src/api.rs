@@ -418,6 +418,18 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_bff_operation_checkpoint_git_publication_intent),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}/remote-status",
+            get(get_bff_operation_checkpoint_git_publication_remote_status),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}/remote-events",
+            get(list_bff_operation_checkpoint_git_publication_remote_events),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}/publish",
+            post(publish_bff_operation_checkpoint_git_publication_intent),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
             get(wait_bff_operation),
         )
@@ -4820,6 +4832,14 @@ fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> Api
             StatusCode::CONFLICT,
             "checkpoint git publication identity conflict",
         ),
+        CheckpointGitPublicationError::Invisible => ApiError(
+            StatusCode::NOT_FOUND,
+            "checkpoint git publication intent unavailable",
+        ),
+        CheckpointGitPublicationError::Stale => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint git publication intent is stale; preview and record a new intent",
+        ),
         CheckpointGitPublicationError::Checkpoint(CheckpointError::Invisible) => {
             ApiError(StatusCode::NOT_FOUND, "checkpoint unavailable")
         }
@@ -4932,6 +4952,219 @@ async fn record_bff_operation_checkpoint_git_publication_intent(
         } else {
             StatusCode::CREATED
         },
+    ))
+}
+
+async fn get_bff_operation_checkpoint_git_publication_remote_status(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint, publication)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let status = checkpoint_git_publication::remote_status(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        checkpoint,
+        publication,
+    )
+    .await
+    .map_err(checkpoint_git_publication_error)?;
+    Ok(no_store(json!(status), StatusCode::OK))
+}
+
+async fn list_bff_operation_checkpoint_git_publication_remote_events(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint, publication)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Query(query): Query<GitPublicationRemoteEventListQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let events = checkpoint_git_publication::list_remote_events(
+        &state.pool,
+        OperationScope {
+            workspace,
+            situation,
+            operation,
+        },
+        checkpoint,
+        publication,
+        query.limit.unwrap_or(25),
+    )
+    .await
+    .map_err(checkpoint_git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "events": events,
+            "provider_secret_stored": false,
+            "event_payloads_include_provider_response_bodies": false
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn publish_bff_operation_checkpoint_git_publication_intent(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint, publication)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(request): Json<GitHubPublishRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    if request.attempt_id.is_nil()
+        || request.confirmation != "PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB"
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "explicit checkpoint GitHub publication confirmation required",
+        ));
+    }
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
+    let existing =
+        checkpoint_git_publication::remote_status(&state.pool, scope, checkpoint, publication)
+            .await
+            .map_err(checkpoint_git_publication_error)?;
+    if existing.remote_publish_verified {
+        return Ok(no_store(
+            json!({
+                "status": existing,
+                "replayed_verified_publication": true,
+                "provider_secret_stored": false
+            }),
+            StatusCode::OK,
+        ));
+    }
+
+    let provider_token = transient_github_token(&headers)?;
+    let material = checkpoint_git_publication::publication_material(
+        &state.pool,
+        scope,
+        checkpoint,
+        publication,
+    )
+    .await
+    .map_err(checkpoint_git_publication_error)?;
+    let publish_result = tokio::task::spawn_blocking(move || {
+        let transport = github_publisher::CurlGitHubTransport::default();
+        github_publisher::publish_checkpoint_package(
+            &transport,
+            &material.target,
+            &material.intent,
+            &material.package,
+            &provider_token,
+        )
+    })
+    .await
+    .map_err(|_| {
+        ApiError(
+            StatusCode::BAD_GATEWAY,
+            "GitHub checkpoint publication task failed",
+        )
+    })?;
+
+    let verified = match publish_result {
+        Ok(verified) => verified,
+        Err(error) => {
+            let failure_class = match error {
+                GitHubPublishError::LocalIntegrity | GitHubPublishError::Invalid => {
+                    "LOCAL_INTEGRITY"
+                }
+                GitHubPublishError::Transport => "TRANSPORT",
+                GitHubPublishError::ProviderRejected(_) => "PROVIDER_REJECTED",
+                GitHubPublishError::VerificationMismatch
+                | GitHubPublishError::InvalidProviderResponse => "VERIFICATION_MISMATCH",
+            };
+            let _ = checkpoint_git_publication::record_remote_event(
+                &state.pool,
+                workspace,
+                actor,
+                &git_publication::RemoteEventInput {
+                    event_id: request.attempt_id,
+                    publication_id: publication,
+                    kind: git_publication::RemoteEventKind::PublishFailed,
+                    remote_commit_sha: None,
+                    observed_ref: None,
+                    failure_class: Some(failure_class.into()),
+                },
+            )
+            .await;
+            return Err(github_publish_error(error));
+        }
+    };
+
+    for (kind, observed_ref) in [
+        (git_publication::RemoteEventKind::PushAccepted, None),
+        (
+            git_publication::RemoteEventKind::RefVerified,
+            Some(verified.ref_name.clone()),
+        ),
+    ] {
+        checkpoint_git_publication::record_remote_event(
+            &state.pool,
+            workspace,
+            actor,
+            &git_publication::RemoteEventInput {
+                event_id: request.attempt_id,
+                publication_id: publication,
+                kind,
+                remote_commit_sha: Some(verified.commit_sha.clone()),
+                observed_ref,
+                failure_class: None,
+            },
+        )
+        .await
+        .map_err(checkpoint_git_publication_error)?;
+    }
+
+    let status =
+        checkpoint_git_publication::remote_status(&state.pool, scope, checkpoint, publication)
+            .await
+            .map_err(checkpoint_git_publication_error)?;
+    if !status.remote_publish_verified
+        || status.verified_commit_sha.as_deref() != Some(verified.commit_sha.as_str())
+        || status.verified_ref.as_deref() != Some(verified.ref_name.as_str())
+    {
+        return Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "remote checkpoint publication verification ledger mismatch",
+        ));
+    }
+    Ok(no_store(
+        json!({
+            "status": status,
+            "repository_full_name": verified.repository_full_name,
+            "package_sha256": verified.package_sha256,
+            "remote_commit_already_present": verified.already_present,
+            "provider_secret_stored": false,
+            "remote_publish_verified": true,
+            "checkpoint_status_preserved": true
+        }),
+        StatusCode::OK,
     ))
 }
 

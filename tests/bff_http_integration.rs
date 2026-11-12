@@ -5,7 +5,9 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz, model_adapter::DeterministicModel};
+use niccolo_evidence::{
+    api, authz, checkpoint_git_publication, git_publication, model_adapter::DeterministicModel,
+};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::Arc;
@@ -14,10 +16,12 @@ use uuid::Uuid;
 
 struct Seed {
     admin: PgPool,
+    secure: PgPool,
     router: Router,
     workspace: Uuid,
     situation: Uuid,
     analysis: Uuid,
+    principal: Uuid,
     token: String,
 }
 async fn setup() -> Seed {
@@ -48,6 +52,7 @@ async fn setup() -> Seed {
     sqlx::query("INSERT INTO niccolo.situation_analysis_snapshots(workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,goal,requested_by_principal_id) VALUES($1,$2,$3,1,$4,'understand',$5)").bind(workspace).bind(situation).bind(analysis).bind("a".repeat(64)).bind(principal).execute(&admin).await.unwrap();
     Seed {
         admin,
+        secure: secure.clone(),
         router: api::router_with_model(
             secure,
             Arc::new(DeterministicModel::new("test", "deterministic-v1").unwrap()),
@@ -55,6 +60,7 @@ async fn setup() -> Seed {
         workspace,
         situation,
         analysis,
+        principal,
         token,
     }
 }
@@ -524,6 +530,109 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert_eq!(
         replayed["intent"]["package_sha256"],
         preview["package_sha256"]
+    );
+
+    let publish_path = format!("{intent_path}/publish");
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &publish_path,
+            &s.token,
+            Some(json!({
+                "attempt_id":Uuid::new_v4(),
+                "confirmation":"PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB"
+            })),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let scope = niccolo_evidence::bff_operations::OperationScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        operation: id,
+    };
+    let remote_attempt = Uuid::new_v4();
+    let remote_sha = "c".repeat(40);
+    let digest = authz::credential_digest(&s.token).unwrap();
+    authz::with_auth_digest(digest.clone(), async {
+        checkpoint_git_publication::record_remote_event(
+            &s.secure,
+            s.workspace,
+            s.principal,
+            &git_publication::RemoteEventInput {
+                event_id: remote_attempt,
+                publication_id: publication,
+                kind: git_publication::RemoteEventKind::PushAccepted,
+                remote_commit_sha: Some(remote_sha.clone()),
+                observed_ref: None,
+                failure_class: None,
+            },
+        )
+        .await
+        .unwrap();
+    })
+    .await;
+
+    let status_path = format!("{intent_path}/remote-status");
+    let (status, _, pushed) = invoke(
+        s.router.clone(),
+        req("GET", &status_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pushed["state"], "PUSHED_UNVERIFIED");
+    assert_eq!(pushed["remote_publish_verified"], false);
+
+    authz::with_auth_digest(digest, async {
+        checkpoint_git_publication::record_remote_event(
+            &s.secure,
+            s.workspace,
+            s.principal,
+            &git_publication::RemoteEventInput {
+                event_id: remote_attempt,
+                publication_id: publication,
+                kind: git_publication::RemoteEventKind::RefVerified,
+                remote_commit_sha: Some(remote_sha.clone()),
+                observed_ref: Some("work".into()),
+                failure_class: None,
+            },
+        )
+        .await
+        .unwrap();
+    })
+    .await;
+    let (status, _, verified) = invoke(
+        s.router.clone(),
+        req("GET", &status_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(verified["state"], "VERIFIED_PUBLISHED");
+    assert_eq!(verified["remote_publish_verified"], true);
+    assert_eq!(verified["verified_commit_sha"], remote_sha);
+    assert_eq!(verified["verified_ref"], "work");
+    assert_eq!(verified["event_count"], 2);
+
+    let (status, _, events) = invoke(
+        s.router.clone(),
+        req(
+            "GET",
+            &format!("{intent_path}/remote-events?limit=10"),
+            &s.token,
+            None,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(events["events"].as_array().unwrap().len(), 2);
+    assert_eq!(events["provider_secret_stored"], false);
+    assert_eq!(
+        events["event_payloads_include_provider_response_bodies"],
+        false
     );
 
     let missing_checkpoint = Uuid::new_v4();

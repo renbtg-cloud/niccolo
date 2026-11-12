@@ -152,6 +152,28 @@ export class NiccoloClient {
   operationEvents(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/events?after=${after}&limit=${limit}`); }
   operationCheckpoints(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints?after=${after}&limit=${limit}`); }
   operationCheckpointPackage(operationId, checkpointId) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/package`); }
+  operationCheckpointGitPublicationPreview(operationId, checkpointId, targetId) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-preview?target_id=${targetId}`); }
+  recordOperationCheckpointGitPublicationIntent(operationId, checkpointId, publicationId, targetId) { return this.request('POST', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}`, { body: { target_id: targetId } }); }
+  operationCheckpointGitPublicationRemoteStatus(operationId, checkpointId, publicationId) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}/remote-status`); }
+  operationCheckpointGitPublicationRemoteEvents(operationId, checkpointId, publicationId, limit = 25) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}/remote-events?limit=${limit}`); }
+  async publishOperationCheckpointGitPublicationIntent(operationId, checkpointId, publicationId, attemptId, githubToken) {
+    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\r\n\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
+    const path = `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}/publish`;
+    const response = await this.fetch(path, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.config.token}`,
+        'Content-Type': 'application/json',
+        'X-Niccolo-GitHub-Authorization': `Bearer ${githubToken}`,
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ attempt_id: attemptId, confirmation: 'PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB' }),
+    });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
+    return { value };
+  }
   operationBudget(operationId) { return this.request('GET', `${operationPath(this.config,operationId)}/budget`); }
   cancelOperation(operationId, expectedVersion, reason) { return this.request('POST', `${operationPath(this.config,operationId)}/cancel`, { body: { expected_version: expectedVersion, reason } }); }
 }

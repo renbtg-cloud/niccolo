@@ -119,6 +119,27 @@ describe('BFF client',()=>{
    expect(calls[1][1].cache).toBe('no-store');
  });
 
+ it('binds checkpoint publication to exact checkpoint scope and keeps provider authorization transient',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{remote_publish_verified:true,status:{state:'VERIFIED_PUBLISHED'}});});
+   await x.operationCheckpointGitPublicationPreview('operation','checkpoint','target');
+   await x.recordOperationCheckpointGitPublicationIntent('operation','checkpoint','publication','target');
+   await x.operationCheckpointGitPublicationRemoteStatus('operation','checkpoint','publication');
+   await x.operationCheckpointGitPublicationRemoteEvents('operation','checkpoint','publication',7);
+   await x.publishOperationCheckpointGitPublicationIntent('operation','checkpoint','publication','attempt','checkpoint-transient-token');
+   expect(calls[0][0]).toContain('/operations/operation/checkpoints/checkpoint/git-publication-preview?target_id=target');
+   expect(calls[1][0]).toContain('/checkpoints/checkpoint/git-publication-intents/publication');
+   expect(JSON.parse(calls[1][1].body)).toEqual({target_id:'target'});
+   expect(calls[2][0]).toContain('/git-publication-intents/publication/remote-status');
+   expect(calls[2][1].headers['X-Niccolo-GitHub-Authorization']).toBeUndefined();
+   expect(calls[3][0]).toContain('/git-publication-intents/publication/remote-events?limit=7');
+   expect(calls[4][0]).toContain('/git-publication-intents/publication/publish');
+   expect(calls[4][0]).not.toContain('checkpoint-transient-token');
+   expect(calls[4][1].headers['X-Niccolo-GitHub-Authorization']).toBe('Bearer checkpoint-transient-token');
+   expect(JSON.parse(calls[4][1].body)).toEqual({attempt_id:'attempt',confirmation:'PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB'});
+   expect(calls[4][1].cache).toBe('no-store');
+ });
+
  it('separates standard analysis export from explicitly authorized examined-source export',async()=>{
    const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.presentation-package',files:{'README.md':'x'},published_to_git:false});});
    await x.presentationPackage('a');

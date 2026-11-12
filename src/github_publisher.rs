@@ -6,6 +6,8 @@
 //! PostgreSQL remains authoritative until the caller records a verified remote
 //! ref observation after this function returns successfully.
 use crate::{
+    checkpoint_git_publication::CheckpointPublicationIntentView,
+    checkpoint_package::{self, CheckpointPackage},
     git_publication::{PublicationIntentView, TargetView},
     presentation_package::{self, PresentationPackage},
 };
@@ -150,6 +152,61 @@ fn validate_local_material(
     }
     let digest = presentation_package::package_sha256(package)
         .map_err(|_| GitHubPublishError::LocalIntegrity)?;
+    if digest != intent.package_sha256 {
+        return Err(GitHubPublishError::LocalIntegrity);
+    }
+    branch_name(&target.ref_name).map(str::to_owned)
+}
+
+fn checkpoint_total_text_bytes(package: &CheckpointPackage) -> Result<u64, GitHubPublishError> {
+    package.files.values().try_fold(0_u64, |total, value| {
+        total
+            .checked_add(value.len() as u64)
+            .ok_or(GitHubPublishError::LocalIntegrity)
+    })
+}
+
+fn validate_checkpoint_material(
+    target: &TargetView,
+    intent: &CheckpointPublicationIntentView,
+    package: &CheckpointPackage,
+    token: &str,
+) -> Result<String, GitHubPublishError> {
+    if !valid_token(token)
+        || target.provider != "GITHUB"
+        || target.authorization_mode != "TRANSIENT_PROVIDER_AUTHORIZATION"
+        || target.provider_secret_stored
+        || target.repository_visibility != "PRIVATE"
+        || intent.target_id != target.target_id
+        || intent.requested_ref != target.ref_name
+        || intent.scope_kind != "OPERATION_CHECKPOINT"
+        || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
+        || intent.includes_examined_source_text
+        || intent.includes_original_uploads
+        || intent.situation_id != package.situation_id
+        || intent.operation_id != package.operation_id
+        || intent.checkpoint_id != package.checkpoint_id
+        || intent.checkpoint_seq != package.checkpoint_seq
+        || intent.checkpoint_kind != package.checkpoint_kind
+        || intent.provisional != package.provisional
+        || intent.terminal != package.terminal
+        || intent.checkpoint_summary_sha256 != package.checkpoint_summary_sha256
+        || package.scope_kind != "OPERATION_CHECKPOINT"
+        || package.published_to_git
+        || package.includes_original_uploads
+        || package.includes_examined_source_text
+        || package.establishes_truth
+        || package.proves_completeness
+        || package.authorizes_real_world_action
+        || package.files.is_empty()
+        || package.files.len() > MAX_REMOTE_PACKAGE_FILES
+        || package.files.len() != intent.file_count as usize
+        || checkpoint_total_text_bytes(package)? != intent.total_text_bytes
+        || package.files.keys().any(|path| !safe_package_path(path))
+    {
+        return Err(GitHubPublishError::LocalIntegrity);
+    }
+    let digest = checkpoint_package::package_sha256(package);
     if digest != intent.package_sha256 {
         return Err(GitHubPublishError::LocalIntegrity);
     }
@@ -414,6 +471,172 @@ pub fn publish_standard_package<T: GitHubTransport>(
     })
 }
 
+fn expected_checkpoint_commit_message(intent: &CheckpointPublicationIntentView) -> String {
+    format!(
+        "Niccolo checkpoint publication {} package {}",
+        intent.publication_id, intent.package_sha256
+    )
+}
+
+pub fn publish_checkpoint_package<T: GitHubTransport>(
+    transport: &T,
+    target: &TargetView,
+    intent: &CheckpointPublicationIntentView,
+    package: &CheckpointPackage,
+    token: &str,
+) -> Result<VerifiedGitHubPublication, GitHubPublishError> {
+    let branch = validate_checkpoint_material(target, intent, package, token)?;
+    let repository = format!("{}/{}", target.repository_owner, target.repository_name);
+    let repo_path = format!("/repos/{repository}");
+    let repo = transport.json("GET", &repo_path, token, None)?;
+    let remote_full_name = response_string(&repo, "/full_name")?;
+    let private = repo
+        .get("private")
+        .and_then(Value::as_bool)
+        .ok_or(GitHubPublishError::InvalidProviderResponse)?;
+    if !private
+        || !remote_full_name.eq_ignore_ascii_case(&repository)
+        || !repository_visibility_matches(target, private)
+    {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+
+    let ref_path = format!("{repo_path}/git/ref/heads/{branch}");
+    let (base_commit_sha, create_requested_ref) =
+        match transport.json("GET", &ref_path, token, None) {
+            Ok(current_ref) => (
+                response_string(&current_ref, "/object/sha")?.to_owned(),
+                false,
+            ),
+            Err(GitHubPublishError::ProviderRejected(404)) => {
+                let default_branch = response_string(&repo, "/default_branch")?;
+                let default_branch = branch_name(default_branch)?;
+                if default_branch == branch {
+                    return Err(GitHubPublishError::InvalidProviderResponse);
+                }
+                let default_ref = transport.json(
+                    "GET",
+                    &format!("{repo_path}/git/ref/heads/{default_branch}"),
+                    token,
+                    None,
+                )?;
+                (
+                    response_string(&default_ref, "/object/sha")?.to_owned(),
+                    true,
+                )
+            }
+            Err(error) => return Err(error),
+        };
+    let base_commit = transport.json(
+        "GET",
+        &format!("{repo_path}/git/commits/{base_commit_sha}"),
+        token,
+        None,
+    )?;
+    let base_tree_sha = response_string(&base_commit, "/tree/sha")?.to_owned();
+    let base_message = base_commit
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let prefix = format!(
+        "niccolo/situations/{}/operations/{}/checkpoints/{}",
+        intent.situation_id, intent.operation_id, intent.checkpoint_id
+    );
+    let mut tree_entries = Vec::with_capacity(package.files.len());
+    for (path, content) in &package.files {
+        let blob = transport.json(
+            "POST",
+            &format!("{repo_path}/git/blobs"),
+            token,
+            Some(&json!({"content":content,"encoding":"utf-8"})),
+        )?;
+        let sha = response_string(&blob, "/sha")?;
+        tree_entries.push(json!({
+            "path": format!("{prefix}/{path}"),
+            "mode": "100644",
+            "type": "blob",
+            "sha": sha
+        }));
+    }
+    let tree = transport.json(
+        "POST",
+        &format!("{repo_path}/git/trees"),
+        token,
+        Some(&json!({"base_tree":base_tree_sha,"tree":tree_entries})),
+    )?;
+    let tree_sha = response_string(&tree, "/sha")?.to_owned();
+    let commit_message = expected_checkpoint_commit_message(intent);
+
+    if !create_requested_ref && tree_sha == base_tree_sha && base_message == commit_message {
+        return Ok(VerifiedGitHubPublication {
+            commit_sha: base_commit_sha,
+            ref_name: branch,
+            repository_full_name: remote_full_name.to_owned(),
+            package_sha256: intent.package_sha256.clone(),
+            already_present: true,
+        });
+    }
+
+    let commit = transport.json(
+        "POST",
+        &format!("{repo_path}/git/commits"),
+        token,
+        Some(&json!({
+            "message":commit_message,
+            "tree":tree_sha,
+            "parents":[base_commit_sha]
+        })),
+    )?;
+    let commit_sha = response_string(&commit, "/sha")?.to_owned();
+    if !valid_remote_sha(&commit_sha) {
+        return Err(GitHubPublishError::InvalidProviderResponse);
+    }
+    let updated = if create_requested_ref {
+        transport.json(
+            "POST",
+            &format!("{repo_path}/git/refs"),
+            token,
+            Some(&json!({"ref":format!("refs/heads/{branch}"),"sha":commit_sha})),
+        )?
+    } else {
+        transport.json(
+            "PATCH",
+            &format!("{repo_path}/git/refs/heads/{branch}"),
+            token,
+            Some(&json!({"sha":commit_sha,"force":false})),
+        )?
+    };
+    if response_string(&updated, "/object/sha")? != commit_sha {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+    let verified = transport.json("GET", &ref_path, token, None)?;
+    if response_string(&verified, "/object/sha")? != commit_sha {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+    let verified_commit = transport.json(
+        "GET",
+        &format!("{repo_path}/git/commits/{commit_sha}"),
+        token,
+        None,
+    )?;
+    if response_string(&verified_commit, "/tree/sha")? != tree_sha
+        || verified_commit
+            .get("message")
+            .and_then(Value::as_str)
+            .is_none_or(|message| message != commit_message)
+    {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+    Ok(VerifiedGitHubPublication {
+        commit_sha,
+        ref_name: branch,
+        repository_full_name: remote_full_name.to_owned(),
+        package_sha256: intent.package_sha256.clone(),
+        already_present: false,
+    })
+}
+
 fn valid_remote_sha(value: &str) -> bool {
     (40..=64).contains(&value.len())
         && value
@@ -577,7 +800,11 @@ impl GitHubTransport for CurlGitHubTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git_publication::{PublicationIntentView, TargetView};
+    use crate::{
+        checkpoint_git_publication::CheckpointPublicationIntentView,
+        checkpoint_package::CheckpointPackage,
+        git_publication::{PublicationIntentView, TargetView},
+    };
     use std::{collections::VecDeque, sync::Mutex};
 
     struct ScriptedTransport {
@@ -678,6 +905,129 @@ mod tests {
             created_at: "2026-01-01 00:00:00+00".into(),
             remote_publish_performed: false,
         }
+    }
+
+    fn checkpoint_package_fixture() -> CheckpointPackage {
+        CheckpointPackage {
+            format: "niccolo.operation-checkpoint-package".into(),
+            version: 1,
+            scope_kind: "OPERATION_CHECKPOINT".into(),
+            workspace_id: Uuid::from_u128(11),
+            situation_id: Uuid::from_u128(12),
+            operation_id: Uuid::from_u128(13),
+            checkpoint_id: Uuid::from_u128(14),
+            checkpoint_seq: 7,
+            analysis_id: Some(Uuid::from_u128(15)),
+            checkpoint_kind: "BUDGET_BOUNDARY".into(),
+            provisional: true,
+            terminal: true,
+            checkpoint_summary_sha256: "a".repeat(64),
+            files: [
+                ("README.md".into(), "checkpoint summary".into()),
+                ("checkpoint.json".into(), "{\"bounded\":true}\n".into()),
+            ]
+            .into_iter()
+            .collect(),
+            includes_original_uploads: false,
+            includes_examined_source_text: false,
+            published_to_git: false,
+            establishes_truth: false,
+            proves_completeness: false,
+            authorizes_real_world_action: false,
+        }
+    }
+
+    fn checkpoint_intent(package: &CheckpointPackage) -> CheckpointPublicationIntentView {
+        CheckpointPublicationIntentView {
+            publication_id: Uuid::from_u128(16),
+            target_id: Uuid::from_u128(1),
+            situation_id: package.situation_id,
+            operation_id: package.operation_id,
+            checkpoint_id: package.checkpoint_id,
+            checkpoint_seq: package.checkpoint_seq,
+            checkpoint_kind: package.checkpoint_kind.clone(),
+            provisional: package.provisional,
+            terminal: package.terminal,
+            checkpoint_summary_sha256: package.checkpoint_summary_sha256.clone(),
+            package_sha256: checkpoint_package::package_sha256(package),
+            file_count: package.files.len() as u32,
+            total_text_bytes: checkpoint_total_text_bytes(package).unwrap(),
+            requested_ref: "main".into(),
+            scope_kind: "OPERATION_CHECKPOINT".into(),
+            includes_examined_source_text: false,
+            includes_original_uploads: false,
+            publication_state: "AWAITING_REMOTE_AUTHORIZATION".into(),
+            requested_by_principal_id: Uuid::from_u128(9),
+            created_at: "2026-01-01 00:00:00+00".into(),
+            remote_publish_performed: false,
+        }
+    }
+
+    #[test]
+    fn checkpoint_package_is_committed_under_checkpoint_prefix_and_verified() {
+        let package = checkpoint_package_fixture();
+        let intent = checkpoint_intent(&package);
+        let transport = ScriptedTransport::new(vec![
+            json!({"full_name":"owner/history","private":true}),
+            json!({"object":{"sha":"1".repeat(40)}}),
+            json!({"tree":{"sha":"2".repeat(40)},"message":"older"}),
+            json!({"sha":"3".repeat(40)}),
+            json!({"sha":"4".repeat(40)}),
+            json!({"sha":"5".repeat(40)}),
+            json!({"sha":"6".repeat(40)}),
+            json!({"object":{"sha":"6".repeat(40)}}),
+            json!({"object":{"sha":"6".repeat(40)}}),
+            json!({"tree":{"sha":"5".repeat(40)},"message":expected_checkpoint_commit_message(&intent)}),
+        ]);
+        let verified = publish_checkpoint_package(
+            &transport,
+            &target(),
+            &intent,
+            &package,
+            "test-secret-token",
+        )
+        .unwrap();
+        assert_eq!(verified.commit_sha, "6".repeat(40));
+        assert_eq!(verified.package_sha256, intent.package_sha256);
+        assert!(!verified.already_present);
+        let calls = transport.calls.lock().unwrap();
+        let patch = calls.iter().find(|call| call.0 == "PATCH").unwrap();
+        assert_eq!(patch.2.as_ref().unwrap()["force"], false);
+        assert!(calls.iter().any(|call| {
+            call.2
+                .as_ref()
+                .and_then(|value| value.get("tree"))
+                .and_then(Value::as_array)
+                .is_some_and(|entries| {
+                    entries.iter().all(|entry| {
+                        entry["path"].as_str().unwrap().starts_with(&format!(
+                            "niccolo/situations/{}/operations/{}/checkpoints/{}/",
+                            intent.situation_id, intent.operation_id, intent.checkpoint_id
+                        ))
+                    })
+                })
+        }));
+        assert!(!format!("{calls:?}").contains("test-secret-token"));
+    }
+
+    #[test]
+    fn checkpoint_publication_refuses_non_private_target_before_network() {
+        let package = checkpoint_package_fixture();
+        let intent = checkpoint_intent(&package);
+        let mut public_target = target();
+        public_target.repository_visibility = "PUBLIC".into();
+        let transport = ScriptedTransport::new(vec![]);
+        assert_eq!(
+            publish_checkpoint_package(
+                &transport,
+                &public_target,
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
+            Err(GitHubPublishError::LocalIntegrity)
+        );
+        assert!(transport.calls.lock().unwrap().is_empty());
     }
 
     #[test]
