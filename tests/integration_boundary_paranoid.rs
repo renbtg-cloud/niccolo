@@ -485,3 +485,143 @@ async fn aggregate_integration_diagnostics_report_transport_patterns_without_tru
         "Integration diagnostics describe delivery and identity patterns only; they do not measure evidence quality, credibility, independence, or truth."
     );
 }
+
+
+#[tokio::test]
+async fn upstream_processing_declarations_are_attributed_metadata_not_evidence() {
+    let f = setup().await;
+    let source = ingest_source_with_operational_id(
+        &f.service,
+        f.workspace,
+        Uuid::new_v4(),
+        SourceFormat::Eml,
+        "fixture://processed/source",
+        b"From: Source\n\nretained after upstream filtering",
+        Some("processed-source-1"),
+    )
+    .await
+    .unwrap();
+
+    let declaration = Uuid::new_v4();
+    let path = format!(
+        "/v1/workspaces/{}/integration-processing-declarations/{declaration}",
+        f.workspace
+    );
+    let body = json!({
+        "processing_kind":"FILTER",
+        "scope_locator":"s3://legal-hold/mail/",
+        "declaration_text":"Integrator reports filtering to messages dated 2026-01-01 through 2026-06-30.",
+        "source_document_id":source.document_id
+    });
+    let (status, created) = call(
+        f.router.clone(),
+        req("POST", path.clone(), &f.writer, Some(body.clone()), &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["processing_kind"], "FILTER");
+    assert_eq!(created["declaration_is_verified"], false);
+    assert_eq!(created["declaration_is_evidence"], false);
+    assert_eq!(created["replayed"], false);
+
+    let (status, replayed) = call(
+        f.router.clone(),
+        req("POST", path.clone(), &f.writer, Some(body), &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed["replayed"], true);
+
+    let (status, _) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            path,
+            &f.writer,
+            Some(json!({
+                "processing_kind":"SAMPLING",
+                "scope_locator":"s3://legal-hold/mail/",
+                "declaration_text":"Conflicting reuse of the same declaration id.",
+                "source_document_id":source.document_id
+            })),
+            &[],
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let second = Uuid::new_v4();
+    let second_path = format!(
+        "/v1/workspaces/{}/integration-processing-declarations/{second}",
+        f.workspace
+    );
+    let (status, second_created) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            second_path,
+            &f.writer,
+            Some(json!({
+                "processing_kind":"SOURCE_SELECTION",
+                "scope_locator":"custodian://executive-mailboxes",
+                "declaration_text":"Integrator reports selecting only two named custodians.",
+                "source_document_id":null
+            })),
+            &[],
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let list_path = format!(
+        "/v1/workspaces/{}/integration-processing-declarations?after=0&limit=1",
+        f.workspace
+    );
+    let (status, first_page) = call(
+        f.router.clone(),
+        req("GET", list_path, &f.writer, None, &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first_page["declarations"].as_array().unwrap().len(), 1);
+    assert_eq!(first_page["declarations_are_verified"], false);
+    assert_eq!(first_page["declarations_are_evidence"], false);
+
+    let after = first_page["next_after"].as_i64().unwrap();
+    let list_path = format!(
+        "/v1/workspaces/{}/integration-processing-declarations?after={after}&limit=100",
+        f.workspace
+    );
+    let (status, second_page) = call(
+        f.router.clone(),
+        req("GET", list_path, &f.writer, None, &[]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(second_page["declarations"].as_array().unwrap().len(), 1);
+    assert_eq!(second_page["declarations"][0]["declaration_id"], second_created["declaration_id"]);
+
+    let invisible = Uuid::new_v4();
+    let invisible_path = format!(
+        "/v1/workspaces/{}/integration-processing-declarations/{}",
+        f.workspace,
+        Uuid::new_v4()
+    );
+    let (status, _) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            invisible_path,
+            &f.writer,
+            Some(json!({
+                "processing_kind":"TRANSFORMATION",
+                "scope_locator":"pipeline://ocr",
+                "declaration_text":"Integrator reports OCR transformation.",
+                "source_document_id":invisible
+            })),
+            &[],
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
