@@ -411,6 +411,55 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
         boundary["summary"]["provisional"],
         true
     );
+
+    let checkpoint_id = boundary["checkpoint_id"]
+        .as_str()
+        .expect("checkpoint UUID");
+    let checkpoint_digest = boundary["summary_sha256"]
+        .as_str()
+        .expect("checkpoint summary digest");
+    let package_path = format!(
+        "{}/checkpoints/{checkpoint_id}/package",
+        path(&s, id, "")
+    );
+    let (status, _, package) = invoke(
+        s.router.clone(),
+        req("GET", &package_path, &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(package["format"], "niccolo.operation-checkpoint-package");
+    assert_eq!(package["scope_kind"], "OPERATION_CHECKPOINT");
+    assert_eq!(package["checkpoint_id"], checkpoint_id);
+    assert_eq!(package["checkpoint_summary_sha256"], checkpoint_digest);
+    assert_eq!(package["provisional"], true);
+    assert_eq!(package["terminal"], true);
+    assert_eq!(package["published_to_git"], false);
+    assert_eq!(package["includes_original_uploads"], false);
+    assert_eq!(package["includes_examined_source_text"], false);
+    assert_eq!(package["establishes_truth"], false);
+    assert_eq!(package["proves_completeness"], false);
+    assert_eq!(package["authorizes_real_world_action"], false);
+    assert!(package["files"]["README.md"]
+        .as_str()
+        .unwrap()
+        .contains("Remote publication performed: no"));
+    assert!(package["files"]["checkpoint.json"].as_str().is_some());
+    assert!(package["files"]["SHA256SUMS"].as_str().is_some());
+
+    let missing_checkpoint = Uuid::new_v4();
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "GET",
+            &format!("{}/checkpoints/{missing_checkpoint}/package", path(&s, id, "")),
+            &s.token,
+            None,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
