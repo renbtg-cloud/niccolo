@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useAnalysisHistory } from '../hooks/useAnalysisHistory.js';
 import { useClient } from '../hooks/useClient.js';
@@ -12,6 +13,7 @@ import {
   parseForensicPackageText,
   validateForensicFile,
 } from '../state/forensicPackage.js';
+import { launchApprovedReanalysis } from '../state/reanalysisLaunch.js';
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -50,11 +52,14 @@ export function ForensicPage() {
 
 function ConnectedForensicPage({ client }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const analysis = useUiStore((state) => state.analysis);
   const setAnalysis = useUiStore((state) => state.setAnalysis);
+  const setActiveOperation = useUiStore((state) => state.setActiveOperation);
   const history = useAnalysisHistory();
   const pendingImport = useRef(null);
   const pendingBinding = useRef(null);
+  const pendingReanalysis = useRef(null);
   const [file, setFile] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState('');
   const [selectedItem, setSelectedItem] = useState('');
@@ -63,6 +68,7 @@ function ConnectedForensicPage({ client }) {
   const [itemCursor, setItemCursor] = useState(null);
   const [itemBackStack, setItemBackStack] = useState([]);
   const [note, setNote] = useState('Use as historical context only; do not treat this imported item as fact or evidence.');
+  const [reanalysisGoal, setReanalysisGoal] = useState('Reanalyze with the selected historical context');
 
   const imports = useQuery({
     queryKey: [...qk.forensicImports(client.config), batchCursor],
@@ -144,6 +150,41 @@ function ConnectedForensicPage({ client }) {
         qc.invalidateQueries({ queryKey: qk.analysis(client.config, analysis, 'forensic-context') }),
         qc.invalidateQueries({ queryKey: ['analysis'] }),
       ]);
+    },
+  });
+
+  const reanalyze = useMutation({
+    mutationFn: async () => {
+      if (!analysis) throw new Error('Select the parent analysis first.');
+      const goal = reanalysisGoal.trim() || 'Reanalyze with the selected historical context';
+      const signature = JSON.stringify({ analysis, goal });
+      if (pendingReanalysis.current?.signature !== signature) {
+        pendingReanalysis.current = {
+          signature,
+          ids: {
+            snapshotOperation: crypto.randomUUID(),
+            newAnalysis: crypto.randomUUID(),
+            agenticOperation: crypto.randomUUID(),
+          },
+        };
+      }
+      return launchApprovedReanalysis({
+        client,
+        priorAnalysis: analysis,
+        goal,
+        ids: pendingReanalysis.current.ids,
+      });
+    },
+    onSuccess: async (result) => {
+      pendingReanalysis.current = null;
+      setAnalysis(result.newAnalysis);
+      setActiveOperation(result.agenticOperation);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['analysis'] }),
+        qc.invalidateQueries({ queryKey: ['operation'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
+      navigate('/operations');
     },
   });
 
@@ -255,8 +296,15 @@ function ConnectedForensicPage({ client }) {
       <label>Why include this historical item?<textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2048}/></label>
       <button disabled={!analysis || !selectedBatch || !selectedItem || alreadyBound || bind.isPending} onClick={() => bind.mutate()}>{alreadyBound ? 'Already included as historical context' : bind.isPending ? 'Recording choice…' : 'Include as non-evidence context'}</button>
       {bind.error && <p className="error" role="alert">{bind.error.message}</p>}
-      {bind.isSuccess && <p role="status">Historical item included as current non-evidence context. Reanalyze if you want a new published answer to consider it.</p>}
+      {bind.isSuccess && <p role="status">Historical item included as current non-evidence context. The published answer, if any, remains unchanged.</p>}
       {analysis && <details><summary>Current imported context for this analysis</summary>{currentContext.isLoading ? <p>Loading…</p> : <pre>{JSON.stringify(contextItems,null,2)}</pre>}</details>}
+      {analysis && contextItems.length > 0 && <div className="forensic-actions">
+        <h4>Get a new answer that considers this selected history</h4>
+        <p>Reanalysis creates a new immutable analysis linked to the selected parent. The current quarantined selections are carried forward as non-evidence context before reasoning starts; the older published answer remains preserved.</p>
+        <label>Reanalysis goal<textarea value={reanalysisGoal} onChange={(event) => setReanalysisGoal(event.target.value)} maxLength={4096}/></label>
+        <button disabled={reanalyze.isPending} onClick={() => reanalyze.mutate()}>{reanalyze.isPending ? 'Starting new analysis…' : 'Start new analysis with selected history'}</button>
+        {reanalyze.error && <p className="error" role="alert">{reanalyze.error.message}</p>}
+      </div>}
     </article>
   </section>;
 }

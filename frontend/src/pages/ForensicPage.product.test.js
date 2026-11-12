@@ -33,6 +33,15 @@ describe('prior Niccolò export quarantine surface', () => {
     expect(page).toContain('downloadForensicOriginal');
   });
 
+  it('lets a human explicitly start a new analysis that carries selected quarantined context', () => {
+    expect(page).toContain('launchApprovedReanalysis');
+    expect(page).toContain('pendingReanalysis.current?.signature !== signature');
+    expect(page).toContain('Start new analysis with selected history');
+    expect(page).toContain('carried forward as non-evidence context before reasoning starts');
+    expect(page).toContain("navigate('/operations')");
+    expect(page).toContain('setActiveOperation(result.agenticOperation)');
+  });
+
   it('supports bounded pagination over batches and items', () => {
     expect(page).toContain('Previous imports');
     expect(page).toContain('Next imports');
