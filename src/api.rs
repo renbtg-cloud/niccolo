@@ -5704,6 +5704,7 @@ async fn record_git_publication_intent(
     headers: HeaderMap,
     Json(request): Json<GitPublicationIntentRequest>,
 ) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
     let (intent, replayed) = git_publication::record_intent(
         &state.pool,
