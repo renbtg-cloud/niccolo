@@ -489,6 +489,7 @@ pub mod analysis_quality;
 pub mod adversarial_challenge;
 
 pub mod operation_budget;
+pub mod checkpoint_package;
 pub mod operation_checkpoint;
 
 pub mod proactive_briefing;
