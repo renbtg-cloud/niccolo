@@ -86,7 +86,10 @@ Supported MVP source files include:
 - `.eml` email;
 - `.txt` WhatsApp/plain-text export.
 
-Choose **Import and attach**.
+Choose one or several files and then **Import and attach**. A browser batch is prevalidated
+before the first upload, is bounded to 32 files / 64 MiB total, and each file still keeps the
+server's 4 MiB per-source limit. If a later file fails after earlier ones were attached, retrying
+the same selection reuses their document identities rather than creating duplicate records.
 
 For information that is remembered, hypothetical, or an investigative preference rather than a
 source record, use **Human context** instead. Niccolò keeps that separate from verified evidence.
@@ -109,6 +112,12 @@ The default Analyze settings are intended for an ordinary first run:
 - intent: understand;
 - delivery: wait for the answer;
 - default reasoning step budget.
+
+**Advanced execution** also exposes explicit operation-wide model-call, reported-token and
+finalization-reserve limits. Their defaults are 32 model calls, 200,000 reported tokens and a
+5-second deterministic finalization reserve. They are resource ceilings, not confidence or
+quality scores; budget exhaustion preserves a visibly provisional result instead of pretending
+that the investigation is complete.
 
 The optional goal/question can be left blank if the Situation focus already says what matters.
 
@@ -184,7 +193,7 @@ The recorded score is **not** a probability of truth, proof, documentary evidenc
 
 In **Review**, the GitHub publication panel can record a target repository owner/name/ref and show the exact standard presentation-package file count, byte count and SHA-256 before anything leaves the machine.
 
-Recording a target or publication intent is still local-only: it does not contact GitHub or prove remote preservation. After reviewing the exact package SHA-256 and requested ref, the user may explicitly publish that recorded standard package with a **transient GitHub fine-grained token**.
+Recording a target or publication intent is still local-only: it does not contact GitHub or prove remote preservation. An optional **read-only remote preflight** can use a transient token to verify the repository, declared visibility and requested ref without creating a commit or changing a ref; when the requested branch is absent, the preflight reports the default branch that an explicit publication would use as its creation base. After reviewing the exact package SHA-256 and requested ref, the user may explicitly publish that recorded standard package with a **transient GitHub fine-grained token**.
 
 Niccolò does not persist that token. The remote operation uses a non-force Git ref update, then re-reads the ref and records append-only publication observations in PostgreSQL. The UI says **verified published** only when the observed remote ref points at the exact commit Niccolò just constructed. Failed attempts keep only a bounded failure classification; provider response bodies and credentials are not recorded. PostgreSQL remains the authoritative publication ledger even when the package has been copied to user-owned GitHub.
 
