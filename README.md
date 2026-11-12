@@ -92,7 +92,15 @@ Prerequisites: Node.js/npm, Rust 1.99.1, PostgreSQL 17 client tools (`psql`),
 and a running PostgreSQL server/database that the provided admin account owns.
 On Windows, use Git Bash.
 
-Set `NICCOLO_PG_ADMIN_URL` in your shell's environment, then run:
+Set `NICCOLO_PG_ADMIN_URL` in your shell's environment. For a brand-new local installation, the shortest path to a running, model-configured MVP is:
+
+```bash
+bash scripts/first-run-local-mvp.sh
+```
+
+That wrapper bootstraps only when needed, prompts for a reasoning model only when none is configured, then starts Niccolò. On later runs it reuses the existing private bootstrap and goes directly to startup. For a data-preparation-only session, `--skip-model-config` is explicit and leaves Analyze unavailable.
+
+The lower-level bootstrap command remains available when setup and startup need to be separated:
 
 ```bash
 bash scripts/bootstrap-local-mvp.sh

@@ -14,11 +14,18 @@ Set the database-owner connection. Niccolò generates the restricted runtime-log
 default, so a first user does not need to invent or manage a second database password:
 
     export NICCOLO_PG_ADMIN_URL='...'
-    bash scripts/bootstrap-local-mvp.sh
+    bash scripts/first-run-local-mvp.sh
+
+For a brand-new interactive installation, that one command performs the missing bootstrap, prompts
+for the reasoning-model settings if needed, and then starts the local service. On subsequent runs it
+recognizes the existing private bootstrap and does not rerun migrations or rotate credentials. Use
+`--skip-model-config` only when intentionally preparing/importing data without Analyze.
 
 Deployment automation may explicitly set `NICCOLO_PG_SECURE_PASSWORD` before bootstrap when it
 needs to control that credential. The value is never printed. The ordinary local path generates a
 random password and stores only the resulting runtime connection string in `.niccolo-local/local.env`.
+The lower-level `scripts/bootstrap-local-mvp.sh`, `scripts/configure-local-model.sh`, and
+`scripts/start-local-mvp.sh` commands remain available for automation or deliberately separated setup.
 
 Bootstrap builds the first-party UI and Rust binaries, applies migrations, creates a restricted
 runtime login, creates one workspace plus one prepared Situation identifier, and mints a private
