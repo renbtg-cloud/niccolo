@@ -233,6 +233,31 @@ pub async fn register_target(
     Ok((view, !inserted))
 }
 
+pub async fn get_target(
+    pool: &PgPool,
+    workspace: Uuid,
+    target_id: Uuid,
+) -> Result<TargetView, GitPublicationError> {
+    if target_id.is_nil() {
+        return Err(GitPublicationError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace).await?;
+    let row: TargetRow = sqlx::query_as(
+        "SELECT target_id,provider,repository_owner,repository_name,ref_name,
+                repository_visibility,sensitive_exports_allowed,authorization_mode,
+                created_by_principal_id,created_at::text
+           FROM niccolo.git_publication_targets
+          WHERE workspace_id=$1 AND target_id=$2",
+    )
+    .bind(workspace)
+    .bind(target_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(GitPublicationError::Invisible)?;
+    tx.commit().await?;
+    Ok(target_from_row(row))
+}
+
 pub async fn list_targets(
     pool: &PgPool,
     workspace: Uuid,

@@ -45,6 +45,14 @@ pub struct VerifiedGitHubPublication {
     pub already_present: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifiedGitHubTarget {
+    pub repository_full_name: String,
+    pub ref_name: String,
+    pub head_commit_sha: String,
+    pub repository_private: bool,
+}
+
 pub trait GitHubTransport {
     fn json(
         &self,
@@ -157,6 +165,50 @@ fn expected_commit_message(intent: &PublicationIntentView) -> String {
         "Niccolo publication {} package {}",
         intent.publication_id, intent.package_sha256
     )
+}
+
+pub fn verify_target<T: GitHubTransport>(
+    transport: &T,
+    target: &TargetView,
+    token: &str,
+) -> Result<VerifiedGitHubTarget, GitHubPublishError> {
+    if !valid_token(token)
+        || target.provider != "GITHUB"
+        || target.authorization_mode != "TRANSIENT_PROVIDER_AUTHORIZATION"
+        || target.provider_secret_stored
+    {
+        return Err(GitHubPublishError::Invalid);
+    }
+    let branch = branch_name(&target.ref_name)?;
+    let repository = format!("{}/{}", target.repository_owner, target.repository_name);
+    let repo_path = format!("/repos/{repository}");
+    let repo = transport.json("GET", &repo_path, token, None)?;
+    let remote_full_name = response_string(&repo, "/full_name")?;
+    let private = repo
+        .get("private")
+        .and_then(Value::as_bool)
+        .ok_or(GitHubPublishError::InvalidProviderResponse)?;
+    if !remote_full_name.eq_ignore_ascii_case(&repository)
+        || !repository_visibility_matches(target, private)
+    {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+    let current_ref = transport.json(
+        "GET",
+        &format!("{repo_path}/git/ref/heads/{branch}"),
+        token,
+        None,
+    )?;
+    let head_commit_sha = response_string(&current_ref, "/object/sha")?.to_owned();
+    if !valid_remote_sha(&head_commit_sha) {
+        return Err(GitHubPublishError::InvalidProviderResponse);
+    }
+    Ok(VerifiedGitHubTarget {
+        repository_full_name: remote_full_name.to_owned(),
+        ref_name: branch.to_owned(),
+        head_commit_sha,
+        repository_private: private,
+    })
 }
 
 pub fn publish_standard_package<T: GitHubTransport>(
@@ -555,6 +607,23 @@ mod tests {
             created_at: "2026-01-01 00:00:00+00".into(),
             remote_publish_performed: false,
         }
+    }
+
+    #[test]
+    fn target_preflight_is_read_only_and_verifies_repository_ref_and_visibility() {
+        let transport = ScriptedTransport::new(vec![
+            json!({"full_name":"owner/history","private":true}),
+            json!({"object":{"sha":"a".repeat(40)}}),
+        ]);
+        let verified = verify_target(&transport, &target(), "test-secret-token").unwrap();
+        assert_eq!(verified.repository_full_name, "owner/history");
+        assert_eq!(verified.ref_name, "main");
+        assert_eq!(verified.head_commit_sha, "a".repeat(40));
+        assert!(verified.repository_private);
+        let calls = transport.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert!(calls.iter().all(|call| call.0 == "GET"));
+        assert!(!format!("{calls:?}").contains("test-secret-token"));
     }
 
     #[test]
