@@ -114,7 +114,7 @@ export function GroundedScorePanel() {
   return <article className="review-panel grounded-score-panel">
     <h3>Grounded heuristic scoring</h3>
     <p>First preview a live deterministic evaluation. Only after you inspect that result can you explicitly freeze the exact same inputs as an immutable audit/export record.</p>
-    <p><small>Neither form is a probability of truth, proof, documentary evidence, witness-independence certification, or a rewrite of the published answer.</small></p>
+    <p><small>This score is not a probability of truth, proof, documentary evidence, witness-independence certification, or a rewrite of the published answer. Live preview is transient; only the explicit record action is immutable.</small></p>
 
     {epistemic.isPending && <p>Loading recorded claims and source links…</p>}
     {epistemic.error && <p className="error">Grounded scoring unavailable: {epistemic.error.message}</p>}
@@ -163,7 +163,7 @@ export function GroundedScorePanel() {
             {preview.isPending ? 'Evaluating current inputs…' : 'Preview live heuristic score'}
           </button>
           <button disabled={!complete || record.isPending || previewSignature !== currentSignature} onClick={() => record.mutate()}>
-            {record.isPending ? 'Recording immutable score…' : 'Record exactly this preview'}
+            {record.isPending ? 'Recording immutable score…' : 'Record immutable heuristic score — exactly this preview'}
           </button>
         </div>
         {preview.error && <p className="error" role="alert">Live evaluation unavailable: {preview.error.message}</p>}
