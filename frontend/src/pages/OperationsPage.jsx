@@ -11,6 +11,7 @@ import { situationGuide } from '../state/situationGuide.js';
 import { useOperationObserver } from '../hooks/useOperationObserver.js';
 import { useAgenticPlan } from '../hooks/useAgenticPlan.js';
 import { useAnalysisOutput } from '../hooks/useAnalysisOutput.js';
+import { useOperationCheckpoints } from '../hooks/useOperationCheckpoints.js';
 
 const intentSchema=z.object({
   mode:z.enum(['sync','async']),
@@ -33,6 +34,13 @@ function AnswerPanel({ output, operation, error }) {
  if(operation.state==='WAITING_FOR_HUMAN')return <p>Niccolò needs your decision before it can continue the current reasoning plan.</p>;
  if(operation.state==='FAILED')return <p className="error" role="alert">Analysis failed{operation.error_code ? ` (${operation.error_code})` : ''}. No answer was published. You can start another analysis.</p>;
  if(operation.state==='CANCELLED')return <p role="status">This analysis was cancelled. No answer was published. You can start another analysis.</p>;
+ if(operation.result?.completion_status==='PARTIAL_BUDGET_BOUNDARY')return <article className="analysis-answer provisional-answer" role="status">
+   <div className="answer-heading"><h3>Useful work so far</h3><span className="status-historical">Provisional</span></div>
+   <p>Niccolò stopped before another model call because the configured reasoning budget reached <strong>{operation.result.stop_reason?.replaceAll('_',' ').toLowerCase()}</strong>.</p>
+   <p>The work already completed was preserved. This partial result does <strong>not</strong> claim completeness or factual truth, and it does not authorize any external action.</p>
+   {operation.result.next_unexecuted_step_kind&&<p><strong>Next unexecuted reasoning step:</strong> {operation.result.next_unexecuted_step_kind.replaceAll('_',' ').toLowerCase()}</p>}
+   <p><Link to="/review">Review the preserved reasoning state and next steps →</Link></p>
+ </article>;
  if(operation.terminal)return <p role="status">This run finished without a published synthesis. You can start another analysis.</p>;
  return <p>Niccolò is working from the frozen analysis input. The answer will appear here when synthesis is published.</p>;
 }
@@ -59,7 +67,7 @@ export function OperationsPage(){
  const pendingLaunch=useRef(null);
  const pendingHumanResponse=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
- const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const output=useAnalysisOutput(analysis,observed.operation);
+ const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const checkpoints=useOperationCheckpoints(active); const output=useAnalysisOutput(analysis,observed.operation);
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32}});
  const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:{decision:'CONTINUE',responseText:''}});
  const run=useMutation({mutationFn:async(v)=>{
@@ -96,6 +104,6 @@ export function OperationsPage(){
  </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error">{run.error.message}</p>}
  <AnswerPanel output={output.data} operation={observed.operation??run.data?.operation??null} error={output.error}/>
  {waitingStep&&<form className="human-boundary" onSubmit={humanForm.handleSubmit(v=>respond.mutate(v))}><h3>Niccolò needs your input</h3><p>{waitingStep.label}</p><p><small>Reasoning pauses here until you respond. Your input is recorded; it is not inferred consent for any external action.</small></p><label>What should happen next?<select {...humanForm.register('decision')}><option value="CONTINUE">Continue with this understanding</option><option value="REPLAN">Reconsider the reasoning plan</option><option value="STOP">Stop this analysis</option></select></label><label>Your input<textarea aria-label="Human response" {...humanForm.register('responseText')} placeholder="Clarify, correct, or explain what you want Niccolò to consider."/></label><button disabled={respond.isPending}>{respond.isPending?'Sending…':'Send input'}</button>{humanForm.formState.errors.responseText&&<p className="error">A response is required to continue or replan, but not to stop.</p>}{respond.error&&<p className="error">{respond.error.message}</p>}</form>}
- <details className="desktop-only technical-details"><summary>Technical execution details</summary><div className="inspector-grid"><article><h3>Operation</h3><p><small>Transport: {observed.phase}{observed.stale?' · stale':''}</small></p><pre>{JSON.stringify(observed.operation??run.data?.operation??null,null,2)}</pre></article><article><h3>Agentic plan</h3><pre>{JSON.stringify(plan.data??null,null,2)}</pre></article><article><h3>Operation events</h3>{observed.eventsTruncated&&<p><small>Showing the most recent 500 events. Earlier events remain in the server history.</small></p>}<pre>{JSON.stringify(observed.events??[],null,2)}</pre></article></div></details>
+ <details className="desktop-only technical-details"><summary>Technical execution details</summary><div className="inspector-grid"><article><h3>Operation</h3><p><small>Transport: {observed.phase}{observed.stale?' · stale':''}</small></p><pre>{JSON.stringify(observed.operation??run.data?.operation??null,null,2)}</pre></article><article><h3>Agentic plan</h3><pre>{JSON.stringify(plan.data??null,null,2)}</pre></article><article><h3>Operation events</h3>{observed.eventsTruncated&&<p><small>Showing the most recent 500 events. Earlier events remain in the server history.</small></p>}<pre>{JSON.stringify(observed.events??[],null,2)}</pre></article><article><h3>Anytime checkpoints</h3><p><small>Durable progress observations. A provisional checkpoint is not truth, proof or completeness.</small></p><pre>{JSON.stringify(checkpoints.data?.checkpoints??[],null,2)}</pre></article></div></details>
  <small>Advanced delivery choices use the same durable server-side intent semantics. They do not change the meaning of the analysis.</small></section>;
 }

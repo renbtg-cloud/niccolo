@@ -11,6 +11,7 @@ export const qk = {
   forensicImportItems: (c, batch) => ['forensic-import-items', c.workspace, batch],
   operation: (c, id) => ['operation', c.workspace, c.situation, id],
   operationEvents: (c, id) => ['operation-events', c.workspace, c.situation, id],
+  operationCheckpoints: (c, id) => ['operation-checkpoints', c.workspace, c.situation, id],
   operationObservation: (c, id) => ['operation-observation', c.workspace, c.situation, id],
   agentic: (c, id) => ['agentic-plan', c.workspace, c.situation, id],
   analysis: (c, id, view) => ['analysis', c.workspace, c.situation, id, view],
