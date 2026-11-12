@@ -22,7 +22,14 @@ test -s .niccolo-local/prepared-url.txt
 source .niccolo-local/local.env
 # shellcheck disable=SC1091
 source .niccolo-local/identifiers.txt
+# Persist the already-exported loopback model configuration through the same
+# helper an ordinary local user can run, then prove start reads it back.
+bash scripts/configure-local-model.sh --from-env > .niccolo-local/model-config.log
+test -s .niccolo-local/model.env
+grep -Fq 'API key: not required for this loopback HTTP endpoint' .niccolo-local/model-config.log
+unset NICCOLO_LLM_BASE_URL NICCOLO_LLM_MODEL NICCOLO_LLM_PROVIDER NICCOLO_LLM_API_KEY NICCOLO_LLM_JSON_MODE
 prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
+grep -Fq 'Reasoning model: configured (niccolo-ci-protocol-smoke)' <<< "$prepared_output"
 grep -Fq "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
 grep -Fq "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
 ! grep -Fq "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
@@ -60,6 +67,14 @@ if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example
   exit 1
 fi
 grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' .niccolo-local/incomplete-model.log
+if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example-model' NICCOLO_LLM_API_KEY='' \
+    bash scripts/configure-local-model.sh --from-env > .niccolo-local/incomplete-config.log 2>&1; then
+  echo 'Model configuration helper accepted a remote provider without an API key' >&2
+  exit 1
+fi
+grep -Fq 'Remote HTTPS model providers require an API key.' .niccolo-local/incomplete-config.log
+# Failed reconfiguration must leave the last valid private configuration intact.
+grep -Fq 'niccolo-ci-protocol-smoke' .niccolo-local/model.env
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
 probe_principal="$(node -p "require('node:crypto').randomUUID()")"
