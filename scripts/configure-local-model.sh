@@ -17,10 +17,12 @@ explicit_model_set="${NICCOLO_LLM_MODEL+x}"; explicit_model="${NICCOLO_LLM_MODEL
 explicit_provider_set="${NICCOLO_LLM_PROVIDER+x}"; explicit_provider="${NICCOLO_LLM_PROVIDER:-}"
 explicit_key_set="${NICCOLO_LLM_API_KEY+x}"; explicit_key="${NICCOLO_LLM_API_KEY:-}"
 explicit_json_set="${NICCOLO_LLM_JSON_MODE+x}"; explicit_json="${NICCOLO_LLM_JSON_MODE:-}"
+stored_base_url=''
 if [[ -s "$model_env_file" ]]; then
   # Existing private values are defaults for an interactive reconfiguration.
   # shellcheck disable=SC1090
   source "$model_env_file"
+  stored_base_url="${NICCOLO_LLM_BASE_URL:-}"
 fi
 [[ -z "$explicit_base_set" ]] || NICCOLO_LLM_BASE_URL="$explicit_base"
 [[ -z "$explicit_model_set" ]] || NICCOLO_LLM_MODEL="$explicit_model"
@@ -70,6 +72,12 @@ if [[ "$mode" != "--from-env" ]]; then
   printf 'Provider label (optional)%s: ' "${provider:+ [$provider]}"
   read -r entered
   [[ -z "$entered" ]] || provider="$entered"
+fi
+
+# Never silently reuse a stored provider secret after changing the endpoint. A
+# new endpoint requires an explicitly supplied key (or an interactive re-entry).
+if [[ "$base_url" != "$stored_base_url" && -z "$explicit_key_set" ]]; then
+  api_key=''
 fi
 
 valid_text(){
