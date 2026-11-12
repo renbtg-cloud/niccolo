@@ -564,10 +564,15 @@ fn from_bundle_and_extracts(
              CSV is a spreadsheet-safe presentation projection and may prefix \
              untrusted cell text with an apostrophe to prevent formula execution. \
              {} \
-             Original uploaded document bytes are NOT included. The model's full \
-             reasoning, intermediate steps, actual numeric source weights, all \
-             historical events, and the full PostgreSQL state are NOT included. \
-             Python does not reproduce the LLM reasoning or rerun the investigation.\n\n\
+             Recorded epistemic policy history relevant to this Situation and human \
+             credence recorded for this analysis ARE included as declared controls. \
+             Policy history does NOT prove which policy, if any, produced the published \
+             answer; human percentages are NOT calibrated probabilities or evidence. \
+             Deterministic grounded score results are NOT exported because they are not \
+             stored as immutable analysis artifacts. Original uploaded document bytes are \
+             NOT included. The model's full reasoning, intermediate steps, all historical \
+             events, and the full PostgreSQL state are NOT included. Python does not \
+             reproduce the LLM reasoning or rerun the investigation.\n\n\
              All exported material may be sensitive. Share/publish it only \
              after explicit authorization and inspection. PostgreSQL remains \
              the operational source of truth. Git publication is a separate \
