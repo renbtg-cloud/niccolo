@@ -6,7 +6,7 @@
 - **The user's own Git repository is a portable historical publication destination**, not a replacement database and not an epistemic dependence graph. The user connects and authorizes their own GitHub repository early; work published there remains under that user's Git account after leaving Niccolò, subject to the Git provider's own terms and account controls. No promise of eternal retention or unlimited availability.
 - Git export is **selective**: the user-supplied information, investigated material authorized for release, relevant conclusions, explanations, and progress. Never a routine PostgreSQL dump, secret material, hidden prompts, unapproved private source contents, or the entire internal operational schema.
 - **Python plus CSV and/or simple data files** is the ONLY explainable presentation-export format committed to MVP 1.0. The deliverable should allow a third party to see *what was investigated*, *what was said*, *which deterministic procedures were actually applied*, *what the result was*, and *what remains uncertain*. Only reproduce calculations that are actually reproducible with the exported inputs. Distinguish recorded model interpretation from deterministic calculation.
-- External editing, Python extensions, local simulations, Git-based analysis, and new third-party reasoning tools are **the recipient's responsibility**. Niccolò does not have to support them. **Reingestion is explicitly out of scope** for MVP 1.0, as are Excel/VBA, GitLab and additional export adapters.
+- External editing, Python extensions, local simulations, Git-based analysis, and new third-party reasoning tools are **the recipient's responsibility**. Niccolò does not have to support them. General presentation-package reingestion remains out of scope for MVP 1.0; the implemented Situation forensic export has a separate, deliberately untrusted quarantine re-import path. Excel/VBA, GitLab and additional export adapters remain out of scope.
 - These constraints are intentionally narrower than a general-purpose adapter framework. Implement the simplest coherent vertical slice rather than an extensibility platform.
 
 ## Git is historical publication, not the reasoning DAG
@@ -43,7 +43,7 @@ The portable package now also exports the recorded epistemic-policy history rele
 
 An explicit write-authorized grounded claim evaluation can now be recorded as an immutable, retry-safe artifact. The record freezes the selected policy, human-declared confidence (if any), declared evidence strengths, database-validated grounded result, source-graph revision and SHA-256 of the deterministic result. The portable package exports those stored artifacts verbatim plus a compact CSV summary. A stored score remains a heuristic balance: it is not a probability of truth, proof, documentary evidence or a mutation of the published analysis.
 
-Subsequent bounded work: expose the record action cleanly in the human review UI, make recorded-vs-live weighting visually unmistakable, and implement explicit publication to the **user-owned GitHub repository** with retry and publication verification.
+The human review UI now separates a live grounded-weight preview from the explicit immutable score record and refuses to record a stale draft after its preview changes. Git publication has also begun as a deliberately non-networked planning slice: a user may record a GitHub owner/repository/ref, inspect the exact standard presentation-package digest and bounded scope, and record an immutable publication intent. This slice stores no provider secret, performs no remote request and never reports the package as published. Subsequent bounded work is transient provider authorization, actual push, retry-safe remote commit/ref verification, and only then publication-state transitions.
 
 ## Adaptive execution + bounded investigation time
 
@@ -64,7 +64,7 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
 | REX-001 | Record portable user-owned historical Git / Python+data MVP contract | This specification |
 | REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
 | REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Verified bounded slices: examined source text export, Situation policy history, analysis human credence, and immutable explicitly recorded grounded-score artifacts; original uploaded document bytes remain omitted |
-| GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Not implemented |
+| GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Partial verified slice: bounded target metadata, exact standard-package scope/digest preview and immutable publication intent; no provider connection or secret is stored and no remote request occurs yet |
 | GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Not implemented |
 | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
 | ARM-001 | Observe effective Linux process/container resources; portable adapter boundary | Verified Linux first slice (PR #26) |

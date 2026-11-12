@@ -180,6 +180,14 @@ Recording is a separate write action. It creates an immutable score artifact con
 
 The recorded score is **not** a probability of truth, proof, documentary evidence or certification of witness independence. It does not rewrite the published analysis. It can later be inspected and included in the portable analysis export.
 
+## 10. Optional: plan a user-owned GitHub publication
+
+In **Review**, the GitHub publication panel can record a target repository owner/name/ref and show the exact standard presentation-package file count, byte count and SHA-256 before anything leaves the machine.
+
+This is currently a **planning boundary, not a publisher**. Recording a target or publication intent does not connect to GitHub, does not accept or persist a GitHub token, does not push a commit, and does not establish remote preservation. The recorded intent remains `AWAITING_REMOTE_AUTHORIZATION`. PostgreSQL remains authoritative until a future publisher has both explicit provider authorization and independently verified the resulting remote commit/ref.
+
+The current Git planning scope deliberately excludes examined source text and original uploads.
+
 ## What to record during a human usability test
 
 Do not teach the tester the architecture first. Record where they hesitate or ask for help:
