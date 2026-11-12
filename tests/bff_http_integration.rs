@@ -403,25 +403,14 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert_eq!(boundary["establishes_truth"], false);
     assert_eq!(boundary["proves_completeness"], false);
     assert_eq!(boundary["authorizes_real_world_action"], false);
-    assert_eq!(
-        boundary["summary"]["stop_reason"],
-        "INVOCATION_LIMIT"
-    );
-    assert_eq!(
-        boundary["summary"]["provisional"],
-        true
-    );
+    assert_eq!(boundary["summary"]["stop_reason"], "INVOCATION_LIMIT");
+    assert_eq!(boundary["summary"]["provisional"], true);
 
-    let checkpoint_id = boundary["checkpoint_id"]
-        .as_str()
-        .expect("checkpoint UUID");
+    let checkpoint_id = boundary["checkpoint_id"].as_str().expect("checkpoint UUID");
     let checkpoint_digest = boundary["summary_sha256"]
         .as_str()
         .expect("checkpoint summary digest");
-    let package_path = format!(
-        "{}/checkpoints/{checkpoint_id}/package",
-        path(&s, id, "")
-    );
+    let package_path = format!("{}/checkpoints/{checkpoint_id}/package", path(&s, id, ""));
     let (status, _, package) = invoke(
         s.router.clone(),
         req("GET", &package_path, &s.token, None, None),
@@ -440,10 +429,12 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
     assert_eq!(package["establishes_truth"], false);
     assert_eq!(package["proves_completeness"], false);
     assert_eq!(package["authorizes_real_world_action"], false);
-    assert!(package["files"]["README.md"]
-        .as_str()
-        .unwrap()
-        .contains("Remote publication performed: no"));
+    assert!(
+        package["files"]["README.md"]
+            .as_str()
+            .unwrap()
+            .contains("Remote publication performed: no")
+    );
     assert!(package["files"]["checkpoint.json"].as_str().is_some());
     assert!(package["files"]["SHA256SUMS"].as_str().is_some());
 
@@ -452,7 +443,10 @@ async fn agentic_model_budget_boundary_returns_provisional_success_and_checkpoin
         s.router.clone(),
         req(
             "GET",
-            &format!("{}/checkpoints/{missing_checkpoint}/package", path(&s, id, "")),
+            &format!(
+                "{}/checkpoints/{missing_checkpoint}/package",
+                path(&s, id, "")
+            ),
             &s.token,
             None,
             None,
@@ -478,8 +472,7 @@ async fn v316_v325_agentic_plan_is_inspectable_through_bff() {
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED);
-    let deadline =
-        tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
     loop {
         let (status, _, plan) = invoke(
             s.router.clone(),
