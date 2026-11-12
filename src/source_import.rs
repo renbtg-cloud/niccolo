@@ -466,6 +466,43 @@ mod tests {
     }
 
     #[test]
+    fn canonical_full_email_thread_preserves_sender_boundaries() {
+        let raw = include_bytes!("../fixtures/law-firm-mvp/sources/02_full_thread.eml");
+        let parsed = parse_source(SourceFormat::Eml, raw).unwrap();
+        assert_eq!(parsed.fragments.len(), 3);
+        assert_eq!(
+            parsed
+                .fragments
+                .iter()
+                .map(|fragment| fragment.speaker_label.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "julian.mercer@aurelius.example",
+                "adrian.kessler@aurelius.example",
+                "adrian.kessler@aurelius.example",
+            ]
+        );
+        assert!(parsed.fragments[0].content.contains("committee meets at noon"));
+        assert!(parsed.fragments[1].content.contains("Push this through before the committee sees it."));
+        assert!(parsed.fragments[2].content.contains("I am not authorizing the settlement or bonus."));
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &raw[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
+    fn incomplete_from_like_body_text_is_not_promoted_to_an_email_boundary() {
+        let src = "From: root@example.org\nSubject: Actual message\n\nIntro\n\nFrom: quoted@example.org\nThis is prose, not a complete nested email header.\n";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "root@example.org");
+        assert!(parsed.fragments[0].content.contains("From: quoted@example.org"));
+    }
+
+    #[test]
     fn email_body_starts_after_headers() {
         let s = "From: <person@example.org>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nHello\r\n";
         let r = parse_source(SourceFormat::Eml, s.as_bytes()).unwrap();
