@@ -16,6 +16,8 @@ pub enum BudgetError {
     Invalid,
     #[error("operation deadline exceeded")]
     Deadline,
+    #[error("operation deadline entered reserved deterministic finalization window")]
+    FinalizationReserve,
     #[error("operation invocation budget exhausted")]
     Invocations,
     #[error("operation token budget exhausted")]
@@ -40,12 +42,16 @@ pub struct BudgetView {
     /// SQL server clock; 0 means expired (or less than 1 ms remains).
     /// None means no deadline was configured; it does NOT mean unlimited costs.
     pub remaining_deadline_ms: Option<i64>,
+    /// Wall-clock reserve that is kept for deterministic packaging/checkpointing.
+    /// It does not create extra time and only applies when a deadline exists.
+    pub finalization_reserve_ms: i64,
+    pub within_model_call_window: bool,
     /// Explicit actual reasons why more model calls cannot be started.
     pub stop_reasons: Vec<String>,
     pub can_start_model_call: bool,
     pub budget_is_quality_score: bool,
-    /// Exposes accounting; does NOT assert the runtime already produces
-    /// partial/degraded conclusions at the deadline.
+    /// Agentic execution can now return a visibly provisional result at model
+    /// budget/deadline boundaries while preserving deterministic finalization.
     pub graceful_quality_degradation_implemented: bool,
 }
 
@@ -62,7 +68,7 @@ async fn scoped(pool: &PgPool, w: uuid::Uuid) -> Result<Transaction<'_, Postgres
     Ok(tx)
 }
 
-fn configured(input: &Value) -> Result<(i64, i64), BudgetError> {
+fn configured(input: &Value) -> Result<(i64, i64, i64), BudgetError> {
     let budget = match input.get("model_budget") {
         None => None,
         Some(Value::Object(fields)) => Some(fields),
@@ -78,10 +84,14 @@ fn configured(input: &Value) -> Result<(i64, i64), BudgetError> {
     };
     let max_i = read_limit("max_invocations", 32)?;
     let max_t = read_limit("max_total_tokens", 200_000)?;
-    if !(1..=1024).contains(&max_i) || !(1..=10_000_000).contains(&max_t) {
+    let finalization_reserve_ms = read_limit("finalization_reserve_ms", 5_000)?;
+    if !(1..=1024).contains(&max_i)
+        || !(1..=10_000_000).contains(&max_t)
+        || !(0..=300_000).contains(&finalization_reserve_ms)
+    {
         return Err(BudgetError::Invalid);
     }
-    Ok((max_i, max_t))
+    Ok((max_i, max_t, finalization_reserve_ms))
 }
 
 /// Pure display/accounting logic, using a single observed remaining-deadline
@@ -92,7 +102,7 @@ fn summarize(
     used_total_tokens: i64,
     remaining_deadline_ms: Option<i64>,
 ) -> Result<BudgetView, BudgetError> {
-    let (max_invocations, max_total_tokens) = configured(input)?;
+    let (max_invocations, max_total_tokens, finalization_reserve_ms) = configured(input)?;
     if used_invocations < 0
         || used_total_tokens < 0
         || remaining_deadline_ms.is_some_and(|ms| ms < 0)
@@ -100,9 +110,13 @@ fn summarize(
         return Err(BudgetError::Invalid);
     }
     let within_deadline = remaining_deadline_ms.is_none_or(|ms| ms > 0);
+    let within_model_call_window =
+        remaining_deadline_ms.is_none_or(|ms| ms > finalization_reserve_ms);
     let mut stop_reasons = Vec::new();
     if !within_deadline {
         stop_reasons.push("DEADLINE_EXPIRED".into());
+    } else if !within_model_call_window {
+        stop_reasons.push("FINALIZATION_RESERVE".into());
     }
     if used_invocations >= max_invocations {
         stop_reasons.push("INVOCATION_LIMIT".into());
@@ -123,10 +137,12 @@ fn summarize(
         deadline_active: remaining_deadline_ms.is_some(),
         within_deadline,
         remaining_deadline_ms,
+        finalization_reserve_ms,
+        within_model_call_window,
         can_start_model_call: stop_reasons.is_empty(),
         stop_reasons,
         budget_is_quality_score: false,
-        graceful_quality_degradation_implemented: false,
+        graceful_quality_degradation_implemented: true,
     })
 }
 
@@ -194,6 +210,9 @@ pub async fn require_available(
     if !v.within_deadline {
         return Err(BudgetError::Deadline);
     }
+    if !v.within_model_call_window {
+        return Err(BudgetError::FinalizationReserve);
+    }
     if v.used_invocations >= v.max_invocations {
         return Err(BudgetError::Invocations);
     }
@@ -230,15 +249,22 @@ mod tests {
         assert!(!view.deadline_active);
         assert!(view.can_start_model_call);
         assert!(!view.budget_is_quality_score);
-        assert!(!view.graceful_quality_degradation_implemented);
+        assert!(view.graceful_quality_degradation_implemented);
+        assert_eq!(view.finalization_reserve_ms, 5_000);
+        assert!(view.within_model_call_window);
     }
 
     #[test]
     fn time_limit_and_money_like_token_limits_remain_separate() {
         let budget = json!({"model_budget":{"max_invocations":2,"max_total_tokens":200}});
-        let view = summarize(&budget, 1, 150, Some(1)).unwrap();
-        assert_eq!(view.remaining_deadline_ms, Some(1));
+        let view = summarize(&budget, 1, 150, Some(6_000)).unwrap();
+        assert_eq!(view.remaining_deadline_ms, Some(6_000));
+        assert!(view.within_model_call_window);
         assert!(view.can_start_model_call);
+        let reserve = summarize(&budget, 1, 150, Some(5_000)).unwrap();
+        assert!(!reserve.within_model_call_window);
+        assert!(!reserve.can_start_model_call);
+        assert_eq!(reserve.stop_reasons, vec!["FINALIZATION_RESERVE"]);
         let expired = summarize(&budget, 2, 220, Some(0)).unwrap();
         assert!(!expired.can_start_model_call);
         assert_eq!(expired.remaining_invocations, 0);
@@ -268,6 +294,8 @@ mod tests {
             json!({"model_budget":{"max_invocations":true}}),
             json!({"model_budget":{"max_total_tokens":2.5}}),
             json!({"model_budget":{"max_total_tokens":-1}}),
+            json!({"model_budget":{"finalization_reserve_ms":-1}}),
+            json!({"model_budget":{"finalization_reserve_ms":300001}}),
         ] {
             assert!(
                 matches!(summarize(&budget, 0, 0, None), Err(BudgetError::Invalid)),
@@ -290,6 +318,6 @@ mod tests {
         .unwrap();
         assert_eq!(view.stop_reasons, vec!["TOKEN_LIMIT"]);
         assert!(!view.budget_is_quality_score);
-        assert!(!view.graceful_quality_degradation_implemented);
+        assert!(view.graceful_quality_degradation_implemented);
     }
 }

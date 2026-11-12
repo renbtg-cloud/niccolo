@@ -152,6 +152,7 @@ fn step_requires_model(step: &agentic_controller::StepView) -> bool {
 fn budget_stop_reason(error: &operation_budget::BudgetError) -> Option<&'static str> {
     match error {
         operation_budget::BudgetError::Deadline => Some("DEADLINE_EXPIRED"),
+        operation_budget::BudgetError::FinalizationReserve => Some("FINALIZATION_RESERVE"),
         operation_budget::BudgetError::Invocations => Some("INVOCATION_LIMIT"),
         operation_budget::BudgetError::Tokens => Some("TOKEN_LIMIT"),
         _ => None,
