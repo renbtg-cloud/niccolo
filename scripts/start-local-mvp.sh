@@ -47,80 +47,7 @@ source "$ids_file"
 : "${SITUATION_UUID:?missing SITUATION_UUID}"
 : "${NICCOLO_API_PORT:=38080}"
 
-uuid_re='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}printf '%s\n' "$prepared_url" > "$url_file"
-chmod 600 "$url_file" 2>/dev/null || true
-
-echo "Niccolo local session"
-echo "Open: $prepared_url"
-echo "Bearer token fallback: $token_file"
-llm_base="${NICCOLO_LLM_BASE_URL:-}"
-llm_model="${NICCOLO_LLM_MODEL:-}"
-llm_key="${NICCOLO_LLM_API_KEY:-}"
-if [[ -z "$llm_base" && -z "$llm_model" && -z "$llm_key" ]]; then
-  echo "Reasoning model: NOT CONFIGURED"
-  echo "To enable Analyze, run: bash scripts/configure-local-model.sh"
-  echo "You may also export NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting."
-elif [[ -z "$llm_base" || -z "$llm_model" ]]; then
-  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
-  echo "Both NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL are required." >&2
-  exit 2
-elif [[ "$llm_base" == https://* && -z "$llm_key" ]]; then
-  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
-  echo "Remote HTTPS model providers require NICCOLO_LLM_API_KEY." >&2
-  exit 2
-else
-  echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
-fi
-
-if [[ "${1:-}" == "--print-only" ]]; then
-  exit 0
-fi
-
-ext=''
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) ext='.exe' ;;
-esac
-binary="./target/release/niccolo-api${ext}"
-[[ -x "$binary" || -f "$binary" ]] || {
-  echo "Missing API binary: $binary" >&2
-  echo "Run the bootstrap/build first." >&2
-  exit 1
-}
-
-open_browser=1
-if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
-  open_browser=0
-fi
-# Never inherit a stale handoff capability supplied by the surrounding shell.
-unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
-browser_url="$prepared_url"
-if (( open_browser == 1 )); then
-  if command -v od >/dev/null 2>&1 && [[ -r /dev/urandom ]]; then
-    handoff_code="$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
-    if [[ "$handoff_code" =~ ^[0-9a-f]{64}$ ]]; then
-      export NICCOLO_LOCAL_HANDOFF_CODE="$handoff_code"
-      export NICCOLO_LOCAL_HANDOFF_TOKEN_FILE="$ROOT/$token_file"
-      browser_url="${prepared_url}#handoff=${handoff_code}"
-      echo "Browser: automatic open uses a short-lived one-shot local handoff; the bearer token stays in $token_file."
-    else
-      echo "Browser: secure handoff generation failed; opening the prepared URL for manual token entry." >&2
-    fi
-  else
-    echo "Browser: secure handoff generator unavailable; opening the prepared URL for manual token entry." >&2
-  fi
-  (
-    # The opener receives only the prepared loopback URL plus an optional
-    # one-shot capability. It never receives the bearer or database/model secrets.
-    unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_SECURE_PASSWORD NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL PGPASSWORD
-    unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
-    exec bash scripts/open-local-mvp-browser.sh "$browser_url" "$NICCOLO_API_PORT"
-  ) >/dev/null 2>&1 &
-else
-  echo "Browser: automatic open disabled; use the Open URL above and paste the bearer token from $token_file."
-fi
-
-exec "$binary"
-
+uuid_re='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 if ! [[ "$WORKSPACE_UUID" =~ $uuid_re ]]; then
   echo "Invalid WORKSPACE_UUID in $ids_file" >&2
   exit 2
@@ -133,80 +60,7 @@ if ! [[ "$NICCOLO_API_PORT" =~ ^[0-9]+$ ]] || (( NICCOLO_API_PORT < 1 || NICCOLO
   echo 'NICCOLO_API_PORT must be an integer from 1 to 65535.' >&2
   exit 2
 fi
-if [[ "$(wc -l < "$token_file")" -ne 1 ]] || ! grep -Eq '^ncl_[0-9a-f]{64}?printf '%s\n' "$prepared_url" > "$url_file"
-chmod 600 "$url_file" 2>/dev/null || true
-
-echo "Niccolo local session"
-echo "Open: $prepared_url"
-echo "Bearer token fallback: $token_file"
-llm_base="${NICCOLO_LLM_BASE_URL:-}"
-llm_model="${NICCOLO_LLM_MODEL:-}"
-llm_key="${NICCOLO_LLM_API_KEY:-}"
-if [[ -z "$llm_base" && -z "$llm_model" && -z "$llm_key" ]]; then
-  echo "Reasoning model: NOT CONFIGURED"
-  echo "To enable Analyze, run: bash scripts/configure-local-model.sh"
-  echo "You may also export NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting."
-elif [[ -z "$llm_base" || -z "$llm_model" ]]; then
-  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
-  echo "Both NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL are required." >&2
-  exit 2
-elif [[ "$llm_base" == https://* && -z "$llm_key" ]]; then
-  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
-  echo "Remote HTTPS model providers require NICCOLO_LLM_API_KEY." >&2
-  exit 2
-else
-  echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
-fi
-
-if [[ "${1:-}" == "--print-only" ]]; then
-  exit 0
-fi
-
-ext=''
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) ext='.exe' ;;
-esac
-binary="./target/release/niccolo-api${ext}"
-[[ -x "$binary" || -f "$binary" ]] || {
-  echo "Missing API binary: $binary" >&2
-  echo "Run the bootstrap/build first." >&2
-  exit 1
-}
-
-open_browser=1
-if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
-  open_browser=0
-fi
-# Never inherit a stale handoff capability supplied by the surrounding shell.
-unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
-browser_url="$prepared_url"
-if (( open_browser == 1 )); then
-  if command -v od >/dev/null 2>&1 && [[ -r /dev/urandom ]]; then
-    handoff_code="$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
-    if [[ "$handoff_code" =~ ^[0-9a-f]{64}$ ]]; then
-      export NICCOLO_LOCAL_HANDOFF_CODE="$handoff_code"
-      export NICCOLO_LOCAL_HANDOFF_TOKEN_FILE="$ROOT/$token_file"
-      browser_url="${prepared_url}#handoff=${handoff_code}"
-      echo "Browser: automatic open uses a short-lived one-shot local handoff; the bearer token stays in $token_file."
-    else
-      echo "Browser: secure handoff generation failed; opening the prepared URL for manual token entry." >&2
-    fi
-  else
-    echo "Browser: secure handoff generator unavailable; opening the prepared URL for manual token entry." >&2
-  fi
-  (
-    # The opener receives only the prepared loopback URL plus an optional
-    # one-shot capability. It never receives the bearer or database/model secrets.
-    unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_SECURE_PASSWORD NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL PGPASSWORD
-    unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
-    exec bash scripts/open-local-mvp-browser.sh "$browser_url" "$NICCOLO_API_PORT"
-  ) >/dev/null 2>&1 &
-else
-  echo "Browser: automatic open disabled; use the Open URL above and paste the bearer token from $token_file."
-fi
-
-exec "$binary"
- "$token_file"; then
+if [[ "$(wc -l < "$token_file")" -ne 1 ]] || ! grep -Eq '^ncl_[0-9a-f]{64}\r?$' "$token_file"; then
   echo "Invalid local bearer token file: $token_file" >&2
   echo 'Re-bootstrap a fresh dedicated local installation instead of guessing or repairing the token by hand.' >&2
   exit 2
