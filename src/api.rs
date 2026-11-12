@@ -37,6 +37,7 @@ use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
+use crate::checkpoint_package::{self, CheckpointPackageError};
 use crate::operation_checkpoint::{self, CheckpointError};
 use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
@@ -402,6 +403,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints",
             get(get_bff_operation_checkpoints),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/package",
+            get(get_bff_operation_checkpoint_package),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
@@ -4754,6 +4759,46 @@ async fn get_bff_operation_checkpoints(
     .await
     .map_err(checkpoint_error)?;
     Ok(no_store(json!(page), StatusCode::OK))
+}
+
+fn checkpoint_package_error(error: CheckpointPackageError) -> ApiError {
+    match error {
+        CheckpointPackageError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid checkpoint package request",
+        ),
+        CheckpointPackageError::Integrity => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint package integrity mismatch",
+        ),
+        CheckpointPackageError::TooLarge => ApiError(
+            StatusCode::CONFLICT,
+            "checkpoint package exceeds export limit",
+        ),
+        CheckpointPackageError::Json(_) => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "checkpoint package unavailable",
+        ),
+    }
+}
+
+async fn get_bff_operation_checkpoint_package(
+    State(state): State<AppState>,
+    Path((workspace, situation, operation, checkpoint)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let scope = OperationScope {
+        workspace,
+        situation,
+        operation,
+    };
+    let checkpoint = operation_checkpoint::get(&state.pool, scope, checkpoint)
+        .await
+        .map_err(checkpoint_error)?;
+    let package =
+        checkpoint_package::build(scope, &checkpoint).map_err(checkpoint_package_error)?;
+    Ok(no_store(json!(package), StatusCode::OK))
 }
 
 async fn wait_bff_operation(
