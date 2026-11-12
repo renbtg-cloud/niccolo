@@ -182,6 +182,24 @@ async fn examined_source_text_requires_explicit_write_authorized_export() {
     assert_eq!(standard["includes_original_source_fragment_contents"], false);
     assert!(standard["files"]["data/examined_source_fragments.json"].is_null());
 
+    let preview_path = format!("{package_path}/source-preview");
+    let (status, preview) = call(
+        f.router.clone(),
+        json_request("GET", preview_path, &f.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["examined_fragment_count"], 1);
+    assert!(preview["examined_source_text_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(preview["max_examined_fragments"], 128);
+    assert_eq!(preview["max_examined_source_text_bytes"], 512 * 1024);
+    assert_eq!(preview["within_export_bounds"], true);
+    assert_eq!(preview["selection"], "RECORDED_EXAMINED_ONLY");
+    assert_eq!(preview["includes_original_uploads"], false);
+    assert_eq!(preview["establishes_truth"], false);
+    assert_eq!(preview["exposes_source_text"], false);
+    assert!(preview.get("content").is_none());
+
     let (status, _) = call(
         f.router.clone(),
         json_request(

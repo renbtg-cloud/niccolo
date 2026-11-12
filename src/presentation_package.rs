@@ -29,6 +29,19 @@ pub enum PresentationError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExaminedSourceExportPreview {
+    pub examined_fragment_count: u64,
+    pub examined_source_text_bytes: u64,
+    pub max_examined_fragments: u64,
+    pub max_examined_source_text_bytes: u64,
+    pub within_export_bounds: bool,
+    pub selection: String,
+    pub includes_original_uploads: bool,
+    pub establishes_truth: bool,
+    pub exposes_source_text: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExaminedSourceExtract {
     pub document_id: Uuid,
     pub evidence_id: Uuid,
@@ -470,6 +483,67 @@ async fn scoped(
         .await
         .map_err(ManifestError::from)?;
     Ok(tx)
+}
+
+pub async fn examined_source_export_preview(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<ExaminedSourceExportPreview, PresentationError> {
+    // Require the same published, authorized analysis boundary as package generation.
+    analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
+    let mut tx = scoped(pool, workspace).await?;
+    let (count, bytes): (i64, i64) = sqlx::query_as(
+        "SELECT count(*)::bigint,coalesce(sum(octet_length(e.content)),0)::bigint
+           FROM niccolo.situation_analysis_snapshots a
+           JOIN niccolo.situation_analysis_examined_fragments x
+             ON x.workspace_id=a.workspace_id
+            AND x.situation_id=a.situation_id
+            AND x.analysis_id=a.analysis_id
+           JOIN niccolo.source_fragments f
+             ON f.workspace_id=x.workspace_id AND f.evidence_id=x.evidence_id
+           JOIN niccolo.source_documents d
+             ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id
+           JOIN niccolo.evidence e
+             ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id
+           JOIN niccolo.situation_revision_sources rs
+             ON rs.workspace_id=a.workspace_id
+            AND rs.situation_id=a.situation_id
+            AND rs.revision=a.input_revision
+            AND rs.document_id=d.document_id
+          WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(ManifestError::from)?;
+    tx.commit().await.map_err(ManifestError::from)?;
+    if count < 0 || bytes < 0 {
+        return Err(PresentationError::SourceExtractTooLarge);
+    }
+    let examined_fragment_count =
+        u64::try_from(count).map_err(|_| PresentationError::SourceExtractTooLarge)?;
+    let examined_source_text_bytes =
+        u64::try_from(bytes).map_err(|_| PresentationError::SourceExtractTooLarge)?;
+    let max_examined_fragments =
+        u64::try_from(MAX_SOURCE_EXTRACTS).map_err(|_| PresentationError::SourceExtractTooLarge)?;
+    let max_examined_source_text_bytes = u64::try_from(MAX_SOURCE_EXTRACT_BYTES)
+        .map_err(|_| PresentationError::SourceExtractTooLarge)?;
+    Ok(ExaminedSourceExportPreview {
+        examined_fragment_count,
+        examined_source_text_bytes,
+        max_examined_fragments,
+        max_examined_source_text_bytes,
+        within_export_bounds: examined_fragment_count <= max_examined_fragments
+            && examined_source_text_bytes <= max_examined_source_text_bytes,
+        selection: "RECORDED_EXAMINED_ONLY".into(),
+        includes_original_uploads: false,
+        establishes_truth: false,
+        exposes_source_text: false,
+    })
 }
 
 async fn examined_source_extracts(

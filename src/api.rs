@@ -416,6 +416,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_presentation_package).post(post_presentation_package_with_examined_sources),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/presentation-package/source-preview",
+            get(get_presentation_source_preview),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/adversarial-dossier",
             get(get_adversarial_dossier),
         )
@@ -5272,6 +5276,23 @@ fn presentation_api_error(err: PresentationError) -> ApiError {
             "presentation package unavailable",
         ),
     }
+}
+
+async fn get_presentation_source_preview(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let preview = presentation_package::examined_source_export_preview(
+        &state.pool,
+        workspace,
+        situation,
+        analysis,
+    )
+    .await
+    .map_err(presentation_api_error)?;
+    Ok(no_store(json!(preview), StatusCode::OK))
 }
 
 #[derive(Deserialize)]
