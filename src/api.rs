@@ -4093,6 +4093,56 @@ mod tests {
         assert_eq!(bearer(&headers).unwrap(), "token_one");
     }
     #[tokio::test]
+    async fn local_handoff_endpoint_is_one_shot_and_wrong_code_does_not_consume() {
+        use http_body_util::BodyExt;
+        use std::{fs, time::Duration};
+        use tower::ServiceExt;
+
+        let path = std::env::temp_dir().join(format!(
+            "niccolo-http-handoff-{}.token",
+            Uuid::new_v4()
+        ));
+        let token = format!(
+            "ncl_{}{}",
+            Uuid::new_v4().simple(),
+            Uuid::new_v4().simple()
+        );
+        fs::write(&path, format!("{token}\n")).unwrap();
+        let code = "d".repeat(64);
+        let router = router_with_model_and_handoff(
+            PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap(),
+            Arc::new(UnavailableModel),
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap(),
+        );
+        let request = |code: &str| {
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/local-handoff")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(r#"{{"code":"{code}"}}"#)))
+                .unwrap()
+        };
+
+        let wrong = router
+            .clone()
+            .oneshot(request(&"e".repeat(64)))
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::NOT_FOUND);
+
+        let accepted = router.clone().oneshot(request(&code)).await.unwrap();
+        assert_eq!(accepted.status(), StatusCode::OK);
+        assert_eq!(accepted.headers()[header::CACHE_CONTROL], "no-store");
+        let body = accepted.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["token"], token);
+
+        let replay = router.clone().oneshot(request(&code)).await.unwrap();
+        assert_eq!(replay.status(), StatusCode::NOT_FOUND);
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
     async fn all_http_responses_have_privacy_headers() {
         use tower::ServiceExt;
         let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
