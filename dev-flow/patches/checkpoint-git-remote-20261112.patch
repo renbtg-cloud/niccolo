@@ -1,0 +1,1000 @@
+From bc8a9ff37aae06c5aeea81209bb56e67e07b6f21 Mon Sep 17 00:00:00 2001
+From: ChatGPT autonomous worker <chatgpt-local@invalid>
+Date: Thu, 12 Nov 2026 17:25:42 +0000
+Subject: [PATCH] feat(git): publish operation checkpoints with verified remote
+ ledger
+
+---
+ .../MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md   |   4 +-
+ frontend/src/api/client.js                    |  22 ++
+ frontend/src/api/client.test.js               |  21 +
+ ...0106_checkpoint_git_publication_events.sql |  48 +++
+ src/api.rs                                    | 233 +++++++++++
+ src/checkpoint_git_publication.rs             | 371 +++++++++++++++++-
+ src/github_publisher.rs                       | 352 ++++++++++++++++-
+ tests/bff_http_integration.rs                 | 111 +++++-
+ 8 files changed, 1157 insertions(+), 5 deletions(-)
+ create mode 100644 sql/0106_checkpoint_git_publication_events.sql
+
+diff --git a/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md b/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md
+index 52b569e..2ca4985 100644
+--- a/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md
++++ b/docs/product/MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md
+@@ -43,7 +43,7 @@ The portable package now also exports the recorded epistemic-policy history rele
+ 
+ An explicit write-authorized grounded claim evaluation can now be recorded as an immutable, retry-safe artifact. The record freezes the selected policy, human-declared confidence (if any), declared evidence strengths, database-validated grounded result, source-graph revision and SHA-256 of the deterministic result. The portable package exports those stored artifacts verbatim plus a compact CSV summary. A stored score remains a heuristic balance: it is not a probability of truth, proof, documentary evidence or a mutation of the published analysis.
+ 
+-The human review UI now separates a live grounded-weight preview from the explicit immutable score record and refuses to record a stale draft after its preview changes. Git publication now has a verified bounded network slice: a user records a GitHub owner/repository/ref, inspects the exact standard presentation-package digest and bounded scope, and records an immutable local publication intent before any network side effect. An optional read-only preflight and the explicit publish action accept provider authorization only as transient request input; no provider secret is stored. Publication uses non-force Git-data updates, re-reads the remote ref, and records append-only secret-free success/failure observations. Niccolò reports a package as published only after the observed ref points at the exact commit built from the recorded package. A durable operation checkpoint can now also be exported as a deterministic bounded local ZIP package whose manifest preserves its provisional/terminal status and explicitly states that export is not truth, completeness, authority, or remote publication. A checkpoint can additionally be bound to an immutable local Git publication intent for a target declared **private**; the intent records the exact package digest, target/ref, checkpoint sequence/kind and provisional/terminal state before any provider request. That intent stores no provider credential and still reports remote publication as false. The actual transient-authorized remote checkpoint push/confirmation and broader milestone-state semantics remain unfinished work.
++The human review UI now separates a live grounded-weight preview from the explicit immutable score record and refuses to record a stale draft after its preview changes. Git publication now has a verified bounded network slice: a user records a GitHub owner/repository/ref, inspects the exact standard presentation-package digest and bounded scope, and records an immutable local publication intent before any network side effect. An optional read-only preflight and the explicit publish action accept provider authorization only as transient request input; no provider secret is stored. Publication uses non-force Git-data updates, re-reads the remote ref, and records append-only secret-free success/failure observations. Niccolò reports a package as published only after the observed ref points at the exact commit built from the recorded package. A durable operation checkpoint can now also be exported as a deterministic bounded local ZIP package whose manifest preserves its provisional/terminal status and explicitly states that export is not truth, completeness, authority, or remote publication. A checkpoint can additionally be bound to an immutable Git publication intent for a target declared **private**; the intent records the exact package digest, target/ref, checkpoint sequence/kind and provisional/terminal state before any provider request. Explicit checkpoint publication then accepts GitHub authorization only as transient request input, writes the bounded package under an operation/checkpoint-scoped repository path, uses a non-force ref update, re-reads the commit/ref, and records append-only secret-free push/verification/failure observations. A provisional checkpoint remains provisional after verified remote publication. Broader intake-state and meaningful-milestone semantics remain unfinished work.
+ 
+ ## Adaptive execution + bounded investigation time
+ 
+@@ -65,7 +65,7 @@ A Niccolò investigation is an **anytime computation**. It should yield useful p
+ | REX-002 | Build deterministic Python+CSV/JSON explanation package from real published analysis with truthful omissions | Verified first slice (PR #22) |
+ | REX-003 | Authorized extraction of select investigated inputs / scoring provenance | Verified bounded slices: examined source text export, Situation policy history, analysis human credence, and immutable explicitly recorded grounded-score artifacts; original uploaded document bytes remain omitted |
+ | GIT-001 | Connect user-owned GitHub repository, explicit export scope and permissions | Verified bounded GitHub slice: target/ref metadata, exact standard-package scope/digest preview, immutable local intent, transient read-only preflight/publish authorization, non-force publication, remote ref verification and append-only event history; no provider secret is stored |
+-| GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Partial infrastructure: durable operation checkpoints have a deterministic bounded local export package plus an immutable exact-digest local Git publication intent; standard analysis packages have retry-safe remote publication/verification; remote checkpoint publication/confirmation is not implemented |
++| GIT-002 | Publish intake and provisional checkpoints with remote confirmation and retries | Implemented bounded checkpoint slice: exact-digest immutable intent to a declared-private target, transient GitHub authorization, non-force checkpoint package publication, ref/commit re-verification, append-only remote outcome ledger, and retry-safe verified replay; generic intake publication remains open |
+ | GIT-003 | Publish meaningful milestones, keeping received/provisional/published visibly distinct | Not implemented |
+ | ARM-001 | Observe effective Linux process/container resources; portable adapter boundary | Verified Linux first slice (PR #26) |
+ | ARM-002 | Self-managed/delegated modes; bounded budgets and visible degradation | Partial verified slice: self/external/hybrid policy advice, resource-aware atomic worker admission and operation-wide invocation/token/deadline enforcement; HTTP-spawned execution and quality-degradation scheduling are not yet adaptive |
+diff --git a/frontend/src/api/client.js b/frontend/src/api/client.js
+index d7e38d9..2204f4e 100644
+--- a/frontend/src/api/client.js
++++ b/frontend/src/api/client.js
+@@ -152,6 +152,28 @@ export class NiccoloClient {
+   operationEvents(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/events?after=${after}&limit=${limit}`); }
+   operationCheckpoints(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints?after=${after}&limit=${limit}`); }
+   operationCheckpointPackage(operationId, checkpointId) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/package`); }
++  operationCheckpointGitPublicationPreview(operationId, checkpointId, targetId) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-preview?target_id=${targetId}`); }
++  recordOperationCheckpointGitPublicationIntent(operationId, checkpointId, publicationId, targetId) { return this.request('POST', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}`, { body: { target_id: targetId } }); }
++  operationCheckpointGitPublicationRemoteStatus(operationId, checkpointId, publicationId) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}/remote-status`); }
++  operationCheckpointGitPublicationRemoteEvents(operationId, checkpointId, publicationId, limit = 25) { return this.request('GET', `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}/remote-events?limit=${limit}`); }
++  async publishOperationCheckpointGitPublicationIntent(operationId, checkpointId, publicationId, attemptId, githubToken) {
++    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\r\n\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
++    const path = `${operationPath(this.config,operationId)}/checkpoints/${checkpointId}/git-publication-intents/${publicationId}/publish`;
++    const response = await this.fetch(path, {
++      method: 'POST',
++      headers: {
++        Accept: 'application/json',
++        Authorization: `Bearer ${this.config.token}`,
++        'Content-Type': 'application/json',
++        'X-Niccolo-GitHub-Authorization': `Bearer ${githubToken}`,
++      },
++      cache: 'no-store',
++      body: JSON.stringify({ attempt_id: attemptId, confirmation: 'PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB' }),
++    });
++    const value = await response.json().catch(() => ({}));
++    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
++    return { value };
++  }
+   operationBudget(operationId) { return this.request('GET', `${operationPath(this.config,operationId)}/budget`); }
+   cancelOperation(operationId, expectedVersion, reason) { return this.request('POST', `${operationPath(this.config,operationId)}/cancel`, { body: { expected_version: expectedVersion, reason } }); }
+ }
+diff --git a/frontend/src/api/client.test.js b/frontend/src/api/client.test.js
+index caeaf26..904bde9 100644
+--- a/frontend/src/api/client.test.js
++++ b/frontend/src/api/client.test.js
+@@ -119,6 +119,27 @@ describe('BFF client',()=>{
+    expect(calls[1][1].cache).toBe('no-store');
+  });
+ 
++ it('binds checkpoint publication to exact checkpoint scope and keeps provider authorization transient',async()=>{
++   const calls=[];
++   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{remote_publish_verified:true,status:{state:'VERIFIED_PUBLISHED'}});});
++   await x.operationCheckpointGitPublicationPreview('operation','checkpoint','target');
++   await x.recordOperationCheckpointGitPublicationIntent('operation','checkpoint','publication','target');
++   await x.operationCheckpointGitPublicationRemoteStatus('operation','checkpoint','publication');
++   await x.operationCheckpointGitPublicationRemoteEvents('operation','checkpoint','publication',7);
++   await x.publishOperationCheckpointGitPublicationIntent('operation','checkpoint','publication','attempt','checkpoint-transient-token');
++   expect(calls[0][0]).toContain('/operations/operation/checkpoints/checkpoint/git-publication-preview?target_id=target');
++   expect(calls[1][0]).toContain('/checkpoints/checkpoint/git-publication-intents/publication');
++   expect(JSON.parse(calls[1][1].body)).toEqual({target_id:'target'});
++   expect(calls[2][0]).toContain('/git-publication-intents/publication/remote-status');
++   expect(calls[2][1].headers['X-Niccolo-GitHub-Authorization']).toBeUndefined();
++   expect(calls[3][0]).toContain('/git-publication-intents/publication/remote-events?limit=7');
++   expect(calls[4][0]).toContain('/git-publication-intents/publication/publish');
++   expect(calls[4][0]).not.toContain('checkpoint-transient-token');
++   expect(calls[4][1].headers['X-Niccolo-GitHub-Authorization']).toBe('Bearer checkpoint-transient-token');
++   expect(JSON.parse(calls[4][1].body)).toEqual({attempt_id:'attempt',confirmation:'PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB'});
++   expect(calls[4][1].cache).toBe('no-store');
++ });
++
+  it('separates standard analysis export from explicitly authorized examined-source export',async()=>{
+    const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(200,{format:'niccolo.presentation-package',files:{'README.md':'x'},published_to_git:false});});
+    await x.presentationPackage('a');
+diff --git a/sql/0106_checkpoint_git_publication_events.sql b/sql/0106_checkpoint_git_publication_events.sql
+new file mode 100644
+index 0000000..1b52e88
+--- /dev/null
++++ b/sql/0106_checkpoint_git_publication_events.sql
+@@ -0,0 +1,48 @@
++-- GIT-002: append-only remote observations for checkpoint publications.
++-- Provider credentials and raw provider response bodies are deliberately absent.
++BEGIN;
++
++CREATE TABLE niccolo.checkpoint_git_publication_events (
++  workspace_id UUID NOT NULL,
++  publication_id UUID NOT NULL,
++  event_id UUID NOT NULL,
++  event_kind TEXT NOT NULL CHECK(event_kind IN ('PUSH_ACCEPTED','REF_VERIFIED','PUBLISH_FAILED')),
++  remote_commit_sha TEXT,
++  observed_ref TEXT,
++  failure_class TEXT,
++  recorded_by_principal_id UUID NOT NULL REFERENCES niccolo_auth.principals(principal_id),
++  created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
++  CHECK(remote_commit_sha IS NULL OR remote_commit_sha ~ '^[a-f0-9]{40,64}$'),
++  CHECK(observed_ref IS NULL OR length(observed_ref) BETWEEN 1 AND 244),
++  CHECK(failure_class IS NULL OR failure_class IN ('TRANSPORT','PROVIDER_REJECTED','VERIFICATION_MISMATCH','LOCAL_INTEGRITY')),
++  CHECK(
++    (event_kind='PUSH_ACCEPTED' AND remote_commit_sha IS NOT NULL AND observed_ref IS NULL AND failure_class IS NULL)
++    OR
++    (event_kind='REF_VERIFIED' AND remote_commit_sha IS NOT NULL AND observed_ref IS NOT NULL AND failure_class IS NULL)
++    OR
++    (event_kind='PUBLISH_FAILED' AND remote_commit_sha IS NULL AND observed_ref IS NULL AND failure_class IS NOT NULL)
++  ),
++  PRIMARY KEY(workspace_id,publication_id,event_id,event_kind),
++  FOREIGN KEY(workspace_id,publication_id)
++    REFERENCES niccolo.checkpoint_git_publication_intents(workspace_id,publication_id)
++);
++CREATE INDEX checkpoint_git_publication_events_by_publication
++  ON niccolo.checkpoint_git_publication_events(workspace_id,publication_id,created_at,event_id);
++
++GRANT SELECT,INSERT ON niccolo.checkpoint_git_publication_events TO niccolo_app;
++ALTER TABLE niccolo.checkpoint_git_publication_events ENABLE ROW LEVEL SECURITY;
++ALTER TABLE niccolo.checkpoint_git_publication_events FORCE ROW LEVEL SECURITY;
++CREATE POLICY workspace_filter ON niccolo.checkpoint_git_publication_events
++  USING (workspace_id=NULLIF(current_setting('niccolo.workspace_id',true),'')::uuid)
++  WITH CHECK (workspace_id=NULLIF(current_setting('niccolo.workspace_id',true),'')::uuid);
++CREATE POLICY api_read_gate ON niccolo.checkpoint_git_publication_events AS RESTRICTIVE
++  FOR SELECT TO niccolo_api USING (niccolo_auth.rls_credential_allows(workspace_id,'read'));
++CREATE POLICY api_write_insert_gate ON niccolo.checkpoint_git_publication_events AS RESTRICTIVE
++  FOR INSERT TO niccolo_api WITH CHECK (niccolo_auth.rls_credential_allows(workspace_id,'write'));
++CREATE POLICY api_write_update_gate ON niccolo.checkpoint_git_publication_events AS RESTRICTIVE
++  FOR UPDATE TO niccolo_api USING (niccolo_auth.rls_credential_allows(workspace_id,'write'))
++  WITH CHECK (niccolo_auth.rls_credential_allows(workspace_id,'write'));
++CREATE POLICY api_write_delete_gate ON niccolo.checkpoint_git_publication_events AS RESTRICTIVE
++  FOR DELETE TO niccolo_api USING (niccolo_auth.rls_credential_allows(workspace_id,'write'));
++
++COMMIT;
+diff --git a/src/api.rs b/src/api.rs
+index fc36f2a..62590b7 100644
+--- a/src/api.rs
++++ b/src/api.rs
+@@ -417,6 +417,18 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
+             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}",
+             post(record_bff_operation_checkpoint_git_publication_intent),
+         )
++        .route(
++            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}/remote-status",
++            get(get_bff_operation_checkpoint_git_publication_remote_status),
++        )
++        .route(
++            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}/remote-events",
++            get(list_bff_operation_checkpoint_git_publication_remote_events),
++        )
++        .route(
++            "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/checkpoints/{checkpoint}/git-publication-intents/{publication}/publish",
++            post(publish_bff_operation_checkpoint_git_publication_intent),
++        )
+         .route(
+             "/v1/workspaces/{workspace}/situations/{situation}/bff/operations/{operation}/wait",
+             get(wait_bff_operation),
+@@ -4820,6 +4832,14 @@ fn checkpoint_git_publication_error(error: CheckpointGitPublicationError) -> Api
+             StatusCode::CONFLICT,
+             "checkpoint git publication identity conflict",
+         ),
++        CheckpointGitPublicationError::Invisible => ApiError(
++            StatusCode::NOT_FOUND,
++            "checkpoint git publication intent unavailable",
++        ),
++        CheckpointGitPublicationError::Stale => ApiError(
++            StatusCode::CONFLICT,
++            "checkpoint git publication intent is stale; preview and record a new intent",
++        ),
+         CheckpointGitPublicationError::Checkpoint(CheckpointError::Invisible) => {
+             ApiError(StatusCode::NOT_FOUND, "checkpoint unavailable")
+         }
+@@ -4935,6 +4955,219 @@ async fn record_bff_operation_checkpoint_git_publication_intent(
+     ))
+ }
+ 
++async fn get_bff_operation_checkpoint_git_publication_remote_status(
++    State(state): State<AppState>,
++    Path((workspace, situation, operation, checkpoint, publication)): Path<(
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++    )>,
++    headers: HeaderMap,
++) -> Result<Response, ApiError> {
++    guard(&state, &headers, workspace, Capability::Read).await?;
++    let status = checkpoint_git_publication::remote_status(
++        &state.pool,
++        OperationScope {
++            workspace,
++            situation,
++            operation,
++        },
++        checkpoint,
++        publication,
++    )
++    .await
++    .map_err(checkpoint_git_publication_error)?;
++    Ok(no_store(json!(status), StatusCode::OK))
++}
++
++async fn list_bff_operation_checkpoint_git_publication_remote_events(
++    State(state): State<AppState>,
++    Path((workspace, situation, operation, checkpoint, publication)): Path<(
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++    )>,
++    headers: HeaderMap,
++    Query(query): Query<GitPublicationRemoteEventListQuery>,
++) -> Result<Response, ApiError> {
++    guard(&state, &headers, workspace, Capability::Read).await?;
++    let events = checkpoint_git_publication::list_remote_events(
++        &state.pool,
++        OperationScope {
++            workspace,
++            situation,
++            operation,
++        },
++        checkpoint,
++        publication,
++        query.limit.unwrap_or(25),
++    )
++    .await
++    .map_err(checkpoint_git_publication_error)?;
++    Ok(no_store(
++        json!({
++            "events": events,
++            "provider_secret_stored": false,
++            "event_payloads_include_provider_response_bodies": false
++        }),
++        StatusCode::OK,
++    ))
++}
++
++async fn publish_bff_operation_checkpoint_git_publication_intent(
++    State(state): State<AppState>,
++    Path((workspace, situation, operation, checkpoint, publication)): Path<(
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++        Uuid,
++    )>,
++    headers: HeaderMap,
++    Json(request): Json<GitHubPublishRequest>,
++) -> Result<Response, ApiError> {
++    guard(&state, &headers, workspace, Capability::Read).await?;
++    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
++    if request.attempt_id.is_nil()
++        || request.confirmation != "PUBLISH_OPERATION_CHECKPOINT_TO_GITHUB"
++    {
++        return Err(ApiError(
++            StatusCode::BAD_REQUEST,
++            "explicit checkpoint GitHub publication confirmation required",
++        ));
++    }
++    let scope = OperationScope {
++        workspace,
++        situation,
++        operation,
++    };
++    let existing =
++        checkpoint_git_publication::remote_status(&state.pool, scope, checkpoint, publication)
++            .await
++            .map_err(checkpoint_git_publication_error)?;
++    if existing.remote_publish_verified {
++        return Ok(no_store(
++            json!({
++                "status": existing,
++                "replayed_verified_publication": true,
++                "provider_secret_stored": false
++            }),
++            StatusCode::OK,
++        ));
++    }
++
++    let provider_token = transient_github_token(&headers)?;
++    let material = checkpoint_git_publication::publication_material(
++        &state.pool,
++        scope,
++        checkpoint,
++        publication,
++    )
++    .await
++    .map_err(checkpoint_git_publication_error)?;
++    let publish_result = tokio::task::spawn_blocking(move || {
++        let transport = github_publisher::CurlGitHubTransport::default();
++        github_publisher::publish_checkpoint_package(
++            &transport,
++            &material.target,
++            &material.intent,
++            &material.package,
++            &provider_token,
++        )
++    })
++    .await
++    .map_err(|_| {
++        ApiError(
++            StatusCode::BAD_GATEWAY,
++            "GitHub checkpoint publication task failed",
++        )
++    })?;
++
++    let verified = match publish_result {
++        Ok(verified) => verified,
++        Err(error) => {
++            let failure_class = match error {
++                GitHubPublishError::LocalIntegrity | GitHubPublishError::Invalid => {
++                    "LOCAL_INTEGRITY"
++                }
++                GitHubPublishError::Transport => "TRANSPORT",
++                GitHubPublishError::ProviderRejected(_) => "PROVIDER_REJECTED",
++                GitHubPublishError::VerificationMismatch
++                | GitHubPublishError::InvalidProviderResponse => "VERIFICATION_MISMATCH",
++            };
++            let _ = checkpoint_git_publication::record_remote_event(
++                &state.pool,
++                workspace,
++                actor,
++                &git_publication::RemoteEventInput {
++                    event_id: request.attempt_id,
++                    publication_id: publication,
++                    kind: git_publication::RemoteEventKind::PublishFailed,
++                    remote_commit_sha: None,
++                    observed_ref: None,
++                    failure_class: Some(failure_class.into()),
++                },
++            )
++            .await;
++            return Err(github_publish_error(error));
++        }
++    };
++
++    for (kind, observed_ref) in [
++        (git_publication::RemoteEventKind::PushAccepted, None),
++        (
++            git_publication::RemoteEventKind::RefVerified,
++            Some(verified.ref_name.clone()),
++        ),
++    ] {
++        checkpoint_git_publication::record_remote_event(
++            &state.pool,
++            workspace,
++            actor,
++            &git_publication::RemoteEventInput {
++                event_id: request.attempt_id,
++                publication_id: publication,
++                kind,
++                remote_commit_sha: Some(verified.commit_sha.clone()),
++                observed_ref,
++                failure_class: None,
++            },
++        )
++        .await
++        .map_err(checkpoint_git_publication_error)?;
++    }
++
++    let status =
++        checkpoint_git_publication::remote_status(&state.pool, scope, checkpoint, publication)
++            .await
++            .map_err(checkpoint_git_publication_error)?;
++    if !status.remote_publish_verified
++        || status.verified_commit_sha.as_deref() != Some(verified.commit_sha.as_str())
++        || status.verified_ref.as_deref() != Some(verified.ref_name.as_str())
++    {
++        return Err(ApiError(
++            StatusCode::INTERNAL_SERVER_ERROR,
++            "remote checkpoint publication verification ledger mismatch",
++        ));
++    }
++    Ok(no_store(
++        json!({
++            "status": status,
++            "repository_full_name": verified.repository_full_name,
++            "package_sha256": verified.package_sha256,
++            "remote_commit_already_present": verified.already_present,
++            "provider_secret_stored": false,
++            "remote_publish_verified": true,
++            "checkpoint_status_preserved": true
++        }),
++        StatusCode::OK,
++    ))
++}
++
+ async fn wait_bff_operation(
+     State(state): State<AppState>,
+     Path((workspace, situation, operation)): Path<(Uuid, Uuid, Uuid)>,
+diff --git a/src/checkpoint_git_publication.rs b/src/checkpoint_git_publication.rs
+index f84cd41..830c9ba 100644
+--- a/src/checkpoint_git_publication.rs
++++ b/src/checkpoint_git_publication.rs
+@@ -7,7 +7,10 @@ use crate::{
+     authz,
+     bff_operations::OperationScope,
+     checkpoint_package::{self, CheckpointPackageError},
+-    git_publication::{self, GitPublicationError, TargetView},
++    git_publication::{
++        self, GitPublicationError, RemoteEventInput, RemoteEventKind, RemotePublicationEventView,
++        RemotePublicationStatus, TargetView,
++    },
+     operation_checkpoint::{self, CheckpointError},
+ };
+ use serde::{Deserialize, Serialize};
+@@ -28,6 +31,10 @@ pub enum CheckpointGitPublicationError {
+     Invalid,
+     #[error("checkpoint publication identity conflicts with recorded scope")]
+     Conflict,
++    #[error("checkpoint publication intent unavailable")]
++    Invisible,
++    #[error("checkpoint publication intent no longer matches the immutable package")]
++    Stale,
+     #[error("privileged SQL login prohibited")]
+     Privileged,
+ }
+@@ -335,3 +342,365 @@ pub async fn record_intent(
+     tx.commit().await?;
+     Ok((view, !inserted))
+ }
++
++#[derive(Clone, Debug)]
++pub struct CheckpointPublicationMaterial {
++    pub target: TargetView,
++    pub intent: CheckpointPublicationIntentView,
++    pub package: checkpoint_package::CheckpointPackage,
++}
++
++async fn load_intent(
++    pool: &PgPool,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    publication_id: Uuid,
++) -> Result<CheckpointPublicationIntentView, CheckpointGitPublicationError> {
++    let mut tx = scoped(pool, scope.workspace).await?;
++    let row = sqlx::query(
++        "SELECT publication_id,target_id,situation_id,operation_id,checkpoint_id,
++                checkpoint_seq,checkpoint_kind,provisional,terminal,checkpoint_summary_sha256,
++                package_sha256,file_count,total_text_bytes,requested_ref,scope_kind,
++                includes_examined_source_text,includes_original_uploads,publication_state,
++                requested_by_principal_id,created_at::text AS created_at
++           FROM niccolo.checkpoint_git_publication_intents
++          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
++            AND checkpoint_id=$4 AND publication_id=$5",
++    )
++    .bind(scope.workspace)
++    .bind(scope.situation)
++    .bind(scope.operation)
++    .bind(checkpoint_id)
++    .bind(publication_id)
++    .fetch_optional(&mut *tx)
++    .await?
++    .ok_or(CheckpointGitPublicationError::Invisible)?;
++    let row = decode_intent_row(row)?;
++    tx.commit().await?;
++    intent_from_row(row)
++}
++
++pub async fn publication_material(
++    pool: &PgPool,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    publication_id: Uuid,
++) -> Result<CheckpointPublicationMaterial, CheckpointGitPublicationError> {
++    if checkpoint_id.is_nil() || publication_id.is_nil() {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    let intent = load_intent(pool, scope, checkpoint_id, publication_id).await?;
++    let checkpoint = operation_checkpoint::get(pool, scope, checkpoint_id).await?;
++    let package = checkpoint_package::build(scope, &checkpoint)?;
++    let target = git_publication::get_target(pool, scope.workspace, intent.target_id).await?;
++    let (file_count, total_text_bytes) = package_shape(&package)?;
++    let digest = checkpoint_package::package_sha256(&package);
++    if target.repository_visibility != "PRIVATE"
++        || intent.scope_kind != "OPERATION_CHECKPOINT"
++        || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
++        || intent.includes_examined_source_text
++        || intent.includes_original_uploads
++        || intent.requested_ref != target.ref_name
++        || intent.checkpoint_seq != checkpoint.checkpoint_seq
++        || intent.checkpoint_kind != checkpoint.checkpoint_kind
++        || intent.provisional != checkpoint.provisional
++        || intent.terminal != checkpoint.terminal
++        || intent.checkpoint_summary_sha256 != checkpoint.summary_sha256
++        || intent.package_sha256 != digest
++        || intent.file_count != file_count
++        || intent.total_text_bytes != total_text_bytes
++    {
++        return Err(CheckpointGitPublicationError::Stale);
++    }
++    Ok(CheckpointPublicationMaterial {
++        target,
++        intent,
++        package,
++    })
++}
++
++fn valid_remote_sha(value: &str) -> bool {
++    (40..=64).contains(&value.len())
++        && value
++            .bytes()
++            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
++}
++
++fn valid_ref(value: &str) -> bool {
++    !value.is_empty()
++        && value.len() <= 244
++        && !value.starts_with('/')
++        && !value.starts_with('.')
++        && !value.ends_with('/')
++        && !value.ends_with('.')
++        && !value.ends_with(".lock")
++        && !value.contains("..")
++        && !value.contains("@{")
++        && !value.contains("//")
++        && value
++            .bytes()
++            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'_' | b'-'))
++}
++
++fn validate_remote_event(input: &RemoteEventInput) -> Result<(), CheckpointGitPublicationError> {
++    if input.event_id.is_nil() || input.publication_id.is_nil() {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    match input.kind {
++        RemoteEventKind::PushAccepted => {
++            if input
++                .remote_commit_sha
++                .as_deref()
++                .is_none_or(|sha| !valid_remote_sha(sha))
++                || input.observed_ref.is_some()
++                || input.failure_class.is_some()
++            {
++                return Err(CheckpointGitPublicationError::Invalid);
++            }
++        }
++        RemoteEventKind::RefVerified => {
++            if input
++                .remote_commit_sha
++                .as_deref()
++                .is_none_or(|sha| !valid_remote_sha(sha))
++                || input
++                    .observed_ref
++                    .as_deref()
++                    .is_none_or(|value| !valid_ref(value))
++                || input.failure_class.is_some()
++            {
++                return Err(CheckpointGitPublicationError::Invalid);
++            }
++        }
++        RemoteEventKind::PublishFailed => {
++            if input.remote_commit_sha.is_some()
++                || input.observed_ref.is_some()
++                || !matches!(
++                    input.failure_class.as_deref(),
++                    Some(
++                        "TRANSPORT"
++                            | "PROVIDER_REJECTED"
++                            | "VERIFICATION_MISMATCH"
++                            | "LOCAL_INTEGRITY"
++                    )
++                )
++            {
++                return Err(CheckpointGitPublicationError::Invalid);
++            }
++        }
++    }
++    Ok(())
++}
++
++fn event_kind(kind: RemoteEventKind) -> &'static str {
++    match kind {
++        RemoteEventKind::PushAccepted => "PUSH_ACCEPTED",
++        RemoteEventKind::RefVerified => "REF_VERIFIED",
++        RemoteEventKind::PublishFailed => "PUBLISH_FAILED",
++    }
++}
++
++type RemoteEventRow = (
++    Uuid,
++    Uuid,
++    String,
++    Option<String>,
++    Option<String>,
++    Option<String>,
++    Uuid,
++    String,
++);
++
++fn remote_event_from_row(row: RemoteEventRow) -> RemotePublicationEventView {
++    RemotePublicationEventView {
++        event_id: row.0,
++        publication_id: row.1,
++        event_kind: row.2,
++        remote_commit_sha: row.3,
++        observed_ref: row.4,
++        failure_class: row.5,
++        recorded_by_principal_id: row.6,
++        created_at: row.7,
++    }
++}
++
++pub async fn record_remote_event(
++    pool: &PgPool,
++    workspace: Uuid,
++    actor: Uuid,
++    input: &RemoteEventInput,
++) -> Result<(RemotePublicationEventView, bool), CheckpointGitPublicationError> {
++    if actor.is_nil() {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    validate_remote_event(input)?;
++    let kind = event_kind(input.kind);
++    let mut tx = scoped(pool, workspace).await?;
++    let inserted = sqlx::query(
++        "INSERT INTO niccolo.checkpoint_git_publication_events
++         (workspace_id,publication_id,event_id,event_kind,remote_commit_sha,observed_ref,
++          failure_class,recorded_by_principal_id)
++         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
++         ON CONFLICT DO NOTHING",
++    )
++    .bind(workspace)
++    .bind(input.publication_id)
++    .bind(input.event_id)
++    .bind(kind)
++    .bind(input.remote_commit_sha.as_deref())
++    .bind(input.observed_ref.as_deref())
++    .bind(input.failure_class.as_deref())
++    .bind(actor)
++    .execute(&mut *tx)
++    .await?
++    .rows_affected()
++        == 1;
++    let row: RemoteEventRow = sqlx::query_as(
++        "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
++                failure_class,recorded_by_principal_id,created_at::text
++           FROM niccolo.checkpoint_git_publication_events
++          WHERE workspace_id=$1 AND publication_id=$2 AND event_id=$3 AND event_kind=$4",
++    )
++    .bind(workspace)
++    .bind(input.publication_id)
++    .bind(input.event_id)
++    .bind(kind)
++    .fetch_optional(&mut *tx)
++    .await?
++    .ok_or(CheckpointGitPublicationError::Conflict)?;
++    if row.2 != kind
++        || row.3 != input.remote_commit_sha
++        || row.4 != input.observed_ref
++        || row.5 != input.failure_class
++        || row.6 != actor
++    {
++        return Err(CheckpointGitPublicationError::Conflict);
++    }
++    let view = remote_event_from_row(row);
++    tx.commit().await?;
++    Ok((view, !inserted))
++}
++
++async fn ensure_intent_visible(
++    tx: &mut Transaction<'_, Postgres>,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    publication_id: Uuid,
++) -> Result<(), CheckpointGitPublicationError> {
++    let exists: bool = sqlx::query_scalar(
++        "SELECT EXISTS(
++             SELECT 1 FROM niccolo.checkpoint_git_publication_intents
++              WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
++                AND checkpoint_id=$4 AND publication_id=$5
++         )",
++    )
++    .bind(scope.workspace)
++    .bind(scope.situation)
++    .bind(scope.operation)
++    .bind(checkpoint_id)
++    .bind(publication_id)
++    .fetch_one(&mut **tx)
++    .await?;
++    if !exists {
++        return Err(CheckpointGitPublicationError::Invisible);
++    }
++    Ok(())
++}
++
++pub async fn list_remote_events(
++    pool: &PgPool,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    publication_id: Uuid,
++    limit: i64,
++) -> Result<Vec<RemotePublicationEventView>, CheckpointGitPublicationError> {
++    if checkpoint_id.is_nil() || publication_id.is_nil() || !(1..=100).contains(&limit) {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    let mut tx = scoped(pool, scope.workspace).await?;
++    ensure_intent_visible(&mut tx, scope, checkpoint_id, publication_id).await?;
++    let rows: Vec<RemoteEventRow> = sqlx::query_as(
++        "SELECT event_id,publication_id,event_kind,remote_commit_sha,observed_ref,
++                failure_class,recorded_by_principal_id,created_at::text
++           FROM niccolo.checkpoint_git_publication_events
++          WHERE workspace_id=$1 AND publication_id=$2
++          ORDER BY created_at DESC,event_id DESC,event_kind DESC
++          LIMIT $3",
++    )
++    .bind(scope.workspace)
++    .bind(publication_id)
++    .bind(limit)
++    .fetch_all(&mut *tx)
++    .await?;
++    tx.commit().await?;
++    Ok(rows.into_iter().map(remote_event_from_row).collect())
++}
++
++pub async fn remote_status(
++    pool: &PgPool,
++    scope: OperationScope,
++    checkpoint_id: Uuid,
++    publication_id: Uuid,
++) -> Result<RemotePublicationStatus, CheckpointGitPublicationError> {
++    if checkpoint_id.is_nil() || publication_id.is_nil() {
++        return Err(CheckpointGitPublicationError::Invalid);
++    }
++    let mut tx = scoped(pool, scope.workspace).await?;
++    ensure_intent_visible(&mut tx, scope, checkpoint_id, publication_id).await?;
++    let event_count: i64 = sqlx::query_scalar(
++        "SELECT count(*)::bigint
++           FROM niccolo.checkpoint_git_publication_events
++          WHERE workspace_id=$1 AND publication_id=$2",
++    )
++    .bind(scope.workspace)
++    .bind(publication_id)
++    .fetch_one(&mut *tx)
++    .await?;
++    let verified: Option<(String, String)> = sqlx::query_as(
++        "SELECT remote_commit_sha,observed_ref
++           FROM niccolo.checkpoint_git_publication_events
++          WHERE workspace_id=$1 AND publication_id=$2 AND event_kind='REF_VERIFIED'
++          ORDER BY created_at DESC,event_id DESC LIMIT 1",
++    )
++    .bind(scope.workspace)
++    .bind(publication_id)
++    .fetch_optional(&mut *tx)
++    .await?;
++    let last: Option<(String, Option<String>, String)> = sqlx::query_as(
++        "SELECT event_kind,failure_class,created_at::text
++           FROM niccolo.checkpoint_git_publication_events
++          WHERE workspace_id=$1 AND publication_id=$2
++          ORDER BY created_at DESC,event_id DESC,event_kind DESC LIMIT 1",
++    )
++    .bind(scope.workspace)
++    .bind(publication_id)
++    .fetch_optional(&mut *tx)
++    .await?;
++    tx.commit().await?;
++    let (remote_publish_verified, verified_commit_sha, verified_ref, state) =
++        if let Some((commit, observed_ref)) = verified {
++            (true, Some(commit), Some(observed_ref), "VERIFIED_PUBLISHED")
++        } else {
++            let state = match last.as_ref().map(|row| row.0.as_str()) {
++                Some("PUSH_ACCEPTED") => "PUSHED_UNVERIFIED",
++                Some("PUBLISH_FAILED") => "REMOTE_ATTEMPT_FAILED",
++                _ => "AWAITING_REMOTE_AUTHORIZATION",
++            };
++            (false, None, None, state)
++        };
++    let last_failure_class = last
++        .as_ref()
++        .and_then(|row| (row.0 == "PUBLISH_FAILED").then(|| row.1.clone()).flatten());
++    Ok(RemotePublicationStatus {
++        publication_id,
++        state: state.into(),
++        remote_publish_verified,
++        verified_commit_sha,
++        verified_ref,
++        event_count: u32::try_from(event_count)
++            .map_err(|_| CheckpointGitPublicationError::Conflict)?,
++        last_event_kind: last.as_ref().map(|row| row.0.clone()),
++        last_event_at: last.as_ref().map(|row| row.2.clone()),
++        last_failure_class,
++    })
++}
+diff --git a/src/github_publisher.rs b/src/github_publisher.rs
+index 27381a7..29abd8e 100644
+--- a/src/github_publisher.rs
++++ b/src/github_publisher.rs
+@@ -6,6 +6,8 @@
+ //! PostgreSQL remains authoritative until the caller records a verified remote
+ //! ref observation after this function returns successfully.
+ use crate::{
++    checkpoint_git_publication::CheckpointPublicationIntentView,
++    checkpoint_package::{self, CheckpointPackage},
+     git_publication::{PublicationIntentView, TargetView},
+     presentation_package::{self, PresentationPackage},
+ };
+@@ -156,6 +158,61 @@ fn validate_local_material(
+     branch_name(&target.ref_name).map(str::to_owned)
+ }
+ 
++fn checkpoint_total_text_bytes(package: &CheckpointPackage) -> Result<u64, GitHubPublishError> {
++    package.files.values().try_fold(0_u64, |total, value| {
++        total
++            .checked_add(value.len() as u64)
++            .ok_or(GitHubPublishError::LocalIntegrity)
++    })
++}
++
++fn validate_checkpoint_material(
++    target: &TargetView,
++    intent: &CheckpointPublicationIntentView,
++    package: &CheckpointPackage,
++    token: &str,
++) -> Result<String, GitHubPublishError> {
++    if !valid_token(token)
++        || target.provider != "GITHUB"
++        || target.authorization_mode != "TRANSIENT_PROVIDER_AUTHORIZATION"
++        || target.provider_secret_stored
++        || target.repository_visibility != "PRIVATE"
++        || intent.target_id != target.target_id
++        || intent.requested_ref != target.ref_name
++        || intent.scope_kind != "OPERATION_CHECKPOINT"
++        || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
++        || intent.includes_examined_source_text
++        || intent.includes_original_uploads
++        || intent.situation_id != package.situation_id
++        || intent.operation_id != package.operation_id
++        || intent.checkpoint_id != package.checkpoint_id
++        || intent.checkpoint_seq != package.checkpoint_seq
++        || intent.checkpoint_kind != package.checkpoint_kind
++        || intent.provisional != package.provisional
++        || intent.terminal != package.terminal
++        || intent.checkpoint_summary_sha256 != package.checkpoint_summary_sha256
++        || package.scope_kind != "OPERATION_CHECKPOINT"
++        || package.published_to_git
++        || package.includes_original_uploads
++        || package.includes_examined_source_text
++        || package.establishes_truth
++        || package.proves_completeness
++        || package.authorizes_real_world_action
++        || package.files.is_empty()
++        || package.files.len() > MAX_REMOTE_PACKAGE_FILES
++        || package.files.len() != intent.file_count as usize
++        || checkpoint_total_text_bytes(package)? != intent.total_text_bytes
++        || package.files.keys().any(|path| !safe_package_path(path))
++    {
++        return Err(GitHubPublishError::LocalIntegrity);
++    }
++    let digest = checkpoint_package::package_sha256(package);
++    if digest != intent.package_sha256 {
++        return Err(GitHubPublishError::LocalIntegrity);
++    }
++    branch_name(&target.ref_name).map(str::to_owned)
++}
++
+ fn repository_visibility_matches(target: &TargetView, private: bool) -> bool {
+     match target.repository_visibility.as_str() {
+         "PRIVATE" => private,
+@@ -414,6 +471,172 @@ pub fn publish_standard_package<T: GitHubTransport>(
+     })
+ }
+ 
++fn expected_checkpoint_commit_message(intent: &CheckpointPublicationIntentView) -> String {
++    format!(
++        "Niccolo checkpoint publication {} package {}",
++        intent.publication_id, intent.package_sha256
++    )
++}
++
++pub fn publish_checkpoint_package<T: GitHubTransport>(
++    transport: &T,
++    target: &TargetView,
++    intent: &CheckpointPublicationIntentView,
++    package: &CheckpointPackage,
++    token: &str,
++) -> Result<VerifiedGitHubPublication, GitHubPublishError> {
++    let branch = validate_checkpoint_material(target, intent, package, token)?;
++    let repository = format!("{}/{}", target.repository_owner, target.repository_name);
++    let repo_path = format!("/repos/{repository}");
++    let repo = transport.json("GET", &repo_path, token, None)?;
++    let remote_full_name = response_string(&repo, "/full_name")?;
++    let private = repo
++        .get("private")
++        .and_then(Value::as_bool)
++        .ok_or(GitHubPublishError::InvalidProviderResponse)?;
++    if !private
++        || !remote_full_name.eq_ignore_ascii_case(&repository)
++        || !repository_visibility_matches(target, private)
++    {
++        return Err(GitHubPublishError::VerificationMismatch);
++    }
++
++    let ref_path = format!("{repo_path}/git/ref/heads/{branch}");
++    let (base_commit_sha, create_requested_ref) =
++        match transport.json("GET", &ref_path, token, None) {
++            Ok(current_ref) => (
++                response_string(&current_ref, "/object/sha")?.to_owned(),
++                false,
++            ),
++            Err(GitHubPublishError::ProviderRejected(404)) => {
++                let default_branch = response_string(&repo, "/default_branch")?;
++                let default_branch = branch_name(default_branch)?;
++                if default_branch == branch {
++                    return Err(GitHubPublishError::InvalidProviderResponse);
++                }
++                let default_ref = transport.json(
++                    "GET",
++                    &format!("{repo_path}/git/ref/heads/{default_branch}"),
++                    token,
++                    None,
++                )?;
++                (
++                    response_string(&default_ref, "/object/sha")?.to_owned(),
++                    true,
++                )
++            }
++            Err(error) => return Err(error),
++        };
++    let base_commit = transport.json(
++        "GET",
++        &format!("{repo_path}/git/commits/{base_commit_sha}"),
++        token,
++        None,
++    )?;
++    let base_tree_sha = response_string(&base_commit, "/tree/sha")?.to_owned();
++    let base_message = base_commit
++        .get("message")
++        .and_then(Value::as_str)
++        .unwrap_or_default();
++
++    let prefix = format!(
++        "niccolo/situations/{}/operations/{}/checkpoints/{}",
++        intent.situation_id, intent.operation_id, intent.checkpoint_id
++    );
++    let mut tree_entries = Vec::with_capacity(package.files.len());
++    for (path, content) in &package.files {
++        let blob = transport.json(
++            "POST",
++            &format!("{repo_path}/git/blobs"),
++            token,
++            Some(&json!({"content":content,"encoding":"utf-8"})),
++        )?;
++        let sha = response_string(&blob, "/sha")?;
++        tree_entries.push(json!({
++            "path": format!("{prefix}/{path}"),
++            "mode": "100644",
++            "type": "blob",
++            "sha": sha
++        }));
++    }
++    let tree = transport.json(
++        "POST",
++        &format!("{repo_path}/git/trees"),
++        token,
++        Some(&json!({"base_tree":base_tree_sha,"tree":tree_entries})),
++    )?;
++    let tree_sha = response_string(&tree, "/sha")?.to_owned();
++    let commit_message = expected_checkpoint_commit_message(intent);
++
++    if !create_requested_ref && tree_sha == base_tree_sha && base_message == commit_message {
++        return Ok(VerifiedGitHubPublication {
++            commit_sha: base_commit_sha,
++            ref_name: branch,
++            repository_full_name: remote_full_name.to_owned(),
++            package_sha256: intent.package_sha256.clone(),
++            already_present: true,
++        });
++    }
++
++    let commit = transport.json(
++        "POST",
++        &format!("{repo_path}/git/commits"),
++        token,
