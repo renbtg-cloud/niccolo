@@ -50,6 +50,7 @@ function ConnectedSituation({client}){
   const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve each document identity across retries after a partial multi-file import.
   const pendingDocumentIds = useRef(new Map());
+  const sourceInputRef = useRef(null);
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
@@ -163,6 +164,7 @@ function ConnectedSituation({client}){
       setFiles([]);
       setUploadProgress(null);
       pendingDocumentIds.current.clear();
+      if (sourceInputRef.current) sourceInputRef.current.value = '';
       await refresh();
     },
     // If a later file fails after earlier files succeeded, preserve every
@@ -210,6 +212,7 @@ function ConnectedSituation({client}){
       <h3>Add records</h3>
       <p>Upload a plain-text email (.eml) or a WhatsApp chat export (.txt). Generic text files are not interpreted as WhatsApp conversations. Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
       <input
+        ref={sourceInputRef}
         aria-label="Source file"
         type="file"
         multiple
