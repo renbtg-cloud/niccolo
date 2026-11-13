@@ -1491,6 +1491,83 @@ async fn v1101_v1200_operation_budget_is_cumulative_bounded_and_not_a_quality_sc
 }
 
 #[tokio::test]
+async fn provider_controlled_failure_text_never_enters_model_invocation_ledger() {
+    #[derive(Clone)]
+    struct SensitiveFailure;
+    impl model_adapter::ReasoningModel for SensitiveFailure {
+        fn provider(&self) -> &str {
+            "sensitive-test-provider"
+        }
+        fn model(&self) -> &str {
+            "sensitive-test-model"
+        }
+        fn invoke<'a>(
+            &'a self,
+            _request: &'a ModelRequest,
+        ) -> model_adapter::ModelFuture<'a> {
+            Box::pin(async {
+                Err(model_adapter::ModelError::Provider(
+                    "Bearer secret-token; private source sentence".into(),
+                ))
+            })
+        }
+    }
+
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        let steps = agentic_policy::default_plan(&app, s.workspace, s.situation, s.analysis)
+            .await
+            .unwrap();
+        let (rev, _) =
+            agentic_controller::create_plan(&app, scope, s.principal, &steps)
+                .await
+                .unwrap();
+        assert!(
+            model_adapter::invoke_recorded_with_policy(
+                &app,
+                InvocationScope {
+                    operation: scope,
+                    plan_revision: rev,
+                    step_id: steps[0].step_id,
+                },
+                s.principal,
+                &SensitiveFailure,
+                &ModelRequest {
+                    purpose: "INSPECT_SOURCES".into(),
+                    input: json!({}),
+                    output_contract: json!({}),
+                },
+                model_adapter::InvocationPolicy {
+                    timeout_ms: 1000,
+                    max_attempts: 1,
+                    max_total_tokens: None,
+                },
+            )
+            .await
+            .is_err()
+        );
+        let (code, message): (String, String) = sqlx::query_as(
+            "SELECT error_code,error_message FROM niccolo.model_invocations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(code, "PROVIDER_ERROR");
+        assert_eq!(message, "model provider invocation failed");
+        assert!(!message.contains("secret-token"));
+        assert!(!message.contains("private source"));
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn v1201_v1300_failover_records_the_provider_that_actually_answered() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
