@@ -5,7 +5,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz};
+use niccolo_evidence::{analysis_quality, analysis_structure::AnalysisScope, api, authz};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 struct Setup {
     admin: PgPool,
+    secure: PgPool,
     router: Router,
     workspace: Uuid,
     writer: String,
@@ -46,7 +47,8 @@ async fn setup() -> Setup {
         .unwrap();
     Setup {
         admin,
-        router: api::router(secure),
+        router: api::router(secure.clone()),
+        secure,
         workspace,
         writer,
         reader,
@@ -476,6 +478,80 @@ async fn coverage_summary_distinguishes_present_partial_and_all_catalogued_text(
         complete_catalogue["all_catalogued_fragments_examined_does_not_prove_unsupported_media_examined"],
         true
     );
+}
+
+#[tokio::test]
+async fn quality_report_stays_provisional_until_frozen_catalogued_fragments_are_examined() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    let (document, ids) = seed_document(&f, 2).await;
+    add_source(&f, situation, document).await;
+    begin_analysis(&f, situation, analysis, None).await;
+    let scope = AnalysisScope {
+        workspace: f.workspace,
+        situation,
+        analysis,
+    };
+    let digest = authz::credential_digest(&f.writer).unwrap();
+
+    let before = authz::with_auth_digest(
+        digest.clone(),
+        analysis_quality::report(&f.secure, scope),
+    )
+    .await
+    .unwrap();
+    assert_eq!(before.catalogued_source_fragment_count, 2);
+    assert_eq!(before.examined_source_fragment_count, 0);
+    assert_eq!(before.unexamined_source_fragment_count, 2);
+    assert!(before.provisional);
+
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                format!("{}/{}", coverage_path(&f, situation, analysis), ids[0]),
+                &f.writer,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let partial = authz::with_auth_digest(
+        digest.clone(),
+        analysis_quality::report(&f.secure, scope),
+    )
+    .await
+    .unwrap();
+    assert_eq!(partial.examined_source_fragment_count, 1);
+    assert_eq!(partial.unexamined_source_fragment_count, 1);
+    assert!(partial.provisional);
+
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                format!("{}/{}", coverage_path(&f, situation, analysis), ids[1]),
+                &f.writer,
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let complete =
+        authz::with_auth_digest(digest, analysis_quality::report(&f.secure, scope))
+            .await
+            .unwrap();
+    assert_eq!(complete.examined_source_fragment_count, 2);
+    assert_eq!(complete.unexamined_source_fragment_count, 0);
+    assert!(!complete.provisional);
 }
 
 #[tokio::test]
