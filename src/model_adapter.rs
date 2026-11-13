@@ -171,15 +171,22 @@ impl ReasoningModel for FailoverModel {
         Box::pin(async move {
             match self.primary.invoke(request).await {
                 Ok(mut r) => {
-                    r.effective_provider = Some(self.primary.provider().into());
-                    r.effective_model = Some(self.primary.model().into());
+                    // Preserve a deeper router/adapter's already-attributed
+                    // effective backend instead of replacing it with the
+                    // logical wrapper that happened to return the response.
+                    r.effective_provider
+                        .get_or_insert_with(|| self.primary.provider().into());
+                    r.effective_model
+                        .get_or_insert_with(|| self.primary.model().into());
                     Ok(r)
                 }
                 Err(error) if retryable_model_error(&error) => {
                     match self.fallback.invoke(request).await {
                         Ok(mut r) => {
-                            r.effective_provider = Some(self.fallback.provider().into());
-                            r.effective_model = Some(self.fallback.model().into());
+                            r.effective_provider
+                                .get_or_insert_with(|| self.fallback.provider().into());
+                            r.effective_model
+                                .get_or_insert_with(|| self.fallback.model().into());
                             r.fallback_used = true;
                             Ok(r)
                         }
