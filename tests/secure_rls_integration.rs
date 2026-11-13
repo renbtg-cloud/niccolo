@@ -294,13 +294,48 @@ async fn secure_http_auth_digest_does_not_leak_between_concurrent_requests() {
     }
 }
 #[tokio::test]
-async fn every_workspace_table_has_all_four_restrictive_policies() {
+async fn every_granted_workspace_operation_has_a_restrictive_policy() {
     let (admin, _, _, _, _, _) = fixture().await;
-    let bad:i64=sqlx::query_scalar("SELECT count(*) FROM (SELECT c.relname,count(p.policyname) as n \
-        FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace \
-        JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='workspace_id' \
-        LEFT JOIN pg_policies p ON p.schemaname='niccolo' AND p.tablename=c.relname AND p.policyname LIKE 'api_%_gate' \
-        WHERE ns.nspname='niccolo' AND c.relkind='r' GROUP BY c.relname) q WHERE n<>4")
-        .fetch_one(&admin).await.unwrap();
+    let bad: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pg_class c \
+         JOIN pg_namespace ns ON ns.oid=c.relnamespace \
+         JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='workspace_id' \
+         WHERE ns.nspname='niccolo' AND c.relkind='r' \
+           AND ( \
+             (has_table_privilege('niccolo_api',c.oid,'SELECT') AND NOT EXISTS ( \
+               SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                 AND NOT p.polpermissive AND p.polname='api_read_gate' AND p.polcmd='r' \
+                 AND 'niccolo_api'::regrole::oid=ANY(p.polroles))) OR \
+             (has_table_privilege('niccolo_api',c.oid,'INSERT') AND NOT EXISTS ( \
+               SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                 AND NOT p.polpermissive AND p.polname='api_write_insert_gate' AND p.polcmd='a' \
+                 AND 'niccolo_api'::regrole::oid=ANY(p.polroles))) OR \
+             (has_table_privilege('niccolo_api',c.oid,'UPDATE') AND NOT EXISTS ( \
+               SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                 AND NOT p.polpermissive AND p.polname='api_write_update_gate' AND p.polcmd='w' \
+                 AND 'niccolo_api'::regrole::oid=ANY(p.polroles))) OR \
+             (has_table_privilege('niccolo_api',c.oid,'DELETE') AND NOT EXISTS ( \
+               SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
+                 AND NOT p.polpermissive AND p.polname='api_write_delete_gate' AND p.polcmd='d' \
+                 AND 'niccolo_api'::regrole::oid=ANY(p.polroles))))",
+    )
+    .fetch_one(&admin)
+    .await
+    .unwrap();
     assert_eq!(bad, 0);
+
+    let upstream: (bool, bool, bool, bool, i64) = sqlx::query_as(
+        "SELECT \
+           has_table_privilege('niccolo_api','niccolo.upstream_processing_declarations','SELECT'), \
+           has_table_privilege('niccolo_api','niccolo.upstream_processing_declarations','INSERT'), \
+           has_table_privilege('niccolo_api','niccolo.upstream_processing_declarations','UPDATE'), \
+           has_table_privilege('niccolo_api','niccolo.upstream_processing_declarations','DELETE'), \
+           (SELECT count(*) FROM pg_policies \
+             WHERE schemaname='niccolo' AND tablename='upstream_processing_declarations' \
+               AND policyname LIKE 'api_%_gate')",
+    )
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(upstream, (true, true, false, false, 2));
 }
