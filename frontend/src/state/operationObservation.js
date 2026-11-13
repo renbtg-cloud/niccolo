@@ -32,6 +32,10 @@ export function mergeOperationObservation(previous, incoming) {
     operationChanged: Boolean(incoming.operation_changed),
     eventsChanged: Boolean(incoming.events_changed),
     timedOut: Boolean(incoming.timed_out),
+    // A terminal operation can become visible before all paginated events have
+    // been drained. Keep polling until one final short/empty event page proves
+    // the cursor caught up.
+    eventsMayRemain: Boolean(incoming.event_page_may_have_more),
   };
 }
 
