@@ -75,6 +75,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingCorrection.current.id');
   });
 
+  it('reuses a newly created person when only the mapping reason changes after a partial retry', () => {
+    expect(identities).toContain('newPersonSignature');
+    expect(identities).toContain('pendingAssign.current?.newPersonSignature === newPersonSignature');
+    expect(identities).toContain('reusablePersonId || crypto.randomUUID()');
+  });
+
   it('keeps the Analysis UUID form in sync with history selection', () => {
     expect(analysis).toContain('useEffect(()=>{reset({analysis});},[analysis,reset]);');
     expect(analysis).toContain('defaultValues:{analysis}');
