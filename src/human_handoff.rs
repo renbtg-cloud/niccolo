@@ -314,9 +314,18 @@ pub async fn record_conflict(
     scope: AnalysisScope,
     c: &ConflictInput,
 ) -> Result<(), HandoffError> {
-    if !valid(&c.description) || c.claim_ids.len() < 2 {
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || c.conflict_id.is_nil()
+        || c.recorded_by.is_nil()
+        || !valid(&c.description)
+        || !(2..=256).contains(&c.claim_ids.len())
+        || c.claim_ids.iter().any(|id| id.is_nil())
+    {
         return Err(HandoffError::Invalid);
     }
+    let description = c.description.trim();
     let mut ids = c.claim_ids.clone();
     ids.sort_unstable();
     ids.dedup();
@@ -324,9 +333,63 @@ pub async fn record_conflict(
         return Err(HandoffError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_analysis_conflict_sets(workspace_id,situation_id,analysis_id,conflict_id,description,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(c.conflict_id).bind(&c.description).bind(c.recorded_by).execute(&mut *tx).await?;
-    for id in ids {
-        sqlx::query("INSERT INTO niccolo.situation_analysis_conflict_claims(workspace_id,situation_id,analysis_id,conflict_id,claim_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(c.conflict_id).bind(id).execute(&mut *tx).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_conflict_sets(workspace_id,situation_id,analysis_id,conflict_id,description,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(c.conflict_id)
+    .bind(description)
+    .bind(c.recorded_by)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+
+    let stored: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT description,recorded_by_principal_id
+           FROM niccolo.situation_analysis_conflict_sets
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND conflict_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(c.conflict_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((description.into(), c.recorded_by)) {
+        return Err(HandoffError::Conflict);
+    }
+
+    if inserted {
+        for id in &ids {
+            sqlx::query(
+                "INSERT INTO niccolo.situation_analysis_conflict_claims(workspace_id,situation_id,analysis_id,conflict_id,claim_id) VALUES($1,$2,$3,$4,$5)",
+            )
+            .bind(scope.workspace)
+            .bind(scope.situation)
+            .bind(scope.analysis)
+            .bind(c.conflict_id)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    let stored_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT claim_id
+           FROM niccolo.situation_analysis_conflict_claims
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND conflict_id=$4
+          ORDER BY claim_id",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(c.conflict_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    if stored_ids != ids {
+        return Err(HandoffError::Conflict);
     }
     tx.commit().await?;
     Ok(())
