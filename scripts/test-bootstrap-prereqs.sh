@@ -103,6 +103,31 @@ set -e
 grep -Fq '.niccolo-local must not be accessible by group or other users.' "$TMP/dir-err"
 ! grep -Fq 'unexpected psql call after local-directory preflight' "$TMP/dir-err"
 
+# The setup login must own the dedicated database; elevated access alone is
+# insufficient because object ownership is part of the runtime migration model.
+rm -rf "$TMP/repo/.niccolo-local"
+mkdir -p "$TMP/repo/.niccolo-local"
+chmod 700 "$TMP/repo/.niccolo-local"
+cat > "$TMP/bin/psql" <<'SH'
+#!/bin/bash
+case " $* " in
+  *' SHOW server_version_num '*) printf '%s\n' '170011' ;;
+  *' SELECT pg_get_userbyid(datdba)=current_user FROM pg_database WHERE datname=current_database() '*)
+    printf '%s\n' 'f'
+    ;;
+  *) printf 'unexpected psql call after owner mismatch: %s\n' "$*" >&2; exit 97 ;;
+esac
+SH
+chmod +x "$TMP/bin/psql"
+set +e
+PATH="$TMP/bin" NICCOLO_PG_ADMIN_URL='postgres://operator@127.0.0.1/db' NICCOLO_PG_SECURE_PASSWORD='fixture-secret' \
+  /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/owner-out" 2>"$TMP/owner-err"
+owner_status=$?
+set -e
+[[ "$owner_status" == 1 ]]
+grep -Fq 'Bootstrap login must own the dedicated Niccolò database.' "$TMP/owner-err"
+! grep -Fq 'unexpected psql call after owner mismatch' "$TMP/owner-err"
+
 # Once DB preflight passes, build tools still must not inherit the database
 # owner URL or password that were used only for psql.
 rm -rf "$TMP/repo/.niccolo-local"
@@ -112,6 +137,7 @@ cat > "$TMP/bin/psql" <<'SH'
 #!/bin/bash
 case " $* " in
   *' SHOW server_version_num '*) printf '%s\n' '170011' ;;
+  *' SELECT pg_get_userbyid(datdba)=current_user FROM pg_database WHERE datname=current_database() '*) printf '%s\n' 't' ;;
   *" to_regclass('niccolo.workspaces') IS NOT NULL "*) printf '%s\n' 'f' ;;
   *' SELECT NOT EXISTS (SELECT 1 FROM pg_class '* ) printf '%s\n' 't' ;;
   *" string_agg(rolname,',' ORDER BY rolname) "* ) printf '%s\n' '' ;;
