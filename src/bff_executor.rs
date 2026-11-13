@@ -344,7 +344,8 @@ pub async fn execute_adaptive(
             bff_operations::claim_execution(pool, scope, &lease_owner, EXECUTION_LEASE_MS).await?
         };
         if claimed {
-            return run_with_owned_lease(pool, scope, actor, model, &lease_owner, Some(policy)).await;
+            return run_with_owned_lease(pool, scope, actor, model, &lease_owner, Some(policy))
+                .await;
         }
 
         if started.elapsed() >= Duration::from_millis(ADAPTIVE_ADMISSION_MAX_WAIT_MS) {
