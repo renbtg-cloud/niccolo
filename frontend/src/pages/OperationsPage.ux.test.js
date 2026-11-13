@@ -59,6 +59,14 @@ describe('primary analysis path', () => {
     expect(operations).toContain('response_id:pendingHumanResponse.current.responseId');
   });
 
+  it('reuses a milestone declaration ID after an uncertain response', () => {
+    expect(operations).toContain('const pendingMilestone=useRef(null)');
+    expect(operations).toContain('pendingMilestone.current?.signature!==signature');
+    expect(operations).toContain('milestoneId:crypto.randomUUID()');
+    expect(operations).toContain('pendingMilestone.current.milestoneId');
+    expect(operations).toContain('pendingMilestone.current=null');
+  });
+
   it('shows live operation-wide budget accounting without presenting it as epistemic quality', () => {
     expect(operations).toContain('client.operationBudget(active)');
     expect(operations).toContain("refetchInterval:observed.operation?.terminal?false:2000");
