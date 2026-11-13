@@ -158,11 +158,13 @@ pub async fn append_source_request_event(
     let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT request_id,event_kind,note,recorded_by_principal_id
            FROM niccolo.situation_analysis_source_request_events
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND request_id=$4 AND event_id=$5",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.analysis)
+    .bind(request)
     .bind(e.event_id)
     .fetch_optional(&mut *tx)
     .await?;
