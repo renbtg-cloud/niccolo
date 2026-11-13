@@ -5163,6 +5163,22 @@ fn intent_response(
     response
 }
 
+fn spawn_adaptive_bff_execution(
+    pool: PgPool,
+    model: Arc<dyn ReasoningModel>,
+    scope: OperationScope,
+    actor: Uuid,
+    digest: String,
+) {
+    tokio::spawn(async move {
+        authz::with_auth_digest(digest, async move {
+            let _ =
+                bff_executor::execute_adaptive_default(&pool, scope, actor, model.as_ref()).await;
+        })
+        .await;
+    });
+}
+
 async fn prepare_intent(
     state: &AppState,
     workspace: Uuid,
@@ -5215,12 +5231,7 @@ async fn bff_intent_async(
             situation,
             operation,
         };
-        tokio::spawn(async move {
-            authz::with_auth_digest(digest, async move {
-                let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
-            })
-            .await;
-        });
+        spawn_adaptive_bff_execution(pool, model, scope, actor, digest);
     }
     Ok(intent_response(launch, view, StatusCode::ACCEPTED))
 }
@@ -5314,12 +5325,7 @@ async fn bff_operation_async(
             situation,
             operation,
         };
-        tokio::spawn(async move {
-            authz::with_auth_digest(digest, async move {
-                let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
-            })
-            .await;
-        });
+        spawn_adaptive_bff_execution(pool, model, scope, actor, digest);
     }
     Ok(bff_response(view, StatusCode::ACCEPTED))
 }
@@ -6043,12 +6049,7 @@ async fn resolve_agentic_human_boundary(
     {
         let pool = state.pool.clone();
         let model = state.model.clone();
-        tokio::spawn(async move {
-            authz::with_auth_digest(digest, async move {
-                let _ = bff_executor::execute(&pool, scope, actor, model.as_ref()).await;
-            })
-            .await;
-        });
+        spawn_adaptive_bff_execution(pool, model, scope, actor, digest);
     }
     Ok(no_store(
         json!({"resolution":resolved,"controller":controller}),
