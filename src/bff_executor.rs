@@ -50,6 +50,18 @@ fn agentic_outcome_is_stalled(state: &str) -> bool {
     matches!(state, "BLOCKED" | "IDLE")
 }
 
+fn durable_execution_failure(code: &str) -> &'static str {
+    match code {
+        "AGENTIC_EXECUTION_FAILED" => {
+            "agentic execution failed; inspect bounded operation and model diagnostics"
+        }
+        "REANALYSIS_EXECUTION_FAILED" => {
+            "reanalysis execution failed; inspect bounded operation diagnostics"
+        }
+        _ => "BFF execution failed; inspect bounded operation diagnostics",
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkerRun {
     pub scope: OperationScope,
@@ -215,8 +227,10 @@ async fn run_with_owned_lease(
                     unreachable!("lease supervision errors handled above")
                 }
             };
-            let message = error.to_string();
-            mark_failed_best_effort(pool, scope, actor, code, &message).await;
+            // The concrete error can contain provider-controlled text or
+            // infrastructure details. Return it to the in-process caller, but
+            // persist only a bounded category-specific diagnostic.
+            mark_failed_best_effort(pool, scope, actor, code, durable_execution_failure(code)).await;
             Err(error)
         }
     }
@@ -377,6 +391,22 @@ pub async fn execute_adaptive_default(
 #[cfg(test)]
 mod stalled_outcome_tests {
     use super::*;
+
+    #[test]
+    fn durable_execution_failures_do_not_echo_provider_or_infrastructure_text() {
+        assert_eq!(
+            durable_execution_failure("AGENTIC_EXECUTION_FAILED"),
+            "agentic execution failed; inspect bounded operation and model diagnostics"
+        );
+        assert_eq!(
+            durable_execution_failure("REANALYSIS_EXECUTION_FAILED"),
+            "reanalysis execution failed; inspect bounded operation diagnostics"
+        );
+        assert_eq!(
+            durable_execution_failure("BFF_EXECUTION_FAILED"),
+            "BFF execution failed; inspect bounded operation diagnostics"
+        );
+    }
 
     #[test]
     fn only_undeliverable_agentic_states_fail_the_operation() {
