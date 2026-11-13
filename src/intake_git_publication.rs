@@ -218,7 +218,8 @@ fn intent_from_row(
         document_id: row.document_id,
         source_sha256: row.source_sha256,
         package_sha256: row.package_sha256,
-        file_count: u32::try_from(row.file_count).map_err(|_| IntakeGitPublicationError::Conflict)?,
+        file_count: u32::try_from(row.file_count)
+            .map_err(|_| IntakeGitPublicationError::Conflict)?,
         total_text_bytes: u64::try_from(row.total_text_bytes)
             .map_err(|_| IntakeGitPublicationError::Conflict)?,
         requested_ref: row.requested_ref,

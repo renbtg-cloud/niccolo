@@ -8,9 +8,9 @@
 use crate::{
     checkpoint_git_publication::CheckpointPublicationIntentView,
     checkpoint_package::{self, CheckpointPackage},
+    git_publication::{PublicationIntentView, TargetView},
     intake_git_publication::IntakePublicationIntentView,
     intake_package::{self, IntakePackage},
-    git_publication::{PublicationIntentView, TargetView},
     presentation_package::{self, PresentationPackage},
 };
 use serde_json::{Value, json};
@@ -1273,9 +1273,14 @@ mod tests {
             json!({"object":{"sha":"7".repeat(40)}}),
             json!({"tree":{"sha":"6".repeat(40)},"message":expected_intake_commit_message(&intent)}),
         ]);
-        let verified =
-            publish_intake_package(&transport, &target(), &intent, &package, "test-secret-token")
-                .unwrap();
+        let verified = publish_intake_package(
+            &transport,
+            &target(),
+            &intent,
+            &package,
+            "test-secret-token",
+        )
+        .unwrap();
         assert_eq!(verified.commit_sha, "7".repeat(40));
         assert_eq!(verified.package_sha256, intent.package_sha256);
         let calls = transport.calls.lock().unwrap();
@@ -1288,10 +1293,10 @@ mod tests {
                 .and_then(Value::as_array)
                 .is_some_and(|entries| {
                     entries.iter().all(|entry| {
-                        entry["path"].as_str().unwrap().starts_with(&format!(
-                            "niccolo/intake/{}/",
-                            intent.document_id
-                        ))
+                        entry["path"]
+                            .as_str()
+                            .unwrap()
+                            .starts_with(&format!("niccolo/intake/{}/", intent.document_id))
                     })
                 })
         }));
@@ -1319,7 +1324,13 @@ mod tests {
 
         package.receipt.includes_source_text = true;
         assert_eq!(
-            publish_intake_package(&transport, &target(), &intent, &package, "test-secret-token"),
+            publish_intake_package(
+                &transport,
+                &target(),
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
             Err(GitHubPublishError::LocalIntegrity)
         );
         assert!(transport.calls.lock().unwrap().is_empty());

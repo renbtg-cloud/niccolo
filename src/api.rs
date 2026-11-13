@@ -36,9 +36,9 @@ use crate::human_feedback::{self, FeedbackError, HumanResponse};
 use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
-use crate::integration_diagnostics::{self, IntegrationDiagnosticsError};
-use crate::intake_package;
 use crate::intake_git_publication::{self, IntakeGitPublicationError};
+use crate::intake_package;
+use crate::integration_diagnostics::{self, IntegrationDiagnosticsError};
 use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
 use crate::local_handoff::{LocalHandoff, LocalHandoffError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
@@ -1200,15 +1200,18 @@ async fn list_sources(
 
 fn intake_git_publication_error(error: IntakeGitPublicationError) -> ApiError {
     match error {
-        IntakeGitPublicationError::Invalid => {
-            ApiError(StatusCode::BAD_REQUEST, "invalid intake git publication request")
-        }
-        IntakeGitPublicationError::Conflict => {
-            ApiError(StatusCode::CONFLICT, "intake git publication identity conflict")
-        }
-        IntakeGitPublicationError::Invisible => {
-            ApiError(StatusCode::NOT_FOUND, "intake git publication intent unavailable")
-        }
+        IntakeGitPublicationError::Invalid => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid intake git publication request",
+        ),
+        IntakeGitPublicationError::Conflict => ApiError(
+            StatusCode::CONFLICT,
+            "intake git publication identity conflict",
+        ),
+        IntakeGitPublicationError::Invisible => ApiError(
+            StatusCode::NOT_FOUND,
+            "intake git publication intent unavailable",
+        ),
         IntakeGitPublicationError::Stale => ApiError(
             StatusCode::CONFLICT,
             "intake git publication intent is stale; preview and record a new intent",
@@ -1220,16 +1223,21 @@ fn intake_git_publication_error(error: IntakeGitPublicationError) -> ApiError {
             ApiError(StatusCode::NOT_FOUND, "git publication target unavailable")
         }
         IntakeGitPublicationError::Package(intake_package::IntakePackageError::Invalid)
-        | IntakeGitPublicationError::Git(GitPublicationError::Invalid) => {
-            ApiError(StatusCode::BAD_REQUEST, "invalid intake git publication request")
-        }
+        | IntakeGitPublicationError::Git(GitPublicationError::Invalid) => ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid intake git publication request",
+        ),
         IntakeGitPublicationError::Package(intake_package::IntakePackageError::TooLarge) => {
-            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "intake receipt exceeds publication limit")
+            ApiError(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "intake receipt exceeds publication limit",
+            )
         }
         IntakeGitPublicationError::Git(GitPublicationError::Conflict)
-        | IntakeGitPublicationError::Git(GitPublicationError::Stale) => {
-            ApiError(StatusCode::CONFLICT, "intake git publication source is inconsistent")
-        }
+        | IntakeGitPublicationError::Git(GitPublicationError::Stale) => ApiError(
+            StatusCode::CONFLICT,
+            "intake git publication source is inconsistent",
+        ),
         IntakeGitPublicationError::Database(_)
         | IntakeGitPublicationError::Privileged
         | IntakeGitPublicationError::Source(_)
@@ -1296,7 +1304,11 @@ async fn record_intake_git_publication_intent(
             "establishes_truth": false,
             "proves_completeness": false
         }),
-        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
@@ -1386,7 +1398,12 @@ async fn publish_intake_git_publication_intent(
         )
     })
     .await
-    .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "GitHub intake publication task failed"))?;
+    .map_err(|_| {
+        ApiError(
+            StatusCode::BAD_GATEWAY,
+            "GitHub intake publication task failed",
+        )
+    })?;
 
     let verified = match publish_result {
         Ok(verified) => verified,
