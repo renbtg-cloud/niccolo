@@ -617,10 +617,11 @@ async fn run_until_boundary_with_resource_observer<
                 agentic_controller::human_review_occurred(pool, scope).await?;
             if quality.human_attention_recommended && !already_had_human_review {
                 let reason = format!(
-                    "{} open evidence gap(s), {} clarification(s), {} material adversarial challenge(s)",
+                    "{} open evidence gap(s), {} clarification(s), {} material adversarial challenge(s), {} frozen source fragment(s) not examined",
                     quality.open_evidence_gap_count,
                     quality.clarification_count,
-                    quality.open_material_challenge_count
+                    quality.open_material_challenge_count,
+                    quality.unexamined_source_fragment_count
                 );
                 let followup = agentic_policy::human_attention_plan(&reason)?;
                 agentic_controller::create_plan(pool, scope, actor, &followup).await?;
