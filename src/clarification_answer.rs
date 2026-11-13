@@ -228,6 +228,29 @@ pub async fn answer(
     })
 }
 
+/// IDs already answered by a human for this frozen analysis.
+/// Answers are attributed context, never independent documentary evidence.
+pub async fn answered_question_ids(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<std::collections::BTreeSet<Uuid>, ClarificationAnswerError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT question_id
+           FROM niccolo.situation_analysis_clarification_answers
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(ids.into_iter().collect())
+}
+
 pub async fn list(
     pool: &PgPool,
     workspace: Uuid,
