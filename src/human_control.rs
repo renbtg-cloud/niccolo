@@ -231,10 +231,12 @@ pub async fn append_constraint_event(
     let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT constraint_id,event_kind,note,recorded_by_principal_id
            FROM niccolo.situation_human_constraint_events
-          WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3",
+          WHERE workspace_id=$1 AND situation_id=$2
+            AND constraint_id=$3 AND event_id=$4",
     )
     .bind(workspace)
     .bind(situation)
+    .bind(constraint)
     .bind(e.event_id)
     .fetch_optional(&mut *tx)
     .await?;
@@ -319,11 +321,14 @@ pub async fn add_consequence(
     let stored: Option<(Uuid, Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT decision_id,option_id,consequence_text,uncertainty_note,recorded_by_principal_id
            FROM niccolo.situation_analysis_option_consequences
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND consequence_id=$4",
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND decision_id=$4 AND option_id=$5 AND consequence_id=$6",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.analysis)
+    .bind(decision)
+    .bind(option)
     .bind(c.consequence_id)
     .fetch_optional(&mut *tx)
     .await?;
@@ -471,11 +476,13 @@ pub async fn append_stop_event(
     let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT condition_id,event_kind,note,recorded_by_principal_id
            FROM niccolo.situation_analysis_stop_condition_events
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND condition_id=$4 AND event_id=$5",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.analysis)
+    .bind(condition)
     .bind(e.event_id)
     .fetch_optional(&mut *tx)
     .await?;
