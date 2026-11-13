@@ -202,10 +202,15 @@ fn private_temp(prefix: &str, bytes: &[u8]) -> Result<PathBuf, ModelError> {
     let mut file = options
         .open(&path)
         .map_err(|e| ModelError::Provider(format!("temporary provider file failed: {e}")))?;
-    file.write_all(bytes)
-        .map_err(|e| ModelError::Provider(format!("temporary provider file failed: {e}")))?;
-    file.flush()
-        .map_err(|e| ModelError::Provider(format!("temporary provider file failed: {e}")))?;
+    if let Err(error) = file.write_all(bytes).and_then(|_| file.flush()) {
+        // A partial request body or Authorization header remains sensitive.
+        // Remove it even if the filesystem fails during write or flush.
+        drop(file);
+        remove_private(&path);
+        return Err(ModelError::Provider(format!(
+            "temporary provider file failed: {error}"
+        )));
+    }
     Ok(path)
 }
 
