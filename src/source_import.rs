@@ -203,20 +203,14 @@ fn parse_email_header(
             let key = key.trim();
             let raw_value = value.trim();
             let value = if raw_value.starts_with('"') || raw_value.ends_with('"') {
-                if raw_value.len() < 2
-                    || !raw_value.starts_with('"')
-                    || !raw_value.ends_with('"')
-                {
+                if raw_value.len() < 2 || !raw_value.starts_with('"') || !raw_value.ends_with('"') {
                     return invalid_email_header(nested, "MIME parameter quoting");
                 }
                 &raw_value[1..raw_value.len() - 1]
             } else {
                 raw_value
             };
-            if value.contains('"')
-                || key.is_empty()
-                || value.is_empty()
-                || !seen_params.insert(key)
+            if value.contains('"') || key.is_empty() || value.is_empty() || !seen_params.insert(key)
             {
                 return invalid_email_header(
                     nested,
