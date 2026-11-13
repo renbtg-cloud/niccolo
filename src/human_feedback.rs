@@ -252,6 +252,39 @@ pub async fn feedback_history(
     Ok((output, next))
 }
 
+/// Select questions whose every *recorded latest per-actor position* is
+/// REJECTED. A conflicting UNKNOWN or INSUFFICIENT_EVIDENCE position keeps
+/// the question eligible for review; feedback is never treated as evidence.
+pub async fn wholly_rejected_question_ids(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<std::collections::BTreeSet<Uuid>, FeedbackError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT latest.question_id
+           FROM (
+              SELECT DISTINCT ON (e.question_id,e.actor_principal_id)
+                     e.question_id,e.actor_principal_id,e.response
+                FROM niccolo.question_feedback_events e
+                JOIN niccolo.situation_analysis_clarification_questions q
+                  ON q.workspace_id=e.workspace_id AND q.question_id=e.question_id
+               WHERE e.workspace_id=$1 AND q.situation_id=$2 AND q.analysis_id=$3
+               ORDER BY e.question_id,e.actor_principal_id,e.event_no DESC
+           ) latest
+          GROUP BY latest.question_id
+         HAVING bool_and(latest.response='REJECTED')",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(ids.into_iter().collect())
+}
+
 /// Each actor has a separate, most-recent stated position. Contradictions are
 /// preserved rather than collapsed into a consensus or truth estimate.
 pub async fn positions(
