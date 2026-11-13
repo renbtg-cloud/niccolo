@@ -1144,6 +1144,58 @@ mod tests {
         }
     }
 
+    fn intake_package_fixture() -> IntakePackage {
+        IntakePackage {
+            receipt: IntakeReceipt {
+                format: "niccolo.intake-receipt-package".into(),
+                version: 1,
+                state: "RECEIVED".into(),
+                workspace_id: Uuid::from_u128(21),
+                document_id: Uuid::from_u128(22),
+                source_format: "EML".into(),
+                source_sha256: "c".repeat(64),
+                source_byte_length: 321,
+                parsed_fragment_count: 3,
+                original_bytes_retained_by_niccolo: true,
+                includes_original_upload: false,
+                includes_source_text: false,
+                includes_analysis: false,
+                establishes_authenticity: false,
+                establishes_truth: false,
+                proves_completeness: false,
+                proves_independence: false,
+            },
+            files: [
+                ("README.md".into(), "received only".into()),
+                ("intake.json".into(), "{\"state\":\"RECEIVED\"}\n".into()),
+                ("SHA256SUMS".into(), "placeholder\n".into()),
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    fn intake_intent(package: &IntakePackage) -> IntakePublicationIntentView {
+        IntakePublicationIntentView {
+            publication_id: Uuid::from_u128(23),
+            target_id: Uuid::from_u128(1),
+            document_id: package.receipt.document_id,
+            source_sha256: package.receipt.source_sha256.clone(),
+            package_sha256: intake_package::package_sha256(package),
+            file_count: package.files.len() as u32,
+            total_text_bytes: intake_total_text_bytes(package).unwrap(),
+            requested_ref: "main".into(),
+            scope_kind: "INTAKE_RECEIPT".into(),
+            includes_original_uploads: false,
+            includes_source_text: false,
+            includes_analysis: false,
+            publication_state: "AWAITING_REMOTE_AUTHORIZATION".into(),
+            requested_by_principal_id: Uuid::from_u128(9),
+            created_at: "2026-01-01 00:00:00+00".into(),
+            remote_publish_performed: false,
+        }
+    }
+
     fn checkpoint_package_fixture() -> CheckpointPackage {
         CheckpointPackage {
             format: "niccolo.operation-checkpoint-package".into(),
@@ -1202,6 +1254,75 @@ mod tests {
             created_at: "2026-01-01 00:00:00+00".into(),
             remote_publish_performed: false,
         }
+    }
+
+    #[test]
+    fn intake_receipt_is_committed_under_document_prefix_and_verified() {
+        let package = intake_package_fixture();
+        let intent = intake_intent(&package);
+        let transport = ScriptedTransport::new(vec![
+            json!({"full_name":"owner/history","private":true}),
+            json!({"object":{"sha":"1".repeat(40)}}),
+            json!({"tree":{"sha":"2".repeat(40)},"message":"older"}),
+            json!({"sha":"3".repeat(40)}),
+            json!({"sha":"4".repeat(40)}),
+            json!({"sha":"5".repeat(40)}),
+            json!({"sha":"6".repeat(40)}),
+            json!({"sha":"7".repeat(40)}),
+            json!({"object":{"sha":"7".repeat(40)}}),
+            json!({"object":{"sha":"7".repeat(40)}}),
+            json!({"tree":{"sha":"6".repeat(40)},"message":expected_intake_commit_message(&intent)}),
+        ]);
+        let verified =
+            publish_intake_package(&transport, &target(), &intent, &package, "test-secret-token")
+                .unwrap();
+        assert_eq!(verified.commit_sha, "7".repeat(40));
+        assert_eq!(verified.package_sha256, intent.package_sha256);
+        let calls = transport.calls.lock().unwrap();
+        let patch = calls.iter().find(|call| call.0 == "PATCH").unwrap();
+        assert_eq!(patch.2.as_ref().unwrap()["force"], false);
+        assert!(calls.iter().any(|call| {
+            call.2
+                .as_ref()
+                .and_then(|value| value.get("tree"))
+                .and_then(Value::as_array)
+                .is_some_and(|entries| {
+                    entries.iter().all(|entry| {
+                        entry["path"].as_str().unwrap().starts_with(&format!(
+                            "niccolo/intake/{}/",
+                            intent.document_id
+                        ))
+                    })
+                })
+        }));
+        assert!(!format!("{calls:?}").contains("test-secret-token"));
+    }
+
+    #[test]
+    fn intake_publication_refuses_public_target_and_source_content_flags() {
+        let mut package = intake_package_fixture();
+        let intent = intake_intent(&package);
+        let mut public_target = target();
+        public_target.repository_visibility = "PUBLIC".into();
+        let transport = ScriptedTransport::new(vec![]);
+        assert_eq!(
+            publish_intake_package(
+                &transport,
+                &public_target,
+                &intent,
+                &package,
+                "test-secret-token"
+            ),
+            Err(GitHubPublishError::LocalIntegrity)
+        );
+        assert!(transport.calls.lock().unwrap().is_empty());
+
+        package.receipt.includes_source_text = true;
+        assert_eq!(
+            publish_intake_package(&transport, &target(), &intent, &package, "test-secret-token"),
+            Err(GitHubPublishError::LocalIntegrity)
+        );
+        assert!(transport.calls.lock().unwrap().is_empty());
     }
 
     #[test]
