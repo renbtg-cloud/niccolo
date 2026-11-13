@@ -408,8 +408,33 @@ pub async fn add_stop_condition(
     {
         return Err(ControlError::Invalid);
     }
+    let text = c.text.trim();
+    let escalation_note = c.escalation_note.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_analysis_stop_conditions(workspace_id,situation_id,analysis_id,condition_id,condition_text,escalation_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(c.condition_id).bind(&c.text).bind(&c.escalation_note).bind(c.recorded_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_stop_conditions(workspace_id,situation_id,analysis_id,condition_id,condition_text,escalation_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(c.condition_id)
+        .bind(text)
+        .bind(escalation_note)
+        .bind(c.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(String, String, Uuid)> = sqlx::query_as(
+        "SELECT condition_text,escalation_note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_stop_conditions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND condition_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(c.condition_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((text.into(), escalation_note.into(), c.recorded_by)) {
+        return Err(ControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -430,8 +455,33 @@ pub async fn append_stop_event(
     {
         return Err(ControlError::Invalid);
     }
+    let note = e.note.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_analysis_stop_condition_events(workspace_id,situation_id,analysis_id,condition_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(condition).bind(e.event_id).bind(&e.kind).bind(&e.note).bind(e.recorded_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_stop_condition_events(workspace_id,situation_id,analysis_id,condition_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(condition)
+        .bind(e.event_id)
+        .bind(&e.kind)
+        .bind(note)
+        .bind(e.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT condition_id,event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_stop_condition_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(e.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((condition, e.kind.clone(), note.into(), e.recorded_by)) {
+        return Err(ControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
