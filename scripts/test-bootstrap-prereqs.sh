@@ -6,7 +6,10 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/repo/scripts" "$TMP/bin"
 cp "$ROOT/scripts/bootstrap-local-mvp.sh" "$TMP/repo/scripts/bootstrap-local-mvp.sh"
-cp "$(command -v dirname)" "$TMP/bin/dirname"
+for tool in dirname node mkdir uname stat bash; do
+  cp "$(command -v "$tool")" "$TMP/bin/$tool"
+  chmod +x "$TMP/bin/$tool"
+done
 
 stub_ok(){
   local name="$1"
@@ -18,8 +21,6 @@ SH
 }
 
 for name in psql npm rustc; do stub_ok "$name"; done
-cp "$(command -v node)" "$TMP/bin/node"
-chmod +x "$TMP/bin/node"
 
 set +e
 PATH="$TMP/bin" NICCOLO_PG_ADMIN_URL='postgres://owner@127.0.0.1/db' /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/missing-out" 2>"$TMP/missing-err"
