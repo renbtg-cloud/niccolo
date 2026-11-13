@@ -1,8 +1,8 @@
 //! ARM-002 resource-management policy.
 //!
-//! This module converts observed capacity into conservative advice. It does
-//! not yet change worker concurrency, mutate cgroups, select models, or certify
-//! epistemic quality. That separation keeps policy testable before scheduler wiring.
+//! This module converts observed capacity into conservative advice. The worker and
+//! HTTP background executors may apply its concurrency recommendation, but this
+//! policy layer does not mutate cgroups, select models, or certify epistemic quality.
 use crate::runtime_resources::ResourceSnapshot;
 use serde::{Deserialize, Serialize};
 
