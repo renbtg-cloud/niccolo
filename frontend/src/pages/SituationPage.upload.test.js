@@ -36,6 +36,12 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('will replay safely if you retry the same selection');
   });
 
+  it('clears the native file input after a successful batch so the same files can be selected again', () => {
+    expect(source).toContain('sourceInputRef = useRef(null)');
+    expect(source).toContain('ref={sourceInputRef}');
+    expect(source).toContain("sourceInputRef.current.value = ''");
+  });
+
   it('clears retry identities only after the whole selected batch succeeds or the user changes selection', () => {
     expect(source).toContain('pendingDocumentIds.current.clear()');
     expect(source).toContain('setFiles([])');
