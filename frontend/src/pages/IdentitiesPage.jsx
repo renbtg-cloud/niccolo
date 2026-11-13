@@ -33,6 +33,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
     <label>Person
       <select value={choice} onChange={(event) => setChoice(event.target.value)}>
         <option value="">Choose an existing person</option>
+        {binding?.person_id && !current && <option value={binding.person_id}>{binding.person_id} · mapped person outside this page</option>}
         {identities.map((identity) => <option key={identity.person_id} value={identity.person_id}>{identity.display_label}</option>)}
         <option value="__new__">Create a new person…</option>
       </select>
