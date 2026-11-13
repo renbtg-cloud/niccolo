@@ -103,4 +103,39 @@ set -e
 grep -Fq '.niccolo-local must not be accessible by group or other users.' "$TMP/dir-err"
 ! grep -Fq 'unexpected psql call after local-directory preflight' "$TMP/dir-err"
 
-printf '%s\n' 'PASS: bootstrap fails before build when required tools, PostgreSQL 17, or local credential-directory safety are unavailable.'
+# Once DB preflight passes, build tools still must not inherit the database
+# owner URL or password that were used only for psql.
+rm -rf "$TMP/repo/.niccolo-local"
+mkdir -p "$TMP/repo/.niccolo-local"
+chmod 700 "$TMP/repo/.niccolo-local"
+cat > "$TMP/bin/psql" <<'SH'
+#!/bin/bash
+case " $* " in
+  *' SHOW server_version_num '*) printf '%s\n' '170011' ;;
+  *" to_regclass('niccolo.workspaces') IS NOT NULL "*) printf '%s\n' 'f' ;;
+  *' SELECT NOT EXISTS (SELECT 1 FROM pg_class '* ) printf '%s\n' 't' ;;
+  *" string_agg(rolname,',' ORDER BY rolname) "* ) printf '%s\n' '' ;;
+  *' SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname=current_user '* ) printf '%s\n' 't' ;;
+  *) printf 'unexpected psql preflight: %s\n' "$*" >&2; exit 96 ;;
+esac
+SH
+chmod +x "$TMP/bin/psql"
+cat > "$TMP/repo/scripts/build-mvp.sh" <<'SH'
+#!/bin/bash
+set -euo pipefail
+[[ -z "${PGPASSWORD:-}" ]] || exit 93
+[[ -z "${NICCOLO_PG_ADMIN_URL:-}" ]] || exit 94
+printf 'credentials stripped\n' > "${NICCOLO_TEST_BUILD_MARKER:?}"
+exit 95
+SH
+chmod +x "$TMP/repo/scripts/build-mvp.sh"
+set +e
+PATH="$TMP/bin" NICCOLO_TEST_BUILD_MARKER="$TMP/build-marker" \
+  NICCOLO_PG_ADMIN_URL='postgres://owner:p%40ss%3Aword@127.0.0.1/db' \
+  /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/build-out" 2>"$TMP/build-err"
+build_status=$?
+set -e
+[[ "$build_status" == 95 ]]
+grep -Fq 'credentials stripped' "$TMP/build-marker"
+
+printf '%s\n' 'PASS: bootstrap preflight protects prerequisites, owner credentials, and local credential storage before mutation.'
