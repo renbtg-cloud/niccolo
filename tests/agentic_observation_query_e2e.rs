@@ -620,7 +620,7 @@ async fn model_query_retrieves_late_evidence_for_next_synthesis() {
     let attention_label: String = sqlx::query_scalar(
         "SELECT label FROM niccolo.agentic_steps \
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
-           AND kind=\'REQUEST_HUMAN_DECISION\' \
+           AND step_kind=\'REQUEST_HUMAN_DECISION\' \
          ORDER BY plan_revision DESC LIMIT 1",
     )
     .bind(h.workspace)
