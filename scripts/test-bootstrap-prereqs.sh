@@ -55,6 +55,9 @@ done
 cat > "$TMP/bin/psql" <<'SH'
 #!/bin/bash
 if [[ " $* " == *' SHOW server_version_num '* ]]; then
+  if [[ -n "${NICCOLO_TEST_PSQL_CAPTURE:-}" ]]; then
+    printf 'argv=%s\npgpassword=%s\n' "$*" "${PGPASSWORD:-}" > "$NICCOLO_TEST_PSQL_CAPTURE"
+  fi
   printf '%s\n' '160012'
   exit 0
 fi
@@ -64,12 +67,17 @@ SH
 chmod +x "$TMP/bin/psql"
 
 set +e
-PATH="$TMP/bin" NICCOLO_PG_ADMIN_URL='postgres://owner@127.0.0.1/db' /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/version-out" 2>"$TMP/version-err"
+PATH="$TMP/bin" NICCOLO_TEST_PSQL_CAPTURE="$TMP/psql-capture" \
+  NICCOLO_PG_ADMIN_URL='postgres://owner:p%40ss%3Aword@127.0.0.1/db' \
+  /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/version-out" 2>"$TMP/version-err"
 version_status=$?
 set -e
 [[ "$version_status" == 2 ]]
 grep -Fq 'requires PostgreSQL 17' "$TMP/version-err"
 grep -Fq 'version_num=160012' "$TMP/version-err"
+grep -Fq 'pgpassword=p@ss:word' "$TMP/psql-capture"
+! grep -Fq 'p%40ss%3Aword' "$TMP/psql-capture"
+! grep -Fq 'p@ss:word@' "$TMP/psql-capture"
 
 # Local state must be private before bootstrap is allowed to touch a fresh DB.
 cat > "$TMP/bin/psql" <<'SH'
