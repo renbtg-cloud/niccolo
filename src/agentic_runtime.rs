@@ -770,6 +770,32 @@ async fn run_until_boundary_with_resource_observer<
                 )
                 .await;
             }
+            Err(RuntimeError::Model(model_adapter::ModelError::Timeout)) => {
+                // A provider timeout is ordinarily an execution failure. If the
+                // timeout was clamped to the operation's remaining model-call
+                // window, however, transition to the same provisional deadline
+                // boundary used when that window is exhausted before a call.
+                match operation_budget::require_available_for_attempts(
+                    pool,
+                    scope,
+                    model.provider_attempt_ceiling(),
+                )
+                .await
+                {
+                    Err(error) if budget_stop_reason(&error).is_some() => {
+                        return finish_budget_boundary(
+                            pool,
+                            scope,
+                            actor,
+                            &step,
+                            completed,
+                            budget_stop_reason(&error).expect("checked above"),
+                        )
+                        .await;
+                    }
+                    _ => return Err(model_adapter::ModelError::Timeout.into()),
+                }
+            }
             Err(error) => return Err(error),
         }
         completed += 1;
