@@ -522,8 +522,11 @@ async fn model_query_retrieves_late_evidence_for_next_synthesis() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(launched["operation"]["state"], "SUCCEEDED");
-    assert_eq!(launched["operation"]["terminal"], true);
+    // The frozen source has 300 fragments while the bounded reasoning packet
+    // carries 256. The result remains useful, but the investigation must not
+    // silently claim complete source examination.
+    assert_eq!(launched["operation"]["state"], "WAITING_FOR_HUMAN");
+    assert_eq!(launched["operation"]["terminal"], false);
 
     let output_path = format!("{situation_path}/analysis-snapshots/{analysis}/output");
     let (status, output) = invoke(
@@ -614,6 +617,22 @@ async fn model_query_retrieves_late_evidence_for_next_synthesis() {
     .await
     .unwrap();
     assert_eq!(examined, 256);
+    let attention_label: String = sqlx::query_scalar(
+        "SELECT label FROM niccolo.agentic_steps \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND kind=\'REQUEST_HUMAN_DECISION\' \
+         ORDER BY plan_revision DESC LIMIT 1",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(operation)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert!(
+        attention_label.contains("44 frozen source fragment(s) not examined"),
+        "the human boundary must explain the actual coverage gap"
+    );
 
     let invocations: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.model_invocations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED' AND effective_provider='mock-compatible'",
