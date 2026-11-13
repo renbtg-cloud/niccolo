@@ -25,6 +25,11 @@ pub enum ModelError {
     Invalid,
     #[error("model invocation failed: {0}")]
     Provider(String),
+    #[error("model provider chain failed after {attempts} provider attempts: {error}")]
+    ProviderChain {
+        attempts: u32,
+        error: Box<ModelError>,
+    },
     #[error("model invocation timed out")]
     Timeout,
     #[error("model invocation token budget exceeded")]
@@ -171,11 +176,19 @@ impl ReasoningModel for FailoverModel {
                     Ok(r)
                 }
                 Err(error) if retryable_model_error(&error) => {
-                    let mut r = self.fallback.invoke(request).await?;
-                    r.effective_provider = Some(self.fallback.provider().into());
-                    r.effective_model = Some(self.fallback.model().into());
-                    r.fallback_used = true;
-                    Ok(r)
+                    match self.fallback.invoke(request).await {
+                        Ok(mut r) => {
+                            r.effective_provider = Some(self.fallback.provider().into());
+                            r.effective_model = Some(self.fallback.model().into());
+                            r.fallback_used = true;
+                            Ok(r)
+                        }
+                        Err(fallback_error) => Err(ModelError::ProviderChain {
+                            attempts: 1_u32
+                                .saturating_add(provider_attempts_for_error(&fallback_error)),
+                            error: Box::new(fallback_error),
+                        }),
+                    }
                 }
                 // An invalid request, exhausted budget or database failure is
                 // not a provider outage. Never route it to another paid model.
@@ -256,7 +269,34 @@ pub async fn invoke_recorded<M: ReasoningModel + ?Sized>(
 }
 
 fn retryable_model_error(error: &ModelError) -> bool {
-    matches!(error, ModelError::Provider(_) | ModelError::Timeout)
+    match error {
+        ModelError::Provider(_) | ModelError::Timeout => true,
+        ModelError::ProviderChain { error, .. } => retryable_model_error(error),
+        _ => false,
+    }
+}
+
+fn provider_attempts_for_error(error: &ModelError) -> u32 {
+    match error {
+        ModelError::ProviderChain { attempts, .. } => (*attempts).max(1),
+        _ => 1,
+    }
+}
+
+fn budget_model_error(error: &ModelError) -> bool {
+    match error {
+        ModelError::Budget => true,
+        ModelError::ProviderChain { error, .. } => budget_model_error(error),
+        _ => false,
+    }
+}
+
+fn timeout_model_error(error: &ModelError) -> bool {
+    match error {
+        ModelError::Timeout => true,
+        ModelError::ProviderChain { error, .. } => timeout_model_error(error),
+        _ => false,
+    }
 }
 
 pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
@@ -286,9 +326,11 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     tx.commit().await?;
     let started = Instant::now();
     let mut last_error = ModelError::Provider("no attempt made".into());
-    let mut attempts_made = 0;
+    // Actual provider calls made by failed outer attempts. A successful final
+    // fallback remains represented by fallback_used=true for compatibility
+    // with existing budget accounting.
+    let mut failed_provider_attempts = 0_u32;
     for attempt in 1..=policy.max_attempts {
-        attempts_made = attempt;
         let outcome = tokio::time::timeout(
             std::time::Duration::from_millis(policy.timeout_ms),
             model.invoke(request),
@@ -305,19 +347,25 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                 if response.prompt_tokens.is_some_and(|n| n < 0)
                     || response.completion_tokens.is_some_and(|n| n < 0)
                 {
+                    failed_provider_attempts = failed_provider_attempts
+                        .saturating_add(1 + u32::from(response.fallback_used));
                     last_error = ModelError::Invalid;
                 } else if policy.max_total_tokens.is_some_and(|max| total > max) {
+                    failed_provider_attempts = failed_provider_attempts
+                        .saturating_add(1 + u32::from(response.fallback_used));
                     last_error = ModelError::Budget;
                 } else {
                     let response_json = serde_json::to_string(&response.value)?;
                     if response_json.len() > 1_048_576 {
+                        failed_provider_attempts = failed_provider_attempts
+                            .saturating_add(1 + u32::from(response.fallback_used));
                         last_error = ModelError::Invalid;
                         break;
                     }
                     let response_sha = digest(&response_json);
                     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
                     sqlx::query("UPDATE niccolo.model_invocations SET response_json=$7,response_sha256=$8,status='SUCCEEDED',prompt_tokens=$9,completion_tokens=$10,attempt_count=$11,latency_ms=$12,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-                  .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&response_json).bind(&response_sha).bind(response.prompt_tokens).bind(response.completion_tokens).bind(attempt as i32).bind(started.elapsed().as_millis() as i64).execute(&mut *tx).await?;
+                  .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&response_json).bind(&response_sha).bind(response.prompt_tokens).bind(response.completion_tokens).bind(i32::try_from(failed_provider_attempts.saturating_add(1)).unwrap_or(i32::MAX)).bind(started.elapsed().as_millis() as i64).execute(&mut *tx).await?;
                     let effective_provider = response
                         .effective_provider
                         .clone()
@@ -342,8 +390,15 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     });
                 }
             }
-            Ok(Err(e)) => last_error = e,
-            Err(_) => last_error = ModelError::Timeout,
+            Ok(Err(e)) => {
+                failed_provider_attempts =
+                    failed_provider_attempts.saturating_add(provider_attempts_for_error(&e));
+                last_error = e;
+            }
+            Err(_) => {
+                failed_provider_attempts = failed_provider_attempts.saturating_add(1);
+                last_error = ModelError::Timeout;
+            }
         }
         // A known token-budget breach or malformed provider output must not
         // trigger another paid call. Retry only transient provider failures.
@@ -354,10 +409,12 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             tokio::task::yield_now().await;
         }
     }
-    let budget = matches!(last_error, ModelError::Budget);
+    let budget = budget_model_error(&last_error);
+    let timeout = timeout_model_error(&last_error);
+    let attempts_made = i32::try_from(failed_provider_attempts.max(1)).unwrap_or(i32::MAX);
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
     sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(last_error.to_string()).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
+      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if timeout{"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(last_error.to_string()).bind(attempts_made).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
     tx.commit().await?;
     Err(last_error)
 }
