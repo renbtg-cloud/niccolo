@@ -250,6 +250,11 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             let output = tokio::task::spawn_blocking(move || {
                 let result = Command::new(curl)
                     .args([
+                        // Must be first: disable ~/.curlrc so ambient user options
+                        // cannot silently redirect a provider request or leak its key.
+                        "--disable",
+                        "--proto",
+                        "=http,https",
                         "--silent",
                         "--show-error",
                         "--fail-with-body",
