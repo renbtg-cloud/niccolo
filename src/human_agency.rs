@@ -536,16 +536,49 @@ pub async fn propose_next_step(
         || input.step_id.is_nil()
         || input.proposed_by.is_nil()
         || !matches!(
-        input.kind.as_str(),
-        "ASK_HUMAN" | "GATHER_EVIDENCE" | "REANALYZE" | "USER_ACTION"
-    ) || !valid(&input.text)
+            input.kind.as_str(),
+            "ASK_HUMAN" | "GATHER_EVIDENCE" | "REANALYZE" | "USER_ACTION"
+        )
+        || !valid(&input.text)
         || !valid(&input.rationale)
     {
         return Err(AgencyError::Invalid);
     }
+    let text = input.text.trim();
+    let rationale = input.rationale.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_next_steps(workspace_id,situation_id,analysis_id,step_id,step_kind,step_text,rationale,proposed_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(input.step_id).bind(&input.kind).bind(&input.text).bind(&input.rationale).bind(input.proposed_by).execute(&mut *tx).await?;
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(input.step_id)
+        .bind(&input.kind)
+        .bind(text)
+        .bind(rationale)
+        .bind(input.proposed_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(String, String, String, Uuid)> = sqlx::query_as(
+        "SELECT step_kind,step_text,rationale,proposed_by_principal_id
+           FROM niccolo.situation_analysis_next_steps
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND step_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(input.step_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            input.kind.clone(),
+            text.into(),
+            rationale.into(),
+            input.proposed_by,
+        ))
+    {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -569,9 +602,33 @@ pub async fn append_next_step_event(
     {
         return Err(AgencyError::Invalid);
     }
+    let note = event.note.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_next_step_events(workspace_id,situation_id,analysis_id,step_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(step).bind(event.event_id).bind(&event.kind).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(step)
+        .bind(event.event_id)
+        .bind(&event.kind)
+        .bind(note)
+        .bind(event.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT step_id,event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_next_step_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(event.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((step, event.kind.clone(), note.into(), event.recorded_by)) {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
