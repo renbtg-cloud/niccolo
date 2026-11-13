@@ -90,8 +90,12 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
     )
 }
 
-async fn ingest_and_attach(h: &Harness, locator: &str, text: &'static str) -> Uuid {
-    let document = Uuid::new_v4();
+async fn ingest_and_attach_with_id(
+    h: &Harness,
+    document: Uuid,
+    locator: &str,
+    text: &'static str,
+) -> Uuid {
     let source_path = format!("/v1/workspaces/{}/sources/{document}", h.workspace);
     let (status, _) = invoke(
         h.router.clone(),
@@ -110,6 +114,10 @@ async fn ingest_and_attach(h: &Harness, locator: &str, text: &'static str) -> Uu
     .await;
     assert_eq!(status, StatusCode::CREATED);
     document
+}
+
+async fn ingest_and_attach(h: &Harness, locator: &str, text: &'static str) -> Uuid {
+    ingest_and_attach_with_id(h, Uuid::new_v4(), locator, text).await
 }
 
 #[tokio::test]
@@ -314,6 +322,99 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
     );
     assert_eq!(summary["packet_asserts_truth"], false);
     assert_eq!(summary["summary_is_provider_input_observability"], true);
+}
+
+#[tokio::test]
+async fn truncated_packet_round_robins_sources_before_deep_fragments() {
+    let h = setup().await;
+    let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &situation_path,
+            &h.token,
+            Some(json!({"focus":"Compare a long chat with a short independent source"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let long_document = Uuid::from_u128(1);
+    let short_document = Uuid::from_u128(u128::MAX - 1);
+    let many = (0..300)
+        .map(|i| {
+            format!(
+                "01/01/2026, 10:{:02} - Ana: LONG_SOURCE_FRAGMENT_{:03}\n",
+                i % 60,
+                i
+            )
+        })
+        .collect::<String>();
+    let many: &'static str = Box::leak(many.into_boxed_str());
+    ingest_and_attach_with_id(&h, long_document, "long.txt", many).await;
+    ingest_and_attach_with_id(
+        &h,
+        short_document,
+        "short.txt",
+        "01/01/2026, 11:00 - Beto: SHORT_SOURCE_MUST_SURVIVE_TRUNCATION\n",
+    )
+    .await;
+
+    let analysis = Uuid::new_v4();
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request(
+            "POST",
+            &format!("{situation_path}/analysis-snapshots/{analysis}"),
+            &h.token,
+            Some(json!({"goal":"Compare both recorded sources"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let packet = authz::with_auth_digest(authz::credential_digest(&h.token).unwrap(), async {
+        reasoning_packet::build(
+            &h.secure,
+            AnalysisScope {
+                workspace: h.workspace,
+                situation: h.situation,
+                analysis,
+            },
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+    assert_eq!(packet.frozen_input.source_fragment_count_total, 301);
+    assert_eq!(packet.frozen_input.source_fragment_count_included, 256);
+    assert!(packet.frozen_input.source_packet_truncated);
+    let long_count = packet
+        .frozen_input
+        .source_fragments
+        .iter()
+        .filter(|fragment| fragment.document_id == long_document)
+        .count();
+    let short = packet
+        .frozen_input
+        .source_fragments
+        .iter()
+        .find(|fragment| fragment.document_id == short_document)
+        .expect("a short second source must not be crowded out by one long document");
+    assert_eq!(long_count, 255);
+    assert_eq!(short.ordinal, 0);
+    assert!(short.content.contains("SHORT_SOURCE_MUST_SURVIVE_TRUNCATION"));
+    assert_eq!(
+        packet
+            .frozen_input
+            .source_fragments
+            .iter()
+            .take(2)
+            .map(|fragment| fragment.ordinal)
+            .collect::<Vec<_>>(),
+        vec![0, 0]
+    );
 }
 
 #[tokio::test]

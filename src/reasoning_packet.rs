@@ -258,11 +258,12 @@ async fn frozen_source_fragments(
     let rows: Vec<FrozenFragmentRow> = sqlx::query_as(
         "SELECT d.document_id,f.evidence_id,f.ordinal,d.format,d.locator,f.speaker_label,e.content,e.source_class \
          FROM niccolo.situation_revision_sources rs \
+         JOIN niccolo.situation_sources ss ON ss.workspace_id=rs.workspace_id AND ss.situation_id=rs.situation_id AND ss.document_id=rs.document_id \
          JOIN niccolo.source_documents d ON d.workspace_id=rs.workspace_id AND d.document_id=rs.document_id \
          JOIN niccolo.source_fragments f ON f.workspace_id=d.workspace_id AND f.document_id=d.document_id \
          JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
          WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3 \
-         ORDER BY d.document_id,f.ordinal \
+         ORDER BY f.ordinal,ss.added_at,d.document_id \
          LIMIT $4",
     )
     .bind(workspace)
