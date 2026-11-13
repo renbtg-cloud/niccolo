@@ -123,4 +123,25 @@ set -e
 [[ "$missing_remote_key_status" == 2 ]]
 grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' <<< "$missing_remote_key"
 
+set +e
+bad_json_mode="$(
+  NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='model' \
+  NICCOLO_LLM_JSON_MODE='sometimes' bash scripts/start-local-mvp.sh --print-only 2>&1
+)"
+bad_json_mode_status=$?
+set -e
+[[ "$bad_json_mode_status" == 2 ]]
+grep -Fq 'Reasoning model: INVALID CONFIGURATION' <<< "$bad_json_mode"
+
+set +e
+bad_provider_label="$(
+  NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='model' \
+  NICCOLO_LLM_PROVIDER=printf '%s\n' 'PASS: local browser start uses a non-bearer one-shot capability, keeps manual fallback, and rejects corrupted local bootstrap state.'
+provider\033[2J' bash scripts/start-local-mvp.sh --print-only 2>&1
+)"
+bad_provider_label_status=$?
+set -e
+[[ "$bad_provider_label_status" == 2 ]]
+grep -Fq 'Reasoning model: INVALID CONFIGURATION' <<< "$bad_provider_label"
+
 printf '%s\n' 'PASS: local browser start uses a non-bearer one-shot capability, keeps manual fallback, and rejects corrupted local bootstrap state.'
