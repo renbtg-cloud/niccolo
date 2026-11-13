@@ -76,6 +76,7 @@ describe('buyer-facing primary surfaces', () => {
   });
 
   it('makes append-only identity mapping history navigable beyond its first page', () => {
+    expect(identities).toContain('[...qk.identityHistory(client.config, documentId), historyCursor]');
     expect(identities).toContain('client.identityHistory(documentId, historyCursor, 100)');
     expect(identities).toContain('Previous mapping history');
     expect(identities).toContain('Next mapping history');
