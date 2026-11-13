@@ -6,6 +6,7 @@ use crate::{
     bff_operations, model_adapter, model_artifacts, operation_budget, operation_checkpoint,
     reasoning_handoff,
     reasoning_packet, reasoning_updates, observation_retrieval, observation_query_ledger,
+    resource_policy, runtime_resources,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -511,11 +512,81 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     result
 }
 
-pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
+fn resource_degradable_step(step: &agentic_controller::StepView) -> bool {
+    step.kind == "PROPOSE_CLARIFICATION" && !step.requires_human
+}
+
+async fn maybe_apply_resource_degradation(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    step: &agentic_controller::StepView,
+    policy: &resource_policy::ResourcePolicy,
+) -> Result<bool, RuntimeError> {
+    if !resource_degradable_step(step) {
+        return Ok(false);
+    }
+    let Ok(resources) = runtime_resources::observe() else {
+        // Missing telemetry must never invent pressure or silently degrade work.
+        return Ok(false);
+    };
+    let Ok(advice) = resource_policy::advise(&resources, policy) else {
+        // Invalid/delegated policy is an operator configuration concern, not a
+        // license to silently skip reasoning.
+        return Ok(false);
+    };
+    if !advice.apply_concurrency_automatically || !advice.defer_nonessential_new_work {
+        return Ok(false);
+    }
+
+    agentic_controller::start_step(pool, scope, step.step_id, actor).await?;
+    agentic_controller::finish_step(
+        pool,
+        scope,
+        step.step_id,
+        actor,
+        "SKIPPED",
+        "critical resource pressure deferred the bounded clarification-proposal pass; synthesis, adversarial challenge and human control remain required",
+    )
+    .await?;
+
+    let op = bff_operations::get(pool, scope).await?;
+    let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
+    let checkpoint = operation_checkpoint::NewCheckpoint {
+        checkpoint_id: step.step_id,
+        analysis_id: Some(analysis),
+        checkpoint_kind: "RESOURCE_DEGRADATION".into(),
+        step_id: Some(step.step_id),
+        summary: json!({
+            "completion_status": "RESOURCE_DEGRADATION",
+            "reason": "CRITICAL_RESOURCE_PRESSURE",
+            "skipped_step_id": step.step_id,
+            "skipped_step_kind": step.kind,
+            "skipped_step_label": step.label,
+            "resource_snapshot": resources,
+            "resource_advice": advice,
+            "synthesis_still_required": true,
+            "adversarial_challenge_still_required": true,
+            "human_control_still_required": true,
+            "provisional": true,
+            "establishes_truth": false,
+            "proves_completeness": false,
+            "resource_pressure_is_not_epistemic_quality": true
+        }),
+        provisional: true,
+        terminal: false,
+        recorded_by: actor,
+    };
+    operation_checkpoint::record(pool, scope, &checkpoint).await?;
+    Ok(true)
+}
+
+pub async fn run_until_boundary_with_resource_policy<M: ReasoningModel + ?Sized>(
     pool: &PgPool,
     scope: OperationScope,
     actor: Uuid,
     model: &M,
+    resource_policy: Option<&resource_policy::ResourcePolicy>,
 ) -> Result<RunOutcome, RuntimeError> {
     ensure_default_plan(pool, scope, actor).await?;
     let _ = agentic_controller::recover_stale_started(pool, scope, actor, 120).await?;
@@ -565,7 +636,28 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             )
             .await?;
             let handoff_sha256 = reasoning_handoff::sha256(&handoff)?;
-            let result = json!({"agentic":true,"plan_revision":view.plan_revision,"plan_sha256":view.plan_sha256,"budget_used":view.budget_used,"steps":view.steps.len(),"quality":quality,"explicit_human_review_occurred":already_had_human_review,"handoff":handoff,"handoff_sha256":handoff_sha256});
+            let resource_degraded_steps = view
+                .steps
+                .iter()
+                .filter(|step| step.state == "SKIPPED" && resource_degradable_step(step))
+                .map(|step| json!({"step_id":step.step_id,"kind":step.kind,"label":step.label}))
+                .collect::<Vec<_>>();
+            let resource_degraded = !resource_degraded_steps.is_empty();
+            let result = json!({
+                "agentic": true,
+                "completion_status": if resource_degraded { "DEGRADED_RESOURCE_PRESSURE" } else { "COMPLETE" },
+                "provisional": resource_degraded,
+                "plan_revision": view.plan_revision,
+                "plan_sha256": view.plan_sha256,
+                "budget_used": view.budget_used,
+                "steps": view.steps.len(),
+                "quality": quality,
+                "explicit_human_review_occurred": already_had_human_review,
+                "resource_degraded_steps": resource_degraded_steps,
+                "resource_pressure_is_not_epistemic_quality": true,
+                "handoff": handoff,
+                "handoff_sha256": handoff_sha256
+            });
             let final_view = if op.state == "RUNNING" {
                 bff_operations::succeed(pool, scope, op.state_version, actor, &result).await?
             } else {
@@ -600,6 +692,11 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             .find(|s| s.step_id == id)
             .expect("ready step exists")
             .clone();
+        if let Some(policy) = resource_policy
+            && maybe_apply_resource_degradation(pool, scope, actor, &step, policy).await?
+        {
+            continue;
+        }
         if step_requires_model(&step) {
             match operation_budget::require_available(pool, scope).await {
                 Ok(_) => {}
@@ -623,4 +720,16 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
         completed += 1;
         record_step_checkpoint(pool, scope, actor, &step).await?;
     }
+}
+
+/// Backwards-compatible deterministic execution path. Explicitly non-adaptive
+/// callers retain the previous behavior and never skip a reasoning step due to
+/// ambient telemetry.
+pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    model: &M,
+) -> Result<RunOutcome, RuntimeError> {
+    run_until_boundary_with_resource_policy(pool, scope, actor, model, None).await
 }
