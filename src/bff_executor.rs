@@ -119,6 +119,7 @@ async fn run_with_owned_lease(
     actor: Uuid,
     model: &(dyn ReasoningModel + Send + Sync),
     lease_owner: &str,
+    policy: Option<&resource_policy::ResourcePolicy>,
 ) -> Result<OperationView, BffExecutionError> {
     if !bff_operations::execution_owned_by(pool, scope, lease_owner).await? {
         return Ok(bff_operations::get(pool, scope).await?);
@@ -133,9 +134,11 @@ async fn run_with_owned_lease(
         };
         match running.kind.as_str() {
             "AGENTIC_ANALYSIS" => {
-                let outcome = agentic_runtime::run_until_boundary(pool, scope, actor, model)
-                    .await
-                    .map_err(|e| BffExecutionError::Agentic(e.to_string()))?;
+                let outcome = agentic_runtime::run_until_boundary_with_resource_policy(
+                    pool, scope, actor, model, policy,
+                )
+                .await
+                .map_err(|e| BffExecutionError::Agentic(e.to_string()))?;
                 // A blocked/idle plan has no autonomous progress path. Returning
                 // Ok used to strand the durable operation in RUNNING forever.
                 if agentic_outcome_is_stalled(&outcome.state) {
@@ -233,7 +236,7 @@ pub async fn worker_once(
     else {
         return Ok(None);
     };
-    let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;
+    let view = run_with_owned_lease(pool, scope, actor, model, worker_id, None).await?;
     Ok(Some(WorkerRun { scope, view }))
 }
 
@@ -275,7 +278,8 @@ pub async fn worker_once_adaptive(
     };
     let run = match scope {
         Some(scope) => {
-            let view = run_with_owned_lease(pool, scope, actor, model, worker_id).await?;
+            let view =
+                run_with_owned_lease(pool, scope, actor, model, worker_id, Some(policy)).await?;
             Some(WorkerRun { scope, view })
         }
         None => None,
@@ -303,7 +307,7 @@ pub async fn execute(
     if !bff_operations::claim_execution(pool, scope, &lease_owner, EXECUTION_LEASE_MS).await? {
         return Ok(bff_operations::get(pool, scope).await?);
     }
-    run_with_owned_lease(pool, scope, actor, model, &lease_owner).await
+    run_with_owned_lease(pool, scope, actor, model, &lease_owner, None).await
 }
 
 /// Execute one exact operation while respecting the current resource-policy
@@ -340,7 +344,7 @@ pub async fn execute_adaptive(
             bff_operations::claim_execution(pool, scope, &lease_owner, EXECUTION_LEASE_MS).await?
         };
         if claimed {
-            return run_with_owned_lease(pool, scope, actor, model, &lease_owner).await;
+            return run_with_owned_lease(pool, scope, actor, model, &lease_owner, Some(policy)).await;
         }
 
         if started.elapsed() >= Duration::from_millis(ADAPTIVE_ADMISSION_MAX_WAIT_MS) {
