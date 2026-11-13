@@ -52,6 +52,13 @@ fn clarification_information_value(value: &clarification::ClarificationValue) ->
         .min(100)
 }
 
+// A deferred request is a human steering decision, not an active lead.
+// Accepted requests remain actionable until their source is actually obtained;
+// accepting a request never claims that evidence was fetched.
+fn actionable_source_request(state: &str) -> bool {
+    matches!(state, "PROPOSED" | "ACCEPTED" | "REOPENED")
+}
+
 pub async fn queue(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -126,7 +133,10 @@ pub async fn queue(
             system_may_execute_external_action: false,
         });
     }
-    for r in requests.into_iter().filter(|r| r.state != "DECLINED") {
+    for r in requests
+        .into_iter()
+        .filter(|r| actionable_source_request(&r.state))
+    {
         items.push(InvestigationCandidate {
             id: r.request_id,
             kind: "SOURCE_REQUEST".into(),
@@ -206,6 +216,16 @@ mod tests {
             decision_relevance: Some(decision_relevance),
             acquisition_cost: Some(acquisition_cost),
             cheaper_alternative: cheaper.then(|| "Use the already available ledger".into()),
+        }
+    }
+
+    #[test]
+    fn deferred_and_declined_source_requests_are_not_active_leads() {
+        for state in ["PROPOSED", "ACCEPTED", "REOPENED"] {
+            assert!(actionable_source_request(state), "{state}");
+        }
+        for state in ["DEFERRED", "DECLINED", "UNKNOWN", ""] {
+            assert!(!actionable_source_request(state), "{state}");
         }
     }
 
