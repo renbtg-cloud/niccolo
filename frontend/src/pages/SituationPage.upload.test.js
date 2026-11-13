@@ -24,6 +24,11 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('retrying the same selection replays rather than duplicates');
   });
 
+  it('renders duplicate-metadata selected files with distinct React keys', () => {
+    expect(source).toContain('map((selected, index) => <li key={');
+    expect(source).toContain(':${index}');
+  });
+
   it('does not alias distinct files that happen to share metadata', () => {
     expect(source).toContain('same name/size/mtime yet different bytes');
     expect(source).not.toContain('JSON.stringify([\n          selected.name');
