@@ -27,6 +27,31 @@ set -e
 grep -Fq 'Missing executable: cargo' "$TMP/missing-err"
 
 stub_ok cargo
+
+# Reject connection-string shapes that psql might accept but runtime URL
+# derivation cannot safely transform, before contacting PostgreSQL at all.
+cat > "$TMP/bin/psql" <<'SH'
+#!/bin/bash
+echo 'psql must not run for invalid owner URLs' >&2
+exit 92
+SH
+chmod +x "$TMP/bin/psql"
+for bad_admin_url in \
+  'host=127.0.0.1 dbname=niccolo' \
+  'https://127.0.0.1/niccolo' \
+  'postgresql://127.0.0.1' \
+  'postgresql:///niccolo' \
+  'postgresql://127.0.0.1/niccolo#fragment'; do
+  set +e
+  PATH="$TMP/bin" NICCOLO_PG_ADMIN_URL="$bad_admin_url" /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" \
+    >"$TMP/url-out" 2>"$TMP/url-err"
+  url_status=$?
+  set -e
+  [[ "$url_status" == 2 ]]
+  grep -Fq 'must be a PostgreSQL URL with an explicit host and database name' "$TMP/url-err"
+  ! grep -Fq 'psql must not run for invalid owner URLs' "$TMP/url-err"
+done
+
 cat > "$TMP/bin/psql" <<'SH'
 #!/bin/bash
 if [[ " $* " == *' SHOW server_version_num '* ]]; then
