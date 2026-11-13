@@ -12,6 +12,8 @@ pub enum ControlError {
     Privileged,
     #[error("invalid control input")]
     Invalid,
+    #[error("control replay conflicts with stored content")]
+    Conflict,
 }
 async fn scoped(
     pool: &PgPool,
@@ -78,8 +80,32 @@ pub async fn declare_priority(
     {
         return Err(ControlError::Invalid);
     }
+    let text = p.text.trim();
+    let rationale = p.rationale.trim();
     let mut tx = scoped(pool, workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_human_priorities(workspace_id,situation_id,priority_id,ordinal,priority_text,rationale,declared_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(p.priority_id).bind(p.ordinal).bind(&p.text).bind(&p.rationale).bind(p.declared_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_human_priorities(workspace_id,situation_id,priority_id,ordinal,priority_text,rationale,declared_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+        .bind(workspace)
+        .bind(situation)
+        .bind(p.priority_id)
+        .bind(p.ordinal)
+        .bind(text)
+        .bind(rationale)
+        .bind(p.declared_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(i32, String, String, Uuid)> = sqlx::query_as(
+        "SELECT ordinal,priority_text,rationale,declared_by_principal_id
+           FROM niccolo.situation_human_priorities
+          WHERE workspace_id=$1 AND situation_id=$2 AND priority_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(p.priority_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((p.ordinal, text.into(), rationale.into(), p.declared_by)) {
+        return Err(ControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
