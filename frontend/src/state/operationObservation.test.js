@@ -52,6 +52,24 @@ describe('operation observation state', () => {
     expect(next.cursor).toBe(501);
   });
 
+  it('keeps draining terminal event pages until a short page proves the cursor caught up', () => {
+    const terminal = mergeOperationObservation(null, {
+      operation: { state: 'SUCCEEDED', state_version: 9 },
+      events: Array.from({ length: 100 }, (_, index) => ({ event_seq: index + 1 })),
+      next_after_event: 100,
+      event_page_may_have_more: true,
+    });
+    expect(terminal.eventsMayRemain).toBe(true);
+    const drained = mergeOperationObservation(terminal, {
+      operation: { state: 'SUCCEEDED', state_version: 9 },
+      events: [],
+      next_after_event: 100,
+      event_page_may_have_more: false,
+    });
+    expect(drained.eventsMayRemain).toBe(false);
+    expect(drained.cursor).toBe(100);
+  });
+
   it('advances operation and cursor monotonically', () => {
     const merged = mergeOperationObservation(
       { operation: { state: 'RUNNING', state_version: 2 }, events: [], cursor: 10 },
