@@ -1501,10 +1501,7 @@ async fn provider_controlled_failure_text_never_enters_model_invocation_ledger()
         fn model(&self) -> &str {
             "sensitive-test-model"
         }
-        fn invoke<'a>(
-            &'a self,
-            _request: &'a ModelRequest,
-        ) -> model_adapter::ModelFuture<'a> {
+        fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> model_adapter::ModelFuture<'a> {
             Box::pin(async {
                 Err(model_adapter::ModelError::Provider(
                     "Bearer secret-token; private source sentence".into(),
@@ -1520,10 +1517,9 @@ async fn provider_controlled_failure_text_never_enters_model_invocation_ledger()
         let steps = agentic_policy::default_plan(&app, s.workspace, s.situation, s.analysis)
             .await
             .unwrap();
-        let (rev, _) =
-            agentic_controller::create_plan(&app, scope, s.principal, &steps)
-                .await
-                .unwrap();
+        let (rev, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+            .await
+            .unwrap();
         assert!(
             model_adapter::invoke_recorded_with_policy(
                 &app,
@@ -1597,10 +1593,9 @@ async fn failed_primary_and_fallback_are_both_counted_as_provider_attempts() {
         let steps = agentic_policy::default_plan(&app, s.workspace, s.situation, s.analysis)
             .await
             .unwrap();
-        let (rev, _) =
-            agentic_controller::create_plan(&app, scope, s.principal, &steps)
-                .await
-                .unwrap();
+        let (rev, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+            .await
+            .unwrap();
         let primary: std::sync::Arc<dyn model_adapter::ReasoningModel> =
             std::sync::Arc::new(model_adapter::UnavailableModel);
         let fallback: std::sync::Arc<dyn model_adapter::ReasoningModel> =
