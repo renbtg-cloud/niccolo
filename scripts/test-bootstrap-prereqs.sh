@@ -17,7 +17,9 @@ SH
   chmod +x "$TMP/bin/$name"
 }
 
-for name in psql node npm rustc; do stub_ok "$name"; done
+for name in psql npm rustc; do stub_ok "$name"; done
+cp "$(command -v node)" "$TMP/bin/node"
+chmod +x "$TMP/bin/node"
 
 set +e
 PATH="$TMP/bin" NICCOLO_PG_ADMIN_URL='postgres://owner@127.0.0.1/db' /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/missing-out" 2>"$TMP/missing-err"
