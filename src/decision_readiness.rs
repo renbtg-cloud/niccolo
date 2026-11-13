@@ -69,7 +69,9 @@ fn valid_text(value: &str, max: usize) -> bool {
 }
 
 fn valid(input: &DecisionReadinessInput) -> bool {
-    if !valid_text(&input.subject_label, 512)
+    if input.assessment_id.is_nil()
+        || input.decision_id.is_nil()
+        || !valid_text(&input.subject_label, 512)
         || !valid_text(&input.rationale, 4096)
         || !valid_text(&input.unresolved_unknowns, 4096)
         || !matches!(input.readiness.as_str(), "READY" | "NOT_READY" | "ESCALATE")
@@ -79,7 +81,8 @@ fn valid(input: &DecisionReadinessInput) -> bool {
     }
     let mut ids = std::collections::BTreeSet::new();
     input.reversal_conditions.iter().all(|c| {
-        ids.insert(c.condition_id)
+        !c.condition_id.is_nil()
+            && ids.insert(c.condition_id)
             && valid_text(&c.condition_text, 4096)
             && matches!(c.impact.as_str(), "MAY_REVERSE" | "REQUIRES_REVIEW" | "LOW_IMPACT")
             && c.acquisition_note.as_ref().is_none_or(|x| valid_text(x, 4096))
@@ -335,6 +338,37 @@ mod tests {
             }],
         };
         assert!(valid(&x));
+    }
+
+    #[test]
+    fn nil_and_duplicate_reversal_identities_are_rejected() {
+        let mut input = DecisionReadinessInput {
+            assessment_id: Uuid::new_v4(),
+            decision_id: Uuid::new_v4(),
+            subject_label: "A human decision".into(),
+            readiness: "NOT_READY".into(),
+            rationale: "Evidence is incomplete.".into(),
+            unresolved_unknowns: "A missing original record.".into(),
+            reversal_conditions: vec![ReversalConditionInput {
+                condition_id: Uuid::new_v4(),
+                condition_text: "An original contradicting the summary.".into(),
+                impact: "MAY_REVERSE".into(),
+                acquisition_note: None,
+            }],
+        };
+        assert!(valid(&input));
+        input.assessment_id = Uuid::nil();
+        assert!(!valid(&input));
+        input.assessment_id = Uuid::new_v4();
+        input.decision_id = Uuid::nil();
+        assert!(!valid(&input));
+        input.decision_id = Uuid::new_v4();
+        let original_id = input.reversal_conditions[0].condition_id;
+        input.reversal_conditions[0].condition_id = Uuid::nil();
+        assert!(!valid(&input));
+        input.reversal_conditions[0].condition_id = original_id;
+        input.reversal_conditions.push(input.reversal_conditions[0].clone());
+        assert!(!valid(&input));
     }
 
     #[test]
