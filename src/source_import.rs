@@ -505,7 +505,10 @@ mod tests {
             "02/11/2026, 10:05:01:02",
             "02/11/2026, 10:05 XM",
         ] {
-            assert!(!looks_like_datetime(invalid), "invalid timestamp accepted: {invalid}");
+            assert!(
+                !looks_like_datetime(invalid),
+                "invalid timestamp accepted: {invalid}"
+            );
         }
     }
 
