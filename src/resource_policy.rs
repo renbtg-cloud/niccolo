@@ -90,7 +90,31 @@ fn cpu_ceiling(snapshot: &ResourceSnapshot, policy: &ResourcePolicy) -> u16 {
         .min(policy.operator_max_parallel_operations)
 }
 
-fn pressure(snapshot: &ResourceSnapshot, policy: &ResourcePolicy) -> ResourcePressure {
+fn pid_headroom_ceiling(snapshot: &ResourceSnapshot, policy: &ResourcePolicy) -> Option<u16> {
+    if !snapshot.pids_limit_observed || snapshot.pids_limit_unlimited {
+        return None;
+    }
+    let (Some(current), Some(limit)) = (snapshot.pids_current, snapshot.pids_limit) else {
+        return None;
+    };
+    let available = limit.saturating_sub(current).max(1);
+    Some(
+        u16::try_from(available)
+            .unwrap_or(u16::MAX)
+            .min(policy.operator_max_parallel_operations),
+    )
+}
+
+fn pids_exhausted(snapshot: &ResourceSnapshot) -> bool {
+    snapshot.pids_limit_observed
+        && !snapshot.pids_limit_unlimited
+        && snapshot
+            .pids_current
+            .zip(snapshot.pids_limit)
+            .is_some_and(|(current, limit)| current >= limit)
+}
+
+fn memory_pressure(snapshot: &ResourceSnapshot, policy: &ResourcePolicy) -> ResourcePressure {
     let Some(points) = snapshot.memory_pressure_basis_points else {
         return ResourcePressure::Unknown;
     };
@@ -112,16 +136,27 @@ pub fn advise(
     policy: &ResourcePolicy,
 ) -> Result<ResourceAdvice, ResourcePolicyError> {
     validate(policy)?;
-    let pressure = pressure(snapshot, policy);
-    let observed_parallel_ceiling = cpu_ceiling(snapshot, policy);
+    let memory_pressure = memory_pressure(snapshot, policy);
+    let pid_ceiling = pid_headroom_ceiling(snapshot, policy);
+    let cpu_ceiling = cpu_ceiling(snapshot, policy);
+    let observed_parallel_ceiling = pid_ceiling.map_or(cpu_ceiling, |pids| cpu_ceiling.min(pids));
+    let pid_exhausted = pids_exhausted(snapshot);
+    let pressure = if pid_exhausted {
+        ResourcePressure::Critical
+    } else {
+        memory_pressure
+    };
     let mut recommended = observed_parallel_ceiling;
     let mut reasons = Vec::new();
 
-    if observed_parallel_ceiling < policy.operator_max_parallel_operations {
+    if cpu_ceiling < policy.operator_max_parallel_operations {
         reasons.push("CPU_CAPACITY".into());
     }
+    if pid_ceiling.is_some_and(|pids| pids < cpu_ceiling) {
+        reasons.push("PID_CAPACITY".into());
+    }
 
-    match pressure {
+    match memory_pressure {
         ResourcePressure::Critical => {
             recommended = 1;
             reasons.push("CRITICAL_MEMORY_PRESSURE".into());
@@ -132,6 +167,10 @@ pub fn advise(
         }
         ResourcePressure::Normal => {}
         ResourcePressure::Unknown => reasons.push("MEMORY_PRESSURE_UNKNOWN".into()),
+    }
+    if pid_exhausted {
+        recommended = 1;
+        reasons.push("PID_LIMIT_EXHAUSTED".into());
     }
 
     let apply_concurrency_automatically =
@@ -227,6 +266,43 @@ mod tests {
         let a = advise(&snapshot(8_000, Some(9_700), Some(u64::MAX)), &p).unwrap();
         assert_eq!(a.pressure, ResourcePressure::Critical);
         assert_eq!(a.recommended_parallel_operations, 1);
+        assert!(a.defer_nonessential_new_work);
+    }
+
+    #[test]
+    fn finite_pid_headroom_caps_parallel_advice_without_guessing_memory_pressure() {
+        let p = ResourcePolicy {
+            reserved_memory_bytes: 0,
+            ..ResourcePolicy::default()
+        };
+        let mut s = snapshot(8_000, Some(2_000), Some(u64::MAX));
+        s.pids_current = Some(14);
+        s.pids_limit = Some(16);
+        s.pids_limit_observed = true;
+        s.pids_limit_unlimited = false;
+        let a = advise(&s, &p).unwrap();
+        assert_eq!(a.pressure, ResourcePressure::Normal);
+        assert_eq!(a.observed_parallel_ceiling, 2);
+        assert_eq!(a.recommended_parallel_operations, 2);
+        assert!(a.reasons.contains(&"PID_CAPACITY".into()));
+        assert!(!a.defer_nonessential_new_work);
+    }
+
+    #[test]
+    fn exhausted_pid_limit_is_critical_operational_pressure() {
+        let p = ResourcePolicy {
+            reserved_memory_bytes: 0,
+            ..ResourcePolicy::default()
+        };
+        let mut s = snapshot(8_000, Some(2_000), Some(u64::MAX));
+        s.pids_current = Some(16);
+        s.pids_limit = Some(16);
+        s.pids_limit_observed = true;
+        s.pids_limit_unlimited = false;
+        let a = advise(&s, &p).unwrap();
+        assert_eq!(a.pressure, ResourcePressure::Critical);
+        assert_eq!(a.recommended_parallel_operations, 1);
+        assert!(a.reasons.contains(&"PID_LIMIT_EXHAUSTED".into()));
         assert!(a.defer_nonessential_new_work);
     }
 
