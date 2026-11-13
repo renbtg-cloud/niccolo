@@ -263,7 +263,7 @@ async fn frozen_source_fragments(
          JOIN niccolo.source_fragments f ON f.workspace_id=d.workspace_id AND f.document_id=d.document_id \
          JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
          WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3 \
-         ORDER BY f.ordinal,ss.added_at,d.document_id \
+         ORDER BY ss.added_at,d.document_id,f.ordinal \
          LIMIT $4",
     )
     .bind(workspace)
