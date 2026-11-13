@@ -944,7 +944,9 @@ fn import_error_for_format(error: ImportError, format: SourceFormat) -> ApiError
                 ApiError(StatusCode::BAD_REQUEST, "invalid WhatsApp chat export")
             }
         },
-        ImportError::Locator | ImportError::OperationalEventInvalid => {
+        ImportError::InvalidIdentity
+        | ImportError::Locator
+        | ImportError::OperationalEventInvalid => {
             ApiError(StatusCode::BAD_REQUEST, "invalid source metadata")
         }
         ImportError::DocumentConflict => ApiError(StatusCode::CONFLICT, "source document conflict"),
@@ -959,7 +961,10 @@ fn import_error_for_format(error: ImportError, format: SourceFormat) -> ApiError
 impl From<ImportError> for ApiError {
     fn from(e: ImportError) -> Self {
         match e {
-            ImportError::Parse(_) | ImportError::Locator | ImportError::OperationalEventInvalid => {
+            ImportError::Parse(_)
+            | ImportError::InvalidIdentity
+            | ImportError::Locator
+            | ImportError::OperationalEventInvalid => {
                 Self(StatusCode::BAD_REQUEST, "invalid source")
             }
             ImportError::DocumentConflict => Self(StatusCode::CONFLICT, "source document conflict"),
