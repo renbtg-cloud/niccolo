@@ -289,6 +289,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - Portable published-analysis ZIPs: source-ID-only by default, with a separate bounded/write-authorized examined-source-text variant, pre-download scope preview, source/package SHA-256 provenance and immutable local authorization audit.
 - User-owned GitHub publication: bounded repository/ref metadata, exact standard-package scope and SHA-256 preview, immutable local publication intents, explicit one-shot transient provider authorization, non-force Git-data publication, remote ref re-verification, and an append-only secret-free publication event ledger.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
+- Bounded proactive discovery that presents at most three deterministic investigative leads with reasons/evidence gaps and explicit human choice; prioritization is not confidence or truth.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
 - Read-only aggregate integration-delivery diagnostics that expose retry amplification and operational-identity anomalies without treating those counters as evidence quality, independence, credibility, or truth.
 - Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives, immutable anytime checkpoints, deterministic bounded checkpoint/milestone export packages, and explicit human milestone declarations that preserve provisional/final status instead of silently upgrading it.
@@ -298,7 +299,7 @@ These foundations are not equivalent to a complete consumer onboarding, producti
 
 ### Product direction and planned capabilities
 
-- **Human-centered discovery:** proactive but bounded exploration of a Situation, including two or three promising investigative leads with reasons and evidence gaps.
+- **Richer human-centered discovery:** evolve beyond the implemented bounded deterministic 2–3 lead slice with better domain-specific lead generation and evaluation, while preserving explicit human choice and provenance.
 - **Broader, reliable source coverage:** richer email and messaging ingestion, original media retention, future modalities, and cross-source identity reconciliation under human control.
 - **Contextual interpretation:** consider motivations, perceptions, misunderstandings, and social dynamics as *competing hypotheses*, never asserted diagnoses or facts about people.
 - **Goal-directed reasoning:** select what to investigate next according to the person's purpose, budget, stop conditions, missing evidence, and available tools.
