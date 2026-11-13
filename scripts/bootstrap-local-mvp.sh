@@ -19,7 +19,7 @@ done
 # Validate the URL shape before any PostgreSQL command. psql accepts several
 # non-URL conninfo syntaxes that the later runtime-URL derivation cannot safely
 # transform; discovering that only after migrations would strand a partial install.
-if ! NICCOLO_BOOTSTRAP_ADMIN_URL="$admin_psql_url" node - <<'NODE'
+if ! NICCOLO_BOOTSTRAP_ADMIN_URL="$NICCOLO_PG_ADMIN_URL" node - <<'NODE'
 const raw = process.env.NICCOLO_BOOTSTRAP_ADMIN_URL ?? '';
 try {
   if (!raw || /[\r\n\0]/.test(raw) || /\s/.test(raw)) process.exit(2);
@@ -46,13 +46,13 @@ fi
 
 # Keep the database-owner password out of psql argv and out of build/test child
 # environments. libpq reads it from PGPASSWORD only for the bootstrap process.
-admin_psql_url="$(NICCOLO_BOOTSTRAP_ADMIN_URL="$admin_psql_url" node - <<'NODE'
+admin_psql_url="$(NICCOLO_BOOTSTRAP_ADMIN_URL="$NICCOLO_PG_ADMIN_URL" node - <<'NODE'
 const url = new URL(process.env.NICCOLO_BOOTSTRAP_ADMIN_URL);
 url.password = '';
 process.stdout.write(url.toString());
 NODE
 )"
-admin_url_password="$(NICCOLO_BOOTSTRAP_ADMIN_URL="$admin_psql_url" node - <<'NODE'
+admin_url_password="$(NICCOLO_BOOTSTRAP_ADMIN_URL="$NICCOLO_PG_ADMIN_URL" node - <<'NODE'
 const url = new URL(process.env.NICCOLO_BOOTSTRAP_ADMIN_URL);
 process.stdout.write(decodeURIComponent(url.password));
 NODE
