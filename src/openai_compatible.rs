@@ -342,6 +342,19 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn temporary_provider_headers_use_private_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = private_temp("test-headers", b"Authorization: Bearer private-test").unwrap();
+        let permissions = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        let saved = fs::read(&path).unwrap();
+        remove_private(&path);
+        assert_eq!(permissions, 0o600);
+        assert_eq!(saved, b"Authorization: Bearer private-test");
+        assert!(!path.exists());
+    }
+
     #[test]
     fn rejects_plain_http_for_non_loopback_provider() {
         let mut c = config("http://example.com/v1".into());
