@@ -5,7 +5,9 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{analysis_structure::AnalysisScope, api, authz, investigation_policy};
+use niccolo_evidence::{
+    analysis_structure::AnalysisScope, api, authz, human_handoff, investigation_policy,
+};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
@@ -15,6 +17,7 @@ struct Setup {
     admin: PgPool,
     router: Router,
     workspace: Uuid,
+    writer_principal: Uuid,
     writer: String,
     reader: String,
 }
@@ -38,7 +41,8 @@ async fn setup() -> Setup {
     .execute(&admin)
     .await
     .unwrap();
-    let writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, true, 1)
+    let writer_principal = Uuid::new_v4();
+    let writer = authz::provision_token(&admin, writer_principal, workspace, true, true, 1)
         .await
         .unwrap();
     let reader = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, false, 1)
@@ -48,6 +52,7 @@ async fn setup() -> Setup {
         admin,
         router: api::router(secure),
         workspace,
+        writer_principal,
         writer,
         reader,
     }
@@ -222,6 +227,74 @@ async fn answered_clarification_disappears_from_proactive_queue() {
             .unwrap();
     assert!(!after.items.iter().any(|lead| lead.id == q));
     assert_eq!(after.candidate_count, 0);
+}
+
+#[tokio::test]
+async fn deferred_source_request_is_suppressed_until_explicitly_reopened() {
+    let f = setup().await;
+    let s = Uuid::new_v4();
+    let a = Uuid::new_v4();
+    seed(&f, s, a, Uuid::new_v4()).await;
+    let secure = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let scope = AnalysisScope {
+        workspace: f.workspace,
+        situation: s,
+        analysis: a,
+    };
+    let request = Uuid::new_v4();
+    let digest = authz::credential_digest(&f.writer).unwrap();
+    authz::with_auth_digest(digest, async {
+        human_handoff::propose_source_request(
+            &secure,
+            scope,
+            &human_handoff::SourceRequestInput {
+                request_id: request,
+                text: "Ask for the contemporaneous source".into(),
+                source_kind: "EMAIL".into(),
+                rationale: "May discriminate competing interpretations".into(),
+                proposed_by: f.writer_principal,
+            },
+        )
+        .await
+        .unwrap();
+        let before = investigation_policy::queue(&secure, scope, 3).await.unwrap();
+        assert!(before.items.iter().any(|lead| lead.id == request));
+        human_handoff::append_source_request_event(
+            &secure,
+            scope,
+            request,
+            &human_handoff::SourceRequestEvent {
+                event_id: Uuid::new_v4(),
+                kind: "DEFERRED".into(),
+                note: "Human explicitly postponed this investigation step".into(),
+                recorded_by: f.writer_principal,
+            },
+        )
+        .await
+        .unwrap();
+        let deferred = investigation_policy::queue(&secure, scope, 3).await.unwrap();
+        assert!(!deferred.items.iter().any(|lead| lead.id == request));
+        human_handoff::append_source_request_event(
+            &secure,
+            scope,
+            request,
+            &human_handoff::SourceRequestEvent {
+                event_id: Uuid::new_v4(),
+                kind: "REOPENED".into(),
+                note: "Human explicitly resumed this investigation step".into(),
+                recorded_by: f.writer_principal,
+            },
+        )
+        .await
+        .unwrap();
+        let reopened = investigation_policy::queue(&secure, scope, 3).await.unwrap();
+        assert!(reopened.items.iter().any(|lead| lead.id == request));
+    })
+    .await;
 }
 
 #[tokio::test]
