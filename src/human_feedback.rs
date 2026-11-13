@@ -92,7 +92,7 @@ pub async fn create_question(
     id: Uuid,
     text: &str,
 ) -> Result<bool, FeedbackError> {
-    if !valid(text, 4096) {
+    if workspace.is_nil() || id.is_nil() || !valid(text, 4096) {
         return Err(FeedbackError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -156,7 +156,12 @@ pub async fn record_feedback(
     response: HumanResponse,
     reason: &str,
 ) -> Result<FeedbackEvent, FeedbackError> {
-    if !valid(reason, 2048) {
+    if workspace.is_nil()
+        || actor.is_nil()
+        || event_id.is_nil()
+        || question_id.is_nil()
+        || !valid(reason, 2048)
+    {
         return Err(FeedbackError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -353,6 +358,45 @@ mod tests {
             assert_eq!(HumanResponse::parse(invalid), None);
         }
     }
+    #[tokio::test]
+    async fn nil_feedback_identifiers_fail_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://127.0.0.1:1/never").unwrap();
+        assert!(matches!(
+            create_question(&pool, Uuid::nil(), Uuid::new_v4(), "Question?").await,
+            Err(FeedbackError::Invalid)
+        ));
+        assert!(matches!(
+            create_question(&pool, Uuid::new_v4(), Uuid::nil(), "Question?").await,
+            Err(FeedbackError::Invalid)
+        ));
+        assert!(matches!(
+            record_feedback(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::nil(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                HumanResponse::Unknown,
+                "Unknown"
+            )
+            .await,
+            Err(FeedbackError::Invalid)
+        ));
+        assert!(matches!(
+            record_feedback(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::nil(),
+                Uuid::new_v4(),
+                HumanResponse::Unknown,
+                "Unknown"
+            )
+            .await,
+            Err(FeedbackError::Invalid)
+        ));
+    }
+
     #[test]
     fn invalid_text_fails_closed() {
         for s in ["", "  ", "hello\nInjected", "hello\0world"] {
