@@ -198,6 +198,11 @@ fn parse_email_header(
                 && param != "charset=us-ascii"
                 && param != "charset=\"utf-8\""
                 && param != "charset=\"us-ascii\""
+                // RFC 3676 flowed text is still plain text. We preserve the
+                // uploaded bytes exactly rather than silently reflowing them.
+                && param != "format=flowed"
+                && param != "delsp=yes"
+                && param != "delsp=no"
             {
                 return invalid_email_header(nested, "MIME parameter");
             }
@@ -702,6 +707,20 @@ mod tests {
             &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
         );
         assert_eq!(fragment.content, "Olá!\r\n");
+    }
+
+    #[test]
+    fn accepts_plain_text_format_flowed_without_rewriting_source_bytes() {
+        let src = "From: Ana <ana@example.org>\r\nContent-Type: text/plain; charset=UTF-8; format=flowed; delsp=yes\r\nContent-Transfer-Encoding: 8bit\r\n\r\nA flowed line \r\ncontinues here.\r\n";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        let fragment = &parsed.fragments[0];
+        assert_eq!(fragment.speaker_label, "Ana <ana@example.org>");
+        assert_eq!(
+            fragment.content.as_bytes(),
+            &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+        );
+        assert!(fragment.content.contains("A flowed line \r\ncontinues here."));
     }
 
     #[test]
