@@ -242,6 +242,27 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_token_file_is_rejected_without_consuming_handoff() {
+        use std::os::unix::fs::symlink;
+        let target = token_file();
+        let link = std::env::temp_dir().join(format!("niccolo-handoff-{}.link", Uuid::new_v4()));
+        symlink(&target, &link).unwrap();
+        let code = "9".repeat(64);
+        let handoff =
+            LocalHandoff::configured(&code, link.clone(), Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            handoff.consume(&code),
+            Err(LocalHandoffError::SecretUnavailable)
+        );
+        fs::remove_file(&link).unwrap();
+        fs::rename(&target, &link).unwrap();
+        assert!(handoff.consume(&code).is_ok());
+        assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        let _ = fs::remove_file(link);
+    }
+
     #[test]
     fn oversized_token_file_is_rejected_without_consuming_handoff() {
         let path = std::env::temp_dir().join(format!("niccolo-handoff-{}.token", Uuid::new_v4()));
