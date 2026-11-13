@@ -85,12 +85,24 @@ type BindingRow = (
     bool,
 );
 
+fn unsafe_display_character(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
 fn clean_note(note: Option<&str>) -> Result<Option<String>, ForensicContextError> {
     let Some(note) = note else {
         return Ok(None);
     };
     let note = note.trim();
-    if note.is_empty() || note.len() > 2048 || note.chars().any(char::is_control) {
+    if note.is_empty() || note.len() > 2048 || note.chars().any(unsafe_display_character) {
         return Err(ForensicContextError::Invalid);
     }
     Ok(Some(note.to_owned()))
@@ -434,4 +446,21 @@ pub async fn bind(
         item,
         replayed: false,
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn context_notes_reject_directional_spoofing_but_keep_unicode() {
+        assert_eq!(
+            clean_note(Some("  revisão humana  ")).unwrap().as_deref(),
+            Some("revisão humana")
+        );
+        assert!(clean_note(Some("trusted\u{202e}untrusted")).is_err());
+        assert!(clean_note(Some("trusted\u{2067}untrusted")).is_err());
+        assert!(clean_note(Some("line\nbreak")).is_err());
+    }
 }
