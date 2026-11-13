@@ -19,6 +19,7 @@ pub mod human_feedback;
 pub mod hypotheses;
 pub mod identity;
 pub mod intake_package;
+pub mod intake_git_publication;
 pub mod local_handoff;
 
 pub mod actors;
