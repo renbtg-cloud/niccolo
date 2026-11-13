@@ -151,6 +151,33 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_redemption_is_atomic_across_clones() {
+        let path = token_file();
+        let code = "d".repeat(64);
+        let handoff =
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(9));
+        let mut workers = Vec::new();
+        for _ in 0..8 {
+            let worker_handoff = handoff.clone();
+            let worker_code = code.clone();
+            let worker_barrier = barrier.clone();
+            workers.push(std::thread::spawn(move || {
+                worker_barrier.wait();
+                worker_handoff.consume(&worker_code)
+            }));
+        }
+        barrier.wait();
+        let winners = workers
+            .into_iter()
+            .filter(|worker| worker.join().unwrap().is_ok())
+            .count();
+        assert_eq!(winners, 1, "a one-shot handoff must have exactly one winner");
+        assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn expired_capability_fails_closed() {
         let path = token_file();
         let code = "f".repeat(64);
