@@ -1724,7 +1724,10 @@ async fn failover_chain_never_starts_when_its_attempt_ceiling_exceeds_remaining_
     let fallback: std::sync::Arc<dyn model_adapter::ReasoningModel> =
         std::sync::Arc::new(DeterministicModel::new("fallback", "fallback").unwrap());
     let router = model_adapter::FailoverModel::new(primary, fallback);
-    assert_eq!(router.provider_attempt_ceiling(), 2);
+    assert_eq!(
+        model_adapter::ReasoningModel::provider_attempt_ceiling(&router),
+        2
+    );
 
     authz::with_auth_digest("test-digest".into(), async {
         let outcome = agentic_runtime::run_until_boundary(&app, scope, s.principal, &router)
