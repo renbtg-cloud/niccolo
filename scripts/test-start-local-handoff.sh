@@ -28,6 +28,7 @@ chmod +x "$TMP/repo/scripts/"*.sh "$TMP/repo/target/release/niccolo-api"
 printf '%s\n' "export NICCOLO_PG_SECURE_URL='postgres://runtime'" > "$TMP/repo/.niccolo-local/local.env"
 printf '%s\n' "export WORKSPACE_UUID='11111111-1111-4111-8111-111111111111'" "export SITUATION_UUID='22222222-2222-4222-8222-222222222222'" > "$TMP/repo/.niccolo-local/identifiers.txt"
 printf '%s\n' 'ncl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$TMP/repo/.niccolo-local/token.txt"
+chmod 600 "$TMP/repo/.niccolo-local/local.env" "$TMP/repo/.niccolo-local/identifiers.txt" "$TMP/repo/.niccolo-local/token.txt"
 
 cd "$TMP/repo"
 export NICCOLO_TEST_EXPECT_HANDOFF=1
@@ -80,6 +81,31 @@ set -e
 [[ "$bad_token_status" == 2 ]]
 grep -Fq 'Invalid local bearer token file' <<< "$bad_token"
 cp "$TMP/token.good" .niccolo-local/token.txt
+chmod 600 .niccolo-local/token.txt
+
+# Unix startup refuses local secrets made readable by another user/group.
+if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
+  chmod 644 .niccolo-local/token.txt
+  set +e
+  unsafe_mode="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
+  unsafe_mode_status=$?
+  set -e
+  [[ "$unsafe_mode_status" == 2 ]]
+  grep -Fq 'Private local file is readable or writable by other users' <<< "$unsafe_mode"
+  chmod 600 .niccolo-local/token.txt
+
+  mv .niccolo-local/token.txt "$TMP/token.real"
+  ln -s "$TMP/token.real" .niccolo-local/token.txt
+  set +e
+  unsafe_link="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
+  unsafe_link_status=$?
+  set -e
+  [[ "$unsafe_link_status" == 2 ]]
+  grep -Fq 'Unsafe private local file' <<< "$unsafe_link"
+  rm .niccolo-local/token.txt
+  mv "$TMP/token.real" .niccolo-local/token.txt
+  chmod 600 .niccolo-local/token.txt
+fi
 
 # The opener must validate the parsed URL origin, not just a textual prefix.
 # An authority with userinfo can appear to start with 127.0.0.1 yet target
