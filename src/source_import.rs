@@ -448,10 +448,22 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         // WhatsApp includes timestamped system notices (member changes,
         // encryption banners, etc.) without a "speaker: " prefix. Do not
         // silently attribute such notices to the preceding human speaker.
-        let attribution = message_speaker(header).map(str::to_owned).or_else(|| {
-            timestamped_whatsapp_body(header)
-                .map(|_| "[WhatsApp system event — unverified]".to_owned())
-        });
+        let timestamped_body = timestamped_whatsapp_body(header);
+        let attribution = if let Some(speaker) = message_speaker(header) {
+            Some(speaker.to_owned())
+        } else if let Some(body) = timestamped_body {
+            // A timestamped line with the human-message delimiter but an
+            // invalid speaker label is ambiguous. Never downgrade it to a
+            // system event, which would hide an attribution-spoofing attempt.
+            if body.contains(": ") {
+                return Err(ParseError::Unsupported(
+                    "unsafe or ambiguous WhatsApp speaker label",
+                ));
+            }
+            Some("[WhatsApp system event — unverified]".to_owned())
+        } else {
+            None
+        };
         if let Some(speaker) = attribution {
             if let Some((old, label)) = pending.replace((start, speaker)) {
                 finish(old, start, label)?;
