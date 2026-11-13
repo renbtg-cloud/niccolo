@@ -20,6 +20,34 @@ for file in "$env_file" "$ids_file" "$token_file"; do
   }
 done
 
+# On Unix, bootstrap/model files containing database, bearer or provider
+# credentials must remain ordinary, owner-only files. Refuse symlinks and
+# group/world-readable secrets before sourcing any shell assignments.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
+    assert_private_file(){
+      local file="$1" mode=''
+      [[ -f "$file" && ! -L "$file" && -O "$file" ]] || {
+        echo "Unsafe private local file: $file" >&2
+        exit 2
+      }
+      mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file" 2>/dev/null || true)"
+      [[ "$mode" =~ ^[0-7]{3,4}$ ]] || {
+        echo "Unable to verify private permissions for: $file" >&2
+        exit 2
+      }
+      (( (8#$mode & 077) == 0 )) || {
+        echo "Private local file is readable or writable by other users: $file" >&2
+        exit 2
+      }
+    }
+    assert_private_file "$env_file"
+    assert_private_file "$token_file"
+    [[ ! -e "$model_env_file" ]] || assert_private_file "$model_env_file"
+    ;;
+esac
+
 # Generated locally by bootstrap from UUIDs and shell-escaped values.
 # shellcheck disable=SC1091
 source "$env_file"
