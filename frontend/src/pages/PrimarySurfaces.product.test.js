@@ -83,6 +83,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(identities).toContain('history.data?.next_after');
   });
 
+  it('does not keep a hidden unassigned person choice after the people page changes', () => {
+    expect(identities).toContain("choice !== '__new__'");
+    expect(identities).toContain("choice !== binding?.person_id");
+    expect(identities).toContain("!identities.some((item) => item.person_id === choice)");
+  });
+
   it('keeps the current mapping selectable when its person is outside the current identity page', () => {
     expect(identities).toContain('binding?.person_id && !current');
     expect(identities).toContain('mapped person outside this page');
