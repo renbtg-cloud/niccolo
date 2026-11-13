@@ -852,10 +852,49 @@ struct LocalHandoffRequest {
     code: String,
 }
 
+fn local_handoff_origin_allowed(headers: &HeaderMap) -> bool {
+    let mut origins = headers.get_all(header::ORIGIN).iter();
+    let Some(origin) = origins.next() else {
+        // Non-browser local clients such as the deterministic smoke test do not
+        // send Origin. The capability itself remains required and one-shot.
+        return true;
+    };
+    if origins.next().is_some() {
+        return false;
+    }
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    let mut hosts = headers.get_all(header::HOST).iter();
+    let Some(host) = hosts.next() else {
+        return false;
+    };
+    if hosts.next().is_some() {
+        return false;
+    }
+    let Ok(host) = host.to_str() else {
+        return false;
+    };
+    let Some(port) = host.strip_prefix("127.0.0.1:") else {
+        return false;
+    };
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    origin == format!("http://{host}")
+}
+
 async fn consume_local_handoff(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<LocalHandoffRequest>,
 ) -> Result<Response, ApiError> {
+    if !local_handoff_origin_allowed(&headers) {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "local handoff origin rejected",
+        ));
+    }
     match state.local_handoff.consume(&request.code) {
         Ok(token) => Ok(no_store(json!({"token": token}), StatusCode::OK)),
         Err(LocalHandoffError::NotFound) => {
@@ -4796,6 +4835,52 @@ mod tests {
 
         let replay = router.clone().oneshot(request(&code)).await.unwrap();
         assert_eq!(replay.status(), StatusCode::NOT_FOUND);
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn local_handoff_rejects_cross_origin_browser_requests_without_consuming_code() {
+        use http_body_util::BodyExt;
+        use std::{fs, time::Duration};
+        use tower::ServiceExt;
+
+        let path =
+            std::env::temp_dir().join(format!("niccolo-http-origin-{}.token", Uuid::new_v4()));
+        let token = format!("ncl_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+        fs::write(&path, format!("{token}\n")).unwrap();
+        let code = "c".repeat(64);
+        let router = router_with_model_and_handoff(
+            PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap(),
+            Arc::new(UnavailableModel),
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap(),
+        );
+        let request = |origin: &str| {
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/local-handoff")
+                .header(header::HOST, "127.0.0.1:38080")
+                .header(header::ORIGIN, origin)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(r#"{{"code":"{code}"}}"#)))
+                .unwrap()
+        };
+
+        let rejected = router
+            .clone()
+            .oneshot(request("https://attacker.example"))
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+
+        let accepted = router
+            .clone()
+            .oneshot(request("http://127.0.0.1:38080"))
+            .await
+            .unwrap();
+        assert_eq!(accepted.status(), StatusCode::OK);
+        let body = accepted.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["token"], token);
         let _ = fs::remove_file(path);
     }
 
