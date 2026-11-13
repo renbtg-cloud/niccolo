@@ -357,12 +357,10 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         // WhatsApp includes timestamped system notices (member changes,
         // encryption banners, etc.) without a "speaker: " prefix. Do not
         // silently attribute such notices to the preceding human speaker.
-        let attribution = message_speaker(header)
-            .map(str::to_owned)
-            .or_else(|| {
-                timestamped_whatsapp_body(header)
-                    .map(|_| "[WhatsApp system event — unverified]".to_owned())
-            });
+        let attribution = message_speaker(header).map(str::to_owned).or_else(|| {
+            timestamped_whatsapp_body(header)
+                .map(|_| "[WhatsApp system event — unverified]".to_owned())
+        });
         if let Some(speaker) = attribution {
             if let Some((old, label)) = pending.replace((start, speaker)) {
                 finish(old, start, label)?;
@@ -425,7 +423,11 @@ mod tests {
             parsed.fragments[1].speaker_label,
             "[WhatsApp system event — unverified]"
         );
-        assert!(parsed.fragments[1].content.contains("changed the group description"));
+        assert!(
+            parsed.fragments[1]
+                .content
+                .contains("changed the group description")
+        );
         assert_eq!(parsed.fragments[2].speaker_label, "Beto");
         for fragment in parsed.fragments {
             assert_eq!(
