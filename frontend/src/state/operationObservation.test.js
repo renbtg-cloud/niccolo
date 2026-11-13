@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { completedAnalysisOutputRefreshId, mergeOperationObservation, operationPhase, observationPollDelay } from './operationObservation.js';
+import { completedAnalysisOutputRefreshId, eventPageNeedsCatchup, mergeOperationObservation, operationPhase, observationPollDelay } from './operationObservation.js';
 
 describe('operation observation state', () => {
   it('never regresses operation version and deduplicates events', () => {
@@ -60,6 +60,14 @@ describe('operation observation state', () => {
     expect(merged.operation.state).toBe('WAITING_FOR_HUMAN');
     expect(merged.cursor).toBe(10);
     expect(operationPhase(merged, {})).toBe('waiting-human');
+  });
+
+  it('keeps polling when an event page is full because more terminal events may exist', () => {
+    expect(eventPageNeedsCatchup({ events: Array.from({ length: 100 }, () => ({})) }, 100)).toBe(true);
+    expect(eventPageNeedsCatchup({ events: Array.from({ length: 99 }, () => ({})) }, 100)).toBe(false);
+    expect(eventPageNeedsCatchup({ events: [] }, 100)).toBe(false);
+    expect(eventPageNeedsCatchup(null, 100)).toBe(false);
+    expect(eventPageNeedsCatchup({ events: [{}] }, 0)).toBe(false);
   });
 
   it('avoids tight polling and stops on terminal operations', () => {
