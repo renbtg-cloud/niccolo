@@ -3,10 +3,9 @@
 use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
-    bff_operations, model_adapter, model_artifacts, operation_budget, operation_checkpoint,
-    reasoning_handoff,
-    reasoning_packet, reasoning_updates, observation_retrieval, observation_query_ledger,
-    resource_policy, runtime_resources,
+    bff_operations, model_adapter, model_artifacts, observation_query_ledger,
+    observation_retrieval, operation_budget, operation_checkpoint, reasoning_handoff,
+    reasoning_packet, reasoning_updates, resource_policy, runtime_resources,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -499,15 +498,8 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         };
         // A SQL failure may prevent this update too, but never suppress the
         // original error. The enclosing BFF independently fails its operation.
-        let _ = agentic_controller::finish_step(
-            pool,
-            scope,
-            step.step_id,
-            actor,
-            "FAILED",
-            reason,
-        )
-        .await;
+        let _ = agentic_controller::finish_step(pool, scope, step.step_id, actor, "FAILED", reason)
+            .await;
     }
     result
 }
@@ -516,17 +508,21 @@ fn resource_degradable_step(step: &agentic_controller::StepView) -> bool {
     step.kind == "PROPOSE_CLARIFICATION" && !step.requires_human
 }
 
-async fn maybe_apply_resource_degradation(
+async fn maybe_apply_resource_degradation<O>(
     pool: &PgPool,
     scope: OperationScope,
     actor: Uuid,
     step: &agentic_controller::StepView,
     policy: &resource_policy::ResourcePolicy,
-) -> Result<bool, RuntimeError> {
+    observe_resources: &O,
+) -> Result<bool, RuntimeError>
+where
+    O: Fn() -> Result<runtime_resources::ResourceSnapshot, runtime_resources::ResourceError>,
+{
     if !resource_degradable_step(step) {
         return Ok(false);
     }
-    let Ok(resources) = runtime_resources::observe() else {
+    let Ok(resources) = observe_resources() else {
         // Missing telemetry must never invent pressure or silently degrade work.
         return Ok(false);
     };
@@ -581,12 +577,16 @@ async fn maybe_apply_resource_degradation(
     Ok(true)
 }
 
-pub async fn run_until_boundary_with_resource_policy<M: ReasoningModel + ?Sized>(
+async fn run_until_boundary_with_resource_observer<
+    M: ReasoningModel + ?Sized,
+    O: Fn() -> Result<runtime_resources::ResourceSnapshot, runtime_resources::ResourceError>,
+>(
     pool: &PgPool,
     scope: OperationScope,
     actor: Uuid,
     model: &M,
     resource_policy: Option<&resource_policy::ResourcePolicy>,
+    observe_resources: &O,
 ) -> Result<RunOutcome, RuntimeError> {
     ensure_default_plan(pool, scope, actor).await?;
     let _ = agentic_controller::recover_stale_started(pool, scope, actor, 120).await?;
@@ -693,7 +693,15 @@ pub async fn run_until_boundary_with_resource_policy<M: ReasoningModel + ?Sized>
             .expect("ready step exists")
             .clone();
         if let Some(policy) = resource_policy
-            && maybe_apply_resource_degradation(pool, scope, actor, &step, policy).await?
+            && maybe_apply_resource_degradation(
+                pool,
+                scope,
+                actor,
+                &step,
+                policy,
+                observe_resources,
+            )
+            .await?
         {
             continue;
         }
@@ -703,12 +711,7 @@ pub async fn run_until_boundary_with_resource_policy<M: ReasoningModel + ?Sized>
                 Err(error) => {
                     if let Some(reason) = budget_stop_reason(&error) {
                         return finish_budget_boundary(
-                            pool,
-                            scope,
-                            actor,
-                            &step,
-                            completed,
-                            reason,
+                            pool, scope, actor, &step, completed, reason,
                         )
                         .await;
                     }
@@ -720,6 +723,50 @@ pub async fn run_until_boundary_with_resource_policy<M: ReasoningModel + ?Sized>
         completed += 1;
         record_step_checkpoint(pool, scope, actor, &step).await?;
     }
+}
+
+/// Resource-aware execution using live runtime telemetry. Observation failures
+/// remain fail-open for epistemic work: missing telemetry never licenses a skip.
+pub async fn run_until_boundary_with_resource_policy<M: ReasoningModel + ?Sized>(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    model: &M,
+    resource_policy: Option<&resource_policy::ResourcePolicy>,
+) -> Result<RunOutcome, RuntimeError> {
+    run_until_boundary_with_resource_observer(
+        pool,
+        scope,
+        actor,
+        model,
+        resource_policy,
+        &runtime_resources::observe,
+    )
+    .await
+}
+
+/// Deterministic validation/embedder seam: pin one already-observed resource
+/// envelope for the duration of this run. First-party production execution uses
+/// the live-observation function above instead.
+#[doc(hidden)]
+pub async fn run_until_boundary_with_resource_snapshot<M: ReasoningModel + ?Sized>(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    model: &M,
+    resource_policy: &resource_policy::ResourcePolicy,
+    snapshot: &runtime_resources::ResourceSnapshot,
+) -> Result<RunOutcome, RuntimeError> {
+    let snapshot = snapshot.clone();
+    run_until_boundary_with_resource_observer(
+        pool,
+        scope,
+        actor,
+        model,
+        Some(resource_policy),
+        &move || Ok(snapshot.clone()),
+    )
+    .await
 }
 
 /// Backwards-compatible deterministic execution path. Explicitly non-adaptive
