@@ -345,6 +345,18 @@ fn router_with_model_and_handoff(
             post(record_intake_git_publication_intent),
         )
         .route(
+            "/v1/workspaces/{workspace}/sources/{document}/git-publication-intents/{publication}/remote-status",
+            get(get_intake_git_publication_remote_status),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/git-publication-intents/{publication}/remote-events",
+            get(list_intake_git_publication_remote_events),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/git-publication-intents/{publication}/publish",
+            post(publish_intake_git_publication_intent),
+        )
+        .route(
             "/v1/workspaces/{workspace}/sources/{document}",
             post(ingest),
         )
@@ -1285,6 +1297,178 @@ async fn record_intake_git_publication_intent(
             "proves_completeness": false
         }),
         if replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+async fn get_intake_git_publication_remote_status(
+    State(state): State<AppState>,
+    Path((workspace, document, publication)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let status =
+        intake_git_publication::remote_status(&state.pool, workspace, document, publication)
+            .await
+            .map_err(intake_git_publication_error)?;
+    Ok(no_store(json!(status), StatusCode::OK))
+}
+
+async fn list_intake_git_publication_remote_events(
+    State(state): State<AppState>,
+    Path((workspace, document, publication)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<GitPublicationRemoteEventListQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let events = intake_git_publication::list_remote_events(
+        &state.pool,
+        workspace,
+        document,
+        publication,
+        query.limit.unwrap_or(25),
+    )
+    .await
+    .map_err(intake_git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "events": events,
+            "provider_secret_stored": false,
+            "event_payloads_include_provider_response_bodies": false,
+            "source_state_preserved": "RECEIVED"
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn publish_intake_git_publication_intent(
+    State(state): State<AppState>,
+    Path((workspace, document, publication)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<GitHubPublishRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    if request.attempt_id.is_nil() || request.confirmation != "PUBLISH_INTAKE_RECEIPT_TO_GITHUB" {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "explicit intake GitHub publication confirmation required",
+        ));
+    }
+    let existing =
+        intake_git_publication::remote_status(&state.pool, workspace, document, publication)
+            .await
+            .map_err(intake_git_publication_error)?;
+    if existing.remote_publish_verified {
+        return Ok(no_store(
+            json!({
+                "status": existing,
+                "replayed_verified_publication": true,
+                "provider_secret_stored": false,
+                "source_state_preserved": "RECEIVED"
+            }),
+            StatusCode::OK,
+        ));
+    }
+
+    let provider_token = transient_github_token(&headers)?;
+    let material =
+        intake_git_publication::publication_material(&state.pool, workspace, document, publication)
+            .await
+            .map_err(intake_git_publication_error)?;
+    let publish_result = tokio::task::spawn_blocking(move || {
+        let transport = github_publisher::CurlGitHubTransport::default();
+        github_publisher::publish_intake_package(
+            &transport,
+            &material.target,
+            &material.intent,
+            &material.package,
+            &provider_token,
+        )
+    })
+    .await
+    .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "GitHub intake publication task failed"))?;
+
+    let verified = match publish_result {
+        Ok(verified) => verified,
+        Err(error) => {
+            let failure_class = match error {
+                GitHubPublishError::LocalIntegrity | GitHubPublishError::Invalid => {
+                    "LOCAL_INTEGRITY"
+                }
+                GitHubPublishError::Transport => "TRANSPORT",
+                GitHubPublishError::ProviderRejected(_) => "PROVIDER_REJECTED",
+                GitHubPublishError::VerificationMismatch
+                | GitHubPublishError::InvalidProviderResponse => "VERIFICATION_MISMATCH",
+            };
+            let _ = intake_git_publication::record_remote_event(
+                &state.pool,
+                workspace,
+                actor,
+                &git_publication::RemoteEventInput {
+                    event_id: request.attempt_id,
+                    publication_id: publication,
+                    kind: git_publication::RemoteEventKind::PublishFailed,
+                    remote_commit_sha: None,
+                    observed_ref: None,
+                    failure_class: Some(failure_class.into()),
+                },
+            )
+            .await;
+            return Err(github_publish_error(error));
+        }
+    };
+
+    for (kind, observed_ref) in [
+        (git_publication::RemoteEventKind::PushAccepted, None),
+        (
+            git_publication::RemoteEventKind::RefVerified,
+            Some(verified.ref_name.clone()),
+        ),
+    ] {
+        intake_git_publication::record_remote_event(
+            &state.pool,
+            workspace,
+            actor,
+            &git_publication::RemoteEventInput {
+                event_id: request.attempt_id,
+                publication_id: publication,
+                kind,
+                remote_commit_sha: Some(verified.commit_sha.clone()),
+                observed_ref,
+                failure_class: None,
+            },
+        )
+        .await
+        .map_err(intake_git_publication_error)?;
+    }
+
+    let status =
+        intake_git_publication::remote_status(&state.pool, workspace, document, publication)
+            .await
+            .map_err(intake_git_publication_error)?;
+    if !status.remote_publish_verified
+        || status.verified_commit_sha.as_deref() != Some(verified.commit_sha.as_str())
+        || status.verified_ref.as_deref() != Some(verified.ref_name.as_str())
+    {
+        return Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "remote intake publication verification ledger mismatch",
+        ));
+    }
+    Ok(no_store(
+        json!({
+            "status": status,
+            "repository_full_name": verified.repository_full_name,
+            "package_sha256": verified.package_sha256,
+            "remote_commit_already_present": verified.already_present,
+            "provider_secret_stored": false,
+            "remote_publish_verified": true,
+            "source_state_preserved": "RECEIVED",
+            "establishes_authenticity": false,
+            "establishes_truth": false,
+            "proves_completeness": false
+        }),
+        StatusCode::OK,
     ))
 }
 
