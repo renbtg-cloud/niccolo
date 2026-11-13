@@ -105,7 +105,10 @@ fn unique_header_text<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&
         return Ok(None);
     };
     if values.next().is_some() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "ambiguous source locator"));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "ambiguous source locator",
+        ));
     }
     first
         .to_str()
@@ -182,9 +185,7 @@ fn source_locator(headers: &HeaderMap) -> Result<String, ApiError> {
         )),
         (Some(value), None) => decode_percent_encoded_locator(value),
         (None, Some(value)) => {
-            if value.is_empty()
-                || value.len() > 1024
-                || value.chars().any(unsafe_locator_character)
+            if value.is_empty() || value.len() > 1024 || value.chars().any(unsafe_locator_character)
             {
                 Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))
             } else {
