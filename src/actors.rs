@@ -194,6 +194,9 @@ pub async fn create(
 
 
 pub async fn list(pool: &PgPool, workspace: Uuid) -> Result<Vec<ActorView>, ActorError> {
+    if workspace.is_nil() {
+        return Err(ActorError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
         "SELECT a.actor_id,a.display_label,
@@ -387,6 +390,14 @@ pub async fn frozen_bindings(
     kind_event_no_max: i64,
     binding_event_no_max: i64,
 ) -> Result<Vec<FrozenActorBinding>, ActorError> {
+    if workspace.is_nil()
+        || situation.is_nil()
+        || revision < 1
+        || kind_event_no_max < 0
+        || binding_event_no_max < 0
+    {
+        return Err(ActorError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<(Uuid, String, String, Option<Uuid>, Uuid, i64)> = sqlx::query_as(
         "SELECT DISTINCT ON (b.document_id,b.speaker_label)
@@ -487,6 +498,22 @@ mod tests {
                 Uuid::new_v4(),
                 Some("HUMAN"),
                 "Human-confirmed classification."
+            )
+            .await,
+            Err(ActorError::Invalid)
+        ));
+        assert!(matches!(
+            list(&pool, Uuid::nil()).await,
+            Err(ActorError::Invalid)
+        ));
+        assert!(matches!(
+            frozen_bindings(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                0,
+                0,
+                0
             )
             .await,
             Err(ActorError::Invalid)
