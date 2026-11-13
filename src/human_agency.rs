@@ -75,7 +75,16 @@ pub async fn record_decision_rationale(
     decision: Uuid,
     input: &DecisionRationaleInput,
 ) -> Result<(), AgencyError> {
-    if !valid(&input.rationale) || input.tradeoff_ack.as_ref().is_some_and(|x| !valid(x)) {
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || decision.is_nil()
+        || input.rationale_id.is_nil()
+        || input.option_id.is_some_and(|id| id.is_nil())
+        || input.recorded_by.is_nil()
+        || !valid(&input.rationale)
+        || input.tradeoff_ack.as_ref().is_some_and(|x| !valid(x))
+    {
         return Err(AgencyError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -89,6 +98,13 @@ pub async fn decision_rationales(
     scope: AnalysisScope,
     decision: Uuid,
 ) -> Result<Vec<DecisionRationaleView>, AgencyError> {
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || decision.is_nil()
+    {
+        return Err(AgencyError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<DecisionRationaleRow> = sqlx::query_as("SELECT rationale_id,option_id,rationale_text,tradeoff_ack,recorded_by_principal_id FROM niccolo.situation_analysis_decision_rationales WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND decision_id=$4 ORDER BY created_at,rationale_id")
         .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).fetch_all(&mut *tx).await?;
@@ -143,7 +159,13 @@ pub async fn record_evidence_gap(
     scope: AnalysisScope,
     input: &EvidenceGapInput,
 ) -> Result<(), AgencyError> {
-    if !valid(&input.description)
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || input.gap_id.is_nil()
+        || input.claim_id.is_some_and(|id| id.is_nil())
+        || input.recorded_by.is_nil()
+        || !valid(&input.description)
         || input
             .requested_source_kind
             .as_ref()
@@ -163,7 +185,14 @@ pub async fn append_gap_event(
     gap: Uuid,
     event: &EvidenceGapEvent,
 ) -> Result<(), AgencyError> {
-    if !matches!(event.kind.as_str(), "SATISFIED" | "WAIVED" | "REOPENED")
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || gap.is_nil()
+        || event.event_id.is_nil()
+        || event.evidence_id.is_some_and(|id| id.is_nil())
+        || event.recorded_by.is_nil()
+        || !matches!(event.kind.as_str(), "SATISFIED" | "WAIVED" | "REOPENED")
         || !valid(&event.note)
         || (event.kind == "SATISFIED") != event.evidence_id.is_some()
     {
@@ -179,6 +208,9 @@ pub async fn evidence_gaps(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<EvidenceGapView>, AgencyError> {
+    if scope.workspace.is_nil() || scope.situation.is_nil() || scope.analysis.is_nil() {
+        return Err(AgencyError::Invalid);
+    }
     type GapRow = (
         Uuid,
         Option<Uuid>,
@@ -241,7 +273,14 @@ pub async fn create_goal(
     situation: Uuid,
     input: &GoalInput,
 ) -> Result<(), AgencyError> {
-    if !valid(&input.goal) || !valid(&input.success_criterion) {
+    if workspace.is_nil()
+        || situation.is_nil()
+        || input.goal_id.is_nil()
+        || input.owner.is_nil()
+        || input.created_by.is_nil()
+        || !valid(&input.goal)
+        || !valid(&input.success_criterion)
+    {
         return Err(AgencyError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -257,7 +296,13 @@ pub async fn append_goal_event(
     goal: Uuid,
     event: &GoalEvent,
 ) -> Result<(), AgencyError> {
-    if !matches!(event.kind.as_str(), "ACHIEVED" | "REOPENED" | "ABANDONED") || !valid(&event.note)
+    if workspace.is_nil()
+        || situation.is_nil()
+        || goal.is_nil()
+        || event.event_id.is_nil()
+        || event.recorded_by.is_nil()
+        || !matches!(event.kind.as_str(), "ACHIEVED" | "REOPENED" | "ABANDONED")
+        || !valid(&event.note)
     {
         return Err(AgencyError::Invalid);
     }
@@ -272,6 +317,9 @@ pub async fn goals(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<Vec<GoalView>, AgencyError> {
+    if workspace.is_nil() || situation.is_nil() {
+        return Err(AgencyError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<GoalRow> = sqlx::query_as("SELECT g.goal_id,g.goal_text,g.success_criterion,g.owner_principal_id,(SELECT e.event_kind FROM niccolo.situation_goal_events e WHERE e.workspace_id=g.workspace_id AND e.situation_id=g.situation_id AND e.goal_id=g.goal_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_goals g WHERE g.workspace_id=$1 AND g.situation_id=$2 ORDER BY g.goal_id")
         .bind(workspace).bind(situation).fetch_all(&mut *tx).await?;
@@ -329,7 +377,12 @@ pub async fn propose_next_step(
     scope: AnalysisScope,
     input: &NextStepInput,
 ) -> Result<(), AgencyError> {
-    if !matches!(
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || input.step_id.is_nil()
+        || input.proposed_by.is_nil()
+        || !matches!(
         input.kind.as_str(),
         "ASK_HUMAN" | "GATHER_EVIDENCE" | "REANALYZE" | "USER_ACTION"
     ) || !valid(&input.text)
@@ -349,10 +402,17 @@ pub async fn append_next_step_event(
     step: Uuid,
     event: &NextStepEvent,
 ) -> Result<(), AgencyError> {
-    if !matches!(
-        event.kind.as_str(),
-        "ACCEPTED" | "DEFERRED" | "DISMISSED" | "REOPENED"
-    ) || !valid(&event.note)
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || step.is_nil()
+        || event.event_id.is_nil()
+        || event.recorded_by.is_nil()
+        || !matches!(
+            event.kind.as_str(),
+            "ACCEPTED" | "DEFERRED" | "DISMISSED" | "REOPENED"
+        )
+        || !valid(&event.note)
     {
         return Err(AgencyError::Invalid);
     }
@@ -366,6 +426,9 @@ pub async fn next_steps(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<NextStepPackage, AgencyError> {
+    if scope.workspace.is_nil() || scope.situation.is_nil() || scope.analysis.is_nil() {
+        return Err(AgencyError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<NextStepRow> = sqlx::query_as("SELECT s.step_id,s.step_kind,s.step_text,s.rationale,(SELECT e.event_kind FROM niccolo.situation_analysis_next_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.analysis_id=s.analysis_id AND e.step_id=s.step_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_next_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3 ORDER BY s.step_id")
         .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
@@ -394,4 +457,48 @@ pub fn next_steps_sha256(value: &NextStepPackage) -> Result<String, serde_json::
         "{:x}",
         Sha256::digest(serde_json::to_string(value)?.as_bytes())
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scope() -> AnalysisScope {
+        AnalysisScope {
+            workspace: Uuid::new_v4(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_agency_identifiers_fail_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://127.0.0.1:1/never").unwrap();
+        let mut invalid = scope();
+        invalid.workspace = Uuid::nil();
+        assert!(matches!(
+            evidence_gaps(&pool, invalid).await,
+            Err(AgencyError::Invalid)
+        ));
+        assert!(matches!(
+            goals(&pool, Uuid::new_v4(), Uuid::nil()).await,
+            Err(AgencyError::Invalid)
+        ));
+        assert!(matches!(
+            decision_rationales(&pool, scope(), Uuid::nil()).await,
+            Err(AgencyError::Invalid)
+        ));
+        assert!(matches!(
+            next_steps(
+                &pool,
+                AnalysisScope {
+                    workspace: Uuid::new_v4(),
+                    situation: Uuid::nil(),
+                    analysis: Uuid::new_v4(),
+                },
+            )
+            .await,
+            Err(AgencyError::Invalid)
+        ));
+    }
 }
