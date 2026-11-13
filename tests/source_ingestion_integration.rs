@@ -326,6 +326,30 @@ async fn parse_errors_and_invalid_locator_cause_no_persistent_writes() {
         .await,
         Err(ImportError::Locator)
     ));
+    assert!(matches!(
+        ingest_source(
+            &service,
+            w,
+            Uuid::new_v4(),
+            SourceFormat::Eml,
+            "trusted\u{202e}spoofed.eml",
+            b"From: A\n\ntext"
+        )
+        .await,
+        Err(ImportError::Locator)
+    ));
+    assert!(matches!(
+        ingest_source(
+            &service,
+            w,
+            Uuid::nil(),
+            SourceFormat::Eml,
+            "fixture://nil-document",
+            b"From: A\n\ntext"
+        )
+        .await,
+        Err(ImportError::InvalidIdentity)
+    ));
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1")
             .bind(w)
