@@ -36,6 +36,7 @@ pub struct ResourceDiagnostic {
     pub cpu_throttled_usec: Option<u64>,
     pub pids_current: Option<u64>,
     pub pids_limit: Option<u64>,
+    pub pids_headroom: Option<u64>,
     pub pids_limit_observed: bool,
     pub pids_limit_unlimited: bool,
     pub pressure: resource_policy::ResourcePressure,
@@ -72,6 +73,14 @@ pub fn from_snapshot(
         cpu_throttled_usec: snapshot.cpu_throttled_usec,
         pids_current: snapshot.pids_current,
         pids_limit: snapshot.pids_limit,
+        pids_headroom: if snapshot.pids_limit_observed && !snapshot.pids_limit_unlimited {
+            snapshot
+                .pids_current
+                .zip(snapshot.pids_limit)
+                .map(|(current, limit)| limit.saturating_sub(current))
+        } else {
+            None
+        },
         pids_limit_observed: snapshot.pids_limit_observed,
         pids_limit_unlimited: snapshot.pids_limit_unlimited,
         pressure: advice.pressure,
@@ -138,6 +147,7 @@ mod tests {
         assert_eq!(diagnostic.pressure, ResourcePressure::Constrained);
         assert_eq!(diagnostic.observed_parallel_ceiling, 4);
         assert_eq!(diagnostic.recommended_parallel_operations, 2);
+        assert_eq!(diagnostic.pids_headroom, Some(28));
         assert!(!diagnostic.apply_concurrency_automatically);
         assert!(!diagnostic.mutates_resource_limits);
         assert!(!diagnostic.establishes_epistemic_quality);
