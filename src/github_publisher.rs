@@ -1057,8 +1057,8 @@ mod tests {
     #[test]
     fn curl_publication_disables_user_configuration_before_sending_bearer_headers() {
         use std::os::unix::fs::PermissionsExt;
-        let script_path = std::env::temp_dir()
-            .join(format!("niccolo-github-curl-flags-{}.sh", Uuid::new_v4()));
+        let script_path =
+            std::env::temp_dir().join(format!("niccolo-github-curl-flags-{}.sh", Uuid::new_v4()));
         fs::write(
             &script_path,
             r#"#!/bin/sh
