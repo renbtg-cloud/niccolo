@@ -128,11 +128,25 @@ export function IdentitiesPage() {
   const assign = useMutation({
     mutationFn: async ({ speakerLabel, personId, newLabel, reason }) => {
       const signature = JSON.stringify({ workspace: client.config.workspace, documentId, speakerLabel, personId, newLabel, reason });
+      const newPersonSignature = personId ? null : JSON.stringify({
+        workspace: client.config.workspace,
+        documentId,
+        speakerLabel,
+        newLabel,
+      });
       if (pendingAssign.current?.signature !== signature) {
+        // Creating a person and recording its mapping are separate idempotent
+        // HTTP calls. If only the human reason changes after the first call
+        // succeeded, reuse that person UUID instead of leaving an orphan.
+        const reusablePersonId = newPersonSignature
+          && pendingAssign.current?.newPersonSignature === newPersonSignature
+          ? pendingAssign.current.personId
+          : null;
         pendingAssign.current = {
           signature,
+          newPersonSignature,
           eventId: crypto.randomUUID(),
-          personId: personId || crypto.randomUUID(),
+          personId: personId || reusablePersonId || crypto.randomUUID(),
         };
       }
       const attempt = pendingAssign.current;
