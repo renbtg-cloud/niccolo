@@ -18,6 +18,7 @@ pub mod evolution;
 pub mod human_feedback;
 pub mod hypotheses;
 pub mod identity;
+pub mod intake_package;
 pub mod local_handoff;
 
 pub mod actors;
