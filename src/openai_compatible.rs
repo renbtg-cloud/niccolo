@@ -114,7 +114,15 @@ impl OpenAiCompatibleConfig {
     }
 
     fn endpoint(&self) -> String {
-        format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+        let base = self.base_url.trim_end_matches('/');
+        // Keep the friendly localhost configuration spelling, but connect curl
+        // and the native adapter through a literal loopback address so host-file
+        // poisoning cannot redirect plaintext local-model traffic off machine.
+        let base = base
+            .strip_prefix("http://localhost:")
+            .map(|rest| format!("http://127.0.0.1:{rest}"))
+            .unwrap_or_else(|| base.to_owned());
+        format!("{base}/chat/completions")
     }
 
     pub fn native_model(&self) -> Result<OpenAiCompatibleModel, ProviderConfigError> {
@@ -360,6 +368,20 @@ mod tests {
         assert_eq!(permissions, 0o600);
         assert_eq!(saved, b"Authorization: Bearer private-test");
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn localhost_model_endpoint_is_canonicalized_to_literal_loopback() {
+        let cfg = config("http://localhost:11434/v1".into());
+        assert_eq!(
+            cfg.endpoint(),
+            "http://127.0.0.1:11434/v1/chat/completions"
+        );
+        let literal = config("http://127.0.0.1:11434/v1".into());
+        assert_eq!(
+            literal.endpoint(),
+            "http://127.0.0.1:11434/v1/chat/completions"
+        );
     }
 
     #[test]
