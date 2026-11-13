@@ -47,9 +47,15 @@ fn code_digest(code: &str) -> String {
 }
 
 fn read_bearer(path: &PathBuf) -> Result<String, LocalHandoffError> {
-    // A local path may point to a file larger than a credential (including
-    // a symlink to a large file). Read at most 71 bytes, then fail closed.
-    // Valid credentials are 68 bytes, optionally followed by LF or CRLF.
+    // The handoff file is a locally generated secret, not a generic filesystem
+    // reference. Refuse symlinks, directories, FIFOs and devices before opening.
+    let metadata = fs::symlink_metadata(path).map_err(|_| LocalHandoffError::SecretUnavailable)?;
+    if !metadata.file_type().is_file() {
+        return Err(LocalHandoffError::SecretUnavailable);
+    }
+    // A local path may still point to a file larger than a credential. Read at
+    // most 71 bytes, then fail closed. Valid credentials are 68 bytes,
+    // optionally followed by LF or CRLF.
     let mut raw = String::new();
     fs::File::open(path)
         .and_then(|file| file.take(71).read_to_string(&mut raw))
