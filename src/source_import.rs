@@ -68,13 +68,29 @@ fn iter_lines(src: &str) -> impl Iterator<Item = (usize, usize, &str)> {
         Some((start, stop, src[start..stop].trim_end_matches(['\r', '\n'])))
     })
 }
+fn unsafe_identity_character(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
+fn valid_speaker_label(label: &str) -> bool {
+    !label.is_empty()
+        && label.len() <= 512
+        && !label.chars().any(unsafe_identity_character)
+}
+
 fn check_fragment(f: &SourceFragment) -> Result<(), ParseError> {
-    if f.content.is_empty()
-        || f.content.len() > MAX_FRAGMENT_BYTES
-        || f.speaker_label.is_empty()
-        || f.speaker_label.len() > 512
-    {
+    if f.content.is_empty() || f.content.len() > MAX_FRAGMENT_BYTES {
         Err(ParseError::Limit)
+    } else if !valid_speaker_label(&f.speaker_label) {
+        Err(ParseError::Unsupported("unsafe speaker label"))
     } else {
         Ok(())
     }
@@ -403,11 +419,7 @@ fn message_speaker(line: &str) -> Option<&str> {
     let rest = timestamped_whatsapp_body(line)?;
     let (speaker, _) = rest.split_once(": ")?;
     let speaker = speaker.trim();
-    if speaker.is_empty() || speaker.len() > 512 {
-        None
-    } else {
-        Some(speaker)
-    }
+    valid_speaker_label(speaker).then_some(speaker)
 }
 fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     let mut pending: Option<(usize, String)> = None;
@@ -639,6 +651,33 @@ mod tests {
         assert!(!looks_like_datetime("29/02/2025, 12:01"));
         assert!(!looks_like_datetime("00/12/2025, 12:01"));
         assert!(!looks_like_datetime("01/13/2025, 12:01"));
+    }
+
+    #[test]
+    fn directional_control_characters_cannot_spoof_source_speaker_labels() {
+        for source in [
+            "From: Alice \u{202e}<mallory@example.org>\nSubject: test\n\nbody",
+            "From: Alice \u{2067}<mallory@example.org>\nSubject: test\n\nbody",
+        ] {
+            assert!(matches!(
+                parse_source(SourceFormat::Eml, source.as_bytes()),
+                Err(ParseError::Unsupported("unsafe speaker label"))
+            ));
+        }
+        for source in [
+            "[02/11/2026, 17:01] Alice\u{202e}: hello\n",
+            "[02/11/2026, 17:01] Alice\u{2067}: hello\n",
+        ] {
+            assert!(parse_source(SourceFormat::WhatsappExport, source.as_bytes()).is_err());
+        }
+        let ordinary = "[02/11/2026, 17:01] João: olá\n";
+        assert_eq!(
+            parse_source(SourceFormat::WhatsappExport, ordinary.as_bytes())
+                .unwrap()
+                .fragments[0]
+                .speaker_label,
+            "João"
+        );
     }
 
     #[test]
