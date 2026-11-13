@@ -295,7 +295,7 @@ async fn v351_v375_reasoning_packet_separates_frozen_input_from_current_human_co
 }
 
 #[tokio::test]
-async fn reasoning_packet_keeps_each_source_fragments_together_in_source_addition_order() {
+async fn reasoning_packet_round_robins_sources_before_advancing_fragment_depth() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let first = Uuid::new_v4();
@@ -389,7 +389,7 @@ async fn reasoning_packet_keeps_each_source_fragments_together_in_source_additio
             .collect::<Vec<_>>();
         assert_eq!(
             order,
-            vec![(first, 0), (first, 1), (second, 0), (second, 1)]
+            vec![(first, 0), (second, 0), (first, 1), (second, 1)]
         );
     })
     .await;
