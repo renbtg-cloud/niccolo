@@ -146,7 +146,7 @@ if [[ -n "$llm_base" || -n "$llm_model" || -n "$llm_key" || -n "$llm_provider" |
     echo 'Node.js is required to validate the reasoning-model configuration.' >&2
     exit 1
   }
-  if ! NICCOLO_START_BASE_URL="$llm_base" NICCOLO_START_MODEL="$llm_model" NICCOLO_START_KEY="$llm_key" \
+  if NICCOLO_START_BASE_URL="$llm_base" NICCOLO_START_MODEL="$llm_model" NICCOLO_START_KEY="$llm_key" \
       NICCOLO_START_PROVIDER="$llm_provider" NICCOLO_START_JSON_MODE="$llm_json_mode" node - <<'NODE'
 const base = process.env.NICCOLO_START_BASE_URL ?? '';
 const model = process.env.NICCOLO_START_MODEL ?? '';
@@ -175,6 +175,8 @@ try {
 }
 NODE
   then
+    :
+  else
     status=$?
     echo 'Reasoning model: INVALID CONFIGURATION' >&2
     if [[ "$status" == 3 ]]; then
