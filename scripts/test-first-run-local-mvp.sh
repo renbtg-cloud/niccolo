@@ -15,6 +15,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "$ROOT/.niccolo-local"
 printf 'export NICCOLO_DATABASE_URL=%q\n' 'postgres://runtime' > "$ROOT/.niccolo-local/local.env"
+printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' \
+  '11111111-1111-4111-8111-111111111111' '22222222-2222-4222-8222-222222222222' \
+  > "$ROOT/.niccolo-local/identifiers.txt"
+printf '%s\n' 'ncl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  > "$ROOT/.niccolo-local/token.txt"
+chmod 600 "$ROOT/.niccolo-local/local.env" "$ROOT/.niccolo-local/identifiers.txt" "$ROOT/.niccolo-local/token.txt"
 printf 'bootstrap\n' >> "${NICCOLO_TEST_TRACE:?}"
 SH
 cat > "$TMP/repo/scripts/configure-local-model.sh" <<'SH'
@@ -65,6 +71,47 @@ grep -q 'run is non-interactive' "$TMP/no-admin-err"
 [[ ! -e "$TMP/repo/.niccolo-local/local.env" ]]
 
 export NICCOLO_PG_ADMIN_URL='postgres://owner:test@127.0.0.1:5432/db'
+
+# Partial credential state must not trigger a second bootstrap over a database
+# whose migrations/roles may already have been changed.
+mkdir -p "$TMP/repo/.niccolo-local"
+printf 'export NICCOLO_DATABASE_URL=%q\n' 'postgres://runtime' > "$TMP/repo/.niccolo-local/local.env"
+: > "$TMP/trace"
+set +e
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --skip-model-config --no-browser >"$TMP/partial-out" 2>"$TMP/partial-err"
+partial_status=$?
+set -e
+[[ "$partial_status" == 2 ]]
+grep -q 'local bootstrap state is incomplete' "$TMP/partial-err"
+! grep -q '^bootstrap
+set +e
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser >"$TMP/out" 2>"$TMP/err"
+status=$?
+set -e
+[[ "$status" == 2 ]]
+grep -q '^bootstrap$' "$TMP/trace"
+! grep -q '^start:' "$TMP/trace"
+grep -q 'reasoning model is not configured' "$TMP/err"
+
+# The explicit prepare-only escape hatch starts without invoking model configuration.
+: > "$TMP/trace"
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --skip-model-config --no-browser
+! grep -q '^bootstrap$' "$TMP/trace"
+! grep -q '^configure$' "$TMP/trace"
+grep -q '^start:--no-browser$' "$TMP/trace"
+
+# Process-environment model configuration is sufficient and does not persist secrets.
+: > "$TMP/trace"
+export NICCOLO_LLM_BASE_URL='https://models.example.test/v1'
+export NICCOLO_LLM_MODEL='test-model'
+export NICCOLO_LLM_API_KEY='do-not-write-me'
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser
+grep -q '^start:--no-browser$' "$TMP/trace"
+[[ ! -f "$TMP/repo/.niccolo-local/model.env" ]]
+unset NICCOLO_LLM_BASE_URL NICCOLO_LLM_MODEL NICCOLO_LLM_API_KEY
+
+printf '%s\n' 'PASS: first-run wrapper is bootstrap-idempotent, model-aware, non-interactive-safe, and does not persist process secrets.' "$TMP/trace"
+rm -rf "$TMP/repo/.niccolo-local"
 
 # Non-interactive first run must not silently start without a reasoning model.
 set +e
