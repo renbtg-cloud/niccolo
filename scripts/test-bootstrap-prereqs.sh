@@ -142,7 +142,7 @@ case " $* " in
   *' SELECT pg_get_userbyid(datdba)=current_user FROM pg_database WHERE datname=current_database() '*) printf '%s\n' 't' ;;
   *" to_regclass('niccolo.workspaces') IS NOT NULL "*) printf '%s\n' 'f' ;;
   *' SELECT NOT EXISTS (SELECT 1 FROM pg_class '* ) printf '%s\n' 't' ;;
-  *" string_agg(rolname,',' ORDER BY rolname) "* ) printf '%s\n' '' ;;
+  *"string_agg(rolname,',' ORDER BY rolname)"*"niccolo_secure"* ) printf '%s\n' '' ;;
   *' SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname=current_user '* ) printf '%s\n' 't' ;;
   *) printf 'unexpected psql preflight: %s\n' "$*" >&2; exit 96 ;;
 esac
