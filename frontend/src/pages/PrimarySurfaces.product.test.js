@@ -113,7 +113,7 @@ describe('buyer-facing primary surfaces', () => {
 
   it('refreshes a published analysis output exactly when an observed live operation succeeds', () => {
     const observer = readFileSync(new URL('../hooks/useOperationObserver.js', import.meta.url), 'utf8');
-    expect(observer).toContain('completedAnalysisOutputRefreshId(previous, merged)');
+    expect(observer).toContain('completedAnalysisOutputRefreshId(previous, observed)');
     expect(observer).toContain("qk.analysis(client.config, completedAnalysis, 'output')");
   });
 
