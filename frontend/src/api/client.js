@@ -67,7 +67,7 @@ export class NiccoloClient {
   intakeGitPublicationRemoteStatus(documentId, publicationId) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}/remote-status`); }
   intakeGitPublicationRemoteEvents(documentId, publicationId, limit = 25) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}/remote-events?limit=${limit}`); }
   async publishIntakeGitPublicationIntent(documentId, publicationId, attemptId, githubToken) {
-    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\\r\\n\\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
+    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\r\n\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
     const path = `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}/publish`;
     const response = await this.fetch(path, {
       method: 'POST',
