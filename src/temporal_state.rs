@@ -200,6 +200,27 @@ pub async fn record(
         return Err(TemporalStateError::Invisible);
     };
 
+    // Keep malformed/reversed time ranges out of the durable reasoning state.
+    // PostgreSQL is the timestamp parser used by storage, so validate with the
+    // same semantics before the INSERT instead of accepting a backwards range
+    // or surfacing malformed user input as a generic database failure.
+    let temporal_bounds_valid: bool = sqlx::query_scalar(
+        "SELECT CASE
+           WHEN $1::text IS NOT NULL AND NOT pg_input_is_valid($1::text,'timestamptz'::regtype) THEN FALSE
+           WHEN $2::text IS NOT NULL AND NOT pg_input_is_valid($2::text,'timestamptz'::regtype) THEN FALSE
+           WHEN $1::text IS NOT NULL AND $2::text IS NOT NULL
+             THEN $1::text::timestamptz <= $2::text::timestamptz
+           ELSE TRUE
+         END",
+    )
+    .bind(input.valid_from.as_deref())
+    .bind(input.valid_to.as_deref())
+    .fetch_one(&mut *tx)
+    .await?;
+    if !temporal_bounds_valid {
+        return Err(TemporalStateError::Invalid);
+    }
+
     if let Some(evidence_id) = input.evidence_id {
         let visible: bool = sqlx::query_scalar(
             "SELECT EXISTS(
