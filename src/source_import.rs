@@ -81,9 +81,7 @@ fn unsafe_identity_character(c: char) -> bool {
 }
 
 fn valid_speaker_label(label: &str) -> bool {
-    !label.is_empty()
-        && label.len() <= 512
-        && !label.chars().any(unsafe_identity_character)
+    !label.is_empty() && label.len() <= 512 && !label.chars().any(unsafe_identity_character)
 }
 
 fn check_fragment(f: &SourceFragment) -> Result<(), ParseError> {
