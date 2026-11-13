@@ -305,7 +305,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     ) else {
         return false;
     };
-    if second.is_some_and(|s| s.parse::<u8>().is_err_or(|value| value >= 60))
+    if second.is_some_and(|s| s.parse::<u8>().map_or(true, |value| value >= 60))
         || minute >= 60
         || !(1..=12).contains(&month)
         || year == 0
