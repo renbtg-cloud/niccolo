@@ -156,6 +156,55 @@ async fn read_only_members_cannot_write_but_writers_can_read() {
     assert_eq!(status, StatusCode::OK);
 }
 #[tokio::test]
+async fn received_source_receipt_is_deterministic_and_contains_no_source_text() {
+    let (_admin, _app, w, _, token, router) = setup().await;
+    let document = Uuid::new_v4();
+    let locator = "fixture://private/client-chat.txt";
+    let source_path = source(w, document);
+    let (status, _) = invoke(
+        router.clone(),
+        request(
+            "POST",
+            &source_path,
+            Some(&token),
+            Some("text/plain"),
+            Some(locator),
+            CHAT,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let receipt_path = format!("{source_path}/intake-receipt-package");
+    let (status, first) = invoke(
+        router.clone(),
+        request("GET", &receipt_path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, second) = invoke(
+        router,
+        request("GET", &receipt_path, Some(&token), None, None, b""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert_eq!(first["package_sha256"], second["package_sha256"]);
+    assert_eq!(first["receipt"]["state"], "RECEIVED");
+    assert_eq!(first["receipt"]["document_id"], document.to_string());
+    assert_eq!(first["receipt"]["includes_original_upload"], false);
+    assert_eq!(first["receipt"]["includes_source_text"], false);
+    assert_eq!(first["receipt"]["includes_analysis"], false);
+    assert_eq!(first["establishes_truth"], false);
+    assert_eq!(first["establishes_authenticity"], false);
+    assert_eq!(first["remote_publication_performed"], false);
+    let serialized = serde_json::to_string(&first).unwrap();
+    assert!(!serialized.contains(locator));
+    assert!(!serialized.contains("source A"));
+    assert!(!serialized.contains("source B"));
+}
+
+#[tokio::test]
 async fn revocation_expiry_and_disabled_principal_are_enforced() {
     let (admin, app, w, p, token, _) = setup().await;
     assert!(
