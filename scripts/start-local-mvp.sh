@@ -90,6 +90,10 @@ fi
 # shellcheck disable=SC1091
 source "$ids_file"
 
+# Database-owner credentials are never needed by the restricted runtime API.
+# Strip an inherited bootstrap URL before any long-lived child process starts.
+unset NICCOLO_PG_ADMIN_URL
+
 : "${WORKSPACE_UUID:?missing WORKSPACE_UUID}"
 : "${SITUATION_UUID:?missing SITUATION_UUID}"
 : "${NICCOLO_API_PORT:=38080}"
