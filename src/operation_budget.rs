@@ -32,8 +32,9 @@ pub struct BudgetView {
     pub max_total_tokens: i64,
     pub used_total_tokens: i64,
     pub remaining_total_tokens: i64,
-    /// Number of completed calls whose provider did not report all usage.
-    /// Used tokens are a lower bound when this is nonzero.
+    /// Lower-bound count of completed provider attempts whose token usage is unknown.
+    /// This includes failed/retried calls and the failed primary leg of a successful
+    /// explicit failover. Used tokens are a lower bound when this is nonzero.
     pub unreported_token_usage_invocations: i64,
     pub token_usage_complete: bool,
     pub remaining_total_tokens_is_upper_bound: bool,
@@ -182,12 +183,22 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
         return Err(BudgetError::Missing);
     };
     let input: Value = serde_json::from_str(&input).map_err(|_| BudgetError::Invalid)?;
+    // Invocation limits count provider attempts, not only successful ledger rows.
+    // Failed retries can still consume provider capacity/cost, and a successful
+    // explicit failover represents the failed primary plus the fallback leg.
     let (used_invocations, used_total_tokens, missing_usage): (i64, i64, i64) = sqlx::query_as(
-        "SELECT count(*), \
+        "SELECT \
+         coalesce(sum(GREATEST(attempt_count,1)::bigint + CASE WHEN fallback_used THEN 1 ELSE 0 END),0)::bigint, \
          coalesce(sum(coalesce(prompt_tokens,0)::bigint+coalesce(completion_tokens,0)::bigint),0)::bigint, \
-         count(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL) \
+         coalesce(sum( \
+           CASE WHEN status='FAILED' THEN GREATEST(attempt_count,1)::bigint \
+                ELSE GREATEST(attempt_count-1,0)::bigint \
+                   + CASE WHEN fallback_used THEN 1 ELSE 0 END \
+                   + CASE WHEN prompt_tokens IS NULL OR completion_tokens IS NULL THEN 1 ELSE 0 END \
+           END),0)::bigint \
          FROM niccolo.model_invocations \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED'",
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND status IN ('SUCCEEDED','FAILED')",
     )
     .bind(s.workspace)
     .bind(s.situation)
