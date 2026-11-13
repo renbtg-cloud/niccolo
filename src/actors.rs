@@ -66,9 +66,41 @@ pub struct FrozenActorBinding {
     pub actor_kind_establishes_mind: bool,
 }
 
-fn valid_text(value: &str, max: usize) -> bool {
+fn unsafe_directional_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{061c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'
+            | '\u{202b}'
+            | '\u{202c}'
+            | '\u{202d}'
+            | '\u{202e}'
+            | '\u{2066}'
+            | '\u{2067}'
+            | '\u{2068}'
+            | '\u{2069}'
+    )
+}
+
+fn valid_label(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
+    !trimmed.is_empty()
+        && value.len() <= max
+        && !value
+            .chars()
+            .any(|ch| ch.is_control() || unsafe_directional_char(ch))
+}
+
+fn valid_note(value: &str, max: usize) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && value.len() <= max
+        && !value.chars().any(|ch| {
+            (ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+                || unsafe_directional_char(ch)
+        })
 }
 
 fn valid_kind(value: &str) -> bool {
@@ -112,7 +144,7 @@ pub async fn create(
     actor_id: Uuid,
     display_label: &str,
 ) -> Result<(ActorView, bool), ActorError> {
-    if !valid_text(display_label, 512) {
+    if !valid_label(display_label, 512) {
         return Err(ActorError::Invalid);
     }
     let display_label = display_label.trim();
@@ -195,7 +227,7 @@ pub async fn record_kind(
     actor_kind: Option<&str>,
     rationale: &str,
 ) -> Result<ActorEvent, ActorError> {
-    if !valid_text(rationale, 2048)
+    if !valid_note(rationale, 2048)
         || actor_kind.is_some_and(|kind| !valid_kind(kind))
     {
         return Err(ActorError::Invalid);
@@ -274,7 +306,7 @@ pub async fn bind_source_speaker(
     actor_id: Option<Uuid>,
     rationale: &str,
 ) -> Result<ActorBinding, ActorError> {
-    if !valid_text(speaker_label, 512) || !valid_text(rationale, 2048) {
+    if !valid_label(speaker_label, 512) || !valid_note(rationale, 2048) {
         return Err(ActorError::Invalid);
     }
     let operation = if actor_id.is_some() { "ASSIGN" } else { "CLEAR" };
@@ -406,6 +438,16 @@ pub async fn frozen_bindings(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actor_labels_reject_control_and_directional_spoofing() {
+        assert!(valid_label("Ana María", 512));
+        assert!(!valid_label("Ana\nFake", 512));
+        assert!(!valid_label("Ana\u{202e}Fake", 512));
+        assert!(valid_note("Correction after review.\nSecond line.", 2048));
+        assert!(!valid_note("Correction\u{202e}spoof", 2048));
+        assert!(!valid_note("Correction\u{1b}[2J", 2048));
+    }
 
     #[test]
     fn actor_kind_is_metadata_not_investigation_gate() {
