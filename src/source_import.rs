@@ -99,12 +99,12 @@ fn parse_email_header(
     nested: bool,
 ) -> Result<Option<EmailHeader>, ParseError> {
     let mut from: Option<&str> = None;
-    let mut content_type: Option<&str> = None;
-    let mut transfer: Option<&str> = None;
+    let mut content_type: Option<String> = None;
+    let mut transfer: Option<String> = None;
     let mut body_start = None;
     let mut has_date = false;
     let mut has_subject = false;
-    let mut allow_nonsemantic_fold = false;
+    let mut previous_header: Option<String> = None;
 
     for (relative_start, relative_end, line) in iter_lines(&src[start..]) {
         let line = if start == 0 && relative_start == 0 {
@@ -117,11 +117,34 @@ fn parse_email_header(
             break;
         }
         if line.starts_with(' ') || line.starts_with('\t') {
-            // RFC 5322 continuation in Subject or a nonessential header is
-            // harmless: we do not interpret its value. Never fold From or
-            // MIME headers without a real unfolding/validation step.
-            if !allow_nonsemantic_fold {
-                return invalid_email_header(nested, "folded identity or MIME header");
+            // Unfold only the MIME values that we subsequently validate.
+            // Never unfold a sender identity without RFC 5322 mailbox parsing.
+            let extra = line.trim();
+            match previous_header.as_deref() {
+                Some("from") | None => {
+                    return invalid_email_header(nested, "folded email identity header");
+                }
+                Some("content-type") => {
+                    let Some(value) = content_type.as_mut() else {
+                        return invalid_email_header(nested, "MIME continuation");
+                    };
+                    if value.len() + 1 + extra.len() > 4096 {
+                        return invalid_email_header(nested, "MIME header too long");
+                    }
+                    value.push(' ');
+                    value.push_str(extra);
+                }
+                Some("content-transfer-encoding") => {
+                    let Some(value) = transfer.as_mut() else {
+                        return invalid_email_header(nested, "transfer continuation");
+                    };
+                    if value.len() + 1 + extra.len() > 4096 {
+                        return invalid_email_header(nested, "transfer header too long");
+                    }
+                    value.push(' ');
+                    value.push_str(extra);
+                }
+                Some(_) => {}
             }
             continue;
         }
@@ -133,23 +156,20 @@ fn parse_email_header(
         }
         let value = value.trim();
         let normalized_key = key.to_ascii_lowercase();
-        allow_nonsemantic_fold = !matches!(
-            normalized_key.as_str(),
-            "from" | "content-type" | "content-transfer-encoding"
-        );
+        previous_header = Some(normalized_key.clone());
         match normalized_key.as_str() {
             "from" if from.replace(value).is_some() => {
                 return invalid_email_header(nested, "duplicate From");
             }
-            "content-type" if content_type.replace(value).is_some() => {
+            "content-type" if content_type.replace(value.to_owned()).is_some() => {
                 return invalid_email_header(nested, "duplicate Content-Type");
             }
-            "content-transfer-encoding" if transfer.replace(value).is_some() => {
+            "content-transfer-encoding" if transfer.replace(value.to_owned()).is_some() => {
                 return invalid_email_header(nested, "duplicate transfer encoding");
             }
             "from" => from = Some(value),
-            "content-type" => content_type = Some(value),
-            "content-transfer-encoding" => transfer = Some(value),
+            "content-type" => content_type = Some(value.to_owned()),
+            "content-transfer-encoding" => transfer = Some(value.to_owned()),
             "date" => has_date = true,
             "subject" => has_subject = true,
             _ => {}
@@ -641,11 +661,20 @@ mod tests {
     }
 
     #[test]
-    fn folded_email_identity_or_mime_headers_remain_unsupported() {
+    fn folded_plain_text_mime_headers_are_validated_after_unfolding() {
+        let src = "From: ana@example.org\r\nContent-Type: text/plain;\r\n charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\nOlá\r\n";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "ana@example.org");
+        assert_eq!(parsed.fragments[0].content, "Olá\r\n");
+    }
+
+    #[test]
+    fn folded_email_identity_and_unsupported_mime_remain_rejected() {
         for src in [
             "From: ana@example.org\r\n attacker@example.org\r\n\r\nBody",
-            "From: ana@example.org\r\nContent-Type: text/plain;\r\n charset=utf-8\r\n\r\nBody",
-            "From: ana@example.org\r\nContent-Transfer-Encoding: 8bit\r\n malicious\r\n\r\nBody",
+            "From: ana@example.org\r\nContent-Type: text/html;\r\n charset=utf-8\r\n\r\nBody",
+            "From: ana@example.org\r\nContent-Transfer-Encoding: base64\r\n malicious\r\n\r\nBody",
         ] {
             assert!(matches!(
                 parse_source(SourceFormat::Eml, src.as_bytes()),
