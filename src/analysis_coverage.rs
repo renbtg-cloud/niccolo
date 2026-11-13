@@ -30,6 +30,13 @@ pub struct DocumentCoverage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CoverageTotals {
+    pub catalogued_fragment_count: i64,
+    pub examined_fragment_count: i64,
+    pub unexamined_fragment_count: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExaminedFragment {
     pub evidence_id: Uuid,
     pub document_id: Uuid,
@@ -263,6 +270,54 @@ pub async fn list(
     let next_after = has_more.then(|| fragments.last().expect("non-empty page").evidence_id);
     tx.commit().await?;
     Ok((fragments, next_after))
+}
+
+pub async fn totals(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<CoverageTotals, AnalysisCoverageError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let row: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT COUNT(f.evidence_id)::bigint,COUNT(c.evidence_id)::bigint
+           FROM niccolo.situation_analysis_snapshots s
+           LEFT JOIN niccolo.situation_revision_sources rs
+             ON rs.workspace_id=s.workspace_id AND rs.situation_id=s.situation_id
+            AND rs.revision=s.input_revision
+           LEFT JOIN niccolo.source_fragments f
+             ON f.workspace_id=rs.workspace_id AND f.document_id=rs.document_id
+           LEFT JOIN niccolo.situation_analysis_examined_fragments c
+             ON c.workspace_id=s.workspace_id AND c.situation_id=s.situation_id
+            AND c.analysis_id=s.analysis_id AND c.evidence_id=f.evidence_id
+          WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.analysis_id=$3
+          GROUP BY s.analysis_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((catalogued_fragment_count, examined_fragment_count)) = row else {
+        return Err(AnalysisCoverageError::Invisible);
+    };
+    let Some(unexamined_fragment_count) =
+        catalogued_fragment_count.checked_sub(examined_fragment_count)
+    else {
+        return Err(AnalysisCoverageError::Invalid);
+    };
+    if catalogued_fragment_count < 0
+        || examined_fragment_count < 0
+        || unexamined_fragment_count < 0
+    {
+        return Err(AnalysisCoverageError::Invalid);
+    }
+    tx.commit().await?;
+    Ok(CoverageTotals {
+        catalogued_fragment_count,
+        examined_fragment_count,
+        unexamined_fragment_count,
+    })
 }
 
 pub async fn summarize(
