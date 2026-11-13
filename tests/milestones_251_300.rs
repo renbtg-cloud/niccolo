@@ -5,7 +5,7 @@ use niccolo_evidence::{
     authz, bff_executor,
     bff_operations::{self, NewOperation, OperationScope},
     model_adapter::{self, DeterministicModel, InvocationScope, ModelRequest},
-    reasoning_packet,
+    reasoning_packet, resource_policy::ResourcePolicy,
 };
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -452,6 +452,137 @@ impl model_adapter::ReasoningModel for ClarifyingModel {
             })
         })
     }
+}
+
+#[tokio::test]
+async fn critical_resource_pressure_skips_only_clarification_pass_and_records_provisional_checkpoint()
+{
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,description,requested_source_kind,recorded_by_principal_id) VALUES($1,$2,$3,$4,'Ordering remains unclear','message',$5)")
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(s.analysis)
+        .bind(Uuid::new_v4())
+        .bind(s.principal)
+        .execute(&admin)
+        .await
+        .unwrap();
+    let scope = op(&app, s).await;
+    let policy = ResourcePolicy {
+        // A deliberately impossible reserve makes any observed finite headroom
+        // critical without depending on the CI runner's absolute RAM size.
+        reserved_memory_bytes: u64::MAX,
+        ..ResourcePolicy::default()
+    };
+    let model = DeterministicModel::new("test", "resource-degradation-v1").unwrap();
+
+    authz::with_auth_digest("test-digest".into(), async {
+        let outcome = agentic_runtime::run_until_boundary_with_resource_policy(
+            &app,
+            scope,
+            s.principal,
+            &model,
+            Some(&policy),
+        )
+        .await
+        .unwrap();
+        assert!(outcome.waiting_for_human);
+
+        let controller = agentic_controller::view(&app, scope).await.unwrap();
+        let clarification = controller
+            .steps
+            .iter()
+            .find(|step| step.kind == "PROPOSE_CLARIFICATION")
+            .expect("clarification step planned");
+        assert_eq!(clarification.state, "SKIPPED");
+        assert_eq!(
+            controller
+                .steps
+                .iter()
+                .find(|step| step.kind == "SYNTHESIZE")
+                .unwrap()
+                .state,
+            "SUCCEEDED"
+        );
+        assert_eq!(
+            controller
+                .steps
+                .iter()
+                .find(|step| step.kind == "CHALLENGE_SYNTHESIS")
+                .unwrap()
+                .state,
+            "SUCCEEDED"
+        );
+
+        let checkpoint: (String, bool, bool, String) = sqlx::query_as(
+            "SELECT checkpoint_kind,provisional,terminal,summary_json::text FROM niccolo.bff_operation_checkpoints WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND checkpoint_kind='RESOURCE_DEGRADATION'",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(checkpoint.0, "RESOURCE_DEGRADATION");
+        assert!(checkpoint.1);
+        assert!(!checkpoint.2);
+        assert!(checkpoint.3.contains("CRITICAL_RESOURCE_PRESSURE"));
+        assert!(checkpoint
+            .3
+            .contains("resource_pressure_is_not_epistemic_quality"));
+
+        let clarification_invocations: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM niccolo.model_invocations m JOIN niccolo.agentic_steps s ON s.workspace_id=m.workspace_id AND s.situation_id=m.situation_id AND s.operation_id=m.operation_id AND s.plan_revision=m.plan_revision AND s.step_id=m.step_id WHERE m.workspace_id=$1 AND m.situation_id=$2 AND m.operation_id=$3 AND s.step_kind='PROPOSE_CLARIFICATION'",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(clarification_invocations, 0);
+
+        let human = controller
+            .steps
+            .iter()
+            .find(|step| step.state == "WAITING_FOR_HUMAN")
+            .expect("resource-degraded plan still reaches explicit human control");
+        agentic_controller::resolve_human_boundary(
+            &app,
+            scope,
+            human.step_id,
+            Uuid::new_v4(),
+            s.principal,
+            "CONTINUE",
+            "Continue with a visibly provisional resource-degraded handoff.",
+        )
+        .await
+        .unwrap();
+        let done = agentic_runtime::run_until_boundary_with_resource_policy(
+            &app,
+            scope,
+            s.principal,
+            &model,
+            Some(&policy),
+        )
+        .await
+        .unwrap();
+        assert!(done.terminal);
+        let operation = bff_operations::get(&app, scope).await.unwrap();
+        let result = operation.result.expect("terminal operation has result");
+        assert_eq!(
+            result["completion_status"],
+            "DEGRADED_RESOURCE_PRESSURE"
+        );
+        assert_eq!(result["provisional"], true);
+        assert_eq!(result["resource_pressure_is_not_epistemic_quality"], true);
+        assert_eq!(
+            result["resource_degraded_steps"][0]["kind"],
+            "PROPOSE_CLARIFICATION"
+        );
+    })
+    .await;
 }
 
 #[tokio::test]
