@@ -399,6 +399,38 @@ async fn temporal_state_keeps_formal_authority_separate_from_practical_influence
             Err(temporal_state::TemporalStateError::Invalid)
         ));
 
+        for (valid_from, valid_to) in [
+            (Some("not-a-time".into()), None),
+            (
+                Some("2026-04-01T00:00:00Z".into()),
+                Some("2026-03-01T00:00:00Z".into()),
+            ),
+        ] {
+            let rejected_interval = temporal_state::record(
+                &app,
+                scope,
+                s.principal,
+                &temporal_state::TemporalAssertionInput {
+                    assertion_id: Uuid::new_v4(),
+                    subject_label: "Camille".into(),
+                    assertion_type: "FORMAL_AUTHORITY".into(),
+                    object_text: "Could approve settlement band X".into(),
+                    valid_from,
+                    valid_to,
+                    epistemic_kind: "HUMAN_ASSERTION".into(),
+                    qualification: "ATTRIBUTED".into(),
+                    evidence_id: None,
+                    contribution_id: None,
+                    rationale: "Temporal state must have a parseable non-reversed interval.".into(),
+                },
+            )
+            .await;
+            assert!(matches!(
+                rejected_interval,
+                Err(temporal_state::TemporalStateError::Invalid)
+            ));
+        }
+
         temporal_state::record(
             &app,
             scope,
