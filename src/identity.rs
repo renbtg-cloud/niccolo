@@ -92,6 +92,24 @@ async fn scoped(
 type StoredIdentityRow = (i64, Uuid, String, String, Option<Uuid>, String, Uuid);
 type IdentityHistoryRow = (Uuid, i64, Uuid, String, String, Option<Uuid>, Uuid, String);
 
+fn unsafe_identity_text_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
+fn valid_identity_text(value: &str, max_bytes: usize) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= max_bytes
+        && !value.chars().any(unsafe_identity_text_char)
+}
+
 pub async fn list_identities(
     pool: &PgPool,
     workspace: Uuid,
@@ -139,10 +157,7 @@ pub async fn create_identity(
     person: Uuid,
     display_label: &str,
 ) -> Result<bool, IdentityError> {
-    if display_label.trim().is_empty()
-        || display_label.len() > 512
-        || display_label.chars().any(char::is_control)
-    {
+    if !valid_identity_text(display_label, 512) {
         return Err(IdentityError::Input);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -195,12 +210,8 @@ pub async fn record_event(
     person_id: Option<Uuid>,
     human_reason: &str,
 ) -> Result<AssignmentEvent, IdentityError> {
-    if speaker_label.trim().is_empty()
-        || speaker_label.len() > 512
-        || speaker_label.chars().any(char::is_control)
-        || human_reason.trim().is_empty()
-        || human_reason.len() > 2048
-        || human_reason.chars().any(char::is_control)
+    if !valid_identity_text(speaker_label, 512)
+        || !valid_identity_text(human_reason, 2048)
         || matches!(
             (action, person_id),
             (IdentityAction::Assign, None) | (IdentityAction::Clear, Some(_))
@@ -370,4 +381,21 @@ pub async fn event_history(
         None
     };
     Ok((events, next_after))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_text_rejects_directional_spoofing_but_keeps_unicode_names() {
+        assert!(valid_identity_text("João da Silva", 512));
+        assert!(valid_identity_text("李 雷", 512));
+        assert!(!valid_identity_text("Alice\u{202e}<mallory>", 512));
+        assert!(!valid_identity_text("Alice\u{2067}<mallory>", 512));
+        assert!(!valid_identity_text("reason\u{200f}reordered", 2048));
+        assert!(!valid_identity_text("line\nfeed", 2048));
+        assert!(!valid_identity_text("   ", 512));
+    }
 }
