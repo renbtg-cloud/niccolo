@@ -875,7 +875,7 @@ async fn readiness(State(state): State<AppState>) -> Response {
               (has_table_privilege('niccolo_api',c.oid,'DELETE') AND NOT EXISTS ( \
                  SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid \
                    AND NOT p.polpermissive AND p.polname='api_write_delete_gate' AND p.polcmd='d' \
-                   AND 'niccolo_api'::regrole::oid=ANY(p.polroles)))) \
+                   AND 'niccolo_api'::regrole::oid=ANY(p.polroles))))) \
          FROM pg_roles r WHERE r.rolname=current_user",
     )
     .fetch_one(&state.pool)
