@@ -170,7 +170,8 @@ mod tests {
         barrier.wait();
         let winners = workers
             .into_iter()
-            .filter(|worker| worker.join().unwrap().is_ok())
+            .map(|worker| worker.join().unwrap().is_ok())
+            .filter(|success| *success)
             .count();
         assert_eq!(
             winners, 1,
