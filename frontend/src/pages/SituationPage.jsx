@@ -228,7 +228,7 @@ function ConnectedSituation({client}){
       <button disabled={files.length === 0 || upload.isPending} onClick={() => files.length && upload.mutate(files)}>
         {upload.isPending ? `Importing ${files.length} record(s)…` : `Import and attach ${files.length || ''} record${files.length === 1 ? '' : 's'}`}
       </button>
-      {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
+      {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected, index) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}:${index}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
       {uploadProgress && <p role="status"><small>Imported and attached {uploadProgress.done}/{uploadProgress.total}{uploadProgress.current ? <> · processing <strong>{uploadProgress.current}</strong></> : ''}.</small></p>}
       {upload.error && <p className="error">{upload.error.message} Successfully completed files remain attached and will replay safely if you retry the same selection.</p>}
       {upload.data && <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>}
