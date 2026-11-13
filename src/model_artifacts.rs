@@ -163,11 +163,7 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     for claim in &a.claims {
         if claim.kind == "OBSERVATION"
             && !a.source_links.iter().any(|link| {
-                link.claim_id == claim.claim_id
-                    && matches!(
-                        link.relation.as_str(),
-                        "SUPPORTS_AS_USED" | "CONTRADICTS_AS_USED" | "CONTEXT_ONLY"
-                    )
+                link.claim_id == claim.claim_id && link.relation == "SUPPORTS_AS_USED"
             })
         {
             return Err(ArtifactError::Invalid);
@@ -449,6 +445,14 @@ mod tests {
             Err(ArtifactError::Invalid)
         ));
         assert!(validate(&artifact("OBSERVATION", true)).is_ok());
+
+        let mut contradicted_only = artifact("OBSERVATION", true);
+        contradicted_only.source_links[0].relation = "CONTRADICTS_AS_USED".into();
+        assert!(matches!(
+            validate(&contradicted_only),
+            Err(ArtifactError::Invalid)
+        ));
+
         // Inferences may remain explicit hypotheses without pretending to be a
         // directly observed source statement.
         assert!(validate(&artifact("INFERENCE", false)).is_ok());
