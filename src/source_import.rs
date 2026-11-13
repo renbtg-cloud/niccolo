@@ -308,20 +308,18 @@ fn looks_like_datetime(dt: &str) -> bool {
     (1..=days_in_month).contains(&day)
 }
 
-fn message_speaker(line: &str) -> Option<&str> {
-    let rest = if let Some(tail) = line.strip_prefix('[') {
+fn timestamped_whatsapp_body(line: &str) -> Option<&str> {
+    if let Some(tail) = line.strip_prefix('[') {
         let (stamp, rest) = tail.split_once("] ")?;
-        if !looks_like_datetime(stamp) {
-            return None;
-        }
-        rest
+        looks_like_datetime(stamp).then_some(rest)
     } else {
         let (stamp, rest) = line.split_once(" - ")?;
-        if !looks_like_datetime(stamp) {
-            return None;
-        }
-        rest
-    };
+        looks_like_datetime(stamp).then_some(rest)
+    }
+}
+
+fn message_speaker(line: &str) -> Option<&str> {
+    let rest = timestamped_whatsapp_body(line)?;
     let (speaker, _) = rest.split_once(": ")?;
     let speaker = speaker.trim();
     if speaker.is_empty() || speaker.len() > 512 {
@@ -356,8 +354,17 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         } else {
             line
         };
-        if let Some(speaker) = message_speaker(header) {
-            if let Some((old, label)) = pending.replace((start, speaker.to_owned())) {
+        // WhatsApp includes timestamped system notices (member changes,
+        // encryption banners, etc.) without a "speaker: " prefix. Do not
+        // silently attribute such notices to the preceding human speaker.
+        let attribution = message_speaker(header)
+            .map(str::to_owned)
+            .or_else(|| {
+                timestamped_whatsapp_body(header)
+                    .map(|_| "[WhatsApp system event — unverified]".to_owned())
+            });
+        if let Some(speaker) = attribution {
+            if let Some((old, label)) = pending.replace((start, speaker)) {
                 finish(old, start, label)?;
             }
         } else if pending.is_none() {
@@ -408,6 +415,26 @@ mod tests {
         }
         assert!(r.fragments[0].content.contains("continuation α"));
     }
+    #[test]
+    fn timestamped_system_notice_does_not_impersonate_previous_speaker() {
+        let src = "[02/11/2026, 10:00] Ana: I will join.\n[02/11/2026, 10:01] Ana changed the group description\n[02/11/2026, 10:02] Beto: Thanks.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 3);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(
+            parsed.fragments[1].speaker_label,
+            "[WhatsApp system event — unverified]"
+        );
+        assert!(parsed.fragments[1].content.contains("changed the group description"));
+        assert_eq!(parsed.fragments[2].speaker_label, "Beto");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
     #[test]
     fn alternate_whatsapp_date_format_and_crlf() {
         let s = "02/11/2026, 09:05 - Ana: One\r\n02/11/2026, 09:06 - Beto: Two\r\n";
