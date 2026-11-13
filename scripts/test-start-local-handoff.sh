@@ -16,6 +16,7 @@ SH
 cat > "$TMP/repo/target/release/niccolo-api" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ -z "${NICCOLO_PG_ADMIN_URL:-}" ]] || exit 89
 if [[ "${NICCOLO_TEST_EXPECT_HANDOFF:-0}" == 1 ]]; then
   [[ "${NICCOLO_LOCAL_HANDOFF_CODE:-}" =~ ^[0-9a-f]{64}$ ]]
   [[ "${NICCOLO_LOCAL_HANDOFF_TOKEN_FILE:-}" == "$PWD/.niccolo-local/token.txt" ]]
@@ -35,7 +36,7 @@ cd "$TMP/repo"
 export NICCOLO_TEST_EXPECT_HANDOFF=1
 export NICCOLO_TEST_BROWSER_CAPTURE="$TMP/browser-url"
 export NICCOLO_TEST_SERVER_CODE="$TMP/server-code"
-output="$(bash scripts/start-local-mvp.sh)"
+output="$(NICCOLO_PG_ADMIN_URL='postgres://owner:must-not-reach-runtime@127.0.0.1/admin' bash scripts/start-local-mvp.sh)"
 for _ in $(seq 1 40); do [[ -s "$TMP/browser-url" ]] && break; sleep 0.05; done
 [[ -s "$TMP/browser-url" && -s "$TMP/server-code" ]]
 code="$(cat "$TMP/server-code")"
