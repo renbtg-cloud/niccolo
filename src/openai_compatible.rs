@@ -83,16 +83,18 @@ impl OpenAiCompatibleConfig {
         let local_http = self.base_url.starts_with("http://127.0.0.1:")
             || self.base_url.starts_with("http://localhost:");
         if !(self.base_url.starts_with("https://") || local_http)
-            || self.base_url.contains(['\r', '\n'])
+            || self.base_url.bytes().any(|byte| byte.is_ascii_control())
             || (self.api_key.is_empty() && !local_http)
             || self.api_key.len() > 4096
-            || self.api_key.contains(['\r', '\n'])
+            || self.api_key.bytes().any(|byte| byte.is_ascii_control())
             || self.model.trim().is_empty()
             || self.model.len() > 512
-            || self.model.contains(['\r', '\n'])
+            || self.model.bytes().any(|byte| byte.is_ascii_control())
             || self.provider.trim().is_empty()
             || self.provider.len() > 128
+            || self.provider.bytes().any(|byte| byte.is_ascii_control())
             || self.curl_bin.trim().is_empty()
+            || self.curl_bin.bytes().any(|byte| byte.is_ascii_control())
             || !(1..=25).contains(&self.max_time_secs)
             // Validate the parsed destination, not only a textual loopback prefix.
             // Both native and curl adapters must reject userinfo/authority spoofing,
@@ -388,6 +390,24 @@ mod tests {
             assert!(cfg.native_model().is_err());
             assert!(CurlOpenAiCompatibleModel::new(cfg).is_err());
         }
+    }
+
+    #[test]
+    fn rejects_control_characters_in_provider_configuration() {
+        let mut cfg = config("https://example.com/v1".into());
+        for bad_model in ["model\u{1b}[31m", "model\u{7f}"] {
+            cfg.model = bad_model.into();
+            assert!(cfg.validate().is_err());
+        }
+        cfg = config("https://example.com/v1".into());
+        cfg.provider = "provider\u{1b}[2J".into();
+        assert!(cfg.validate().is_err());
+        cfg = config("https://example.com/v1".into());
+        cfg.api_key = "secret\u{7f}".into();
+        assert!(cfg.validate().is_err());
+        cfg = config("https://example.com/v1".into());
+        cfg.curl_bin = "curl\u{1b}".into();
+        assert!(cfg.validate().is_err());
     }
 
     #[test]
