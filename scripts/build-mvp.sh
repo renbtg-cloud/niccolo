@@ -8,6 +8,14 @@ cd "$ROOT"
 : "${NPM:=npm}"
 : "${CARGO:=cargo}"
 
+# Fail before touching frontend dependencies if the selected build tools are absent.
+for tool in "$NPM" "$CARGO"; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    printf 'Missing build tool: %s\\n' "$tool" >&2
+    exit 127
+  fi
+done
+
 # Offline mode uses a preloaded npm cache and Cargo registry/vendor dependencies.
 # Set NICCOLO_OFFLINE=1 to forbid network dependency resolution during builds.
 npm_flags=()
