@@ -283,11 +283,13 @@ pub async fn append_gap_event(
     let stored: Option<(Uuid, String, Option<Uuid>, String, Uuid)> = sqlx::query_as(
         "SELECT gap_id,event_kind,evidence_id,note,recorded_by_principal_id
            FROM niccolo.situation_analysis_evidence_gap_events
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND gap_id=$4 AND event_id=$5",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.analysis)
+    .bind(gap)
     .bind(event.event_id)
     .fetch_optional(&mut *tx)
     .await?;
@@ -452,10 +454,11 @@ pub async fn append_goal_event(
     let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT goal_id,event_kind,note,recorded_by_principal_id
            FROM niccolo.situation_goal_events
-          WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3",
+          WHERE workspace_id=$1 AND situation_id=$2 AND goal_id=$3 AND event_id=$4",
     )
     .bind(workspace)
     .bind(situation)
+    .bind(goal)
     .bind(event.event_id)
     .fetch_optional(&mut *tx)
     .await?;
@@ -618,11 +621,13 @@ pub async fn append_next_step_event(
     let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT step_id,event_kind,note,recorded_by_principal_id
            FROM niccolo.situation_analysis_next_step_events
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND step_id=$4 AND event_id=$5",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.analysis)
+    .bind(step)
     .bind(event.event_id)
     .fetch_optional(&mut *tx)
     .await?;
