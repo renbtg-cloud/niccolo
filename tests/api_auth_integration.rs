@@ -156,6 +156,32 @@ async fn read_only_members_cannot_write_but_writers_can_read() {
     assert_eq!(status, StatusCode::OK);
 }
 #[tokio::test]
+async fn duplicate_operational_event_identity_headers_are_rejected_before_ingestion() {
+    let (admin, _app, w, _, token, router) = setup().await;
+    let document = Uuid::new_v4();
+    let req = Request::builder()
+        .method("POST")
+        .uri(source(w, document))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "text/plain")
+        .header("x-source-locator", "fixture://chat")
+        .header("x-operational-event-id", "delivery-one")
+        .header("x-operational-event-id", "delivery-two")
+        .body(Body::from(CHAT.to_vec()))
+        .unwrap();
+    let (status, _) = invoke(router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.source_documents WHERE workspace_id=$1",
+    )
+    .bind(w)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
 async fn received_source_receipt_is_deterministic_and_contains_no_source_text() {
     let (_admin, _app, w, _, token, router) = setup().await;
     let document = Uuid::new_v4();
