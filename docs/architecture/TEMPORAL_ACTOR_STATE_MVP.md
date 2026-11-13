@@ -15,6 +15,9 @@ The storage boundary enforces the same bounded theory-of-mind rule: an
 `REPORTED` or `ATTRIBUTED` qualification. It must remain `INFERRED`,
 `UNCERTAIN`, `CONTRADICTED` or `UNKNOWN`. What was observed can be stored
 as communication/access evidence separately; the leap to another actor's
-awareness remains an explicit inference.
+awareness remains an explicit inference. PostgreSQL repeats that guard for new
+rows and also rejects newly written time intervals whose end precedes their
+start, so bypassing the ordinary Rust validation path cannot silently weaken
+those two invariants.
 
 This is an instrumental observation-and-inference model. It does not require Niccolò to decide whether an actor has a mind, consciousness or a particular implementation substrate.
