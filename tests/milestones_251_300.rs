@@ -1686,6 +1686,69 @@ async fn v1201_v1300_failover_records_the_provider_that_actually_answered() {
 }
 
 #[tokio::test]
+async fn failover_chain_never_starts_when_its_attempt_ceiling_exceeds_remaining_budget() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = OperationScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        operation: Uuid::new_v4(),
+    };
+    bff_operations::submit(
+        &app,
+        scope,
+        &NewOperation {
+            kind: "AGENTIC_ANALYSIS".into(),
+            target_analysis_id: Some(s.analysis),
+            parent_operation_id: None,
+            idempotency_key: Some(format!("failover-budget-{}", scope.operation)),
+            input: json!({
+                "intent":"understand",
+                "model_budget":{"max_invocations":1,"max_total_tokens":200000}
+            }),
+            deadline_at: None,
+            step_budget: 32,
+            requested_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+
+    let primary: std::sync::Arc<dyn model_adapter::ReasoningModel> =
+        std::sync::Arc::new(model_adapter::UnavailableModel);
+    let fallback: std::sync::Arc<dyn model_adapter::ReasoningModel> =
+        std::sync::Arc::new(DeterministicModel::new("fallback", "fallback").unwrap());
+    let router = model_adapter::FailoverModel::new(primary, fallback);
+    assert_eq!(router.provider_attempt_ceiling(), 2);
+
+    authz::with_auth_digest("test-digest".into(), async {
+        let outcome =
+            agentic_runtime::run_until_boundary(&app, scope, s.principal, &router)
+                .await
+                .unwrap();
+        assert!(outcome.terminal);
+        let operation = bff_operations::get(&app, scope).await.unwrap();
+        assert_eq!(operation.state, "SUCCEEDED");
+        let result = operation.result.expect("partial budget result");
+        assert_eq!(result["completion_status"], "PARTIAL_BUDGET_BOUNDARY");
+        assert_eq!(result["stop_reason"], "INVOCATION_LIMIT");
+
+        let invocations: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM niccolo.model_invocations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(invocations, 0);
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn failed_primary_and_fallback_are_both_counted_as_provider_attempts() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
