@@ -92,6 +92,36 @@ if NICCOLO_LLM_BASE_URL='https://provider.example/v1?key=bad' NICCOLO_LLM_MODEL=
 fi
 [[ "$(sha256sum .niccolo-local/model.env | awk '{print $1}')" == "$valid_digest" ]]
 
+# The local state directory itself must not redirect or expose stored secrets.
+if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
+  chmod 755 .niccolo-local
+  set +e
+  broad_dir_output="$(
+    NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='local' \
+      run_cfg 2>&1
+  )"
+  broad_dir_status=$?
+  set -e
+  [[ "$broad_dir_status" == 2 ]]
+  grep -Fq '.niccolo-local must not be accessible by group or other users.' <<< "$broad_dir_output"
+  chmod 700 .niccolo-local
+
+  mv .niccolo-local "$fixture_root/local-real"
+  ln -s "$fixture_root/local-real" .niccolo-local
+  set +e
+  symlink_dir_output="$(
+    NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='local' \
+      run_cfg 2>&1
+  )"
+  symlink_dir_status=$?
+  set -e
+  [[ "$symlink_dir_status" == 2 ]]
+  grep -Fq 'Unsafe .niccolo-local directory' <<< "$symlink_dir_output"
+  rm .niccolo-local
+  mv "$fixture_root/local-real" .niccolo-local
+  chmod 700 .niccolo-local
+fi
+
 # Existing stored credentials must remain owner-only regular files before
 # configure is willing to source them.
 if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
