@@ -4733,7 +4733,7 @@ mod tests {
 
     #[test]
     fn percent_encoded_source_locator_rejects_malformed_utf8_controls_and_oversize() {
-        for value in ["%", "%GG", "%FF", "chat%0Aname.txt"] {
+        for value in ["%", "%GG", "%FF", "chat%0Aname.txt", "Alice%E2%80%AE.txt"] {
             assert!(decode_percent_encoded_locator(value).is_err(), "{value}");
         }
         let oversized = "%61".repeat(1025);
