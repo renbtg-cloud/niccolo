@@ -55,7 +55,7 @@ cleanup(){
   for db in "${role_probe_db:-}" "${populated_probe_db:-}"; do
     [[ -n "$db" ]] || continue
     psql -X -q -v ON_ERROR_STOP=1 -v dbname="$db" "$NICCOLO_PG_ADMIN_URL" <<'SQL' >/dev/null 2>&1 || true
-SELECT format('DROP DATABASE IF EXISTS %I WITH (FORCE)', :'dbname') \\gexec
+SELECT format('DROP DATABASE IF EXISTS %I WITH (FORCE)', :'dbname') \gexec
 SQL
   done
 }
