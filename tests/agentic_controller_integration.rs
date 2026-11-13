@@ -180,6 +180,22 @@ impl ReasoningModel for NoUsageModel {
     }
 }
 
+struct AlwaysFailModel {
+    calls: AtomicUsize,
+}
+impl ReasoningModel for AlwaysFailModel {
+    fn provider(&self) -> &str {
+        "always-fail-fixture"
+    }
+    fn model(&self) -> &str {
+        "transient-error"
+    }
+    fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Err(ModelError::Provider("transient".into())) })
+    }
+}
+
 #[tokio::test]
 async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
     let (admin, app) = pools().await;
@@ -212,6 +228,54 @@ async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
     assert!(budget.remaining_total_tokens_is_upper_bound);
     assert_eq!(budget.used_total_tokens, 0);
     assert!(budget.can_start_model_call);
+}
+
+#[tokio::test]
+async fn failed_provider_attempts_consume_operation_budget_and_mark_tokens_unknown() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (revision, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(step_id, 1, "SYNTHESIZE", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let model = AlwaysFailModel {
+        calls: AtomicUsize::new(0),
+    };
+    let result = model_adapter::invoke_recorded_with_policy(
+        &app,
+        InvocationScope {
+            operation: scope,
+            plan_revision: revision,
+            step_id,
+        },
+        s.principal,
+        &model,
+        &ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: json!({}),
+            output_contract: json!({}),
+        },
+        InvocationPolicy {
+            timeout_ms: 5_000,
+            max_attempts: 3,
+            max_total_tokens: None,
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(ModelError::Provider(_))));
+    assert_eq!(model.calls.load(Ordering::SeqCst), 3);
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_invocations, 3);
+    assert_eq!(budget.unreported_token_usage_invocations, 3);
+    assert!(!budget.token_usage_complete);
+    assert!(budget.remaining_total_tokens_is_upper_bound);
+    assert_eq!(budget.used_total_tokens, 0);
 }
 
 #[tokio::test]
