@@ -52,6 +52,16 @@ pub struct BudgetReservation {
 }
 
 type ReservationRow = (Uuid, Uuid, String, i64, String, Option<i64>, Uuid, Option<Uuid>);
+type PolicyRow = (
+    bool,
+    bool,
+    Vec<String>,
+    Vec<String>,
+    Option<i64>,
+    i64,
+    i64,
+    i16,
+);
 
 fn valid_subject(value: &str) -> bool {
     !value.trim().is_empty()
@@ -98,10 +108,6 @@ async fn scoped(
     Ok(tx)
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "reservation identity, run scope and monetary estimate are independent"
-)]
 pub async fn reserve(
     pool: &PgPool,
     workspace: Uuid,
@@ -124,8 +130,7 @@ pub async fn reserve(
     let estimated = estimated_micro_usd as i64;
     let mut tx = scoped(pool, workspace).await?;
 
-    let policy: Option<(bool, bool, Vec<String>, Vec<String>, Option<i64>, i64, i64, i16)> =
-        sqlx::query_as(
+    let policy: Option<PolicyRow> = sqlx::query_as(
             "SELECT background_evaluations_enabled,extra_model_probes_allowed,
                     permitted_providers,prohibited_models,monthly_cap_micro_usd,
                     monthly_spent_micro_usd,monthly_reserved_micro_usd,
