@@ -209,9 +209,41 @@ pub async fn record_evidence_gap(
     {
         return Err(AgencyError::Invalid);
     }
+    let description = input.description.trim();
+    let requested_source_kind = input.requested_source_kind.as_deref().map(str::trim);
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gaps(workspace_id,situation_id,analysis_id,gap_id,claim_id,description,requested_source_kind,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(input.gap_id).bind(input.claim_id).bind(&input.description).bind(&input.requested_source_kind).bind(input.recorded_by).execute(&mut *tx).await?;
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(input.gap_id)
+        .bind(input.claim_id)
+        .bind(description)
+        .bind(requested_source_kind)
+        .bind(input.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Option<Uuid>, String, Option<String>, Uuid)> = sqlx::query_as(
+        "SELECT claim_id,description,requested_source_kind,recorded_by_principal_id
+           FROM niccolo.situation_analysis_evidence_gaps
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND gap_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(input.gap_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            input.claim_id,
+            description.into(),
+            requested_source_kind.map(str::to_owned),
+            input.recorded_by,
+        ))
+    {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -234,9 +266,42 @@ pub async fn append_gap_event(
     {
         return Err(AgencyError::Invalid);
     }
+    let note = event.note.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_evidence_gap_events(workspace_id,situation_id,analysis_id,gap_id,event_id,event_kind,evidence_id,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(gap).bind(event.event_id).bind(&event.kind).bind(event.evidence_id).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(gap)
+        .bind(event.event_id)
+        .bind(&event.kind)
+        .bind(event.evidence_id)
+        .bind(note)
+        .bind(event.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, String, Option<Uuid>, String, Uuid)> = sqlx::query_as(
+        "SELECT gap_id,event_kind,evidence_id,note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_evidence_gap_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(event.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            gap,
+            event.kind.clone(),
+            event.evidence_id,
+            note.into(),
+            event.recorded_by,
+        ))
+    {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
