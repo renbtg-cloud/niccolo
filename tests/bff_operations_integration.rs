@@ -2,9 +2,7 @@
 use niccolo_evidence::bff_operations::{self, NewOperation, OperationScope};
 use niccolo_evidence::operation_budget;
 use niccolo_evidence::{
-    bff_executor,
-    model_adapter::UnavailableModel,
-    resource_policy::ResourcePolicy,
+    bff_executor, model_adapter::UnavailableModel, resource_policy::ResourcePolicy,
 };
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -435,15 +433,9 @@ async fn exact_scope_admission_waits_for_workspace_capacity() {
             .unwrap()
     );
     assert!(
-        !bff_operations::claim_execution_limited(
-            &app,
-            second,
-            "http-request",
-            60_000,
-            1,
-        )
-        .await
-        .unwrap()
+        !bff_operations::claim_execution_limited(&app, second, "http-request", 60_000, 1,)
+            .await
+            .unwrap()
     );
     assert!(
         bff_operations::release_execution(&app, first, "already-running")
@@ -451,15 +443,9 @@ async fn exact_scope_admission_waits_for_workspace_capacity() {
             .unwrap()
     );
     assert!(
-        bff_operations::claim_execution_limited(
-            &app,
-            second,
-            "http-request",
-            60_000,
-            1,
-        )
-        .await
-        .unwrap()
+        bff_operations::claim_execution_limited(&app, second, "http-request", 60_000, 1,)
+            .await
+            .unwrap()
     );
     assert!(
         bff_operations::release_execution(&app, second, "http-request")
@@ -493,15 +479,9 @@ async fn adaptive_exact_execution_waits_for_capacity_then_completes() {
     };
     let actor = s.principal;
     let execution = tokio::spawn(async move {
-        bff_executor::execute_adaptive(
-            &worker_pool,
-            target,
-            actor,
-            &UnavailableModel,
-            &policy,
-        )
-        .await
-        .unwrap()
+        bff_executor::execute_adaptive(&worker_pool, target, actor, &UnavailableModel, &policy)
+            .await
+            .unwrap()
     });
 
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
