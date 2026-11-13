@@ -390,6 +390,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_http_provider_never_persists_reflected_bearer_or_response_body() {
+        if Command::new("curl").arg("--version").output().is_err() {
+            panic!("curl is required for the provider error-boundary test");
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut buffer = [0u8; 8192];
+            let _ = socket.read(&mut buffer).unwrap();
+            let response_body = "echoed-secret-test-key and private-source-leak";
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\\r\\nContent-Type: text/plain\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\\r\\n{}",
+                response_body.len(),
+                response_body
+            );
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+        let model = CurlOpenAiCompatibleModel::new(config(format!("http://{address}/v1")))
+            .unwrap();
+        let error = model.invoke(&request()).await.unwrap_err().to_string();
+        server.join().unwrap();
+        assert!(error.contains("401"), "HTTP error status should remain diagnosable");
+        assert!(!error.contains("secret-test-key"));
+        assert!(!error.contains("private-source-leak"));
+    }
+
+    #[tokio::test]
     async fn curl_transport_posts_openai_compatible_request_without_putting_key_in_url() {
         if Command::new("curl").arg("--version").output().is_err() {
             panic!("curl is required for the real-provider MVP adapter");
