@@ -75,6 +75,11 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingCorrection.current.id');
   });
 
+  it('keeps the current mapping selectable when its person is outside the current identity page', () => {
+    expect(identities).toContain('binding?.person_id && !current');
+    expect(identities).toContain('mapped person outside this page');
+  });
+
   it('clears stale identity-mapping drafts after the persisted binding advances', () => {
     expect(identities).toContain('[binding?.event_id, binding?.person_id]');
     expect(identities).toContain("setNewLabel('')");
