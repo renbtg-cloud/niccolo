@@ -89,6 +89,7 @@ export function OperationsPage(){
  const guide=situation.data?situationGuide(situation.data):null;
  const pendingLaunch=useRef(null);
  const pendingHumanResponse=useRef(null);
+ const pendingMilestone=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const checkpoints=useOperationCheckpoints(active); const output=useAnalysisOutput(analysis,observed.operation); const resources=useRuntimeResources();
  const budget=useQuery({queryKey:client&&active?['operation-budget',client.config.workspace,client.config.situation,active]:['operation-budget','none'],enabled:!!client&&!!active,queryFn:async()=> (await client.operationBudget(active)).value,refetchInterval:observed.operation?.terminal?false:2000});
@@ -105,8 +106,12 @@ export function OperationsPage(){
    if(!active||!latestCheckpoint)throw new Error('No checkpoint available');
    const reason=milestoneReason.trim();
    if(!reason)throw new Error('Explain why this checkpoint is a meaningful milestone.');
-   return (await client.declareOperationCheckpointMilestone(active,latestCheckpoint.checkpoint_id,crypto.randomUUID(),milestoneKind,reason)).value;
- },onSuccess:async()=>{setMilestoneReason('');await qc.invalidateQueries({queryKey:['operation-checkpoint-milestone']});}});
+   const signature=JSON.stringify({active,checkpoint:latestCheckpoint.checkpoint_id,milestoneKind,reason});
+   if(pendingMilestone.current?.signature!==signature){
+     pendingMilestone.current={signature,milestoneId:crypto.randomUUID()};
+   }
+   return (await client.declareOperationCheckpointMilestone(active,latestCheckpoint.checkpoint_id,pendingMilestone.current.milestoneId,milestoneKind,reason)).value;
+ },onSuccess:async()=>{pendingMilestone.current=null;setMilestoneReason('');await qc.invalidateQueries({queryKey:['operation-checkpoint-milestone']});}});
  const exportCheckpoint=useMutation({mutationFn:async({checkpoint,milestone=null})=>{if(!active)throw new Error('No active operation');const result=await client.operationCheckpointPackage(active,checkpoint.checkpoint_id,milestone?.milestone_id??null);const suffix=milestone?'-milestone-'+milestone.milestone_id:'';return downloadCheckpointPackage(result.value,'niccolo-operation-'+active+'-checkpoint-'+checkpoint.checkpoint_seq+suffix+'.zip');}});
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32,maxInvocations:32,maxTotalTokens:200000,finalizationReserveMs:5000}});
  const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:{decision:'CONTINUE',responseText:''}});
