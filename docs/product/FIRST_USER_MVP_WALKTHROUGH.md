@@ -116,6 +116,13 @@ human speaker. Locale-ambiguous dates, self-reported display names and system
 notices are not authenticated by an export; check attribution against the
 original source when it matters.
 
+For `.eml`, the current bounded importer accepts UTF-8 plain-text bodies with
+7-bit or 8-bit transfer encoding, including folded Subject and validated
+plain-text MIME headers. It does not decode base64, quoted-printable,
+multipart messages or non-UTF-8 mail; a folded From identity is rejected
+rather than guessed. Source imports preserve the original bytes and do
+not authenticate an email sender.
+
 Choose one or several files and then **Import and attach**. A browser batch is prevalidated
 before the first upload, is bounded to 32 files / 64 MiB total, and each file still keeps the
 server's 4 MiB per-source limit. If a later file fails after earlier ones were attached, retrying
