@@ -37,6 +37,7 @@ use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::integration_diagnostics::{self, IntegrationDiagnosticsError};
+use crate::intake_package;
 use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
 use crate::local_handoff::{LocalHandoff, LocalHandoffError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
@@ -329,6 +330,10 @@ fn router_with_model_and_handoff(
         .route(
             "/v1/workspaces/{workspace}/sources/{document}/original",
             get(download_source_original),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/intake-receipt-package",
+            get(get_intake_receipt_package),
         )
         .route(
             "/v1/workspaces/{workspace}/sources/{document}",
@@ -1167,6 +1172,43 @@ async fn list_sources(
                 "sha256":d.sha256,"byte_length":d.byte_length,"fragment_count":d.fragment_count,
                 "original_bytes_available":d.original_bytes_available
             })).collect::<Vec<_>>(),"next_after":page.next_after
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn get_intake_receipt_package(
+    State(state): State<AppState>,
+    Path((workspace, document)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let source = source_catalog::get_source(&state.pool, workspace, document)
+        .await
+        .map_err(|error| match error {
+            source_catalog::CatalogError::InvisibleDocument => {
+                ApiError(StatusCode::NOT_FOUND, "source unavailable")
+            }
+            _ => ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "intake receipt unavailable",
+            ),
+        })?;
+    let package = intake_package::build(workspace, &source).map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "intake receipt unavailable",
+        )
+    })?;
+    let package_sha256 = intake_package::package_sha256(&package);
+    Ok(no_store(
+        json!({
+            "receipt": package.receipt,
+            "files": package.files,
+            "package_sha256": package_sha256,
+            "remote_publication_performed": false,
+            "establishes_truth": false,
+            "establishes_authenticity": false,
         }),
         StatusCode::OK,
     ))
