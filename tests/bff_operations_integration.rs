@@ -413,6 +413,57 @@ async fn adaptive_admission_serializes_competing_workers_at_workspace_limit() {
 }
 
 #[tokio::test]
+async fn exact_scope_admission_waits_for_workspace_capacity() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let first = op(s, Uuid::new_v4());
+    let second = op(s, Uuid::new_v4());
+    for scope in [first, second] {
+        bff_operations::submit(&app, scope, &input(s, "BUILD_BRIEFING", None))
+            .await
+            .unwrap();
+    }
+
+    assert!(
+        bff_operations::claim_execution(&app, first, "already-running", 60_000)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !bff_operations::claim_execution_limited(
+            &app,
+            second,
+            "http-request",
+            60_000,
+            1,
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        bff_operations::release_execution(&app, first, "already-running")
+            .await
+            .unwrap()
+    );
+    assert!(
+        bff_operations::claim_execution_limited(
+            &app,
+            second,
+            "http-request",
+            60_000,
+            1,
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        bff_operations::release_execution(&app, second, "http-request")
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
 async fn adaptive_admission_rejects_zero_or_excessive_limit() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -421,6 +472,17 @@ async fn adaptive_admission_rejects_zero_or_excessive_limit() {
             bff_operations::claim_next_in_workspace_limited(
                 &app,
                 s.workspace,
+                "invalid-limit",
+                60_000,
+                limit,
+            )
+            .await,
+            Err(bff_operations::BffOperationError::Invalid)
+        ));
+        assert!(matches!(
+            bff_operations::claim_execution_limited(
+                &app,
+                op(s, Uuid::new_v4()),
                 "invalid-limit",
                 60_000,
                 limit,
