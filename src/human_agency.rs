@@ -104,7 +104,7 @@ pub async fn record_decision_rationale(
         .bind(input.recorded_by)
         .execute(&mut *tx)
         .await?;
-    let stored: Option<(Uuid, Option<Uuid>, String, Option<String>, Uuid)> = sqlx::query_as(
+    let stored: Option<DecisionRationaleRow> = sqlx::query_as(
         "SELECT decision_id,option_id,rationale_text,tradeoff_ack,recorded_by_principal_id
            FROM niccolo.situation_analysis_decision_rationales
           WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND rationale_id=$4",
