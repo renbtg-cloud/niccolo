@@ -188,14 +188,21 @@ mod tests {
         let handoff =
             LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
         for malformed in ["E".repeat(64), "e".repeat(63), "g".repeat(64)] {
-            assert_eq!(handoff.consume(&malformed), Err(LocalHandoffError::NotFound));
+            assert_eq!(
+                handoff.consume(&malformed),
+                Err(LocalHandoffError::NotFound)
+            );
             assert!(matches!(
                 LocalHandoff::configured(&malformed, path.clone(), Duration::from_secs(30)),
                 Err(LocalHandoffError::NotFound)
             ));
         }
         assert!(matches!(
-            LocalHandoff::configured(&code, PathBuf::from("relative.token"), Duration::from_secs(30)),
+            LocalHandoff::configured(
+                &code,
+                PathBuf::from("relative.token"),
+                Duration::from_secs(30)
+            ),
             Err(LocalHandoffError::NotFound)
         ));
         assert!(matches!(
