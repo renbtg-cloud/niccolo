@@ -10,6 +10,25 @@ cd "$ROOT"
 model_env_file=".niccolo-local/model.env"
 mkdir -p .niccolo-local
 
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
+    [[ -d .niccolo-local && ! -L .niccolo-local && -O .niccolo-local ]] || {
+      echo 'Unsafe .niccolo-local directory; it must be an owner-controlled real directory.' >&2
+      exit 2
+    }
+    local_mode="$(stat -c '%a' .niccolo-local 2>/dev/null || stat -f '%Lp' .niccolo-local 2>/dev/null || true)"
+    [[ "$local_mode" =~ ^[0-7]{3,4}$ ]] || {
+      echo 'Unable to verify .niccolo-local directory permissions.' >&2
+      exit 2
+    }
+    (( (8#$local_mode & 077) == 0 )) || {
+      echo '.niccolo-local must not be accessible by group or other users.' >&2
+      exit 2
+    }
+    ;;
+esac
+
 if [[ -e "$model_env_file" ]]; then
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) ;;
