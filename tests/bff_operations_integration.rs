@@ -1,6 +1,11 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::bff_operations::{self, NewOperation, OperationScope};
 use niccolo_evidence::operation_budget;
+use niccolo_evidence::{
+    bff_executor,
+    model_adapter::UnavailableModel,
+    resource_policy::ResourcePolicy,
+};
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -461,6 +466,60 @@ async fn exact_scope_admission_waits_for_workspace_capacity() {
             .await
             .unwrap()
     );
+}
+
+#[tokio::test]
+async fn adaptive_exact_execution_waits_for_capacity_then_completes() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let blocker = op(s, Uuid::new_v4());
+    let target = op(s, Uuid::new_v4());
+    for scope in [blocker, target] {
+        bff_operations::submit(&app, scope, &input(s, "BUILD_BRIEFING", None))
+            .await
+            .unwrap();
+    }
+    assert!(
+        bff_operations::claim_execution(&app, blocker, "blocker", 60_000)
+            .await
+            .unwrap()
+    );
+
+    let worker_pool = app.clone();
+    let policy = ResourcePolicy {
+        operator_max_parallel_operations: 1,
+        reserved_memory_bytes: 0,
+        ..ResourcePolicy::default()
+    };
+    let actor = s.principal;
+    let execution = tokio::spawn(async move {
+        bff_executor::execute_adaptive(
+            &worker_pool,
+            target,
+            actor,
+            &UnavailableModel,
+            &policy,
+        )
+        .await
+        .unwrap()
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    let waiting = bff_operations::get(&app, target).await.unwrap();
+    assert_eq!(waiting.state, "QUEUED");
+    assert!(!execution.is_finished());
+
+    assert!(
+        bff_operations::release_execution(&app, blocker, "blocker")
+            .await
+            .unwrap()
+    );
+    let completed = tokio::time::timeout(std::time::Duration::from_secs(5), execution)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed.state, "SUCCEEDED");
+    assert!(completed.terminal);
 }
 
 #[tokio::test]
