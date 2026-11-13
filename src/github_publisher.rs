@@ -1053,6 +1053,43 @@ mod tests {
     };
     use std::{collections::VecDeque, sync::Mutex};
 
+    #[cfg(unix)]
+    #[test]
+    fn curl_publication_disables_user_configuration_before_sending_bearer_headers() {
+        use std::os::unix::fs::PermissionsExt;
+        let script_path = std::env::temp_dir()
+            .join(format!("niccolo-github-curl-flags-{}.sh", Uuid::new_v4()));
+        fs::write(
+            &script_path,
+            r#"#!/bin/sh
+set -eu
+[ "$1" = "--disable" ] || exit 40
+[ "$2" = "--proto" ] || exit 41
+[ "$3" = "=https" ] || exit 42
+[ "$4" = "--max-redirs" ] || exit 43
+[ "$5" = "0" ] || exit 44
+response=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--output" ]; then
+    response="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+[ -n "$response" ] || exit 45
+printf '{"accepted":true}' > "$response"
+printf '200'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700)).unwrap();
+        let transport = CurlGitHubTransport::new(script_path.to_str().unwrap(), 5).unwrap();
+        let result = transport.json("GET", "/repos/owner/repo", "test-bearer", None);
+        let _ = fs::remove_file(&script_path);
+        assert_eq!(result.unwrap(), json!({"accepted":true}));
+    }
+
     struct ScriptedTransport {
         responses: Mutex<VecDeque<Value>>,
         calls: Mutex<Vec<(String, String, Option<Value>)>>,
