@@ -33,6 +33,18 @@ describe('BFF client',()=>{
    expect(calls[1][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/sources/doc');
    expect(calls[1][1].method).toBe('POST');
  });
+ it('keeps purpose history append-only at the client boundary',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,{events:[],purpose_is_evidence:false,purpose_changes_rewrite_history:false});});
+   await x.purposeHistory();
+   await x.recordPurpose('purpose-event',{purpose_text:'Understand what the record supports',reason:'Initial objective',downstream_use:'Internal review'});
+   expect(calls[0][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/purpose');
+   expect(calls[0][1].method).toBe('GET');
+   expect(calls[1][0]).toContain('/purpose/purpose-event');
+   expect(calls[1][1].method).toBe('POST');
+   expect(JSON.parse(calls[1][1].body)).toEqual({purpose_text:'Understand what the record supports',reason:'Initial objective',downstream_use:'Internal review'});
+ });
+
  it('lists the workspace source catalog through the BFF client',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{documents:[],next_after:null});});
