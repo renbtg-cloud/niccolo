@@ -8,6 +8,17 @@ cd "$ROOT"
 : "${NICCOLO_PG_SECURE_PASSWORD:?disposable service password required}"
 command -v curl >/dev/null
 command -v node >/dev/null
+# Refuse to test against an unrelated server already bound to the MVP port.
+# Otherwise a stale healthy process could make the smoke test pass falsely.
+node -e '
+const net = require("node:net");
+const server = net.createServer();
+server.once("error", error => {
+  console.error("MVP smoke port 38080 unavailable:", error.code);
+  process.exit(1);
+});
+server.listen(38080, "127.0.0.1", () => server.close());
+'
 if [[ -e .niccolo-local/local.env ]]; then
   echo 'Refusing to run fresh bootstrap smoke over existing local credentials' >&2
   exit 1
