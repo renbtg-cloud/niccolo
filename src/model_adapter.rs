@@ -875,6 +875,45 @@ mod bounded_response_tests {
     }
 
     #[test]
+    fn native_http_error_does_not_echo_provider_response_or_api_key() {
+        use std::{io::{Read, Write}, net::TcpListener, thread, time::Duration};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut buffer = [0u8; 8192];
+            let _ = socket.read(&mut buffer).unwrap();
+            let body = "private-source-text and echoed-secret-test-token";
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+        let model = OpenAiCompatibleModel::new(
+            "local",
+            "model",
+            &format!("http://127.0.0.1:{port}/v1/chat/completions"),
+            "secret-test-token",
+        )
+        .unwrap();
+        let request = ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: serde_json::json!({}),
+            output_contract: serde_json::json!({}),
+        };
+        let error = model.perform_blocking(&request).unwrap_err().to_string();
+        server.join().unwrap();
+        assert!(error.contains("HTTP 401"));
+        assert!(!error.contains("private-source-text"));
+        assert!(!error.contains("secret-test-token"));
+    }
+
+    #[test]
     fn stalled_local_model_times_out_at_transport_boundary() {
         use std::{net::TcpListener, thread, time::{Duration, Instant}};
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
