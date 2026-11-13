@@ -1070,6 +1070,29 @@ mod bounded_response_tests {
         assert!(!retryable_model_error(&ModelError::Invalid));
         assert!(retryable_model_error(&ModelError::Timeout));
         assert!(retryable_model_error(&ModelError::Provider("transient".into())));
+
+        let transient_chain = ModelError::ProviderChain {
+            attempts: 2,
+            error: Box::new(ModelError::Provider("fallback unavailable".into())),
+        };
+        assert!(retryable_model_error(&transient_chain));
+        assert_eq!(provider_attempts_for_error(&transient_chain), 2);
+        assert!(!budget_model_error(&transient_chain));
+
+        let budget_chain = ModelError::ProviderChain {
+            attempts: 3,
+            error: Box::new(ModelError::Budget),
+        };
+        assert!(!retryable_model_error(&budget_chain));
+        assert_eq!(provider_attempts_for_error(&budget_chain), 3);
+        assert!(budget_model_error(&budget_chain));
+
+        let timeout_chain = ModelError::ProviderChain {
+            attempts: 2,
+            error: Box::new(ModelError::Timeout),
+        };
+        assert!(retryable_model_error(&timeout_chain));
+        assert!(timeout_model_error(&timeout_chain));
     }
 
     #[test]
