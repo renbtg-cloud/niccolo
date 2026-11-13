@@ -14,6 +14,8 @@ pub enum ImportError {
     Sql(#[from] sqlx::Error),
     #[error("privileged database login cannot be used as an application identity")]
     PrivilegedRole,
+    #[error("invalid source workspace or document identity")]
+    InvalidIdentity,
     #[error("invalid source locator")]
     Locator,
     #[error("workspace is not visible to this database role")]
@@ -36,6 +38,18 @@ pub struct ImportResult {
     pub operational_event_id: Option<String>,
     pub operational_duplicate: bool,
     pub delivery_count: i64,
+}
+
+fn unsafe_metadata_character(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
 }
 
 /// Byte-exact document, fragments and original payload write path. All changes commit or roll back
@@ -62,7 +76,13 @@ pub async fn ingest_source_with_operational_id(
     raw: &[u8],
     operational_event_id: Option<&str>,
 ) -> Result<ImportResult, ImportError> {
-    if locator.is_empty() || locator.len() > 1024 || locator.chars().any(char::is_control) {
+    if workspace.is_nil() || document_id.is_nil() {
+        return Err(ImportError::InvalidIdentity);
+    }
+    if locator.is_empty()
+        || locator.len() > 1024
+        || locator.chars().any(unsafe_metadata_character)
+    {
         return Err(ImportError::Locator);
     }
     let parsed = parse_source(format, raw)?;
@@ -96,7 +116,7 @@ pub async fn ingest_source_with_operational_id(
         .filter(|value| !value.is_empty())
         .map(str::to_owned);
     if let Some(value) = &operational_event_id {
-        if value.len() > 512 || value.chars().any(char::is_control) {
+        if value.len() > 512 || value.chars().any(unsafe_metadata_character) {
             return Err(ImportError::OperationalEventInvalid);
         }
         let lock_key = format!("{workspace}:{value}");
