@@ -230,7 +230,8 @@ async fn run_with_owned_lease(
             // The concrete error can contain provider-controlled text or
             // infrastructure details. Return it to the in-process caller, but
             // persist only a bounded category-specific diagnostic.
-            mark_failed_best_effort(pool, scope, actor, code, durable_execution_failure(code)).await;
+            mark_failed_best_effort(pool, scope, actor, code, durable_execution_failure(code))
+                .await;
             Err(error)
         }
     }
