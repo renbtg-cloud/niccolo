@@ -79,9 +79,7 @@ pub async fn ingest_source_with_operational_id(
     if workspace.is_nil() || document_id.is_nil() {
         return Err(ImportError::InvalidIdentity);
     }
-    if locator.is_empty()
-        || locator.len() > 1024
-        || locator.chars().any(unsafe_metadata_character)
+    if locator.is_empty() || locator.len() > 1024 || locator.chars().any(unsafe_metadata_character)
     {
         return Err(ImportError::Locator);
     }
