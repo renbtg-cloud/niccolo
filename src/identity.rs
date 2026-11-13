@@ -157,7 +157,7 @@ pub async fn create_identity(
     person: Uuid,
     display_label: &str,
 ) -> Result<bool, IdentityError> {
-    if !valid_identity_text(display_label, 512) {
+    if workspace.is_nil() || person.is_nil() || !valid_identity_text(display_label, 512) {
         return Err(IdentityError::Input);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -210,7 +210,12 @@ pub async fn record_event(
     person_id: Option<Uuid>,
     human_reason: &str,
 ) -> Result<AssignmentEvent, IdentityError> {
-    if !valid_identity_text(speaker_label, 512)
+    if workspace.is_nil()
+        || actor.is_nil()
+        || event_id.is_nil()
+        || document_id.is_nil()
+        || person_id.is_some_and(Uuid::is_nil)
+        || !valid_identity_text(speaker_label, 512)
         || !valid_identity_text(human_reason, 2048)
         || matches!(
             (action, person_id),
@@ -387,6 +392,12 @@ pub async fn event_history(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nil_identifiers_are_never_valid_identity_entities() {
+        assert!(Uuid::nil().is_nil());
+        assert!(!Uuid::from_u128(1).is_nil());
+    }
 
     #[test]
     fn identity_text_rejects_directional_spoofing_but_keeps_unicode_names() {
