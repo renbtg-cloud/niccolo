@@ -13,6 +13,8 @@ pub enum AgencyError {
     Privileged,
     #[error("invalid agency input")]
     Invalid,
+    #[error("agency replay conflicts with stored content")]
+    Conflict,
 }
 
 async fn scoped(
@@ -87,9 +89,43 @@ pub async fn record_decision_rationale(
     {
         return Err(AgencyError::Invalid);
     }
+    let rationale = input.rationale.trim();
+    let tradeoff_ack = input.tradeoff_ack.as_deref().map(str::trim);
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_decision_rationales(workspace_id,situation_id,analysis_id,decision_id,rationale_id,option_id,rationale_text,tradeoff_ack,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).bind(input.rationale_id).bind(input.option_id).bind(&input.rationale).bind(&input.tradeoff_ack).bind(input.recorded_by).execute(&mut *tx).await?;
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(decision)
+        .bind(input.rationale_id)
+        .bind(input.option_id)
+        .bind(rationale)
+        .bind(tradeoff_ack)
+        .bind(input.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, Option<Uuid>, String, Option<String>, Uuid)> = sqlx::query_as(
+        "SELECT decision_id,option_id,rationale_text,tradeoff_ack,recorded_by_principal_id
+           FROM niccolo.situation_analysis_decision_rationales
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND rationale_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(input.rationale_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            decision,
+            input.option_id,
+            rationale.into(),
+            tradeoff_ack.map(str::to_owned),
+            input.recorded_by,
+        ))
+    {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
