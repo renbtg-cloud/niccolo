@@ -5,7 +5,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz};
+use niccolo_evidence::{analysis_structure::AnalysisScope, api, authz, investigation_policy};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
@@ -174,6 +174,56 @@ async fn answer_becomes_new_user_reported_context_not_old_input_or_evidence() {
         0
     );
 }
+#[tokio::test]
+async fn answered_clarification_disappears_from_proactive_queue() {
+    let f = setup().await;
+    let s = Uuid::new_v4();
+    let a = Uuid::new_v4();
+    let q = Uuid::new_v4();
+    seed(&f, s, a, q).await;
+    let secure = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let scope = AnalysisScope {
+        workspace: f.workspace,
+        situation: s,
+        analysis: a,
+    };
+    let digest = authz::credential_digest(&f.reader).unwrap();
+    let before = authz::with_auth_digest(
+        digest.clone(),
+        investigation_policy::queue(&secure, scope, 3),
+    )
+    .await
+    .unwrap();
+    assert!(before.items.iter().any(|lead| lead.id == q));
+
+    let answer_path = format!("{}/answers/{}", question(&f, s, a, q), Uuid::new_v4());
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                answer_path,
+                &f.writer,
+                Some(json!({"text":"I do not know yet."}))
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let after =
+        authz::with_auth_digest(digest, investigation_policy::queue(&secure, scope, 3))
+            .await
+            .unwrap();
+    assert!(!after.items.iter().any(|lead| lead.id == q));
+    assert_eq!(after.candidate_count, 0);
+}
+
 #[tokio::test]
 async fn answer_retry_is_idempotent_but_mutation_conflicts() {
     let f = setup().await;
