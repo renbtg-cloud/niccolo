@@ -11,14 +11,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - name: Pack pinned MVP checkpoint
+      - name: Pack pinned current checkpoint
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin d1b54d46d2f43dac93bcee31203b8b966d98f3d4
-          test "$(git rev-parse FETCH_HEAD)" = 'd1b54d46d2f43dac93bcee31203b8b966d98f3d4'
+          git fetch --no-tags --depth=1 origin 0ce7d4887c732ee719dd764eb938c4c74fadb6e5
+          test "$(git rev-parse FETCH_HEAD)" = '0ce7d4887c732ee719dd764eb938c4c74fadb6e5'
           git archive --format=tar.gz --output=niccolo-vm-source.tar.gz FETCH_HEAD
-          printf '%s\n' 'd1b54d46d2f43dac93bcee31203b8b966d98f3d4' > niccolo-source-commit.txt
+          printf '%s\n' '0ce7d4887c732ee719dd764eb938c4c74fadb6e5' > niccolo-source-commit.txt
           sha256sum niccolo-vm-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
