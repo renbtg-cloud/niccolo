@@ -92,6 +92,39 @@ if NICCOLO_LLM_BASE_URL='https://provider.example/v1?key=bad' NICCOLO_LLM_MODEL=
 fi
 [[ "$(sha256sum .niccolo-local/model.env | awk '{print $1}')" == "$valid_digest" ]]
 
+# Existing stored credentials must remain owner-only regular files before
+# configure is willing to source them.
+if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
+  cp .niccolo-local/model.env "$fixture_root/model.good"
+  chmod 644 .niccolo-local/model.env
+  set +e
+  broad_output="$(
+    NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='local' \
+      run_cfg 2>&1
+  )"
+  broad_status=$?
+  set -e
+  [[ "$broad_status" == 2 ]]
+  grep -Fq 'Existing model configuration is readable or writable by other users' <<< "$broad_output"
+  cp "$fixture_root/model.good" .niccolo-local/model.env
+  chmod 600 .niccolo-local/model.env
+
+  mv .niccolo-local/model.env "$fixture_root/model.real"
+  ln -s "$fixture_root/model.real" .niccolo-local/model.env
+  set +e
+  symlink_output="$(
+    NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='local' \
+      run_cfg 2>&1
+  )"
+  symlink_status=$?
+  set -e
+  [[ "$symlink_status" == 2 ]]
+  grep -Fq 'Unsafe existing model configuration file' <<< "$symlink_output"
+  rm .niccolo-local/model.env
+  mv "$fixture_root/model.real" .niccolo-local/model.env
+  chmod 600 .niccolo-local/model.env
+fi
+
 # CLI secret arguments are deliberately unsupported.
 if bash scripts/configure-local-model.sh --api-key should-never-be-accepted >/dev/null 2>&1; then
   echo 'API key command-line argument unexpectedly accepted' >&2
