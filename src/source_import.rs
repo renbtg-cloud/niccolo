@@ -271,17 +271,27 @@ fn looks_like_datetime(dt: &str) -> bool {
     ) else {
         return false;
     };
-    let mut time_parts = time.trim().split(':');
-    let (Some(hour), Some(minute), None) =
-        (time_parts.next(), time_parts.next(), time_parts.next())
-    else {
+    // Some WhatsApp exports include seconds and/or an AM/PM suffix.
+    // Accept only those explicit forms; never guess the date locale.
+    let (clock, meridiem) = match time.trim().rsplit_once(' ') {
+        Some((clock, "AM")) => (clock, Some("AM")),
+        Some((clock, "PM")) => (clock, Some("PM")),
+        Some(_) => return false,
+        None => (time.trim(), None),
+    };
+    let mut time_parts = clock.split(':');
+    let (Some(hour), Some(minute)) = (time_parts.next(), time_parts.next()) else {
         return false;
     };
-    if ![day, month, year, hour, minute]
-        .iter()
-        .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+    let second = time_parts.next();
+    if time_parts.next().is_some()
+        || ![day, month, year, hour, minute]
+            .iter()
+            .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+        || hour.is_empty()
         || hour.len() > 2
         || minute.len() != 2
+        || second.is_some_and(|s| s.len() != 2 || !s.bytes().all(|b| b.is_ascii_digit()))
         || year.len() < 2
     {
         return false;
@@ -295,7 +305,15 @@ fn looks_like_datetime(dt: &str) -> bool {
     ) else {
         return false;
     };
-    if hour >= 24 || minute >= 60 || !(1..=12).contains(&month) || year == 0 {
+    if second.is_some_and(|s| s.parse::<u8>().is_err_or(|value| value >= 60))
+        || minute >= 60
+        || !(1..=12).contains(&month)
+        || year == 0
+        || match meridiem {
+            Some(_) => !(1..=12).contains(&hour),
+            None => hour >= 24,
+        }
+    {
         return false;
     }
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
@@ -463,6 +481,32 @@ mod tests {
         assert_eq!(parsed.fragments[0].speaker_label, "Ana");
         assert_eq!(parsed.fragments[1].speaker_label, "Beto");
         assert!(!looks_like_datetime("02/11/2026, 25:05"));
+    }
+
+    #[test]
+    fn whatsapp_seconds_and_twelve_hour_clock_preserve_speaker_boundaries() {
+        let src = "[02/11/2026, 9:05:31 AM] Ana: Morning.\n[02/11/2026, 12:06:59 PM] Beto: Afternoon.\n[02/11/2026, 13:07:05] Carla: Hello.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 3);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        assert_eq!(parsed.fragments[2].speaker_label, "Carla");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+        for invalid in [
+            "02/11/2026, 13:05 PM",
+            "02/11/2026, 00:05 AM",
+            "02/11/2026, 10:05:60",
+            "02/11/2026, 10:05:1",
+            "02/11/2026, 10:05:01:02",
+            "02/11/2026, 10:05 XM",
+        ] {
+            assert!(!looks_like_datetime(invalid), "invalid timestamp accepted: {invalid}");
+        }
     }
 
     #[test]
