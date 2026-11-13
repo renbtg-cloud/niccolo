@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const operations = readFileSync(new URL('./OperationsPage.jsx', import.meta.url), 'utf8');
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
+const checkpointHook = readFileSync(new URL('../hooks/useOperationCheckpoints.js', import.meta.url), 'utf8');
 
 describe('primary analysis path', () => {
   it('presents analysis as the primary action while keeping execution plumbing advanced', () => {
@@ -81,6 +82,13 @@ describe('primary analysis path', () => {
     expect(operations).toContain('Useful work so far');
     expect(operations).toContain('does <strong>not</strong> claim completeness or factual truth');
     expect(operations).toContain('Next unexecuted reasoning step');
+  });
+
+  it('keeps the true latest checkpoint visible beyond the first server page', () => {
+    expect(checkpointHook).toContain('MAX_PAGES_PER_REFRESH = 50');
+    expect(checkpointHook).toContain('checkpoints.push(...additions)');
+    expect(checkpointHook).toContain('checkpoint.checkpoint_seq > after');
+    expect(checkpointHook).toContain('catchup_bounded: Boolean(nextAfter)');
   });
 
   it('keeps durable anytime checkpoints in technical inspection with explicit non-truth semantics', () => {
