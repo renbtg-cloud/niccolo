@@ -2,7 +2,7 @@
 
 **Architectural status:** mandatory product capability, *not* a proven competitive advantage.
 
-**Implementation status, November 2, 2026:** Rust-only offline authorization, blind-input, independent-scoring and improvement-ticket contracts exist and are tested. A PostgreSQL schema and smoke test exist. **No LLM APIs were called. No frontier benchmarking or independent judging has occurred.**
+**Implementation status, November 13, 2026:** blind-input, independent-scoring and improvement-ticket contracts exist and are tested. PostgreSQL now also provides a transactional reservation ledger for optional paid probes: concurrent reservations serialize on the workspace/account policy row, open estimates contribute to reserved spend, and settlement/release moves or returns that capacity exactly once. **No benchmark frontier-model call, genuine frontier comparison or independent judging has occurred.**
 
 ## Two separate evaluation modes
 
@@ -11,7 +11,7 @@
 - Occasionally sample tasks first routed to a cheaper model and run an **additional** evaluation against an eligible frontier model, whether or not that frontier model is the user's default choice.
 - Only if the account/workspace policy enables background evaluations, the provider is permitted, the model is not prohibited, the specific raw-data egress is authorized, and spending remains **well below** the user's explicit cost cap.
 - The strictness is a user-configured utilization threshold. **The POC uses 30% as an illustrative configuration, not a product-wide mandated percentage.** Do not charge autonomously when the cap is missing.
-- Make atomic budget reservations in PostgreSQL before any remote request. Count outstanding parallel reservations, retry overhead, expected tool calls, and actual billing; cap concurrency. The current pure Rust preflight function is NOT sufficient against concurrent reservations.
+- Make atomic budget reservations in PostgreSQL before any remote request. The implemented reservation ledger serializes concurrent reservations, binds each reservation to one recorded benchmark run, counts existing reserved + spent amounts against the configured cap/threshold, and records settlement/release idempotently. The pure Rust preflight remains advisory; the PostgreSQL reservation is the concurrency boundary. Retry overhead and multi-call/tool estimates still need to be included in the amount reserved by the eventual runner.
 - Compare factuality, epistemic nuance, calibration and question-generation—not merely verbosity or judge preference. Admit that sometimes a cheap model performs equally well or better. Record cases where a frontier call does **not** justify the incremental cost.
 - Make all extra evaluations auditable and user-controllable; do not send personal communications to an unapproved provider merely because the user hasn't prohibited that specific model name.
 
@@ -73,9 +73,10 @@ The unit tests also exercise a **synthetic invented scoring example** (Niccolò 
 - `niccolo.benchmark_runs`: mode, allowed original source IDs, blind input/tool recipe, provider/model, audit and estimated/actual costs.
 - `niccolo.benchmark_scores`: per-dimension independent judgments.
 - `niccolo.improvement_experiments`: proposal, reproduction recipe, algorithmic hypothesis and statuses.
-- All are workspace-scoped with RLS. Cross-tenant smoke tests execute against PostgreSQL 17.
+- `niccolo.benchmark_budget_reservations`: immutable reservation identity plus bounded RESERVED → SETTLED/RELEASED accounting, tied to one benchmark run and one workspace/account policy.
+- All are workspace-scoped with forced RLS. Integration tests exercise reservation replay, settlement/release and concurrent overspend prevention on PostgreSQL 17.
 
-**Remaining blockers before real frontier calls:** authorized provider API keys, explicit user/workspace data-egress consent, a transactional budget reservation service, isolated baseline agent implementation, genuine model output capture, independent grading and a held-out corpus. None is secretly assumed from an attachment or a general product ambition.
+**Remaining blockers before real frontier calls:** authorized provider API keys, explicit user/workspace data-egress consent, an isolated baseline agent implementation, genuine model output capture, independent grading and a held-out corpus. The reservation ledger removes the earlier concurrent-budget-reservation blocker; it does **not** itself authorize provider traffic or prove that estimated cost equals provider billing. None of the remaining prerequisites is secretly assumed from an attachment or a general product ambition.
 
 ## Quick run
 
@@ -87,4 +88,4 @@ cargo clippy --offline --all-targets -- -D warnings
 cargo run --offline --bin niccolo-benchmark-demo
 ```
 
-SQL integration smoke: apply `sql/0001_init.sql` then `sql/0002_benchmark_evolution.sql` in a disposable PostgreSQL database, and run `scripts/pg-benchmark-smoke.sql` using psql. The smoke's seeded data is rolled back; the database can then be dropped.
+The original benchmark smoke still exercises the offline `0001` + `0002` POC. The transactional reservation path lives in `sql/0114_benchmark_budget_reservations.sql` and is verified by the full migration chain plus `tests/benchmark_budget_integration.rs`; it depends on the later authorization/RLS schema and therefore should not be validated by applying `0114` in isolation.
