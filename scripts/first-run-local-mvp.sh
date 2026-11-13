@@ -70,6 +70,10 @@ else
   printf '%s\n' '[1/3] Existing local bootstrap found; leaving it unchanged.'
 fi
 
+# The database-owner credential is bootstrap-only. Do not leak it into model
+# configuration helpers or the long-lived API process on this first-run path.
+unset NICCOLO_PG_ADMIN_URL
+
 model_from_process=0
 if [[ -n "${NICCOLO_LLM_BASE_URL:-}" && -n "${NICCOLO_LLM_MODEL:-}" ]]; then
   model_from_process=1
