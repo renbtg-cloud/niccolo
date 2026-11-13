@@ -46,4 +46,26 @@ set -e
 grep -Fq 'requires PostgreSQL 17' "$TMP/version-err"
 grep -Fq 'version_num=160012' "$TMP/version-err"
 
-printf '%s\n' 'PASS: bootstrap fails before build when required tools or PostgreSQL 17 are unavailable.'
+# Local state must be private before bootstrap is allowed to touch a fresh DB.
+cat > "$TMP/bin/psql" <<'SH'
+#!/bin/bash
+if [[ " $* " == *' SHOW server_version_num '* ]]; then
+  printf '%s\n' '170011'
+  exit 0
+fi
+printf '%s\n' 'unexpected psql call after local-directory preflight' >&2
+exit 91
+SH
+chmod +x "$TMP/bin/psql"
+mkdir -p "$TMP/repo/.niccolo-local"
+chmod 755 "$TMP/repo/.niccolo-local"
+set +e
+PATH="$TMP/bin" NICCOLO_PG_ADMIN_URL='postgres://owner@127.0.0.1/db' NICCOLO_PG_SECURE_PASSWORD='fixture-secret' \
+  /bin/bash "$TMP/repo/scripts/bootstrap-local-mvp.sh" >"$TMP/dir-out" 2>"$TMP/dir-err"
+dir_status=$?
+set -e
+[[ "$dir_status" == 2 ]]
+grep -Fq '.niccolo-local must not be accessible by group or other users.' "$TMP/dir-err"
+! grep -Fq 'unexpected psql call after local-directory preflight' "$TMP/dir-err"
+
+printf '%s\n' 'PASS: bootstrap fails before build when required tools, PostgreSQL 17, or local credential-directory safety are unavailable.'
