@@ -102,6 +102,15 @@ describe('primary analysis path', () => {
     expect(operations).toContain('client.declareOperationCheckpointMilestone(active,latestCheckpoint.checkpoint_id');
   });
 
+  it('surfaces runtime capacity without turning operational pressure into epistemic quality', () => {
+    expect(operations).toContain('useRuntimeResources()');
+    expect(operations).toContain('RuntimeCapacityPanel');
+    expect(operations).toContain("completion_status==='DEGRADED_RESOURCE_PRESSURE'");
+    expect(operations).toContain('Reasoning path reduced under critical runtime pressure.');
+    expect(operations).toContain('resource pressure is not evidence quality, confidence, completeness or truth');
+    expect(operations).toContain('resource_degraded_steps');
+  });
+
   it('keeps observing a transiently complete plan until the durable operation settles', () => {
     expect(operations).toContain('useAgenticPlan(active,observed.operation?.state)');
   });
