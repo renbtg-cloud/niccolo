@@ -67,11 +67,15 @@ export function IdentitiesPage() {
   const [sourceBackStack, setSourceBackStack] = useState([]);
   const [identityCursor, setIdentityCursor] = useState(null);
   const [identityBackStack, setIdentityBackStack] = useState([]);
+  const [historyCursor, setHistoryCursor] = useState(0);
+  const [historyBackStack, setHistoryBackStack] = useState([]);
   const pendingAssign = useRef(null);
   const pendingClear = useRef(null);
   const resetDocumentSelection = (id) => {
     pendingAssign.current = null;
     pendingClear.current = null;
+    setHistoryCursor(0);
+    setHistoryBackStack([]);
     setDocumentId(id);
   };
 
@@ -112,7 +116,7 @@ export function IdentitiesPage() {
   const history = useQuery({
     queryKey: client && documentId ? qk.identityHistory(client.config, documentId) : ['identity-history','none'],
     enabled: !!client && !!documentId,
-    queryFn: async () => (await client.identityHistory(documentId)).value,
+    queryFn: async () => (await client.identityHistory(documentId, historyCursor, 100)).value,
   });
 
   const bindingBySpeaker = useMemo(
@@ -251,6 +255,17 @@ export function IdentitiesPage() {
         </li>)}
       </ol>
       {(history.data?.events ?? []).length === 0 && <p>No mapping events yet.</p>}
+      <div className="row">
+        <button disabled={history.isFetching || historyBackStack.length === 0} onClick={() => {
+          const stack = historyBackStack.slice();
+          setHistoryCursor(stack.pop() ?? 0);
+          setHistoryBackStack(stack);
+        }}>Previous mapping history</button>
+        <button disabled={history.isFetching || !history.data?.next_after} onClick={() => {
+          setHistoryBackStack(stack => [...stack, historyCursor]);
+          setHistoryCursor(history.data.next_after);
+        }}>Next mapping history</button>
+      </div>
     </details>}
   </section>;
 }
