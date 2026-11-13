@@ -10,6 +10,27 @@ cd "$ROOT"
 model_env_file=".niccolo-local/model.env"
 mkdir -p .niccolo-local
 
+if [[ -e "$model_env_file" ]]; then
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *)
+      [[ -f "$model_env_file" && ! -L "$model_env_file" && -O "$model_env_file" ]] || {
+        echo "Unsafe existing model configuration file: $model_env_file" >&2
+        exit 2
+      }
+      model_mode="$(stat -c '%a' "$model_env_file" 2>/dev/null || stat -f '%Lp' "$model_env_file" 2>/dev/null || true)"
+      [[ "$model_mode" =~ ^[0-7]{3,4}$ ]] || {
+        echo "Unable to verify private permissions for: $model_env_file" >&2
+        exit 2
+      }
+      (( (8#$model_mode & 077) == 0 )) || {
+        echo "Existing model configuration is readable or writable by other users: $model_env_file" >&2
+        exit 2
+      }
+      ;;
+  esac
+fi
+
 # Explicit environment values win over an existing private configuration file;
 # the file is only a source of defaults for values the caller did not export.
 explicit_base_set="${NICCOLO_LLM_BASE_URL+x}"; explicit_base="${NICCOLO_LLM_BASE_URL:-}"
