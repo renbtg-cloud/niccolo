@@ -19,13 +19,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustfmt --edition 2024 src/api.rs src/github_publisher.rs src/intake_git_publication.rs
-          if git diff --quiet -- src/api.rs src/github_publisher.rs src/intake_git_publication.rs; then
+          rustfmt --edition 2024 src/api.rs src/github_publisher.rs src/intake_git_publication.rs tests/intake_git_publication_integration.rs
+          if git diff --quiet -- src/api.rs src/github_publisher.rs src/intake_git_publication.rs tests/intake_git_publication_integration.rs; then
             echo "No formatting changes required."
             exit 0
           fi
           git config user.name "ChatGPT autonomous worker"
           git config user.email "chatgpt-local@invalid"
-          git add src/api.rs src/github_publisher.rs src/intake_git_publication.rs
+          git add src/api.rs src/github_publisher.rs src/intake_git_publication.rs tests/intake_git_publication_integration.rs
           git commit -m "style(intake): rustfmt generic receipt publication slice"
           git push origin HEAD:ci/mvp-checkpoint
