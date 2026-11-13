@@ -255,6 +255,10 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                         "--disable",
                         "--proto",
                         "=http,https",
+                        // Local model traffic must never escape through an
+                        // inherited HTTP proxy, even on a misconfigured host.
+                        "--noproxy",
+                        "127.0.0.1,localhost",
                         "--silent",
                         "--show-error",
                         // Do not capture remote HTTP error bodies in durable logs:
