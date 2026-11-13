@@ -8,6 +8,8 @@
 use crate::{
     checkpoint_git_publication::CheckpointPublicationIntentView,
     checkpoint_package::{self, CheckpointPackage},
+    intake_git_publication::IntakePublicationIntentView,
+    intake_package::{self, IntakePackage},
     git_publication::{PublicationIntentView, TargetView},
     presentation_package::{self, PresentationPackage},
 };
@@ -235,6 +237,55 @@ fn validate_checkpoint_material(
     branch_name(&target.ref_name).map(str::to_owned)
 }
 
+fn intake_total_text_bytes(package: &IntakePackage) -> Result<u64, GitHubPublishError> {
+    package.files.values().try_fold(0_u64, |total, value| {
+        total
+            .checked_add(value.len() as u64)
+            .ok_or(GitHubPublishError::LocalIntegrity)
+    })
+}
+
+fn validate_intake_material(
+    target: &TargetView,
+    intent: &IntakePublicationIntentView,
+    package: &IntakePackage,
+    token: &str,
+) -> Result<String, GitHubPublishError> {
+    if !valid_token(token)
+        || target.provider != "GITHUB"
+        || target.authorization_mode != "TRANSIENT_PROVIDER_AUTHORIZATION"
+        || target.provider_secret_stored
+        || target.repository_visibility != "PRIVATE"
+        || intent.target_id != target.target_id
+        || intent.requested_ref != target.ref_name
+        || intent.scope_kind != "INTAKE_RECEIPT"
+        || intent.publication_state != "AWAITING_REMOTE_AUTHORIZATION"
+        || intent.includes_original_uploads
+        || intent.includes_source_text
+        || intent.includes_analysis
+        || intent.document_id != package.receipt.document_id
+        || intent.source_sha256 != package.receipt.source_sha256
+        || package.receipt.state != "RECEIVED"
+        || package.receipt.includes_original_upload
+        || package.receipt.includes_source_text
+        || package.receipt.includes_analysis
+        || package.receipt.establishes_authenticity
+        || package.receipt.establishes_truth
+        || package.receipt.proves_completeness
+        || package.files.is_empty()
+        || package.files.len() > 16
+        || package.files.len() != intent.file_count as usize
+        || intake_total_text_bytes(package)? != intent.total_text_bytes
+        || package.files.keys().any(|path| !safe_package_path(path))
+    {
+        return Err(GitHubPublishError::LocalIntegrity);
+    }
+    if intake_package::package_sha256(package) != intent.package_sha256 {
+        return Err(GitHubPublishError::LocalIntegrity);
+    }
+    branch_name(&target.ref_name).map(str::to_owned)
+}
+
 fn repository_visibility_matches(target: &TargetView, private: bool) -> bool {
     match target.repository_visibility.as_str() {
         "PRIVATE" => private,
@@ -447,6 +498,170 @@ pub fn publish_standard_package<T: GitHubTransport>(
         return Err(GitHubPublishError::InvalidProviderResponse);
     }
 
+    let updated = if create_requested_ref {
+        transport.json(
+            "POST",
+            &format!("{repo_path}/git/refs"),
+            token,
+            Some(&json!({"ref":format!("refs/heads/{branch}"),"sha":commit_sha})),
+        )?
+    } else {
+        transport.json(
+            "PATCH",
+            &format!("{repo_path}/git/refs/heads/{branch}"),
+            token,
+            Some(&json!({"sha":commit_sha,"force":false})),
+        )?
+    };
+    if response_string(&updated, "/object/sha")? != commit_sha {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+    let verified = transport.json("GET", &ref_path, token, None)?;
+    if response_string(&verified, "/object/sha")? != commit_sha {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+    let verified_commit = transport.json(
+        "GET",
+        &format!("{repo_path}/git/commits/{commit_sha}"),
+        token,
+        None,
+    )?;
+    if response_string(&verified_commit, "/tree/sha")? != tree_sha
+        || verified_commit
+            .get("message")
+            .and_then(Value::as_str)
+            .is_none_or(|message| message != commit_message)
+    {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+
+    Ok(VerifiedGitHubPublication {
+        commit_sha,
+        ref_name: branch,
+        repository_full_name: remote_full_name.to_owned(),
+        package_sha256: intent.package_sha256.clone(),
+        already_present: false,
+    })
+}
+
+fn expected_intake_commit_message(intent: &IntakePublicationIntentView) -> String {
+    format!(
+        "Niccolo intake publication {} package {}",
+        intent.publication_id, intent.package_sha256
+    )
+}
+
+pub fn publish_intake_package<T: GitHubTransport>(
+    transport: &T,
+    target: &TargetView,
+    intent: &IntakePublicationIntentView,
+    package: &IntakePackage,
+    token: &str,
+) -> Result<VerifiedGitHubPublication, GitHubPublishError> {
+    let branch = validate_intake_material(target, intent, package, token)?;
+    let repository = format!("{}/{}", target.repository_owner, target.repository_name);
+    let repo_path = format!("/repos/{repository}");
+    let repo = transport.json("GET", &repo_path, token, None)?;
+    let remote_full_name = response_string(&repo, "/full_name")?;
+    let private = repo
+        .get("private")
+        .and_then(Value::as_bool)
+        .ok_or(GitHubPublishError::InvalidProviderResponse)?;
+    if !private
+        || !remote_full_name.eq_ignore_ascii_case(&repository)
+        || !repository_visibility_matches(target, private)
+    {
+        return Err(GitHubPublishError::VerificationMismatch);
+    }
+
+    let ref_path = format!("{repo_path}/git/ref/heads/{branch}");
+    let (base_commit_sha, create_requested_ref) =
+        match transport.json("GET", &ref_path, token, None) {
+            Ok(current_ref) => (
+                response_string(&current_ref, "/object/sha")?.to_owned(),
+                false,
+            ),
+            Err(GitHubPublishError::ProviderRejected(404)) => {
+                let default_branch = response_string(&repo, "/default_branch")?;
+                let default_branch = branch_name(default_branch)?;
+                if default_branch == branch {
+                    return Err(GitHubPublishError::InvalidProviderResponse);
+                }
+                let default_ref = transport.json(
+                    "GET",
+                    &format!("{repo_path}/git/ref/heads/{default_branch}"),
+                    token,
+                    None,
+                )?;
+                (
+                    response_string(&default_ref, "/object/sha")?.to_owned(),
+                    true,
+                )
+            }
+            Err(error) => return Err(error),
+        };
+    let base_commit = transport.json(
+        "GET",
+        &format!("{repo_path}/git/commits/{base_commit_sha}"),
+        token,
+        None,
+    )?;
+    let base_tree_sha = response_string(&base_commit, "/tree/sha")?.to_owned();
+    let base_message = base_commit
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let prefix = format!("niccolo/intake/{}", intent.document_id);
+    let mut tree_entries = Vec::with_capacity(package.files.len());
+    for (path, content) in &package.files {
+        let blob = transport.json(
+            "POST",
+            &format!("{repo_path}/git/blobs"),
+            token,
+            Some(&json!({"content":content,"encoding":"utf-8"})),
+        )?;
+        let sha = response_string(&blob, "/sha")?;
+        tree_entries.push(json!({
+            "path": format!("{prefix}/{path}"),
+            "mode": "100644",
+            "type": "blob",
+            "sha": sha
+        }));
+    }
+    let tree = transport.json(
+        "POST",
+        &format!("{repo_path}/git/trees"),
+        token,
+        Some(&json!({"base_tree":base_tree_sha,"tree":tree_entries})),
+    )?;
+    let tree_sha = response_string(&tree, "/sha")?.to_owned();
+    let commit_message = expected_intake_commit_message(intent);
+
+    if !create_requested_ref && tree_sha == base_tree_sha && base_message == commit_message {
+        return Ok(VerifiedGitHubPublication {
+            commit_sha: base_commit_sha,
+            ref_name: branch,
+            repository_full_name: remote_full_name.to_owned(),
+            package_sha256: intent.package_sha256.clone(),
+            already_present: true,
+        });
+    }
+
+    let commit = transport.json(
+        "POST",
+        &format!("{repo_path}/git/commits"),
+        token,
+        Some(&json!({
+            "message":commit_message,
+            "tree":tree_sha,
+            "parents":[base_commit_sha]
+        })),
+    )?;
+    let commit_sha = response_string(&commit, "/sha")?.to_owned();
+    if !valid_remote_sha(&commit_sha) {
+        return Err(GitHubPublishError::InvalidProviderResponse);
+    }
     let updated = if create_requested_ref {
         transport.json(
             "POST",
