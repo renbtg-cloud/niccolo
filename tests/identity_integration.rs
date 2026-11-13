@@ -585,6 +585,64 @@ async fn every_event_uses_authenticated_actor_not_body_claim() {
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY); // Axum rejects unknown JSON fields
 }
 #[tokio::test]
+async fn identity_api_rejects_nil_ids_and_directional_label_spoofing() {
+    let (_, _, w, _, t, r) = fixture().await;
+    let d = upload(r.clone(), w, &t).await;
+
+    let (status, _) = call(
+        r.clone(),
+        http(
+            "POST",
+            &identity_url(w, Uuid::nil()),
+            Some(&t),
+            json!({"display_label":"Nobody"})
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let person = Uuid::new_v4();
+    let (status, _) = call(
+        r.clone(),
+        http(
+            "POST",
+            &identity_url(w, person),
+            Some(&t),
+            json!({"display_label":"Alice\u{202e}<mallory>"})
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    assert_eq!(
+        call(
+            r.clone(),
+            http(
+                "POST",
+                &identity_url(w, person),
+                Some(&t),
+                json!({"display_label":"Alice"})
+            )
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let (status, _) = call(
+        r,
+        http(
+            "POST",
+            &event_url(w, Uuid::nil()),
+            Some(&t),
+            assign(d, "Ana", person, "confirmed by human"),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn malformed_bindings_fail_closed() {
     let (admin, service, w, p, t, r) = fixture().await;
     let d = upload(r.clone(), w, &t).await;
