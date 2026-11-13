@@ -67,9 +67,14 @@ case "$(uname -s)" in
     ;;
 esac
 
+# Explicit process environment is an operator override for the listening port;
+# local.env supplies the bootstrap default.
+explicit_api_port_set="${NICCOLO_API_PORT+x}"
+explicit_api_port="${NICCOLO_API_PORT:-}"
 # Generated locally by bootstrap from UUIDs and shell-escaped values.
 # shellcheck disable=SC1091
 source "$env_file"
+[[ -z "$explicit_api_port_set" ]] || NICCOLO_API_PORT="$explicit_api_port"
 # Explicit process environment is an operator override; model.env supplies only
 # defaults for values that were not exported for this start invocation.
 explicit_model_base_set="${NICCOLO_LLM_BASE_URL+x}"; explicit_model_base="${NICCOLO_LLM_BASE_URL:-}"
