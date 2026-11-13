@@ -973,6 +973,13 @@ impl GitHubTransport for CurlGitHubTransport {
             let url = format!("https://api.github.com{path}");
             let mut command = Command::new(&self.curl_bin);
             command.args([
+                // GitHub bearer authorization must never inherit ~/.curlrc
+                // options such as redirects, URL rewrites or alternate hosts.
+                "--disable",
+                "--proto",
+                "=https",
+                "--max-redirs",
+                "0",
                 "--silent",
                 "--show-error",
                 "--max-time",
