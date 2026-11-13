@@ -61,6 +61,29 @@ export class NiccoloClient {
   identityHistory(documentId, after = 0, limit = 100) { return this.request('GET', `${documentPath(this.config, documentId)}/identity-history?after=${after}&limit=${limit}`); }
   recordIdentityEvent(eventId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/identity-events/${eventId}`, { body }); }
   ingestSource(documentId, { locator, contentType, body }) { return this.requestRaw('POST', `${sourcesPath(this.config)}/${documentId}`, { body, contentType, locator }); }
+  intakeReceiptPackage(documentId) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/intake-receipt-package`); }
+  intakeGitPublicationPreview(documentId, targetId) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/git-publication-preview?target_id=${encodeURIComponent(targetId)}`); }
+  recordIntakeGitPublicationIntent(documentId, publicationId, targetId) { return this.request('POST', `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}`, { body: { target_id: targetId } }); }
+  intakeGitPublicationRemoteStatus(documentId, publicationId) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}/remote-status`); }
+  intakeGitPublicationRemoteEvents(documentId, publicationId, limit = 25) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}/remote-events?limit=${limit}`); }
+  async publishIntakeGitPublicationIntent(documentId, publicationId, attemptId, githubToken) {
+    if (typeof githubToken !== 'string' || !githubToken || githubToken.length > 4096 || /[\\r\\n\\0]/.test(githubToken)) throw new ApiError(400, 'Invalid transient GitHub authorization');
+    const path = `${sourcesPath(this.config)}/${documentId}/git-publication-intents/${publicationId}/publish`;
+    const response = await this.fetch(path, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.config.token}`,
+        'Content-Type': 'application/json',
+        'X-Niccolo-GitHub-Authorization': `Bearer ${githubToken}`,
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ attempt_id: attemptId, confirmation: 'PUBLISH_INTAKE_RECEIPT_TO_GITHUB' }),
+    });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
+    return { value };
+  }
   addSituationSource(documentId) { return this.request('POST', `${situationPath(this.config)}/sources/${documentId}`); }
   addSituationContribution(contributionId, kind, text, relatedEvidenceId = null) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}`, { body: { kind, text, related_evidence_id: relatedEvidenceId } }); }
   correctSituationContribution(contributionId, replacementId, text, relatedEvidenceId = null) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}/corrections/${replacementId}`, { body: { text, related_evidence_id: relatedEvidenceId } }); }
