@@ -221,7 +221,15 @@ pub async fn record(
     actor: Uuid,
     input: &TemporalAssertionInput,
 ) -> Result<TemporalAssertion, TemporalStateError> {
-    if !valid_input(input) {
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || actor.is_nil()
+        || input.assertion_id.is_nil()
+        || input.evidence_id.is_some_and(|id| id.is_nil())
+        || input.contribution_id.is_some_and(|id| id.is_nil())
+        || !valid_input(input)
+    {
         return Err(TemporalStateError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -379,6 +387,9 @@ pub async fn list(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<TemporalAssertion>, TemporalStateError> {
+    if scope.workspace.is_nil() || scope.situation.is_nil() || scope.analysis.is_nil() {
+        return Err(TemporalStateError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots
@@ -447,6 +458,42 @@ mod tests {
         let mut x = sample("ROLE", "ATTRIBUTED");
         x.valid_from = Some("2026-03-01T00:00:00Z\nforged".into());
         assert!(!valid_input(&x));
+    }
+
+    #[tokio::test]
+    async fn nil_temporal_identifiers_fail_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let valid = sample("ROLE", "ATTRIBUTED");
+        assert!(matches!(
+            record(
+                &pool,
+                AnalysisScope {
+                    workspace: Uuid::nil(),
+                    situation: Uuid::new_v4(),
+                    analysis: Uuid::new_v4(),
+                },
+                Uuid::new_v4(),
+                &valid,
+            )
+            .await,
+            Err(TemporalStateError::Invalid)
+        ));
+        let mut invalid_assertion = sample("ROLE", "ATTRIBUTED");
+        invalid_assertion.assertion_id = Uuid::nil();
+        assert!(matches!(
+            record(
+                &pool,
+                AnalysisScope {
+                    workspace: Uuid::new_v4(),
+                    situation: Uuid::new_v4(),
+                    analysis: Uuid::new_v4(),
+                },
+                Uuid::new_v4(),
+                &invalid_assertion,
+            )
+            .await,
+            Err(TemporalStateError::Invalid)
+        ));
     }
 
     #[test]
