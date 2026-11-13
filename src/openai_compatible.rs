@@ -260,6 +260,11 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                         "--disable",
                         "--proto",
                         "=http,https",
+                        // Match the native adapter's 2 MiB response ceiling.
+                        // Curl enforces this even when the provider omits
+                        // Content-Length (recent curl releases).
+                        "--max-filesize",
+                        "2097152",
                         // Local model traffic must never escape through an
                         // inherited HTTP proxy, even on a misconfigured host.
                         "--noproxy",
