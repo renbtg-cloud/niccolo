@@ -1,6 +1,9 @@
 //! v0.451-v0.500: bounded proactive investigation queue.
 //! Scores are deterministic scheduling heuristics, never probability or truth.
-use crate::{analysis_structure::AnalysisScope, clarification, human_agency, human_handoff};
+use crate::{
+    analysis_structure::AnalysisScope, clarification, clarification_answer, human_agency,
+    human_handoff,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -84,6 +87,17 @@ pub async fn queue(
     )
     .await
     .map_err(dep)?;
+    // Human answers must not be resurfaced as if the same question were
+    // still awaiting an answer. The answer remains attributed context,
+    // not an upgrade to verified evidence.
+    let answered_question_ids = clarification_answer::answered_question_ids(
+        pool,
+        scope.workspace,
+        scope.situation,
+        scope.analysis,
+    )
+    .await
+    .map_err(dep)?;
     let question_values = clarification::values(
         pool,
         scope.workspace,
@@ -148,7 +162,10 @@ pub async fn queue(
             system_may_execute_external_action: false,
         });
     }
-    for q in questions {
+    for q in questions
+        .into_iter()
+        .filter(|q| !answered_question_ids.contains(&q.question_id))
+    {
         let (score, rationale) = if let Some(value) = question_values.get(&q.question_id) {
             let score = clarification_information_value(value);
             (
