@@ -156,6 +156,24 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
             return Err(ArtifactError::Invalid);
         }
     }
+    // A model may call something an OBSERVATION only when it identifies at
+    // least one examined frozen source fragment used to ground that claim.
+    // Human context can inform/qualify a claim but is deliberately not promoted
+    // to documentary evidence by the synthesis artifact.
+    for claim in &a.claims {
+        if claim.kind == "OBSERVATION"
+            && !a.source_links.iter().any(|link| {
+                link.claim_id == claim.claim_id
+                    && matches!(
+                        link.relation.as_str(),
+                        "SUPPORTS_AS_USED" | "CONTRADICTS_AS_USED" | "CONTEXT_ONLY"
+                    )
+            })
+        {
+            return Err(ArtifactError::Invalid);
+        }
+    }
+
     let mut context_links = std::collections::BTreeSet::new();
     for link in &a.context_links {
         if !claim_ids.contains(&link.claim_id)
@@ -389,4 +407,50 @@ pub async fn apply(
         replayed: !inserted,
         recorded_output_is_truth: false,
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn artifact(kind: &str, with_source_link: bool) -> SynthesisArtifact {
+        let claim_id = Uuid::new_v4();
+        SynthesisArtifact {
+            answer_text: "Bounded synthesis.".into(),
+            coverage_note: "Synthetic unit fixture.".into(),
+            claims: vec![ArtifactClaim {
+                claim_id,
+                ordinal: 1,
+                kind: kind.into(),
+                text: "The record contains an attributed statement.".into(),
+                qualification: Some("Attribution is not verified identity.".into()),
+            }],
+            source_links: with_source_link
+                .then(|| ArtifactSourceLink {
+                    claim_id,
+                    evidence_id: Uuid::new_v4(),
+                    relation: "SUPPORTS_AS_USED".into(),
+                })
+                .into_iter()
+                .collect(),
+            context_links: vec![],
+            assumptions: vec![],
+            alternatives: vec![],
+            evidence_gaps: vec![],
+            clarifications: vec![],
+        }
+    }
+
+    #[test]
+    fn observation_claim_requires_an_explicit_examined_source_link() {
+        assert!(matches!(
+            validate(&artifact("OBSERVATION", false)),
+            Err(ArtifactError::Invalid)
+        ));
+        assert!(validate(&artifact("OBSERVATION", true)).is_ok());
+        // Inferences may remain explicit hypotheses without pretending to be a
+        // directly observed source statement.
+        assert!(validate(&artifact("INFERENCE", false)).is_ok());
+    }
 }
