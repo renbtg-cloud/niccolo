@@ -748,14 +748,19 @@ mod tests {
             fragment.content.as_bytes(),
             &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
         );
-        assert!(fragment.content.contains("A flowed line \r\ncontinues here."));
+        assert!(
+            fragment
+                .content
+                .contains("A flowed line \r\ncontinues here.")
+        );
     }
 
     #[test]
     fn accepts_quoted_flowed_mime_parameters_but_not_unknown_plain_text_parameters() {
         let accepted = "From: x@example.org\nContent-Type: text/plain; charset=\"UTF-8\"; format=\"flowed\"; delsp=\"no\"\n\nbody";
         assert!(parse_source(SourceFormat::Eml, accepted.as_bytes()).is_ok());
-        let rejected = "From: x@example.org\nContent-Type: text/plain; charset=UTF-8; x-unknown=yes\n\nbody";
+        let rejected =
+            "From: x@example.org\nContent-Type: text/plain; charset=UTF-8; x-unknown=yes\n\nbody";
         assert!(matches!(
             parse_source(SourceFormat::Eml, rejected.as_bytes()),
             Err(ParseError::Unsupported("MIME parameter"))
