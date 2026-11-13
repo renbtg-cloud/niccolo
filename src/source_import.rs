@@ -634,7 +634,10 @@ mod tests {
         assert_eq!(parsed.fragments[0].speaker_label, "ana@example.org");
         assert_eq!(parsed.fragments[0].content, "Original body\r\n");
         let f = &parsed.fragments[0];
-        assert_eq!(f.content.as_bytes(), &src.as_bytes()[f.byte_start as usize..f.byte_end as usize]);
+        assert_eq!(
+            f.content.as_bytes(),
+            &src.as_bytes()[f.byte_start as usize..f.byte_end as usize]
+        );
     }
 
     #[test]
