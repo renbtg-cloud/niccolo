@@ -1071,6 +1071,28 @@ mod bounded_response_tests {
         }
     }
 
+    #[tokio::test]
+    async fn nested_failover_preserves_the_backend_that_actually_answered() {
+        let inner_primary: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(UnavailableModel);
+        let inner_fallback: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(DeterministicModel::new("deep-provider", "deep-model").unwrap());
+        let inner: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(FailoverModel::new(inner_primary, inner_fallback));
+        let outer_fallback: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(DeterministicModel::new("unused", "unused").unwrap());
+        let router = FailoverModel::new(inner, outer_fallback);
+        let request = ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: serde_json::json!({}),
+            output_contract: serde_json::json!({}),
+        };
+        let response = router.invoke(&request).await.unwrap();
+        assert_eq!(response.effective_provider.as_deref(), Some("deep-provider"));
+        assert_eq!(response.effective_model.as_deref(), Some("deep-model"));
+        assert!(response.fallback_used);
+    }
+
     #[test]
     fn budget_and_invalid_results_are_never_retried() {
         assert!(!retryable_model_error(&ModelError::Budget));
