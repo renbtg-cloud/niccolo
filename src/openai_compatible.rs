@@ -257,7 +257,9 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                         "=http,https",
                         "--silent",
                         "--show-error",
-                        "--fail-with-body",
+                        // Do not capture remote HTTP error bodies in durable logs:
+                        // they may echo source material or Authorization headers.
+                        "--fail",
                         "--max-time",
                         &max_time,
                         "--connect-timeout",
@@ -279,17 +281,17 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             .map_err(|e| ModelError::Provider(format!("curl task failed: {e}")))?
             .map_err(|e| ModelError::Provider(format!("curl launch failed: {e}")))?;
             if !output.status.success() {
+                // Provider-controlled response bodies must never become durable
+                // invocation errors. Bound diagnostics and redact any echoed key.
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
+                let safe = if self.config.api_key.is_empty() {
+                    stderr.into_owned()
+                } else {
+                    stderr.replace(&self.config.api_key, "[REDACTED]")
+                };
+                let diagnostic: String = safe.trim().chars().take(512).collect();
                 return Err(ModelError::Provider(format!(
-                    "provider HTTP request failed: {}{}{}",
-                    stderr.trim(),
-                    if stderr.is_empty() || stdout.is_empty() {
-                        ""
-                    } else {
-                        " | "
-                    },
-                    stdout.trim()
+                    "provider HTTP request failed: {diagnostic}"
                 )));
             }
             let envelope: Value = serde_json::from_slice(&output.stdout).map_err(|e| {
