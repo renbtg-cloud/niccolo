@@ -687,6 +687,68 @@ pub async fn claim_execution(
     Ok(changed == 1)
 }
 
+/// Claim one exact durable operation while atomically enforcing a workspace-wide
+/// active execution ceiling. This is the exact-scope counterpart to
+/// `claim_next_in_workspace_limited` and is used by request-scoped adaptive
+/// execution so HTTP delivery cannot oversubscribe a constrained workspace.
+pub async fn claim_execution_limited(
+    pool: &PgPool,
+    scope: OperationScope,
+    owner: &str,
+    lease_ms: i64,
+    max_active_leases: u16,
+) -> Result<bool, BffOperationError> {
+    if owner.trim().is_empty()
+        || owner.len() > 128
+        || !(1_000..=300_000).contains(&lease_ms)
+        || !(1..=512).contains(&max_active_leases)
+    {
+        return Err(BffOperationError::Invalid);
+    }
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let visible: Option<Uuid> = sqlx::query_scalar(
+        "SELECT workspace_id FROM niccolo.workspaces WHERE workspace_id=$1 FOR UPDATE",
+    )
+    .bind(scope.workspace)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if visible.is_none() {
+        return Err(BffOperationError::Invisible);
+    }
+    let active_elsewhere: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM niccolo.bff_operations \
+         WHERE workspace_id=$1 AND operation_id<>$2 \
+           AND execution_owner IS NOT NULL AND execution_lease_until >= clock_timestamp()",
+    )
+    .bind(scope.workspace)
+    .bind(scope.operation)
+    .fetch_one(&mut *tx)
+    .await?;
+    if active_elsewhere >= i64::from(max_active_leases) {
+        tx.commit().await?;
+        return Ok(false);
+    }
+    let changed = sqlx::query(
+        "UPDATE niccolo.bff_operations \
+         SET execution_owner=$4, \
+             execution_lease_until=clock_timestamp()+($5::bigint * interval '1 millisecond'), \
+             execution_attempts=execution_attempts+1, updated_at=clock_timestamp() \
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND state IN ('QUEUED','RUNNING') \
+           AND (execution_owner IS NULL OR execution_lease_until < clock_timestamp() OR execution_owner=$4)",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(owner)
+    .bind(lease_ms)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+    Ok(changed == 1)
+}
+
 pub async fn heartbeat_execution(
     pool: &PgPool,
     scope: OperationScope,
