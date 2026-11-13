@@ -879,10 +879,17 @@ pub async fn observe(
     }
     let started = tokio::time::Instant::now();
     loop {
-        let operation = get(pool, scope).await?;
+        let mut operation = get(pool, scope).await?;
         let page = events(pool, scope, after_event, event_limit).await?;
-        let operation_changed = operation.state_version > after_version;
         let events_changed = !page.events.is_empty();
+        // State and events are read through separate short transactions. A transition can
+        // commit between those reads, so an event wake-up may otherwise carry the
+        // pre-transition operation snapshot. Re-read state after observing any new event
+        // to make the returned snapshot at least as new as the event stream that woke us.
+        if events_changed {
+            operation = get(pool, scope).await?;
+        }
+        let operation_changed = operation.state_version > after_version;
         let timed_out = started.elapsed().as_millis() >= u128::from(timeout_ms);
         if operation_changed || events_changed || operation.terminal || timed_out {
             let next_after_event = page
