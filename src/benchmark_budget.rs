@@ -211,6 +211,9 @@ pub async fn reserve(
         {
             return Err(BenchmarkBudgetError::Conflict);
         }
+        if row.4 != "RESERVED" {
+            return Err(BenchmarkBudgetError::ReservationClosed);
+        }
         tx.commit().await?;
         return from_row(row, true);
     }
@@ -303,6 +306,35 @@ async fn close(
         return Err(BenchmarkBudgetError::Invalid);
     }
     let mut tx = scoped(pool, workspace).await?;
+    // Reserve acquires the policy row before touching a reservation. Close uses
+    // the same lock order to avoid a reserve/settle deadlock under concurrency.
+    let preview: Option<ReservationRow> = sqlx::query_as(
+        "SELECT reservation_id,run_id,account_subject,estimated_micro_usd,status,
+                actual_micro_usd,created_by_principal_id,closed_by_principal_id
+           FROM niccolo.benchmark_budget_reservations
+          WHERE workspace_id=$1 AND reservation_id=$2",
+    )
+    .bind(workspace)
+    .bind(reservation_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(preview) = preview else {
+        return Err(BenchmarkBudgetError::Invisible);
+    };
+    let account_subject = preview.2.clone();
+    let policy: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT monthly_spent_micro_usd,monthly_reserved_micro_usd
+           FROM niccolo.evaluation_policies
+          WHERE workspace_id=$1 AND account_subject=$2
+          FOR UPDATE",
+    )
+    .bind(workspace)
+    .bind(&account_subject)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((spent, reserved)) = policy else {
+        return Err(BenchmarkBudgetError::Invisible);
+    };
     let row: Option<ReservationRow> = sqlx::query_as(
         "SELECT reservation_id,run_id,account_subject,estimated_micro_usd,status,
                 actual_micro_usd,created_by_principal_id,closed_by_principal_id
@@ -317,6 +349,9 @@ async fn close(
     let Some(row) = row else {
         return Err(BenchmarkBudgetError::Invisible);
     };
+    if row.2 != account_subject {
+        return Err(BenchmarkBudgetError::Conflict);
+    }
     let desired_status = if actual_micro_usd.is_some() {
         "SETTLED"
     } else {
@@ -330,20 +365,6 @@ async fn close(
         }
         return Err(BenchmarkBudgetError::ReservationClosed);
     }
-
-    let policy: Option<(i64, i64)> = sqlx::query_as(
-        "SELECT monthly_spent_micro_usd,monthly_reserved_micro_usd
-           FROM niccolo.evaluation_policies
-          WHERE workspace_id=$1 AND account_subject=$2
-          FOR UPDATE",
-    )
-    .bind(workspace)
-    .bind(&row.2)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((spent, reserved)) = policy else {
-        return Err(BenchmarkBudgetError::Invisible);
-    };
     if spent < 0 || reserved < row.3 {
         return Err(BenchmarkBudgetError::Conflict);
     }
@@ -354,7 +375,7 @@ async fn close(
             .ok_or(BenchmarkBudgetError::MonthlyBudgetExceeded)?,
         None => spent,
     };
-    sqlx::query(
+    let policy_changed = sqlx::query(
         "UPDATE niccolo.evaluation_policies
             SET monthly_spent_micro_usd=$3,monthly_reserved_micro_usd=$4,
                 updated_at=clock_timestamp()
@@ -365,8 +386,29 @@ async fn close(
     .bind(new_spent)
     .bind(new_reserved)
     .execute(&mut *tx)
-    .await?;
-    sqlx::query(
+    .await?
+    .rows_affected();
+    if policy_changed != 1 {
+        return Err(BenchmarkBudgetError::Conflict);
+    }
+    if let Some(actual) = actual_micro_usd {
+        let run_changed = sqlx::query(
+            "UPDATE niccolo.benchmark_runs
+                SET actual_cost_micro_usd=$3
+              WHERE workspace_id=$1 AND run_id=$2
+                AND (actual_cost_micro_usd IS NULL OR actual_cost_micro_usd=$3)",
+        )
+        .bind(workspace)
+        .bind(row.1)
+        .bind(actual as i64)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if run_changed != 1 {
+            return Err(BenchmarkBudgetError::Conflict);
+        }
+    }
+    let reservation_changed = sqlx::query(
         "UPDATE niccolo.benchmark_budget_reservations
             SET status=$3,actual_micro_usd=$4,closed_by_principal_id=$5,
                 closed_at=clock_timestamp()
@@ -378,7 +420,11 @@ async fn close(
     .bind(actual_micro_usd.map(|value| value as i64))
     .bind(actor)
     .execute(&mut *tx)
-    .await?;
+    .await?
+    .rows_affected();
+    if reservation_changed != 1 {
+        return Err(BenchmarkBudgetError::Conflict);
+    }
     tx.commit().await?;
     Ok(BudgetReservation {
         reservation_id: row.0,

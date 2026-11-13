@@ -139,6 +139,32 @@ async fn reservation_replay_settlement_and_release_adjust_policy_exactly_once() 
     .await
     .unwrap();
     assert!(settled_replay.replayed);
+    let run_actual: Option<i64> = sqlx::query_scalar(
+        "SELECT actual_cost_micro_usd FROM niccolo.benchmark_runs
+          WHERE workspace_id=$1 AND run_id=$2",
+    )
+    .bind(h.workspace)
+    .bind(run)
+    .fetch_one(&h.admin)
+    .await
+    .unwrap();
+    assert_eq!(run_actual, Some(800));
+    assert!(matches!(
+        authz::with_auth_digest(
+            h.digest.clone(),
+            benchmark_budget::reserve(
+                &h.secure,
+                h.workspace,
+                h.actor,
+                reservation,
+                run,
+                &h.subject,
+                1000,
+            ),
+        )
+        .await,
+        Err(BenchmarkBudgetError::ReservationClosed)
+    ));
     let counters: (i64, i64) = sqlx::query_as(
         "SELECT monthly_spent_micro_usd,monthly_reserved_micro_usd
            FROM niccolo.evaluation_policies WHERE workspace_id=$1 AND account_subject=$2",
