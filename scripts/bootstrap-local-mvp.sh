@@ -71,7 +71,7 @@ admin_psql(){
   fi
 }
 
-server_version_num="$(admin_admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c 'SHOW server_version_num')"
+server_version_num="$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c 'SHOW server_version_num')"
 if ! [[ "$server_version_num" =~ ^[0-9]+$ ]] || (( server_version_num < 170000 || server_version_num >= 180000 )); then
   printf 'Niccolò local MVP requires PostgreSQL 17; connected server reports version_num=%s.\n' "$server_version_num" >&2
   exit 2
@@ -166,7 +166,7 @@ SQL
 
 workspace="$(node -p "require('node:crypto').randomUUID()")"
 principal="$(node -p "require('node:crypto').randomUUID()")"
-psql -X -q -v ON_ERROR_STOP=1 -v workspace="$workspace" "$admin_psql_url" <<'SQL'
+admin_psql -X -q -v ON_ERROR_STOP=1 -v workspace="$workspace" "$admin_psql_url" <<'SQL'
 BEGIN;
 SELECT set_config('niccolo.workspace_id', :'workspace', true);
 INSERT INTO niccolo.workspaces(workspace_id,label)
