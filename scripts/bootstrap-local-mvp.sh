@@ -118,6 +118,10 @@ if [[ -e .niccolo-local/local.env || -e .niccolo-local/token.txt ]]; then
   echo 'Local credentials already exist; refusing to overwrite them.' >&2
   exit 1
 fi
+if [[ "$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT pg_get_userbyid(datdba)=current_user FROM pg_database WHERE datname=current_database()")" != "t" ]]; then
+  echo 'Bootstrap login must own the dedicated Niccolò database.' >&2
+  exit 1
+fi
 if [[ "$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT to_regclass('niccolo.workspaces') IS NOT NULL")" != "f" ]]; then
   echo 'Database already contains Niccolo tables; use a new empty database.' >&2
   exit 1
