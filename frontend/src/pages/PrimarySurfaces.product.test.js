@@ -75,6 +75,13 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingCorrection.current.id');
   });
 
+  it('makes append-only identity mapping history navigable beyond its first page', () => {
+    expect(identities).toContain('client.identityHistory(documentId, historyCursor, 100)');
+    expect(identities).toContain('Previous mapping history');
+    expect(identities).toContain('Next mapping history');
+    expect(identities).toContain('history.data?.next_after');
+  });
+
   it('keeps the current mapping selectable when its person is outside the current identity page', () => {
     expect(identities).toContain('binding?.person_id && !current');
     expect(identities).toContain('mapped person outside this page');
