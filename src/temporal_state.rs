@@ -164,7 +164,7 @@ fn valid_input(input: &TemporalAssertionInput) -> bool {
         && input
             .valid_to
             .as_ref()
-            .is_none_or(|v| valid_text(v, 128))
+            .is_none_or(|v| valid_timestamp_text(v))
 }
 
 async fn scoped(
