@@ -19,6 +19,13 @@ describe('source upload boundary', () => {
     });
   });
 
+  it('preserves exact filename whitespace as source locator provenance', () => {
+    expect(sourceDescriptor({ name: ' mail.eml ', type: '', size: 12 })).toEqual({
+      locator: ' mail.eml ',
+      contentType: 'message/rfc822',
+    });
+  });
+
   it('does not describe arbitrary plain text as a supported source contract', () => {
     expect(() => sourceDescriptor(null)).toThrow('Choose an email (.eml) or WhatsApp export (.txt).');
     expect(() => sourceDescriptor({ name: 'notes.md', type: 'text/plain', size: 12 }))
