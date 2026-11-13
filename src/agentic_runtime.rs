@@ -373,7 +373,24 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                 json!({"type":"object","required":["purpose","status"],"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true,"human_steering_is_not_evidence":true,"human_steering_does_not_rewrite_frozen_input":true}})
             },
         };
-        let invocation = model_adapter::invoke_recorded(
+        // Re-read the live operation budget immediately before the provider
+        // call. Packet construction and deterministic checks may have consumed
+        // wall-clock time since the outer admission check.
+        let live_budget = operation_budget::require_available_for_attempts(
+            pool,
+            scope,
+            model.provider_attempt_ceiling(),
+        )
+        .await?;
+        let timeout_ms = live_budget
+            .remaining_deadline_ms
+            .map(|remaining| {
+                remaining
+                    .saturating_sub(live_budget.finalization_reserve_ms)
+                    .clamp(1, 30_000) as u64
+            })
+            .unwrap_or(30_000);
+        let invocation = model_adapter::invoke_recorded_with_policy(
             pool,
             InvocationScope {
                 operation: scope,
@@ -383,6 +400,11 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             actor,
             model,
             &request,
+            model_adapter::InvocationPolicy {
+                timeout_ms,
+                max_attempts: 1,
+                max_total_tokens: Some(live_budget.remaining_total_tokens),
+            },
         )
         .await;
         match invocation {
@@ -726,7 +748,30 @@ async fn run_until_boundary_with_resource_observer<
                 }
             }
         }
-        execute_step(pool, scope, actor, model, &step, view.plan_revision).await?;
+        match execute_step(pool, scope, actor, model, &step, view.plan_revision).await {
+            Ok(()) => {}
+            Err(RuntimeError::Budget(error)) => {
+                if let Some(reason) = budget_stop_reason(&error) {
+                    return finish_budget_boundary(
+                        pool, scope, actor, &step, completed, reason,
+                    )
+                    .await;
+                }
+                return Err(error.into());
+            }
+            Err(RuntimeError::Model(model_adapter::ModelError::Budget)) => {
+                return finish_budget_boundary(
+                    pool,
+                    scope,
+                    actor,
+                    &step,
+                    completed,
+                    "TOKEN_LIMIT",
+                )
+                .await;
+            }
+            Err(error) => return Err(error),
+        }
         completed += 1;
         record_step_checkpoint(pool, scope, actor, &step).await?;
     }
