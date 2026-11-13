@@ -87,6 +87,12 @@ pub type ModelFuture<'a> =
 pub trait ReasoningModel: Send + Sync {
     fn provider(&self) -> &str;
     fn model(&self) -> &str;
+    /// Maximum provider calls one logical invocation may make.
+    /// Runtime budget admission uses this conservative ceiling so a fallback
+    /// chain cannot exceed a hard invocation cap after a primary failure.
+    fn provider_attempt_ceiling(&self) -> u32 {
+        1
+    }
     fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a>;
 }
 
@@ -166,6 +172,12 @@ impl ReasoningModel for FailoverModel {
     }
     fn model(&self) -> &str {
         "explicit-failover-v1"
+    }
+    fn provider_attempt_ceiling(&self) -> u32 {
+        self.primary
+            .provider_attempt_ceiling()
+            .saturating_add(self.fallback.provider_attempt_ceiling())
+            .max(1)
     }
     fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
         Box::pin(async move {
@@ -1087,6 +1099,20 @@ mod bounded_response_tests {
                 assert!(result.is_err());
             }
         }
+    }
+
+    #[test]
+    fn failover_exposes_conservative_provider_attempt_ceiling() {
+        let leaf_a: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(DeterministicModel::new("a", "a").unwrap());
+        let leaf_b: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(DeterministicModel::new("b", "b").unwrap());
+        let inner: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(FailoverModel::new(leaf_a, leaf_b));
+        let leaf_c: std::sync::Arc<dyn ReasoningModel> =
+            std::sync::Arc::new(DeterministicModel::new("c", "c").unwrap());
+        let outer = FailoverModel::new(inner, leaf_c);
+        assert_eq!(outer.provider_attempt_ceiling(), 3);
     }
 
     #[tokio::test]
