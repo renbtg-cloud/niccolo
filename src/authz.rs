@@ -129,7 +129,11 @@ pub async fn provision_token(
     can_write: bool,
     days: i32,
 ) -> Result<String, AuthError> {
-    if !(1..=365).contains(&days) || (!can_read && !can_write) {
+    if principal.is_nil()
+        || workspace.is_nil()
+        || !(1..=365).contains(&days)
+        || (!can_read && !can_write)
+    {
         return Err(AuthError::InvalidCredential);
     }
     let token = format!("ncl_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
@@ -224,6 +228,21 @@ mod tests {
         assert!(credential_digest(&uppercase).is_err());
         assert!(credential_digest(&(token + "\n")).is_err());
     }
+    #[tokio::test]
+    async fn token_provisioning_rejects_nil_identity_before_database_access() {
+        // Nil UUIDs are never valid principals/workspaces. Validate before any
+        // SQL access so even a disconnected pool cannot accidentally persist them.
+        let pool = PgPool::connect_lazy("postgres://127.0.0.1:1/never").unwrap();
+        assert!(matches!(
+            provision_token(&pool, Uuid::nil(), Uuid::new_v4(), true, false, 1).await,
+            Err(AuthError::InvalidCredential)
+        ));
+        assert!(matches!(
+            provision_token(&pool, Uuid::new_v4(), Uuid::nil(), true, false, 1).await,
+            Err(AuthError::InvalidCredential)
+        ));
+    }
+
     #[test]
     fn capability_is_closed_enum() {
         assert_eq!(Capability::Read.db_value(), "read");
