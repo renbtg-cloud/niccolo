@@ -34,6 +34,10 @@ SH
 cat > "$TMP/repo/scripts/start-local-mvp.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ -z "${NICCOLO_PG_ADMIN_URL:-}" ]] || {
+  echo 'bootstrap owner URL leaked into runtime startup' >&2
+  exit 93
+}
 printf 'start:%s\n' "$*" >> "${NICCOLO_TEST_TRACE:?}"
 SH
 chmod +x "$TMP/repo/scripts/"*.sh
