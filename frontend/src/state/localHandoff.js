@@ -9,12 +9,19 @@ export function takeLocalHandoffFromFragment(locationLike, historyLike) {
   const match = HANDOFF_FRAGMENT.exec(locationLike?.hash ?? '');
   if (!match) return '';
   // Remove the capability before any network request so it cannot survive in
-  // copied links, screenshots, navigation history, or later referrers.
-  historyLike?.replaceState?.(
-    historyLike.state ?? null,
-    '',
-    `${locationLike.pathname ?? '/'}${locationLike.search ?? ''}`,
-  );
+  // copied links, screenshots, navigation history, or later referrers. If the
+  // browser cannot prove that removal succeeded, fail closed and use the
+  // ordinary manual-token fallback instead of redeeming a still-visible code.
+  if (typeof historyLike?.replaceState !== 'function') return '';
+  try {
+    historyLike.replaceState(
+      historyLike.state ?? null,
+      '',
+      `${locationLike.pathname ?? '/'}${locationLike.search ?? ''}`,
+    );
+  } catch {
+    return '';
+  }
   return match[1];
 }
 
