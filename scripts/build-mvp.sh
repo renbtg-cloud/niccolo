@@ -11,7 +11,7 @@ cd "$ROOT"
 # Fail before touching frontend dependencies if the selected build tools are absent.
 for tool in "$NPM" "$CARGO"; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    printf 'Missing build tool: %s\\n' "$tool" >&2
+    printf 'Missing build tool: %s\n' "$tool" >&2
     exit 127
   fi
 done
