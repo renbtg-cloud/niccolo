@@ -110,12 +110,14 @@ async fn scoped(
 fn valid(input: &NewCheckpoint) -> bool {
     let kind_ok = matches!(
         input.checkpoint_kind.as_str(),
-        "STEP_COMPLETED" | "HUMAN_BOUNDARY" | "BUDGET_BOUNDARY" | "FINAL"
+        "STEP_COMPLETED" | "HUMAN_BOUNDARY" | "BUDGET_BOUNDARY" | "RESOURCE_DEGRADATION" | "FINAL"
     );
     let state_ok = match input.checkpoint_kind.as_str() {
         "FINAL" => input.terminal && !input.provisional,
         "BUDGET_BOUNDARY" => input.terminal && input.provisional,
-        "STEP_COMPLETED" | "HUMAN_BOUNDARY" => !input.terminal && input.provisional,
+        "STEP_COMPLETED" | "HUMAN_BOUNDARY" | "RESOURCE_DEGRADATION" => {
+            !input.terminal && input.provisional
+        }
         _ => false,
     };
     kind_ok
