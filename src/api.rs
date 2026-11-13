@@ -4704,6 +4704,32 @@ mod tests {
         assert_eq!(bearer(&h).unwrap(), "ncl_test");
     }
     #[test]
+    fn utf8_source_locator_header_decodes_exactly_and_rejects_ambiguity() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-source-locator-percent-encoded",
+            "%E8%A8%98%E9%8C%B2-%F0%9F%93%A7.eml".parse().unwrap(),
+        );
+        assert_eq!(source_locator(&headers).unwrap(), "記録-📧.eml");
+
+        headers.insert("x-source-locator", "legacy.eml".parse().unwrap());
+        assert!(source_locator(&headers).is_err());
+    }
+
+    #[test]
+    fn percent_encoded_source_locator_rejects_malformed_utf8_controls_and_oversize() {
+        for value in ["%", "%GG", "%FF", "chat%0Aname.txt"] {
+            assert!(decode_percent_encoded_locator(value).is_err(), "{value}");
+        }
+        let oversized = "%61".repeat(1025);
+        assert!(decode_percent_encoded_locator(&oversized).is_err());
+        assert_eq!(
+            decode_percent_encoded_locator("ordinary%20chat.txt").unwrap(),
+            "ordinary chat.txt"
+        );
+    }
+
+    #[test]
     fn ambiguous_bearer_headers_are_rejected() {
         let mut headers = HeaderMap::new();
         headers.append(header::AUTHORIZATION, "Bearer token_one".parse().unwrap());
