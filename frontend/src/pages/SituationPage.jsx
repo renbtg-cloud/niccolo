@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { SourceIntakePublicationPanel } from '../components/SourceIntakePublicationPanel.jsx';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useSessionStore } from '../stores/session.js';
@@ -253,6 +254,7 @@ function ConnectedSituation({client}){
             ? <span className="status-current">Attached</span>
             : <button disabled={attach.isPending} onClick={() => attach.mutate(document.document_id)}>Attach to Situation</button>}
           {document.original_bytes_available&&<button disabled={downloadOriginal.isPending} onClick={()=>downloadOriginal.mutate(document)}>Download original</button>}
+          <SourceIntakePublicationPanel document={document}/>
         </li>)}
       </ul>
       <div className="row">
