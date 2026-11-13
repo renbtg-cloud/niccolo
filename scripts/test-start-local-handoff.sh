@@ -81,4 +81,18 @@ set -e
 grep -Fq 'Invalid local bearer token file' <<< "$bad_token"
 cp "$TMP/token.good" .niccolo-local/token.txt
 
+# The opener must validate the parsed URL origin, not just a textual prefix.
+# An authority with userinfo can appear to start with 127.0.0.1 yet target
+# an attacker-controlled host after the @ sign.
+for malicious_url in \
+  'http://127.0.0.1:38080@attacker.example/' \
+  'http://127.0.0.1:38081/' \
+  'https://127.0.0.1:38080/' \
+  'http://user@127.0.0.1:38080/'; do
+  if bash "$ROOT/scripts/open-local-mvp-browser.sh" "$malicious_url" 38080 >/dev/null 2>&1; then
+    echo "Browser opener accepted an invalid origin: $malicious_url" >&2
+    exit 1
+  fi
+done
+
 printf '%s\n' 'PASS: local browser start uses a non-bearer one-shot capability, keeps manual fallback, and rejects corrupted local bootstrap state.'
