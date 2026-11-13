@@ -32,7 +32,10 @@ export function ConnectPanel(){
    if(handoffAttempted.current||connected)return;
    handoffAttempted.current=true;
    const code=takeLocalHandoffFromFragment(window.location,window.history);
-   if(!code)return;
+   if(!code){
+     setChecking(false);
+     return;
+   }
    setChecking(true);setConnectionError('');
    void (async()=>{
      try{
