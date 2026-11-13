@@ -295,6 +295,107 @@ async fn v351_v375_reasoning_packet_separates_frozen_input_from_current_human_co
 }
 
 #[tokio::test]
+async fn reasoning_packet_keeps_each_source_fragments_together_in_source_addition_order() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+
+    for (document, locator, added_at, prefix) in [
+        (first, "fixture://packet-first", "2026-01-01T00:00:00Z", "A"),
+        (second, "fixture://packet-second", "2026-01-01T00:00:01Z", "B"),
+    ] {
+        sqlx::query(
+            "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
+             VALUES($1,$2,'WHATSAPP_EXPORT',$3,$4,4)",
+        )
+        .bind(s.workspace)
+        .bind(document)
+        .bind(locator)
+        .bind(if document == first { "b".repeat(64) } else { "c".repeat(64) })
+        .execute(&admin)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO niccolo.situation_sources(workspace_id,situation_id,document_id,added_by_principal_id,added_at)
+             VALUES($1,$2,$3,$4,$5::timestamptz)",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(document)
+        .bind(s.principal)
+        .bind(added_at)
+        .execute(&admin)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO niccolo.situation_revision_sources(workspace_id,situation_id,revision,document_id)
+             VALUES($1,$2,1,$3)",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(document)
+        .execute(&admin)
+        .await
+        .unwrap();
+
+        for ordinal in 0..2_i32 {
+            let evidence = Uuid::new_v4();
+            let content = format!("{prefix}{ordinal}");
+            sqlx::query(
+                "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class)
+                 VALUES($1,$2,$3,$4,'DIRECT_OBSERVATION')",
+            )
+            .bind(s.workspace)
+            .bind(evidence)
+            .bind(format!("{locator}#{ordinal}"))
+            .bind(&content)
+            .execute(&admin)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
+                 VALUES($1,$2,$3,$4,$5,$6,$7)",
+            )
+            .bind(s.workspace)
+            .bind(document)
+            .bind(ordinal)
+            .bind(evidence)
+            .bind(ordinal * 2)
+            .bind(ordinal * 2 + 2)
+            .bind(format!("{prefix}-speaker"))
+            .execute(&admin)
+            .await
+            .unwrap();
+        }
+    }
+
+    authz::with_auth_digest("test-digest".into(), async {
+        let packet = reasoning_packet::build(
+            &app,
+            AnalysisScope {
+                workspace: s.workspace,
+                situation: s.situation,
+                analysis: s.analysis,
+            },
+        )
+        .await
+        .unwrap();
+        let order = packet
+            .frozen_input
+            .source_fragments
+            .iter()
+            .map(|fragment| (fragment.document_id, fragment.ordinal))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            order,
+            vec![(first, 0), (first, 1), (second, 0), (second, 1)]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn reasoning_packet_clarification_budget_is_explicit_and_deterministic() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
