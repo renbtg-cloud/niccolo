@@ -41,6 +41,65 @@ pub struct SourcePage {
     pub next_after: Option<Uuid>,
 }
 
+pub async fn get_source(
+    pool: &PgPool,
+    workspace: Uuid,
+    document: Uuid,
+) -> Result<SourceMetadata, CatalogError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    let privileged: bool = sqlx::query_scalar(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if privileged {
+        return Err(CatalogError::PrivilegedRole);
+    }
+    let _: String = sqlx::query_scalar("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(workspace.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::authz::bind_auth_digest(&mut tx).await?;
+    let row: Option<(Uuid, String, String, String, i64, i64, bool)> = sqlx::query_as(
+        "SELECT d.document_id,d.format,d.locator,d.sha256,d.byte_length, \
+           (SELECT count(*) FROM niccolo.source_fragments f \
+             WHERE f.workspace_id=d.workspace_id AND f.document_id=d.document_id) AS fragment_count, \
+           EXISTS(SELECT 1 FROM niccolo.source_payloads p \
+             WHERE p.workspace_id=d.workspace_id AND p.document_id=d.document_id) AS original_bytes_available \
+         FROM niccolo.source_documents d \
+         WHERE d.workspace_id=$1 AND d.document_id=$2",
+    )
+    .bind(workspace)
+    .bind(document)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let Some((
+        document_id,
+        format,
+        locator,
+        sha256,
+        byte_length,
+        fragment_count,
+        original_bytes_available,
+    )) = row
+    else {
+        return Err(CatalogError::InvisibleDocument);
+    };
+    Ok(SourceMetadata {
+        document_id,
+        format,
+        locator,
+        sha256,
+        byte_length,
+        fragment_count,
+        original_bytes_available,
+    })
+}
+
 pub async fn list_sources(
     pool: &PgPool,
     workspace: Uuid,
