@@ -182,6 +182,32 @@ mod tests {
     }
 
     #[test]
+    fn malformed_capabilities_and_unsafe_configuration_fail_closed() {
+        let path = token_file();
+        let code = "e".repeat(64);
+        let handoff =
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
+        for malformed in ["E".repeat(64), "e".repeat(63), "g".repeat(64)] {
+            assert_eq!(handoff.consume(&malformed), Err(LocalHandoffError::NotFound));
+            assert!(matches!(
+                LocalHandoff::configured(&malformed, path.clone(), Duration::from_secs(30)),
+                Err(LocalHandoffError::NotFound)
+            ));
+        }
+        assert!(matches!(
+            LocalHandoff::configured(&code, PathBuf::from("relative.token"), Duration::from_secs(30)),
+            Err(LocalHandoffError::NotFound)
+        ));
+        assert!(matches!(
+            LocalHandoff::configured(&code, path.clone(), Duration::ZERO),
+            Err(LocalHandoffError::NotFound)
+        ));
+        assert!(handoff.consume(&code).is_ok());
+        assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn expired_capability_fails_closed() {
         let path = token_file();
         let code = "f".repeat(64);
