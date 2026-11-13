@@ -20,6 +20,25 @@ for file in "$env_file" "$ids_file" "$token_file"; do
   }
 done
 
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
+    [[ -d .niccolo-local && ! -L .niccolo-local && -O .niccolo-local ]] || {
+      echo 'Unsafe .niccolo-local directory; it must be an owner-controlled real directory.' >&2
+      exit 2
+    }
+    local_mode="$(stat -c '%a' .niccolo-local 2>/dev/null || stat -f '%Lp' .niccolo-local 2>/dev/null || true)"
+    [[ "$local_mode" =~ ^[0-7]{3,4}$ ]] || {
+      echo 'Unable to verify .niccolo-local directory permissions.' >&2
+      exit 2
+    }
+    (( (8#$local_mode & 077) == 0 )) || {
+      echo '.niccolo-local must not be accessible by group or other users.' >&2
+      exit 2
+    }
+    ;;
+esac
+
 # On Unix, bootstrap/model files containing database, bearer or provider
 # credentials must remain ordinary, owner-only files. Refuse symlinks and
 # group/world-readable secrets before sourcing any shell assignments.
