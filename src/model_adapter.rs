@@ -562,10 +562,10 @@ impl OpenAiCompatibleModel {
         };
         let (status, _headers, payload) = parse_http_response(&raw)?;
         if !(200..300).contains(&status) {
-            return Err(ModelError::Provider(format!(
-                "HTTP {status}: {}",
-                String::from_utf8_lossy(&payload)
-            )));
+            // Provider-controlled error bodies can reflect API keys, personal
+            // source text, or entire prompts. These errors enter the durable
+            // invocation ledger, so retain only the status code.
+            return Err(ModelError::Provider(format!("HTTP {status}")));
         }
         let value: Value = serde_json::from_slice(&payload)
             .map_err(|e| ModelError::Provider(format!("invalid provider JSON: {e}")))?;
