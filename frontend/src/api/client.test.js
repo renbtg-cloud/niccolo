@@ -90,6 +90,27 @@ describe('BFF client',()=>{
    expect(JSON.parse(calls[9][1].body)).toEqual({import_batch_id:'batch',item_id:'item',note:'Use only as historical context'});
  });
 
+ it('keeps received-source Git publication exact and transient',async()=>{
+   const calls=[]; const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?200:200,{package_sha256:'a'.repeat(64),events:[],status:{state:'VERIFIED_PUBLISHED'}});});
+   await x.intakeReceiptPackage('doc');
+   await x.intakeGitPublicationPreview('doc','target id');
+   await x.recordIntakeGitPublicationIntent('doc','publication','target');
+   await x.intakeGitPublicationRemoteStatus('doc','publication');
+   await x.intakeGitPublicationRemoteEvents('doc','publication',9);
+   await x.publishIntakeGitPublicationIntent('doc','publication','attempt','intake-transient-token');
+   expect(calls[0][0]).toContain('/sources/doc/intake-receipt-package');
+   expect(calls[1][0]).toContain('/sources/doc/git-publication-preview?target_id=target%20id');
+   expect(JSON.parse(calls[2][1].body)).toEqual({target_id:'target'});
+   expect(calls[3][0]).toContain('/sources/doc/git-publication-intents/publication/remote-status');
+   expect(calls[3][1].headers['X-Niccolo-GitHub-Authorization']).toBeUndefined();
+   expect(calls[4][0]).toContain('/remote-events?limit=9');
+   expect(calls[5][0]).toContain('/sources/doc/git-publication-intents/publication/publish');
+   expect(calls[5][0]).not.toContain('intake-transient-token');
+   expect(calls[5][1].headers['X-Niccolo-GitHub-Authorization']).toBe('Bearer intake-transient-token');
+   expect(JSON.parse(calls[5][1].body)).toEqual({attempt_id:'attempt',confirmation:'PUBLISH_INTAKE_RECEIPT_TO_GITHUB'});
+   expect(calls[5][1].cache).toBe('no-store');
+ });
+
  it('keeps Git publication planning local and explicit at the client boundary',async()=>{
    const calls=[]; const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,{targets:[],intents:[],package_sha256:'a'.repeat(64)});});
    await x.gitPublicationTargets();
