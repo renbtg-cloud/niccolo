@@ -1,6 +1,6 @@
 //! v0.851-v0.900: deterministic post-analysis completeness signal, not a truth score.
 use crate::{
-    adversarial_challenge, analysis_assumptions, analysis_claims,
+    adversarial_challenge, analysis_assumptions, analysis_claims, analysis_coverage,
     analysis_structure::AnalysisScope, clarification, human_agency,
 };
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,9 @@ pub struct QualityReport {
     pub clarification_count: usize,
     pub adversarial_challenge_count: usize,
     pub open_material_challenge_count: usize,
+    pub catalogued_source_fragment_count: i64,
+    pub examined_source_fragment_count: i64,
+    pub unexamined_source_fragment_count: i64,
     pub provisional: bool,
     pub human_attention_recommended: bool,
     pub completeness_is_truth_score: bool,
@@ -48,6 +51,14 @@ pub async fn report(pool: &PgPool, scope: AnalysisScope) -> Result<QualityReport
     let challenges = adversarial_challenge::list(pool, scope)
         .await
         .map_err(dep)?;
+    let source_coverage = analysis_coverage::totals(
+        pool,
+        scope.workspace,
+        scope.situation,
+        scope.analysis,
+    )
+    .await
+    .map_err(dep)?;
     let open = gaps
         .iter()
         .filter(|g| !matches!(g.state.as_str(), "SATISFIED" | "WAIVED"))
@@ -56,7 +67,10 @@ pub async fn report(pool: &PgPool, scope: AnalysisScope) -> Result<QualityReport
         .iter()
         .filter(|c| c.open && c.materiality >= 60)
         .count();
-    let provisional = open > 0 || !questions.is_empty() || material > 0;
+    let provisional = open > 0
+        || !questions.is_empty()
+        || material > 0
+        || source_coverage.unexamined_fragment_count > 0;
     Ok(QualityReport {
         claim_count: claims.len(),
         assumption_count: lens.assumptions.len(),
@@ -65,6 +79,9 @@ pub async fn report(pool: &PgPool, scope: AnalysisScope) -> Result<QualityReport
         clarification_count: questions.len(),
         adversarial_challenge_count: challenges.len(),
         open_material_challenge_count: material,
+        catalogued_source_fragment_count: source_coverage.catalogued_fragment_count,
+        examined_source_fragment_count: source_coverage.examined_fragment_count,
+        unexamined_source_fragment_count: source_coverage.unexamined_fragment_count,
         provisional,
         human_attention_recommended: provisional,
         completeness_is_truth_score: false,
