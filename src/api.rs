@@ -113,6 +113,18 @@ fn unique_header_text<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))
 }
 
+fn unsafe_locator_character(value: char) -> bool {
+    value.is_control()
+        || matches!(
+            value,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
 fn decode_percent_encoded_locator(encoded: &str) -> Result<String, ApiError> {
     if encoded.is_empty() || encoded.len() > 3 * 1024 {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
@@ -154,7 +166,7 @@ fn decode_percent_encoded_locator(encoded: &str) -> Result<String, ApiError> {
     }
     let locator = String::from_utf8(decoded)
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))?;
-    if locator.is_empty() || locator.chars().any(char::is_control) {
+    if locator.is_empty() || locator.chars().any(unsafe_locator_character) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
     }
     Ok(locator)
@@ -170,7 +182,10 @@ fn source_locator(headers: &HeaderMap) -> Result<String, ApiError> {
         )),
         (Some(value), None) => decode_percent_encoded_locator(value),
         (None, Some(value)) => {
-            if value.is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
+            if value.is_empty()
+                || value.len() > 1024
+                || value.chars().any(unsafe_locator_character)
+            {
                 Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))
             } else {
                 Ok(value.to_owned())
