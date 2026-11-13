@@ -114,7 +114,7 @@ export function IdentitiesPage() {
     queryFn: async () => (await client.effectiveIdentities(documentId)).value,
   });
   const history = useQuery({
-    queryKey: client && documentId ? qk.identityHistory(client.config, documentId) : ['identity-history','none'],
+    queryKey: client && documentId ? [...qk.identityHistory(client.config, documentId), historyCursor] : ['identity-history','none'],
     enabled: !!client && !!documentId,
     queryFn: async () => (await client.identityHistory(documentId, historyCursor, 100)).value,
   });
