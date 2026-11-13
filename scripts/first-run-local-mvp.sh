@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRIVATE_DIR="$ROOT/.niccolo-local"
 LOCAL_ENV="$PRIVATE_DIR/local.env"
+IDENTIFIERS="$PRIVATE_DIR/identifiers.txt"
+TOKEN_FILE="$PRIVATE_DIR/token.txt"
 MODEL_ENV="$PRIVATE_DIR/model.env"
 SKIP_MODEL_CONFIG=0
 START_ARGS=()
@@ -24,7 +26,20 @@ for arg in "$@"; do
   esac
 done
 
-if [[ ! -f "$LOCAL_ENV" ]]; then
+bootstrap_files=("$LOCAL_ENV" "$IDENTIFIERS" "$TOKEN_FILE")
+bootstrap_present=0
+for file in "${bootstrap_files[@]}"; do
+  [[ ! -f "$file" ]] || ((bootstrap_present += 1))
+done
+if (( bootstrap_present != 0 && bootstrap_present != ${#bootstrap_files[@]} )); then
+  cat >&2 <<'MSG'
+Niccolò local bootstrap state is incomplete. Refusing to rerun migrations or rotate credentials over a partial installation.
+Restore the matching .niccolo-local/local.env, identifiers.txt and token.txt set, or bootstrap a new dedicated database.
+MSG
+  exit 2
+fi
+
+if (( bootstrap_present == 0 )); then
   for program in psql node npm cargo rustc; do
     command -v "$program" >/dev/null || {
       printf 'Missing executable: %s\n' "$program" >&2
