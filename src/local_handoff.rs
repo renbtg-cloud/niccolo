@@ -172,7 +172,10 @@ mod tests {
             .into_iter()
             .filter(|worker| worker.join().unwrap().is_ok())
             .count();
-        assert_eq!(winners, 1, "a one-shot handoff must have exactly one winner");
+        assert_eq!(
+            winners, 1,
+            "a one-shot handoff must have exactly one winner"
+        );
         assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
         let _ = fs::remove_file(path);
     }
