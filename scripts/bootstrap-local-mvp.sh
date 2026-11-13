@@ -191,7 +191,11 @@ SITUATION_UUID="$(node -p "require('node:crypto').randomUUID()")"
 printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/identifiers.txt
 printf 'http://127.0.0.1:38080/?workspace=%s&situation=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/prepared-url.txt
 provision_bin="./target/release/niccolo-provision${ext}"
-token="$("$provision_bin" mint "$workspace" "$principal" write 30)"
+# Provisioning deliberately needs the database-owner connection, but only for
+# this child process. Keep both URL and password out of argv and restore neither
+# to the surrounding bootstrap environment.
+token="$(NICCOLO_PG_ADMIN_URL="$admin_psql_url" PGPASSWORD="$admin_pgpassword" \
+  "$provision_bin" mint "$workspace" "$principal" write 30)"
 printf '%s\n' "$token" > .niccolo-local/token.txt
 chmod 600 .niccolo-local/local.env .niccolo-local/token.txt .niccolo-local/identifiers.txt .niccolo-local/prepared-url.txt 2>/dev/null || true
 
