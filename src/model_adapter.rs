@@ -306,6 +306,24 @@ fn timeout_model_error(error: &ModelError) -> bool {
     }
 }
 
+fn durable_model_error_message(error: &ModelError) -> &'static str {
+    if budget_model_error(error) {
+        "model invocation token budget exceeded"
+    } else if timeout_model_error(error) {
+        "model invocation timed out"
+    } else {
+        match error {
+            ModelError::Invalid => "model invocation returned invalid data",
+            ModelError::Serialization(_) => "model invocation serialization failed",
+            ModelError::Database(_) => "model invocation database transition failed",
+            ModelError::Provider(_) | ModelError::ProviderChain { .. } => {
+                "model provider invocation failed"
+            }
+            ModelError::Timeout | ModelError::Budget => unreachable!("classified above"),
+        }
+    }
+}
+
 pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     pool: &PgPool,
     scope: InvocationScope,
@@ -421,7 +439,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let attempts_made = i32::try_from(failed_provider_attempts.max(1)).unwrap_or(i32::MAX);
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
     sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if timeout{"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(last_error.to_string()).bind(attempts_made).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
+      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if timeout{"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(durable_model_error_message(&last_error)).bind(attempts_made).bind(started.elapsed().as_millis() as i64).bind(budget).execute(&mut *tx).await?;
     tx.commit().await?;
     Err(last_error)
 }
@@ -1122,6 +1140,33 @@ mod bounded_response_tests {
         };
         assert!(retryable_model_error(&timeout_chain));
         assert!(timeout_model_error(&timeout_chain));
+    }
+
+    #[test]
+    fn durable_failure_messages_never_persist_provider_controlled_text() {
+        let secret = ModelError::Provider("echoed bearer secret and private prompt".into());
+        assert_eq!(
+            durable_model_error_message(&secret),
+            "model provider invocation failed"
+        );
+        assert!(!durable_model_error_message(&secret).contains("secret"));
+
+        let nested = ModelError::ProviderChain {
+            attempts: 2,
+            error: Box::new(ModelError::Provider("private source text".into())),
+        };
+        assert_eq!(
+            durable_model_error_message(&nested),
+            "model provider invocation failed"
+        );
+        assert_eq!(
+            durable_model_error_message(&ModelError::Timeout),
+            "model invocation timed out"
+        );
+        assert_eq!(
+            durable_model_error_message(&ModelError::Budget),
+            "model invocation token budget exceeded"
+        );
     }
 
     #[test]
