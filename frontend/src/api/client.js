@@ -23,7 +23,9 @@ export class NiccoloClient {
   async requestRaw(method, path, { body, contentType, locator } = {}) {
     const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
     if (contentType) headers['Content-Type'] = contentType;
-    if (locator) headers['X-Source-Locator'] = locator;
+    // Fetch header values are ByteString-constrained in browsers. Percent-encode
+    // UTF-8 filenames so non-Latin source locators never fail before upload.
+    if (locator) headers['X-Source-Locator-Percent-Encoded'] = encodeURIComponent(locator);
     const response = await this.fetch(path, { method, headers, cache: 'no-store', body });
     const value = await response.json().catch(() => ({}));
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
