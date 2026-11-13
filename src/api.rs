@@ -38,6 +38,7 @@ use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::integration_diagnostics::{self, IntegrationDiagnosticsError};
 use crate::intake_package;
+use crate::intake_git_publication::{self, IntakeGitPublicationError};
 use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
 use crate::local_handoff::{LocalHandoff, LocalHandoffError};
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
@@ -334,6 +335,14 @@ fn router_with_model_and_handoff(
         .route(
             "/v1/workspaces/{workspace}/sources/{document}/intake-receipt-package",
             get(get_intake_receipt_package),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/git-publication-preview",
+            get(get_intake_git_publication_preview),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/sources/{document}/git-publication-intents/{publication}",
+            post(record_intake_git_publication_intent),
         )
         .route(
             "/v1/workspaces/{workspace}/sources/{document}",
@@ -1174,6 +1183,108 @@ async fn list_sources(
             })).collect::<Vec<_>>(),"next_after":page.next_after
         }),
         StatusCode::OK,
+    ))
+}
+
+fn intake_git_publication_error(error: IntakeGitPublicationError) -> ApiError {
+    match error {
+        IntakeGitPublicationError::Invalid => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid intake git publication request")
+        }
+        IntakeGitPublicationError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "intake git publication identity conflict")
+        }
+        IntakeGitPublicationError::Invisible => {
+            ApiError(StatusCode::NOT_FOUND, "intake git publication intent unavailable")
+        }
+        IntakeGitPublicationError::Stale => ApiError(
+            StatusCode::CONFLICT,
+            "intake git publication intent is stale; preview and record a new intent",
+        ),
+        IntakeGitPublicationError::Source(source_catalog::CatalogError::InvisibleDocument) => {
+            ApiError(StatusCode::NOT_FOUND, "source unavailable")
+        }
+        IntakeGitPublicationError::Git(GitPublicationError::Invisible) => {
+            ApiError(StatusCode::NOT_FOUND, "git publication target unavailable")
+        }
+        IntakeGitPublicationError::Package(intake_package::IntakePackageError::Invalid)
+        | IntakeGitPublicationError::Git(GitPublicationError::Invalid) => {
+            ApiError(StatusCode::BAD_REQUEST, "invalid intake git publication request")
+        }
+        IntakeGitPublicationError::Package(intake_package::IntakePackageError::TooLarge) => {
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "intake receipt exceeds publication limit")
+        }
+        IntakeGitPublicationError::Git(GitPublicationError::Conflict)
+        | IntakeGitPublicationError::Git(GitPublicationError::Stale) => {
+            ApiError(StatusCode::CONFLICT, "intake git publication source is inconsistent")
+        }
+        IntakeGitPublicationError::Database(_)
+        | IntakeGitPublicationError::Privileged
+        | IntakeGitPublicationError::Source(_)
+        | IntakeGitPublicationError::Package(_)
+        | IntakeGitPublicationError::Git(_) => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "intake git publication planning unavailable",
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntakeGitPublicationPreviewQuery {
+    target_id: Uuid,
+}
+
+async fn get_intake_git_publication_preview(
+    State(state): State<AppState>,
+    Path((workspace, document)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<IntakeGitPublicationPreviewQuery>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let preview =
+        intake_git_publication::preview(&state.pool, workspace, document, query.target_id)
+            .await
+            .map_err(intake_git_publication_error)?;
+    Ok(no_store(json!(preview), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntakeGitPublicationIntentRequest {
+    target_id: Uuid,
+}
+
+async fn record_intake_git_publication_intent(
+    State(state): State<AppState>,
+    Path((workspace, document, publication)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<IntakeGitPublicationIntentRequest>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (intent, replayed) = intake_git_publication::record_intent(
+        &state.pool,
+        workspace,
+        document,
+        actor,
+        publication,
+        request.target_id,
+    )
+    .await
+    .map_err(intake_git_publication_error)?;
+    Ok(no_store(
+        json!({
+            "intent": intent,
+            "replayed": replayed,
+            "remote_publish_performed": false,
+            "requires_provider_authorization_before_publish": true,
+            "source_state_preserved": "RECEIVED",
+            "establishes_authenticity": false,
+            "establishes_truth": false,
+            "proves_completeness": false
+        }),
+        if replayed { StatusCode::OK } else { StatusCode::CREATED },
     ))
 }
 
