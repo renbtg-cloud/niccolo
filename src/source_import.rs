@@ -438,6 +438,24 @@ mod tests {
     }
 
     #[test]
+    fn system_notice_before_first_message_is_preserved_without_human_attribution() {
+        let src = "02/11/2026, 10:00 - Messages and calls are end-to-end encrypted.\r\n02/11/2026, 10:01 - Ana: Good morning.\r\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(
+            parsed.fragments[0].speaker_label,
+            "[WhatsApp system event — unverified]"
+        );
+        assert_eq!(parsed.fragments[1].speaker_label, "Ana");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
     fn alternate_whatsapp_date_format_and_crlf() {
         let s = "02/11/2026, 09:05 - Ana: One\r\n02/11/2026, 09:06 - Beto: Two\r\n";
         assert_eq!(
