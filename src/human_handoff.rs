@@ -176,6 +176,9 @@ pub async fn source_requests(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<SourceRequestView>, HandoffError> {
+    if scope.workspace.is_nil() || scope.situation.is_nil() || scope.analysis.is_nil() {
+        return Err(HandoffError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows:Vec<(Uuid,String,String,String,Option<String>)>=sqlx::query_as("SELECT r.request_id,r.request_text,r.source_kind,r.rationale,(SELECT e.event_kind FROM niccolo.situation_analysis_source_request_events e WHERE e.workspace_id=r.workspace_id AND e.situation_id=r.situation_id AND e.analysis_id=r.analysis_id AND e.request_id=r.request_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_source_requests r WHERE r.workspace_id=$1 AND r.situation_id=$2 AND r.analysis_id=$3 ORDER BY r.request_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
     tx.commit().await?;
@@ -277,6 +280,13 @@ pub async fn claim_assessments(
     scope: AnalysisScope,
     claim: Uuid,
 ) -> Result<Vec<ClaimAssessmentView>, HandoffError> {
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || claim.is_nil()
+    {
+        return Err(HandoffError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows:Vec<(Uuid,String,String,String)>=sqlx::query_as("SELECT assessment_id,purpose,assessment,basis_note FROM niccolo.situation_analysis_claim_assessments WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND claim_id=$4 ORDER BY created_at,assessment_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(claim).fetch_all(&mut *tx).await?;
     tx.commit().await?;
@@ -398,6 +408,9 @@ pub async fn conflicts(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<ConflictView>, HandoffError> {
+    if scope.workspace.is_nil() || scope.situation.is_nil() || scope.analysis.is_nil() {
+        return Err(HandoffError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows:Vec<(Uuid,String)>=sqlx::query_as("SELECT conflict_id,description FROM niccolo.situation_analysis_conflict_sets WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 ORDER BY conflict_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
     let mut out = Vec::with_capacity(rows.len());
@@ -428,6 +441,9 @@ pub struct HumanHandback {
     pub system_may_rewrite_goals: bool,
 }
 pub async fn handback(pool: &PgPool, scope: AnalysisScope) -> Result<HumanHandback, HandoffError> {
+    if scope.workspace.is_nil() || scope.situation.is_nil() || scope.analysis.is_nil() {
+        return Err(HandoffError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let goal_count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM niccolo.situation_goals WHERE workspace_id=$1 AND situation_id=$2",
@@ -461,4 +477,38 @@ pub fn handback_sha256(v: &HumanHandback) -> Result<String, serde_json::Error> {
         "{:x}",
         Sha256::digest(serde_json::to_string(v)?.as_bytes())
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn invalid_scope() -> AnalysisScope {
+        AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_handoff_read_scopes_fail_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://127.0.0.1:1/never").unwrap();
+        assert!(matches!(
+            source_requests(&pool, invalid_scope()).await,
+            Err(HandoffError::Invalid)
+        ));
+        assert!(matches!(
+            claim_assessments(&pool, invalid_scope(), Uuid::new_v4()).await,
+            Err(HandoffError::Invalid)
+        ));
+        assert!(matches!(
+            conflicts(&pool, invalid_scope()).await,
+            Err(HandoffError::Invalid)
+        ));
+        assert!(matches!(
+            handback(&pool, invalid_scope()).await,
+            Err(HandoffError::Invalid)
+        ));
+    }
 }
