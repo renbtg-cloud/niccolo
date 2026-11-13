@@ -4,6 +4,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/repo/scripts" "$TMP/repo/target/release" "$TMP/repo/.niccolo-local"
+chmod 700 "$TMP/repo/.niccolo-local"
 cp "$ROOT/scripts/start-local-mvp.sh" "$TMP/repo/scripts/start-local-mvp.sh"
 cat > "$TMP/repo/scripts/open-local-mvp-browser.sh" <<'SH'
 #!/usr/bin/env bash
@@ -82,6 +83,30 @@ set -e
 grep -Fq 'Invalid local bearer token file' <<< "$bad_token"
 cp "$TMP/token.good" .niccolo-local/token.txt
 chmod 600 .niccolo-local/token.txt
+
+# Unix startup refuses the state directory itself if it is exposed or redirected.
+if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
+  chmod 755 .niccolo-local
+  set +e
+  unsafe_dir="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
+  unsafe_dir_status=$?
+  set -e
+  [[ "$unsafe_dir_status" == 2 ]]
+  grep -Fq '.niccolo-local must not be accessible by group or other users.' <<< "$unsafe_dir"
+  chmod 700 .niccolo-local
+
+  mv .niccolo-local "$TMP/local-real"
+  ln -s "$TMP/local-real" .niccolo-local
+  set +e
+  unsafe_dir_link="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
+  unsafe_dir_link_status=$?
+  set -e
+  [[ "$unsafe_dir_link_status" == 2 ]]
+  grep -Fq 'Unsafe .niccolo-local directory' <<< "$unsafe_dir_link"
+  rm .niccolo-local
+  mv "$TMP/local-real" .niccolo-local
+  chmod 700 .niccolo-local
+fi
 
 # Unix startup refuses local secrets made readable by another user/group.
 if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
