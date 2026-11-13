@@ -217,24 +217,40 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
     )
 }
 
-pub async fn require_available(
-    pool: &PgPool,
-    s: OperationScope,
-) -> Result<BudgetView, BudgetError> {
-    let v = view(pool, s).await?;
+fn ensure_available(v: &BudgetView, required_provider_attempts: u32) -> Result<(), BudgetError> {
+    if required_provider_attempts == 0 {
+        return Err(BudgetError::Invalid);
+    }
     if !v.within_deadline {
         return Err(BudgetError::Deadline);
     }
     if !v.within_model_call_window {
         return Err(BudgetError::FinalizationReserve);
     }
-    if v.used_invocations >= v.max_invocations {
+    if v.remaining_invocations < i64::from(required_provider_attempts) {
         return Err(BudgetError::Invocations);
     }
     if v.used_total_tokens >= v.max_total_tokens {
         return Err(BudgetError::Tokens);
     }
+    Ok(())
+}
+
+pub async fn require_available_for_attempts(
+    pool: &PgPool,
+    s: OperationScope,
+    required_provider_attempts: u32,
+) -> Result<BudgetView, BudgetError> {
+    let v = view(pool, s).await?;
+    ensure_available(&v, required_provider_attempts)?;
     Ok(v)
+}
+
+pub async fn require_available(
+    pool: &PgPool,
+    s: OperationScope,
+) -> Result<BudgetView, BudgetError> {
+    require_available_for_attempts(pool, s, 1).await
 }
 
 #[cfg(test)]
@@ -320,6 +336,21 @@ mod tests {
         let valid = summarize(&json!({"model_budget":{"max_invocations":5}}), 0, 0, None).unwrap();
         assert_eq!(valid.max_invocations, 5);
         assert_eq!(valid.max_total_tokens, 200_000);
+    }
+
+    #[test]
+    fn failover_attempt_ceiling_must_fit_before_a_model_step_starts() {
+        let budget = json!({"model_budget":{"max_invocations":2,"max_total_tokens":200}});
+        let one_remaining = summarize(&budget, 1, 0, None).unwrap();
+        assert!(ensure_available(&one_remaining, 1).is_ok());
+        assert!(matches!(
+            ensure_available(&one_remaining, 2),
+            Err(BudgetError::Invocations)
+        ));
+        assert!(matches!(
+            ensure_available(&one_remaining, 0),
+            Err(BudgetError::Invalid)
+        ));
     }
 
     #[test]
