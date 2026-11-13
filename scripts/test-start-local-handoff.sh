@@ -33,6 +33,30 @@ printf '%s\n' 'ncl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 chmod 600 "$TMP/repo/.niccolo-local/local.env" "$TMP/repo/.niccolo-local/identifiers.txt" "$TMP/repo/.niccolo-local/token.txt"
 
 cd "$TMP/repo"
+
+occupied_port_file="$TMP/occupied-port"
+node - "$occupied_port_file" <<'NODE' &
+const fs = require('node:fs');
+const net = require('node:net');
+const server = net.createServer();
+server.listen(0, '127.0.0.1', () => {
+  fs.writeFileSync(process.argv[2], String(server.address().port));
+});
+setTimeout(() => server.close(), 10000);
+NODE
+occupied_pid=$!
+for _ in $(seq 1 40); do [[ -s "$occupied_port_file" ]] && break; sleep 0.05; done
+[[ -s "$occupied_port_file" ]]
+occupied_port="$(cat "$occupied_port_file")"
+set +e
+occupied_output="$(NICCOLO_API_PORT="$occupied_port" bash scripts/start-local-mvp.sh --no-browser 2>&1)"
+occupied_status=$?
+set -e
+[[ "$occupied_status" == 1 ]]
+grep -Fq "Local API port $occupied_port is already in use" <<< "$occupied_output"
+kill "$occupied_pid" 2>/dev/null || true
+wait "$occupied_pid" 2>/dev/null || true
+
 export NICCOLO_TEST_EXPECT_HANDOFF=1
 export NICCOLO_TEST_BROWSER_CAPTURE="$TMP/browser-url"
 export NICCOLO_TEST_SERVER_CODE="$TMP/server-code"
