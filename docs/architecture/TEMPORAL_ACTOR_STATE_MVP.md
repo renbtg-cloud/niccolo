@@ -10,4 +10,11 @@ An assertion can point to one frozen source fragment or one frozen human contrib
 
 The model-facing reasoning packet receives these qualified records with rules that forbid silently projecting later information backward, treating inferred awareness as observed knowledge, or equating formal authority with practical influence.
 
+The storage boundary enforces the same bounded theory-of-mind rule: an
+`INFERRED_AWARENESS` assertion cannot be recorded with `OBSERVED`,
+`REPORTED` or `ATTRIBUTED` qualification. It must remain `INFERRED`,
+`UNCERTAIN`, `CONTRADICTED` or `UNKNOWN`. What was observed can be stored
+as communication/access evidence separately; the leap to another actor's
+awareness remains an explicit inference.
+
 This is an instrumental observation-and-inference model. It does not require Niccolò to decide whether an actor has a mind, consciousness or a particular implementation substrate.
