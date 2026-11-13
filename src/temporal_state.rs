@@ -252,8 +252,8 @@ pub async fn record(
     // or surfacing malformed user input as a generic database failure.
     let temporal_bounds_valid: bool = sqlx::query_scalar(
         "SELECT CASE
-           WHEN $1::text IS NOT NULL AND NOT pg_input_is_valid($1::text,'timestamptz'::regtype) THEN FALSE
-           WHEN $2::text IS NOT NULL AND NOT pg_input_is_valid($2::text,'timestamptz'::regtype) THEN FALSE
+           WHEN $1::text IS NOT NULL AND NOT pg_input_is_valid($1::text,'timestamptz') THEN FALSE
+           WHEN $2::text IS NOT NULL AND NOT pg_input_is_valid($2::text,'timestamptz') THEN FALSE
            WHEN $1::text IS NOT NULL AND $2::text IS NOT NULL
              THEN $1::text::timestamptz <= $2::text::timestamptz
            ELSE TRUE
