@@ -10,6 +10,8 @@ use uuid::Uuid;
 const EXECUTION_LEASE_MS: i64 = 300_000;
 const EXECUTION_HEARTBEAT_MS: u64 = 60_000;
 const EXECUTION_HEARTBEAT_TIMEOUT_MS: u64 = 15_000;
+const ADAPTIVE_ADMISSION_RETRY_MS: u64 = 125;
+const ADAPTIVE_ADMISSION_MAX_WAIT_MS: u64 = 300_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BffExecutionError {
@@ -302,6 +304,69 @@ pub async fn execute(
         return Ok(bff_operations::get(pool, scope).await?);
     }
     run_with_owned_lease(pool, scope, actor, model, &lease_owner).await
+}
+
+/// Execute one exact operation while respecting the current resource-policy
+/// concurrency advice. This is intended for HTTP-spawned background work: the
+/// durable operation may wait for a workspace slot instead of oversubscribing
+/// memory/CPU, while duplicate delivery remains harmless through the lease.
+pub async fn execute_adaptive(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    model: &(dyn ReasoningModel + Send + Sync),
+    policy: &resource_policy::ResourcePolicy,
+) -> Result<OperationView, BffExecutionError> {
+    let lease_owner = format!("adaptive-exec-{}", Uuid::new_v4());
+    let started = tokio::time::Instant::now();
+    loop {
+        let current = bff_operations::get(pool, scope).await?;
+        if current.terminal || current.state == "WAITING_FOR_HUMAN" {
+            return Ok(current);
+        }
+
+        let resources = runtime_resources::observe()?;
+        let advice = resource_policy::advise(&resources, policy)?;
+        let claimed = if advice.apply_concurrency_automatically {
+            bff_operations::claim_execution_limited(
+                pool,
+                scope,
+                &lease_owner,
+                EXECUTION_LEASE_MS,
+                advice.recommended_parallel_operations,
+            )
+            .await?
+        } else {
+            bff_operations::claim_execution(pool, scope, &lease_owner, EXECUTION_LEASE_MS).await?
+        };
+        if claimed {
+            return run_with_owned_lease(pool, scope, actor, model, &lease_owner).await;
+        }
+
+        if started.elapsed() >= Duration::from_millis(ADAPTIVE_ADMISSION_MAX_WAIT_MS) {
+            return Ok(bff_operations::get(pool, scope).await?);
+        }
+        tokio::time::sleep(Duration::from_millis(ADAPTIVE_ADMISSION_RETRY_MS)).await;
+    }
+}
+
+/// Default self-managed policy used by the first-party HTTP background
+/// executor. Operators that run dedicated workers can pass an explicit policy
+/// to `worker_once_adaptive` instead.
+pub async fn execute_adaptive_default(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    model: &(dyn ReasoningModel + Send + Sync),
+) -> Result<OperationView, BffExecutionError> {
+    execute_adaptive(
+        pool,
+        scope,
+        actor,
+        model,
+        &resource_policy::ResourcePolicy::default(),
+    )
+    .await
 }
 
 #[cfg(test)]
