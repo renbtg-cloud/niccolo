@@ -2,7 +2,7 @@
 //! Scores are deterministic scheduling heuristics, never probability or truth.
 use crate::{
     analysis_structure::AnalysisScope, clarification, clarification_answer, human_agency,
-    human_handoff,
+    human_feedback, human_handoff,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -98,6 +98,17 @@ pub async fn queue(
     )
     .await
     .map_err(dep)?;
+    // Keep append-only human rejection meaningful, while preserving
+    // disagreement: a question stays eligible when any recorded actor's
+    // latest position is UNKNOWN or INSUFFICIENT_EVIDENCE.
+    let wholly_rejected_question_ids = human_feedback::wholly_rejected_question_ids(
+        pool,
+        scope.workspace,
+        scope.situation,
+        scope.analysis,
+    )
+    .await
+    .map_err(dep)?;
     let question_values = clarification::values(
         pool,
         scope.workspace,
@@ -164,7 +175,10 @@ pub async fn queue(
     }
     for q in questions
         .into_iter()
-        .filter(|q| !answered_question_ids.contains(&q.question_id))
+        .filter(|q| {
+            !answered_question_ids.contains(&q.question_id)
+                && !wholly_rejected_question_ids.contains(&q.question_id)
+        })
     {
         let (score, rationale) = if let Some(value) = question_values.get(&q.question_id) {
             let score = clarification_information_value(value);
