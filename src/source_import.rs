@@ -197,26 +197,30 @@ fn parse_email_header(
             if param.is_empty() {
                 continue;
             }
-            let key = param
-                .split_once('=')
-                .map(|(key, _)| key.trim())
-                .unwrap_or(param);
-            if !seen_params.insert(key) {
-                return invalid_email_header(nested, "duplicate MIME parameter");
+            let Some((key, value)) = param.split_once('=') else {
+                return invalid_email_header(nested, "MIME parameter");
+            };
+            let key = key.trim();
+            let value = value.trim().trim_matches('"');
+            if key.is_empty() || value.is_empty() || !seen_params.insert(key) {
+                return invalid_email_header(
+                    nested,
+                    if seen_params.contains(key) {
+                        "duplicate MIME parameter"
+                    } else {
+                        "MIME parameter"
+                    },
+                );
             }
-            if param != "charset=utf-8"
-                && param != "charset=us-ascii"
-                && param != "charset=\"utf-8\""
-                && param != "charset=\"us-ascii\""
+            let allowed = match key {
+                "charset" => matches!(value, "utf-8" | "us-ascii"),
                 // RFC 3676 flowed text is still plain text. We preserve the
                 // uploaded bytes exactly rather than silently reflowing them.
-                && param != "format=flowed"
-                && param != "format=\"flowed\""
-                && param != "delsp=yes"
-                && param != "delsp=no"
-                && param != "delsp=\"yes\""
-                && param != "delsp=\"no\""
-            {
+                "format" => value == "flowed",
+                "delsp" => matches!(value, "yes" | "no"),
+                _ => false,
+            };
+            if !allowed {
                 return invalid_email_header(nested, "MIME parameter");
             }
         }
@@ -756,6 +760,14 @@ mod tests {
             parse_source(SourceFormat::Eml, rejected.as_bytes()),
             Err(ParseError::Unsupported("MIME parameter"))
         ));
+    }
+
+    #[test]
+    fn accepts_optional_whitespace_around_plain_text_mime_parameter_values() {
+        let src = "From: x@example.org\nContent-Type: text/plain; charset = \"UTF-8\"; format = flowed; delsp = yes\n\nbody";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].content, "body");
     }
 
     #[test]
