@@ -38,6 +38,7 @@ describe('source upload boundary', () => {
     expect(() => sourceDescriptor({ name: 'chat.csv', type: 'text/plain', size: 12 })).toThrow(/Unsupported/);
     expect(() => sourceDescriptor({ name: 'chat.txt\nX-Bad: value', type: 'text/plain', size: 12 })).toThrow(/file name/);
     expect(() => sourceDescriptor({ name: 'chat\u0085name.txt', type: 'text/plain', size: 12 })).toThrow(/file name/);
+    expect(() => sourceDescriptor({ name: 'Alice\u202E.txt', type: 'text/plain', size: 12 })).toThrow(/file name/);
     expect(() => sourceDescriptor({ name: 'é'.repeat(520) + '.txt', type: 'text/plain', size: 12 })).toThrow(/1024/);
     expect(() => sourceDescriptor({ name: 'chat.txt', type: 'text/plain', size: 0 })).toThrow(/non-empty/);
     expect(() => sourceDescriptor({ name: 'chat.txt', type: 'text/plain', size: MAX_SOURCE_BYTES + 1 })).toThrow(/4 MiB/);
