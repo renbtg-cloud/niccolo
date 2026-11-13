@@ -17,7 +17,7 @@ export function sourceDescriptor(file) {
   if (new TextEncoder().encode(name).length > 1024 || /\p{Cc}/u.test(name)) {
     throw new Error('Source file name is invalid or exceeds 1024 UTF-8 bytes.');
   }
-  const lower = name.toLowerCase();
+  const lower = name.trim().toLowerCase();
   // The extension identifies which parser to invoke. Browser-provided MIME
   // types are advisory, and must not allow image.png to pass as a text export.
   let contentType;
