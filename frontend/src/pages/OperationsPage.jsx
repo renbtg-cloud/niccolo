@@ -14,6 +14,8 @@ import { useAnalysisOutput } from '../hooks/useAnalysisOutput.js';
 import { useOperationCheckpoints } from '../hooks/useOperationCheckpoints.js';
 import { checkpointZip } from '../state/presentationZip.js';
 import { CheckpointMilestonePublicationPanel } from '../components/CheckpointMilestonePublicationPanel.jsx';
+import { RuntimeCapacityPanel } from '../components/RuntimeCapacityPanel.jsx';
+import { useRuntimeResources } from '../hooks/useRuntimeResources.js';
 
 const intentSchema=z.object({
   mode:z.enum(['sync','async']),
@@ -88,7 +90,7 @@ export function OperationsPage(){
  const pendingLaunch=useRef(null);
  const pendingHumanResponse=useRef(null);
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
- const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const checkpoints=useOperationCheckpoints(active); const output=useAnalysisOutput(analysis,observed.operation);
+ const observed=useOperationObserver(active); const plan=useAgenticPlan(active,observed.operation?.state); const checkpoints=useOperationCheckpoints(active); const output=useAnalysisOutput(analysis,observed.operation); const resources=useRuntimeResources();
  const budget=useQuery({queryKey:client&&active?['operation-budget',client.config.workspace,client.config.situation,active]:['operation-budget','none'],enabled:!!client&&!!active,queryFn:async()=> (await client.operationBudget(active)).value,refetchInterval:observed.operation?.terminal?false:2000});
  const latestCheckpoint=checkpoints.data?.checkpoints?.at(-1)??null;
  const [milestoneKind,setMilestoneKind]=useState('FIRST_PASS');
@@ -134,6 +136,7 @@ export function OperationsPage(){
  {guide&&!guide.hasGroundingMaterial&&<p className="focus-only-note"><strong>Focus-only first pass.</strong> This is allowed. Niccolò will reason from the Situation focus without attached records or active human context. <Link to="/">Add material first</Link> if that would make the answer better grounded.</p>}
  {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. For the local MVP, run bash scripts/configure-local-model.sh, restart Niccolò, then return here.</p>}
  {readiness.error&&<p className="error" role="alert">Niccolò is not ready to analyze: {readiness.error.message}</p>}
+ <RuntimeCapacityPanel diagnostic={resources.data} pending={resources.isPending} error={resources.error}/>
  <form onSubmit={handleSubmit(v=>run.mutate(v))}>
    <label>What are you trying to do?<select {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
    <label>Goal / question (optional)<textarea {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
@@ -141,6 +144,7 @@ export function OperationsPage(){
    <button disabled={run.isPending||modelUnavailable||readiness.isPending||readiness.isError||situation.isPending||situationMissing||situationUnavailable}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
  </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error">{run.error.message}</p>}
  <AnswerPanel output={output.data} operation={observed.operation??run.data?.operation??null} error={output.error}/>
+ {(observed.operation??run.data?.operation)?.result?.completion_status==='DEGRADED_RESOURCE_PRESSURE'&&<article className="resource-degradation-note" role="status"><strong>Reasoning path reduced under critical runtime pressure.</strong><p>Niccolò deferred only reasoning steps explicitly classified as nonessential for this pass. The result remains <strong>provisional</strong>; resource pressure is not evidence quality, confidence, completeness or truth.</p>{(observed.operation??run.data?.operation)?.result?.resource_degraded_steps?.length>0&&<p><small>Deferred: {(observed.operation??run.data?.operation).result.resource_degraded_steps.map(step=>step.kind.replaceAll('_',' ').toLowerCase()).join(' · ')}</small></p>}</article>}
  {budget.data?.budget&&<details className="budget-status"><summary>Reasoning budget</summary><p><strong>{budget.data.budget.used_invocations}/{budget.data.budget.max_invocations}</strong> model call(s) used · <strong>{budget.data.budget.used_total_tokens}/{budget.data.budget.max_total_tokens}</strong> reported token(s) used.</p>{!budget.data.budget.token_usage_complete&&<p><small>Some provider calls did not report token usage; used tokens are a lower bound and remaining tokens are an upper bound.</small></p>}{budget.data.budget.stop_reasons?.length>0&&<p><strong>Model-call boundary:</strong> {budget.data.budget.stop_reasons.join(', ').replaceAll('_',' ').toLowerCase()}</p>}<small>Budget accounting limits resource use; it is not a quality, confidence, or truth score.</small></details>}
  {budget.error&&<p className="error">Reasoning budget unavailable: {budget.error.message}</p>}
  {waitingStep&&<form className="human-boundary" onSubmit={humanForm.handleSubmit(v=>respond.mutate(v))}><h3>Niccolò needs your input</h3><p>{waitingStep.label}</p><p><small>Reasoning pauses here until you respond. Your input is recorded; it is not inferred consent for any external action.</small></p><label>What should happen next?<select {...humanForm.register('decision')}><option value="CONTINUE">Continue with this understanding</option><option value="REPLAN">Reconsider the reasoning plan</option><option value="STOP">Stop this analysis</option></select></label><label>Your input<textarea aria-label="Human response" {...humanForm.register('responseText')} placeholder="Clarify, correct, or explain what you want Niccolò to consider."/></label><button disabled={respond.isPending}>{respond.isPending?'Sending…':'Send input'}</button>{humanForm.formState.errors.responseText&&<p className="error">A response is required to continue or replan, but not to stop.</p>}{respond.error&&<p className="error">{respond.error.message}</p>}</form>}
