@@ -57,12 +57,21 @@ const url = new URL(process.env.NICCOLO_BOOTSTRAP_ADMIN_URL);
 process.stdout.write(decodeURIComponent(url.password));
 NODE
 )"
+admin_pgpassword="${PGPASSWORD:-}"
 if [[ -n "$admin_url_password" ]]; then
-  export PGPASSWORD="$admin_url_password"
+  admin_pgpassword="$admin_url_password"
 fi
-unset NICCOLO_PG_ADMIN_URL admin_url_password
+unset NICCOLO_PG_ADMIN_URL admin_url_password PGPASSWORD
 
-server_version_num="$(psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c 'SHOW server_version_num')"
+admin_psql(){
+  if [[ -n "$admin_pgpassword" ]]; then
+    PGPASSWORD="$admin_pgpassword" command psql "$@"
+  else
+    command psql "$@"
+  fi
+}
+
+server_version_num="$(admin_admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c 'SHOW server_version_num')"
 if ! [[ "$server_version_num" =~ ^[0-9]+$ ]] || (( server_version_num < 170000 || server_version_num >= 180000 )); then
   printf 'Niccolò local MVP requires PostgreSQL 17; connected server reports version_num=%s.\n' "$server_version_num" >&2
   exit 2
@@ -109,14 +118,14 @@ if [[ -e .niccolo-local/local.env || -e .niccolo-local/token.txt ]]; then
   echo 'Local credentials already exist; refusing to overwrite them.' >&2
   exit 1
 fi
-if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT to_regclass('niccolo.workspaces') IS NOT NULL")" != "f" ]]; then
+if [[ "$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT to_regclass('niccolo.workspaces') IS NOT NULL")" != "f" ]]; then
   echo 'Database already contains Niccolo tables; use a new empty database.' >&2
   exit 1
 fi
 # A first-run installer must never run migrations over someone else's data.
 # The service is intended for an empty dedicated database, not just a new
 # niccolo schema inside an unrelated application database.
-if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema')")" != "t" ]]; then
+if [[ "$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema')")" != "t" ]]; then
   echo 'Database contains existing user relations; refusing first-run migrations. Use an empty dedicated database.' >&2
   exit 1
 fi
@@ -125,7 +134,7 @@ fi
 # creates niccolo_app/niccolo_api in migrations and niccolo_secure afterward.
 # Reusing any of them can fail halfway through migrations or, worse, couple
 # two installations through shared grants/passwords. Refuse before the build.
-cluster_role_conflicts="$(psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c \
+cluster_role_conflicts="$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c \
   "SELECT COALESCE(string_agg(rolname,',' ORDER BY rolname),'') FROM pg_roles WHERE rolname IN ('niccolo_app','niccolo_api','niccolo_secure')")"
 if [[ -n "$cluster_role_conflicts" ]]; then
   printf 'PostgreSQL Niccolo cluster role(s) already exist: %s; use a dedicated cluster or a supported migration.\n' \
@@ -133,7 +142,7 @@ if [[ -n "$cluster_role_conflicts" ]]; then
   exit 1
 fi
 
-if [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname=current_user")" != "t" ]]; then
+if [[ "$(admin_psql -X -At -v ON_ERROR_STOP=1 "$admin_psql_url" -c "SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname=current_user")" != "t" ]]; then
   echo 'Bootstrap database owner must have CREATEROLE so Niccolo can create its restricted runtime login; SUPERUSER is not required.' >&2
   exit 1
 fi
@@ -145,11 +154,11 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ext='.exe';; esac
 
 echo '[2/4] Apply all migrations to the fresh database'
 for migration in sql/[0-9][0-9][0-9][0-9]_*.sql; do
-  psql -X -q -v ON_ERROR_STOP=1 "$admin_psql_url" -f "$migration" >/dev/null
+  admin_psql -X -q -v ON_ERROR_STOP=1 "$admin_psql_url" -f "$migration" >/dev/null
 done
 
 echo '[3/4] Create restricted runtime PostgreSQL login'
-psql -X -q -v ON_ERROR_STOP=1 "$admin_psql_url" <<'SQL'
+admin_psql -X -q -v ON_ERROR_STOP=1 "$admin_psql_url" <<'SQL'
 \getenv secure_password NICCOLO_PG_SECURE_PASSWORD
 SELECT format('CREATE ROLE niccolo_secure LOGIN PASSWORD %L', :'secure_password') \gexec
 GRANT niccolo_api TO niccolo_secure WITH INHERIT TRUE, SET FALSE;
