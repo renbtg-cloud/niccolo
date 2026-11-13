@@ -196,9 +196,23 @@ fn package_sha256(package: &ForensicSituationExport) -> Result<String, ForensicI
 }
 
 
+fn unsafe_display_character(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
 fn valid_text(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
+    !trimmed.is_empty()
+        && value.len() <= max
+        && !value.chars().any(unsafe_display_character)
 }
 
 fn decode_hex(value: &str) -> Result<Vec<u8>, ForensicImportError> {
@@ -943,6 +957,15 @@ mod tests {
             item.origin_class == ImportedOriginClass::ImportedIdentityAssertion
                 && !item.current_credentials_establish_truth
         }));
+    }
+
+    #[test]
+    fn declared_import_origin_cannot_hide_directional_or_control_characters() {
+        assert!(valid_text("migration from old laptop", 2048));
+        assert!(!valid_text("old\nexport", 2048));
+        assert!(!valid_text("trusted\u{202e}untrusted", 2048));
+        assert!(!valid_text("trusted\u{2067}untrusted", 2048));
+        assert!(!valid_text("   ", 2048));
     }
 
     #[test]
