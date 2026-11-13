@@ -417,6 +417,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn curl_transport_rejects_response_above_two_megabytes() {
+        if Command::new("curl").arg("--version").output().is_err() {
+            panic!("curl is required for the response-size test");
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut buffer = [0u8; 8192];
+            let _ = socket.read(&mut buffer).unwrap();
+            // The declared length alone must be enough to reject the response;
+            // do not allocate or send a multi-megabyte synthetic payload.
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\nConnection: close\r\n\r\n")
+                .unwrap();
+        });
+        let model =
+            CurlOpenAiCompatibleModel::new(config(format!("http://{address}/v1"))).unwrap();
+        let error = model.invoke(&request()).await.unwrap_err().to_string();
+        server.join().unwrap();
+        assert!(
+            error.contains("curl: (63)"),
+            "an oversized response must fail at curl's download-size limit"
+        );
+    }
+
+    #[tokio::test]
     async fn failed_http_provider_never_persists_reflected_bearer_or_response_body() {
         if Command::new("curl").arg("--version").output().is_err() {
             panic!("curl is required for the provider error-boundary test");
