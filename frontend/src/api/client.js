@@ -18,6 +18,8 @@ export class NiccoloClient {
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag'), pollAfterMs: Number(response.headers.get('x-poll-after-ms')) || value.retry_after_ms || null };
   }
+  purposeHistory() { return this.request('GET', `${situationPath(this.config)}/purpose`); }
+  recordPurpose(eventId, body) { return this.request('POST', `${situationPath(this.config)}/purpose/${eventId}`, { body }); }
   async requestRaw(method, path, { body, contentType, locator } = {}) {
     const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
     if (contentType) headers['Content-Type'] = contentType;
