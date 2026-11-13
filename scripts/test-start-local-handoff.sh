@@ -94,6 +94,17 @@ port_override="$(NICCOLO_API_PORT=39001 bash scripts/start-local-mvp.sh --print-
 grep -Fq 'Open: http://127.0.0.1:39001/' <<< "$port_override"
 grep -Fq 'http://127.0.0.1:39001/' .niccolo-local/prepared-url.txt
 
+leading_zero_port="$(NICCOLO_API_PORT=03808 bash scripts/start-local-mvp.sh --print-only)"
+grep -Fq 'Open: http://127.0.0.1:3808/' <<< "$leading_zero_port"
+grep -Fq 'http://127.0.0.1:3808/' .niccolo-local/prepared-url.txt
+
+set +e
+huge_port="$(NICCOLO_API_PORT=999999999999999999999999 bash scripts/start-local-mvp.sh --print-only 2>&1)"
+huge_port_status=$?
+set -e
+[[ "$huge_port_status" == 2 ]]
+grep -Fq 'NICCOLO_API_PORT must be an integer from 1 to 65535.' <<< "$huge_port"
+
 printf '%s\n' "export WORKSPACE_UUID='not-a-uuid'" "export SITUATION_UUID='22222222-2222-4222-8222-222222222222'" > .niccolo-local/identifiers.txt
 set +e
 bad_id="$(bash scripts/start-local-mvp.sh --print-only 2>&1)"
