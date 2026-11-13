@@ -280,7 +280,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     if ![day, month, year, hour, minute]
         .iter()
         .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
-        || hour.len() != 2
+        || hour.len() > 2
         || minute.len() != 2
         || year.len() < 2
     {
@@ -453,6 +453,16 @@ mod tests {
                 &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
             );
         }
+    }
+
+    #[test]
+    fn single_digit_hours_in_local_whatsapp_exports_remain_attributed() {
+        let src = "[02/11/2026, 9:05] Ana: Morning.\n[02/11/2026, 10:05] Beto: Hello.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        assert!(!looks_like_datetime("02/11/2026, 25:05"));
     }
 
     #[test]
