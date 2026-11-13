@@ -707,7 +707,13 @@ async fn run_until_boundary_with_resource_observer<
             continue;
         }
         if step_requires_model(&step) {
-            match operation_budget::require_available(pool, scope).await {
+            match operation_budget::require_available_for_attempts(
+                pool,
+                scope,
+                model.provider_attempt_ceiling(),
+            )
+            .await
+            {
                 Ok(_) => {}
                 Err(error) => {
                     if let Some(reason) = budget_stop_reason(&error) {
