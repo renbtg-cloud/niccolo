@@ -10,23 +10,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - name: Pack exact green MVP checkpoint with Git history
+          fetch-depth: 1
+      - name: Pack pinned MVP checkpoint
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin 78283bc9cf426ed7141143e9fa779df7301a44cd
-          git checkout --detach 78283bc9cf426ed7141143e9fa779df7301a44cd
-          test "$(git rev-parse HEAD)" = '78283bc9cf426ed7141143e9fa779df7301a44cd'
-          git archive --format=tar.gz --output=niccolo-vm-source.tar.gz HEAD
-          git bundle create niccolo-vm.bundle HEAD
-          printf '%s\n' '78283bc9cf426ed7141143e9fa779df7301a44cd' > niccolo-source-commit.txt
-          sha256sum niccolo-vm-source.tar.gz niccolo-vm.bundle
+          git fetch --no-tags --depth=1 origin 06c9495429b3b8cc26c26b359225e9bfb17ed563
+          test "$(git rev-parse FETCH_HEAD)" = '06c9495429b3b8cc26c26b359225e9bfb17ed563'
+          git archive --format=tar.gz --output=niccolo-vm-source.tar.gz FETCH_HEAD
+          printf '%s\n' '06c9495429b3b8cc26c26b359225e9bfb17ed563' > niccolo-source-commit.txt
+          sha256sum niccolo-vm-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: niccolo-vm-source
           path: |
             niccolo-vm-source.tar.gz
-            niccolo-vm.bundle
             niccolo-source-commit.txt
           retention-days: 1
