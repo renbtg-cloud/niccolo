@@ -14,6 +14,8 @@ pub enum HandoffError {
     Privileged,
     #[error("invalid handoff input")]
     Invalid,
+    #[error("handoff replay conflicts with stored content")]
+    Conflict,
 }
 async fn scoped(
     pool: &PgPool,
@@ -76,15 +78,47 @@ pub async fn propose_source_request(
     scope: AnalysisScope,
     r: &SourceRequestInput,
 ) -> Result<(), HandoffError> {
-    if !valid(&r.text)
+    if scope.workspace.is_nil()
+        || scope.situation.is_nil()
+        || scope.analysis.is_nil()
+        || r.request_id.is_nil()
+        || r.proposed_by.is_nil()
+        || !valid(&r.text)
         || r.source_kind.trim().is_empty()
         || r.source_kind.len() > 256
         || !valid(&r.rationale)
     {
         return Err(HandoffError::Invalid);
     }
+    let text = r.text.trim();
+    let source_kind = r.source_kind.trim();
+    let rationale = r.rationale.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_analysis_source_requests(workspace_id,situation_id,analysis_id,request_id,request_text,source_kind,rationale,proposed_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(r.request_id).bind(&r.text).bind(&r.source_kind).bind(&r.rationale).bind(r.proposed_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_source_requests(workspace_id,situation_id,analysis_id,request_id,request_text,source_kind,rationale,proposed_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(r.request_id)
+        .bind(text)
+        .bind(source_kind)
+        .bind(rationale)
+        .bind(r.proposed_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(String, String, String, Uuid)> = sqlx::query_as(
+        "SELECT request_text,source_kind,rationale,proposed_by_principal_id
+           FROM niccolo.situation_analysis_source_requests
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND request_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(r.request_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((text.into(), source_kind.into(), rationale.into(), r.proposed_by)) {
+        return Err(HandoffError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
