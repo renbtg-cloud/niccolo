@@ -185,6 +185,7 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     let mut a_ids = std::collections::BTreeSet::new();
     for x in &a.assumptions {
         if !a_ids.insert(x.assumption_id)
+            || x.claim_id.is_some_and(|claim_id| !claim_ids.contains(&claim_id))
             || !valid_text(&x.statement, 4096)
             || !valid_text(&x.basis_note, 4096)
         {
@@ -194,6 +195,7 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     let mut alt_ids = std::collections::BTreeSet::new();
     for x in &a.alternatives {
         if !alt_ids.insert(x.alternative_id)
+            || !claim_ids.contains(&x.claim_id)
             || !valid_text(&x.text, 4096)
             || !valid_text(&x.rationale, 4096)
         {
@@ -203,6 +205,7 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     let mut gap_ids = std::collections::BTreeSet::new();
     for x in &a.evidence_gaps {
         if !gap_ids.insert(x.gap_id)
+            || x.claim_id.is_some_and(|claim_id| !claim_ids.contains(&claim_id))
             || !valid_text(&x.description, 4096)
             || x.requested_source_kind
                 .as_ref()
@@ -436,6 +439,37 @@ mod tests {
             evidence_gaps: vec![],
             clarifications: vec![],
         }
+    }
+
+    #[test]
+    fn nested artifact_records_cannot_reference_claims_outside_the_artifact() {
+        let mut value = artifact("INFERENCE", false);
+        let foreign = Uuid::new_v4();
+        value.assumptions.push(ArtifactAssumption {
+            assumption_id: Uuid::new_v4(),
+            claim_id: Some(foreign),
+            statement: "Foreign claim assumption".into(),
+            basis_note: "Must not cross-link outside this artifact.".into(),
+        });
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
+
+        let mut value = artifact("INFERENCE", false);
+        value.alternatives.push(ArtifactAlternative {
+            alternative_id: Uuid::new_v4(),
+            claim_id: foreign,
+            text: "Foreign alternative".into(),
+            rationale: "Must reference a claim emitted in this artifact.".into(),
+        });
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
+
+        let mut value = artifact("INFERENCE", false);
+        value.evidence_gaps.push(ArtifactGap {
+            gap_id: Uuid::new_v4(),
+            claim_id: Some(foreign),
+            description: "Foreign gap".into(),
+            requested_source_kind: None,
+        });
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
     }
 
     #[test]
