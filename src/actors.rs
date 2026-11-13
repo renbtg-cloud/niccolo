@@ -144,7 +144,11 @@ pub async fn create(
     actor_id: Uuid,
     display_label: &str,
 ) -> Result<(ActorView, bool), ActorError> {
-    if !valid_label(display_label, 512) {
+    if workspace.is_nil()
+        || actor.is_nil()
+        || actor_id.is_nil()
+        || !valid_label(display_label, 512)
+    {
         return Err(ActorError::Invalid);
     }
     let display_label = display_label.trim();
@@ -227,7 +231,11 @@ pub async fn record_kind(
     actor_kind: Option<&str>,
     rationale: &str,
 ) -> Result<ActorEvent, ActorError> {
-    if !valid_note(rationale, 2048)
+    if workspace.is_nil()
+        || recorder.is_nil()
+        || actor_id.is_nil()
+        || event_id.is_nil()
+        || !valid_note(rationale, 2048)
         || actor_kind.is_some_and(|kind| !valid_kind(kind))
     {
         return Err(ActorError::Invalid);
@@ -306,7 +314,14 @@ pub async fn bind_source_speaker(
     actor_id: Option<Uuid>,
     rationale: &str,
 ) -> Result<ActorBinding, ActorError> {
-    if !valid_label(speaker_label, 512) || !valid_note(rationale, 2048) {
+    if workspace.is_nil()
+        || recorder.is_nil()
+        || document_id.is_nil()
+        || event_id.is_nil()
+        || actor_id.is_some_and(|id| id.is_nil())
+        || !valid_label(speaker_label, 512)
+        || !valid_note(rationale, 2048)
+    {
         return Err(ActorError::Invalid);
     }
     let operation = if actor_id.is_some() { "ASSIGN" } else { "CLEAR" };
@@ -447,6 +462,49 @@ mod tests {
         assert!(valid_note("Correction after review.\nSecond line.", 2048));
         assert!(!valid_note("Correction\u{202e}spoof", 2048));
         assert!(!valid_note("Correction\u{1b}[2J", 2048));
+    }
+
+    #[tokio::test]
+    async fn nil_actor_identifiers_fail_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        assert!(matches!(
+            create(
+                &pool,
+                Uuid::nil(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                "Actor"
+            )
+            .await,
+            Err(ActorError::Invalid)
+        ));
+        assert!(matches!(
+            record_kind(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::nil(),
+                Uuid::new_v4(),
+                Some("HUMAN"),
+                "Human-confirmed classification."
+            )
+            .await,
+            Err(ActorError::Invalid)
+        ));
+        assert!(matches!(
+            bind_source_speaker(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::nil(),
+                "Ana",
+                Uuid::new_v4(),
+                None,
+                "Mapping correction."
+            )
+            .await,
+            Err(ActorError::Invalid)
+        ));
     }
 
     #[test]
