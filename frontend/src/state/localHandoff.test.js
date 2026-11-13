@@ -27,6 +27,14 @@ describe('local one-shot handoff', () => {
     expect(history.replaceState).not.toHaveBeenCalled();
   });
 
+  it('does not redeem a capability if fragment removal is unavailable or fails', () => {
+    const location = { pathname: '/', search: '?workspace=w', hash: `#handoff=${code}` };
+    expect(takeLocalHandoffFromFragment(location, {})).toBe('');
+    expect(takeLocalHandoffFromFragment(location, {
+      replaceState: () => { throw new Error('history unavailable'); },
+    })).toBe('');
+  });
+
   it('redeems through a same-origin no-store POST and accepts only bearer-shaped output', async () => {
     const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({ token }) }));
     await expect(redeemLocalHandoff(code, fetchImpl)).resolves.toBe(token);
