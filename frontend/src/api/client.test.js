@@ -28,11 +28,20 @@ describe('BFF client',()=>{
    await x.addSituationSource('doc');
    expect(calls[0][0]).toContain('/v1/workspaces/11111111-1111-4111-8111-111111111111/sources/doc');
    expect(calls[0][1].headers['Content-Type']).toBe('text/plain');
-   expect(calls[0][1].headers['X-Source-Locator']).toBe('chat.txt');
+   expect(calls[0][1].headers['X-Source-Locator-Percent-Encoded']).toBe('chat.txt');
+   expect(calls[0][1].headers['X-Source-Locator']).toBeUndefined();
    expect(calls[0][1].body).toBe(raw);
    expect(calls[1][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/sources/doc');
    expect(calls[1][1].method).toBe('POST');
  });
+ it('percent-encodes Unicode source locators into an ASCII-safe upload header',async()=>{
+   const calls=[];
+   const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(201,{document_id:'doc'});});
+   await x.ingestSource('doc',{locator:'記録-📧.eml',contentType:'message/rfc822',body:new Uint8Array([65])});
+   expect(calls[0][1].headers['X-Source-Locator-Percent-Encoded']).toBe('%E8%A8%98%E9%8C%B2-%F0%9F%93%A7.eml');
+   expect(calls[0][1].headers['X-Source-Locator']).toBeUndefined();
+ });
+
  it('keeps purpose history append-only at the client boundary',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,{events:[],purpose_is_evidence:false,purpose_changes_rewrite_history:false});});
