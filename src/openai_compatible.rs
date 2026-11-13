@@ -405,7 +405,7 @@ mod tests {
             let _ = socket.read(&mut buffer).unwrap();
             let response_body = "echoed-secret-test-key and private-source-leak";
             let response = format!(
-                "HTTP/1.1 401 Unauthorized\\r\\nContent-Type: text/plain\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\\r\\n{}",
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 response_body.len(),
                 response_body
             );
