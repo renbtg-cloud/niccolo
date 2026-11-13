@@ -16,6 +16,27 @@ for program in psql node npm cargo rustc; do
   }
 done
 
+# Validate the URL shape before any PostgreSQL command. psql accepts several
+# non-URL conninfo syntaxes that the later runtime-URL derivation cannot safely
+# transform; discovering that only after migrations would strand a partial install.
+if ! NICCOLO_BOOTSTRAP_ADMIN_URL="$NICCOLO_PG_ADMIN_URL" node - <<'NODE'
+const raw = process.env.NICCOLO_BOOTSTRAP_ADMIN_URL ?? '';
+try {
+  if (!raw || /[\r\n\0]/.test(raw) || /\s/.test(raw)) process.exit(2);
+  const url = new URL(raw);
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) ||
+      !url.hostname || !url.pathname || url.pathname === '/' || url.hash) {
+    process.exit(2);
+  }
+} catch {
+  process.exit(2);
+}
+NODE
+then
+  echo 'NICCOLO_PG_ADMIN_URL must be a PostgreSQL URL with an explicit host and database name.' >&2
+  exit 2
+fi
+
 server_version_num="$(psql -X -At -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" -c 'SHOW server_version_num')"
 if ! [[ "$server_version_num" =~ ^[0-9]+$ ]] || (( server_version_num < 170000 || server_version_num >= 180000 )); then
   printf 'Niccolò local MVP requires PostgreSQL 17; connected server reports version_num=%s.\n' "$server_version_num" >&2
