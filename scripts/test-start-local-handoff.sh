@@ -27,7 +27,7 @@ else
 fi
 SH
 chmod +x "$TMP/repo/scripts/"*.sh "$TMP/repo/target/release/niccolo-api"
-printf '%s\n' "export NICCOLO_PG_SECURE_URL='postgres://runtime'" > "$TMP/repo/.niccolo-local/local.env"
+printf '%s\n' "export NICCOLO_PG_SECURE_URL='postgres://runtime'" "export NICCOLO_API_PORT=38080" > "$TMP/repo/.niccolo-local/local.env"
 printf '%s\n' "export WORKSPACE_UUID='11111111-1111-4111-8111-111111111111'" "export SITUATION_UUID='22222222-2222-4222-8222-222222222222'" > "$TMP/repo/.niccolo-local/identifiers.txt"
 printf '%s\n' 'ncl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$TMP/repo/.niccolo-local/token.txt"
 chmod 600 "$TMP/repo/.niccolo-local/local.env" "$TMP/repo/.niccolo-local/identifiers.txt" "$TMP/repo/.niccolo-local/token.txt"
@@ -65,6 +65,10 @@ bad_port_status=$?
 set -e
 [[ "$bad_port_status" == 2 ]]
 grep -Fq 'NICCOLO_API_PORT must be an integer from 1 to 65535.' <<< "$bad_port"
+
+port_override="$(NICCOLO_API_PORT=39001 bash scripts/start-local-mvp.sh --print-only)"
+grep -Fq 'Open: http://127.0.0.1:39001/' <<< "$port_override"
+grep -Fq 'http://127.0.0.1:39001/' .niccolo-local/prepared-url.txt
 
 printf '%s\n' "export WORKSPACE_UUID='not-a-uuid'" "export SITUATION_UUID='22222222-2222-4222-8222-222222222222'" > .niccolo-local/identifiers.txt
 set +e
