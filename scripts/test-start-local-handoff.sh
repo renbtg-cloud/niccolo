@@ -95,4 +95,32 @@ for malicious_url in \
   fi
 done
 
+# Startup must reject process-level model overrides that runtime would refuse,
+# rather than launching successfully and failing only when Analyze is clicked.
+for invalid_base in \
+  'http://provider.example/v1' \
+  'https://user:pass@provider.example/v1' \
+  'https://provider.example/v1?secret=x' \
+  'https://provider.example/v1#fragment'; do
+  set +e
+  invalid_model="$(
+    NICCOLO_LLM_BASE_URL="$invalid_base" NICCOLO_LLM_MODEL='model' NICCOLO_LLM_API_KEY='test-key' \
+      bash scripts/start-local-mvp.sh --print-only 2>&1
+  )"
+  invalid_model_status=$?
+  set -e
+  [[ "$invalid_model_status" == 2 ]]
+  grep -Fq 'Reasoning model: INVALID CONFIGURATION' <<< "$invalid_model"
+done
+
+set +e
+missing_remote_key="$(
+  NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='model' NICCOLO_LLM_API_KEY='' \
+    bash scripts/start-local-mvp.sh --print-only 2>&1
+)"
+missing_remote_key_status=$?
+set -e
+[[ "$missing_remote_key_status" == 2 ]]
+grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' <<< "$missing_remote_key"
+
 printf '%s\n' 'PASS: local browser start uses a non-bearer one-shot capability, keeps manual fallback, and rejects corrupted local bootstrap state.'
