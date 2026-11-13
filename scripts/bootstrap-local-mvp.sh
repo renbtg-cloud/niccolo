@@ -35,6 +35,30 @@ if [[ "$NICCOLO_PG_SECURE_PASSWORD" =~ [[:cntrl:]] ]]; then
   echo 'NICCOLO_PG_SECURE_PASSWORD contains unsupported control characters.' >&2
   exit 2
 fi
+
+# Establish the private local state directory before any database mutation.
+# On Unix, refuse a symlink, foreign owner, or group/world-accessible directory
+# so generated database and bearer credentials cannot be redirected or exposed.
+mkdir -p .niccolo-local
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
+    [[ -d .niccolo-local && ! -L .niccolo-local && -O .niccolo-local ]] || {
+      echo 'Unsafe .niccolo-local directory; it must be an owner-controlled real directory.' >&2
+      exit 2
+    }
+    local_mode="$(stat -c '%a' .niccolo-local 2>/dev/null || stat -f '%Lp' .niccolo-local 2>/dev/null || true)"
+    [[ "$local_mode" =~ ^[0-7]{3,4}$ ]] || {
+      echo 'Unable to verify .niccolo-local directory permissions.' >&2
+      exit 2
+    }
+    (( (8#$local_mode & 077) == 0 )) || {
+      echo '.niccolo-local must not be accessible by group or other users.' >&2
+      exit 2
+    }
+    ;;
+esac
+
 if [[ -e .niccolo-local/local.env || -e .niccolo-local/token.txt ]]; then
   echo 'Local credentials already exist; refusing to overwrite them.' >&2
   exit 1
@@ -96,7 +120,6 @@ COMMIT;
 SQL
 
 echo '[4/4] Issue private workspace token and write local runtime configuration'
-mkdir -p .niccolo-local
 runtime_url="$(node -e '
 const u = new URL(process.env.NICCOLO_PG_ADMIN_URL);
 u.username = "niccolo_secure";
