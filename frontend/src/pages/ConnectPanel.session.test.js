@@ -39,4 +39,10 @@ describe('connection boundary', () => {
     expect(source).toContain('.niccolo-local/token.txt');
     expect(source).toContain('Bearer tokens are never placed in the URL or persisted.');
   });
+
+  it('returns to manual connection if the capability cannot be removed safely', () => {
+    expect(source).toContain('if(!code){');
+    expect(source).toContain('setChecking(false);');
+    expect(source.indexOf('if(!code){')).toBeLessThan(source.indexOf('await redeemLocalHandoff(code)'));
+  });
 });
