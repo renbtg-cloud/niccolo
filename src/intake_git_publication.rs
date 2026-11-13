@@ -678,4 +678,47 @@ mod tests {
         assert!(bytes > 0);
         assert!(bytes <= 65_536);
     }
+
+
+    #[test]
+    fn remote_event_shape_rejects_unverified_or_ambiguous_records() {
+        let publication_id = Uuid::from_u128(31);
+        let event_id = Uuid::from_u128(32);
+        let accepted = RemoteEventInput {
+            event_id,
+            publication_id,
+            kind: RemoteEventKind::PushAccepted,
+            remote_commit_sha: Some("a".repeat(40)),
+            observed_ref: None,
+            failure_class: None,
+        };
+        assert!(validate_remote_event(&accepted).is_ok());
+
+        let mut ambiguous = accepted.clone();
+        ambiguous.observed_ref = Some("main".into());
+        assert!(matches!(
+            validate_remote_event(&ambiguous),
+            Err(IntakeGitPublicationError::Invalid)
+        ));
+
+        let verified = RemoteEventInput {
+            event_id,
+            publication_id,
+            kind: RemoteEventKind::RefVerified,
+            remote_commit_sha: Some("b".repeat(40)),
+            observed_ref: Some("intake".into()),
+            failure_class: None,
+        };
+        assert!(validate_remote_event(&verified).is_ok());
+
+        let failed = RemoteEventInput {
+            event_id,
+            publication_id,
+            kind: RemoteEventKind::PublishFailed,
+            remote_commit_sha: None,
+            observed_ref: None,
+            failure_class: Some("TRANSPORT".into()),
+        };
+        assert!(validate_remote_event(&failed).is_ok());
+    }
 }
