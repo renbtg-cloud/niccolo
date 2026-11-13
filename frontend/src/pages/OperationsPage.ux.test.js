@@ -5,6 +5,7 @@ const operations = readFileSync(new URL('./OperationsPage.jsx', import.meta.url)
 const situation = readFileSync(new URL('./SituationPage.jsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const checkpointHook = readFileSync(new URL('../hooks/useOperationCheckpoints.js', import.meta.url), 'utf8');
+const observerHook = readFileSync(new URL('../hooks/useOperationObserver.js', import.meta.url), 'utf8');
 
 describe('primary analysis path', () => {
   it('presents analysis as the primary action while keeping execution plumbing advanced', () => {
@@ -89,6 +90,13 @@ describe('primary analysis path', () => {
     expect(checkpointHook).toContain('checkpoints.push(...additions)');
     expect(checkpointHook).toContain('checkpoint.checkpoint_seq > after');
     expect(checkpointHook).toContain('catchup_bounded: Boolean(nextAfter)');
+  });
+
+  it('drains full terminal event pages before stopping operation observation', () => {
+    expect(observerHook).toContain('OBSERVATION_EVENT_LIMIT = 100');
+    expect(observerHook).toContain('eventPageNeedsCatchup(incoming, OBSERVATION_EVENT_LIMIT)');
+    expect(observerHook).toContain('eventsCatchupPending');
+    expect(observerHook).toContain('if (q.state.data?.eventsCatchupPending) return 50');
   });
 
   it('keeps durable anytime checkpoints in technical inspection with explicit non-truth semantics', () => {
