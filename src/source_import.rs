@@ -192,9 +192,19 @@ fn parse_email_header(
         if pieces.next() != Some("text/plain") {
             return invalid_email_header(nested, "non-plain-text MIME");
         }
+        let mut seen_params = std::collections::BTreeSet::new();
         for param in pieces {
-            if !param.is_empty()
-                && param != "charset=utf-8"
+            if param.is_empty() {
+                continue;
+            }
+            let key = param
+                .split_once('=')
+                .map(|(key, _)| key.trim())
+                .unwrap_or(param);
+            if !seen_params.insert(key) {
+                return invalid_email_header(nested, "duplicate MIME parameter");
+            }
+            if param != "charset=utf-8"
                 && param != "charset=us-ascii"
                 && param != "charset=\"utf-8\""
                 && param != "charset=\"us-ascii\""
@@ -746,6 +756,21 @@ mod tests {
             parse_source(SourceFormat::Eml, rejected.as_bytes()),
             Err(ParseError::Unsupported("MIME parameter"))
         ));
+    }
+
+    #[test]
+    fn rejects_duplicate_plain_text_mime_parameters() {
+        for content_type in [
+            "text/plain; charset=UTF-8; charset=US-ASCII",
+            "text/plain; format=flowed; format=\"flowed\"",
+            "text/plain; format=flowed; delsp=yes; delsp=no",
+        ] {
+            let src = format!("From: x@example.org\nContent-Type: {content_type}\n\nbody");
+            assert!(matches!(
+                parse_source(SourceFormat::Eml, src.as_bytes()),
+                Err(ParseError::Unsupported("duplicate MIME parameter"))
+            ));
+        }
     }
 
     #[test]
