@@ -140,16 +140,13 @@ function ConnectedSituation({client}){
       for (const [index, selected] of selectedFiles.entries()) {
         const descriptor = descriptors[index];
         setUploadProgress({ done: index, total: selectedFiles.length, current: selected.name });
-        const signature = JSON.stringify([
-          selected.name,
-          selected.size,
-          selected.lastModified ?? null,
-          descriptor.contentType,
-        ]);
-        let documentId = pendingDocumentIds.current.get(signature);
+        // Keep one id per actual File object. Two selected files can have the
+        // same name/size/mtime yet different bytes; metadata keys would alias
+        // them and turn the second upload into a false idempotency conflict.
+        let documentId = pendingDocumentIds.current.get(selected);
         if (!documentId) {
           documentId = crypto.randomUUID();
-          pendingDocumentIds.current.set(signature, documentId);
+          pendingDocumentIds.current.set(selected, documentId);
         }
         const ingested = await client.ingestSource(documentId, {
           locator: descriptor.locator,
