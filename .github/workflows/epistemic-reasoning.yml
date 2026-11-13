@@ -120,6 +120,8 @@ jobs:
         run: cargo test --locked --features pg-integration --test human_credence_integration -- --nocapture
       - name: Run source-grounded claim scoring integration
         run: cargo test --locked --features pg-integration --test grounded_claim_weights_integration -- --nocapture
+      - name: Run intake receipt publication integration
+        run: cargo test --locked --features pg-integration --test intake_git_publication_integration -- --nocapture
       - name: Run full PostgreSQL integration regression with bounded concurrency
         run: cargo test --locked --features pg-integration --tests -- --test-threads=2
       - name: Run canonical Aurelius & Finch demonstration
