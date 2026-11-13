@@ -1690,6 +1690,85 @@ async fn v1201_v1300_failover_records_the_provider_that_actually_answered() {
  }).await;
 }
 
+#[derive(Clone)]
+struct TokenHeavyModel;
+impl model_adapter::ReasoningModel for TokenHeavyModel {
+    fn provider(&self) -> &str {
+        "token-heavy-test"
+    }
+    fn model(&self) -> &str {
+        "token-heavy-test"
+    }
+    fn invoke<'a>(&'a self, request: &'a ModelRequest) -> model_adapter::ModelFuture<'a> {
+        Box::pin(async move {
+            Ok(model_adapter::ModelResponse {
+                value: json!({"purpose":request.purpose,"status":"too-expensive"}),
+                prompt_tokens: Some(2),
+                completion_tokens: Some(2),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn provider_response_cannot_silently_cross_remaining_operation_token_budget() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = OperationScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        operation: Uuid::new_v4(),
+    };
+    bff_operations::submit(
+        &app,
+        scope,
+        &NewOperation {
+            kind: "AGENTIC_ANALYSIS".into(),
+            target_analysis_id: Some(s.analysis),
+            parent_operation_id: None,
+            idempotency_key: Some(format!("token-boundary-{}", scope.operation)),
+            input: json!({
+                "intent":"understand",
+                "model_budget":{"max_invocations":4,"max_total_tokens":1}
+            }),
+            deadline_at: None,
+            step_budget: 32,
+            requested_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+
+    authz::with_auth_digest("test-digest".into(), async {
+        let outcome =
+            agentic_runtime::run_until_boundary(&app, scope, s.principal, &TokenHeavyModel)
+                .await
+                .unwrap();
+        assert!(outcome.terminal);
+        let operation = bff_operations::get(&app, scope).await.unwrap();
+        let result = operation.result.expect("partial token-budget result");
+        assert_eq!(result["completion_status"], "PARTIAL_BUDGET_BOUNDARY");
+        assert_eq!(result["stop_reason"], "TOKEN_LIMIT");
+
+        let row: (String, bool, i32) = sqlx::query_as(
+            "SELECT status,budget_exceeded,attempt_count FROM niccolo.model_invocations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(row, ("FAILED".into(), true, 1));
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn failover_chain_never_starts_when_its_attempt_ceiling_exceeds_remaining_budget() {
     let (admin, app) = pools().await;
