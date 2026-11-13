@@ -349,8 +349,9 @@ mod tests {
             "https://user:pass@remote.example/v1",
             "https://remote.example/v1#fragment",
         ] {
-            let mut cfg = config(forged.into());
-            cfg.api_key.clear();
+            // Retain a valid credential: this test must reject the URL itself,
+            // not merely detect a missing remote API key.
+            let cfg = config(forged.into());
             assert!(
                 cfg.validate().is_err(),
                 "must reject ambiguous or forged provider destination: {forged}"
