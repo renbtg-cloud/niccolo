@@ -679,7 +679,6 @@ mod tests {
         assert!(bytes <= 65_536);
     }
 
-
     #[test]
     fn remote_event_shape_rejects_unverified_or_ambiguous_records() {
         let publication_id = Uuid::from_u128(31);
