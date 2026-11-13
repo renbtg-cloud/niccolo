@@ -172,8 +172,30 @@ pub async fn declare_constraint(
     {
         return Err(ControlError::Invalid);
     }
+    let text = c.text.trim();
     let mut tx = scoped(pool, workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_human_constraints(workspace_id,situation_id,constraint_id,constraint_kind,constraint_text,declared_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(c.constraint_id).bind(&c.kind).bind(&c.text).bind(c.declared_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_human_constraints(workspace_id,situation_id,constraint_id,constraint_kind,constraint_text,declared_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
+        .bind(workspace)
+        .bind(situation)
+        .bind(c.constraint_id)
+        .bind(&c.kind)
+        .bind(text)
+        .bind(c.declared_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(String, String, Uuid)> = sqlx::query_as(
+        "SELECT constraint_kind,constraint_text,declared_by_principal_id
+           FROM niccolo.situation_human_constraints
+          WHERE workspace_id=$1 AND situation_id=$2 AND constraint_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(c.constraint_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((c.kind.clone(), text.into(), c.declared_by)) {
+        return Err(ControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -194,8 +216,31 @@ pub async fn append_constraint_event(
     {
         return Err(ControlError::Invalid);
     }
+    let note = e.note.trim();
     let mut tx = scoped(pool, workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_human_constraint_events(workspace_id,situation_id,constraint_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(constraint).bind(e.event_id).bind(&e.kind).bind(&e.note).bind(e.recorded_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_human_constraint_events(workspace_id,situation_id,constraint_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+        .bind(workspace)
+        .bind(situation)
+        .bind(constraint)
+        .bind(e.event_id)
+        .bind(&e.kind)
+        .bind(note)
+        .bind(e.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT constraint_id,event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_human_constraint_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(e.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((constraint, e.kind.clone(), note.into(), e.recorded_by)) {
+        return Err(ControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
