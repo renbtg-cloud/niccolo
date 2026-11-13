@@ -36,4 +36,10 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('setFiles([])');
     expect(source).toContain('onError: refresh');
   });
+
+  it('keeps receipt publication attached to the visible source record rather than the upload action', () => {
+    expect(source).toContain("import { SourceIntakePublicationPanel }");
+    expect(source).toContain('<SourceIntakePublicationPanel document={document}/>');
+    expect(source.indexOf('<SourceIntakePublicationPanel document={document}/>')).toBeGreaterThan(source.indexOf('<h3>Source catalog</h3>'));
+  });
 });
