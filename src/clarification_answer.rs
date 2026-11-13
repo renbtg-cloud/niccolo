@@ -101,6 +101,15 @@ pub async fn answer(
     answer: Uuid,
     text: &str,
 ) -> Result<ClarificationAnswer, ClarificationAnswerError> {
+    if workspace.is_nil()
+        || actor.is_nil()
+        || situation.is_nil()
+        || analysis.is_nil()
+        || question.is_nil()
+        || answer.is_nil()
+    {
+        return Err(ClarificationAnswerError::Invalid);
+    }
     let text = situation_store::clean_text(text).map_err(|_| ClarificationAnswerError::Invalid)?;
     let mut tx = scoped(pool, workspace, false).await?;
     let input_revision =
@@ -236,6 +245,9 @@ pub async fn answered_question_ids(
     situation: Uuid,
     analysis: Uuid,
 ) -> Result<std::collections::BTreeSet<Uuid>, ClarificationAnswerError> {
+    if workspace.is_nil() || situation.is_nil() || analysis.is_nil() {
+        return Err(ClarificationAnswerError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let ids: Vec<Uuid> = sqlx::query_scalar(
         "SELECT DISTINCT question_id
@@ -260,7 +272,13 @@ pub async fn list(
     after: Option<Uuid>,
     limit: i64,
 ) -> Result<(Vec<ClarificationAnswer>, Option<Uuid>), ClarificationAnswerError> {
-    if !(1..=100).contains(&limit) {
+    if workspace.is_nil()
+        || situation.is_nil()
+        || analysis.is_nil()
+        || question.is_nil()
+        || after.is_some_and(|id| id.is_nil())
+        || !(1..=100).contains(&limit)
+    {
         return Err(ClarificationAnswerError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
@@ -313,4 +331,51 @@ pub async fn list(
     let next_after = more.then(|| answers.last().expect("non-empty page").answer_id);
     tx.commit().await?;
     Ok((answers, next_after))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn invalid_clarification_scope_fails_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        assert!(matches!(
+            answer(
+                &pool,
+                Uuid::nil(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                "answer"
+            )
+            .await,
+            Err(ClarificationAnswerError::Invalid)
+        ));
+        assert!(matches!(
+            answered_question_ids(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::nil(),
+                Uuid::new_v4()
+            )
+            .await,
+            Err(ClarificationAnswerError::Invalid)
+        ));
+        assert!(matches!(
+            list(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Some(Uuid::nil()),
+                10
+            )
+            .await,
+            Err(ClarificationAnswerError::Invalid)
+        ));
+    }
 }
