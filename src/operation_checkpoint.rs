@@ -387,6 +387,25 @@ mod tests {
     }
 
     #[test]
+    fn resource_degradation_checkpoint_is_nonterminal_and_provisional() {
+        let valid_resource_boundary = NewCheckpoint {
+            checkpoint_id: Uuid::from_u128(10),
+            analysis_id: Some(Uuid::from_u128(11)),
+            checkpoint_kind: "RESOURCE_DEGRADATION".into(),
+            step_id: Some(Uuid::from_u128(12)),
+            summary: json!({"reason":"CRITICAL_RESOURCE_PRESSURE"}),
+            provisional: true,
+            terminal: false,
+            recorded_by: Uuid::from_u128(13),
+        };
+        assert!(valid(&valid_resource_boundary));
+
+        let mut falsely_terminal = valid_resource_boundary.clone();
+        falsely_terminal.terminal = true;
+        assert!(!valid(&falsely_terminal));
+    }
+
+    #[test]
     fn final_checkpoint_must_not_be_provisional() {
         let invalid = NewCheckpoint {
             checkpoint_id: Uuid::from_u128(1),
