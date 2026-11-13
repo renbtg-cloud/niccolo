@@ -1,4 +1,5 @@
 name: Format current intake slice
+# rerun: ledger-unit
 on:
   push:
     branches: [ci/vm-source-export]
