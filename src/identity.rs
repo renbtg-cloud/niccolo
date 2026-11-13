@@ -214,7 +214,7 @@ pub async fn record_event(
         || actor.is_nil()
         || event_id.is_nil()
         || document_id.is_nil()
-        || person_id.is_some_and(Uuid::is_nil)
+        || person_id.is_some_and(|id| id.is_nil())
         || !valid_identity_text(speaker_label, 512)
         || !valid_identity_text(human_reason, 2048)
         || matches!(
