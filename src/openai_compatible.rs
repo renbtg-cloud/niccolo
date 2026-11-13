@@ -94,6 +94,17 @@ impl OpenAiCompatibleConfig {
             || self.provider.len() > 128
             || self.curl_bin.trim().is_empty()
             || !(1..=25).contains(&self.max_time_secs)
+            // Validate the parsed destination, not only a textual loopback prefix.
+            // Both native and curl adapters must reject userinfo/authority spoofing,
+            // invalid ports, and ambiguous URL forms before sending credentials.
+            || self.base_url.contains(['?', '#'])
+            || OpenAiCompatibleModel::new(
+                &self.provider,
+                &self.model,
+                &self.endpoint(),
+                &self.api_key,
+            )
+            .is_err()
         {
             return Err(ProviderConfigError::Invalid);
         }
@@ -321,6 +332,27 @@ mod tests {
         assert!(c.validate().is_err());
         c.base_url = "https://example.com/v1".into();
         assert!(c.validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_spoofed_loopback_authorities_for_both_provider_adapters() {
+        for forged in [
+            "http://127.0.0.1:11434@remote.example/v1",
+            "http://localhost:11434@remote.example/v1",
+            "http://127.0.0.1:abc/v1",
+            "http://localhost:11434?redirect=remote.example",
+            "https://user:pass@remote.example/v1",
+            "https://remote.example/v1#fragment",
+        ] {
+            let mut cfg = config(forged.into());
+            cfg.api_key.clear();
+            assert!(
+                cfg.validate().is_err(),
+                "must reject ambiguous or forged provider destination: {forged}"
+            );
+            assert!(cfg.native_model().is_err());
+            assert!(CurlOpenAiCompatibleModel::new(cfg).is_err());
+        }
     }
 
     #[test]
