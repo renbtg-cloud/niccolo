@@ -252,11 +252,13 @@ echo 'PASS: context provenance, idempotent replay, correction, frozen history, r
 
 # A second, empty database on the SAME PostgreSQL cluster must not
 # trigger password rotation for the already-provisioned service role.
-psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
-  -c 'CREATE DATABASE niccolo_ci_role_probe'
-probe_url="$(node -e '
+role_probe_db="niccolo_ci_role_$(node -p "require('node:crypto').randomBytes(8).toString('hex')")"
+psql -X -q -v ON_ERROR_STOP=1 -v dbname="$role_probe_db" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+SELECT format('CREATE DATABASE %I', :'dbname') \gexec
+SQL
+probe_url="$(PROBE_DB="$role_probe_db" node -e '
 const u = new URL(process.env.NICCOLO_PG_ADMIN_URL);
-u.pathname="/niccolo_ci_role_probe";
+u.pathname="/"+process.env.PROBE_DB;
 process.stdout.write(u.toString());
 ')"
 probe_root=".niccolo-local/role-probe"
@@ -276,8 +278,9 @@ grep -q 'role niccolo_secure already exists' "$probe_root/bootstrap-probe.log" |
   echo 'Second bootstrap mutated an empty database before refusing role reuse' >&2
   exit 1
 }
-psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
-  -c 'DROP DATABASE niccolo_ci_role_probe'
+psql -X -q -v ON_ERROR_STOP=1 -v dbname="$role_probe_db" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+SELECT format('DROP DATABASE %I', :'dbname') \gexec
+SQL
 echo 'PASS: preflight refuses reuse of cluster-global service role'
 
 # The MVP advertises up to 4 MiB per source. Verify real HTTP ingestion
@@ -326,11 +329,13 @@ echo 'PASS: HTTP source limit accepts 2–4 MiB, rejects >4 MiB, retains exact b
 
 # Reject migrations over an unrelated application's tables, even when
 # there is no Niccolo schema yet.
-psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
-  -c 'CREATE DATABASE niccolo_ci_populated_probe'
-populated_url="$(node -e '
+populated_probe_db="niccolo_ci_populated_$(node -p "require('node:crypto').randomBytes(8).toString('hex')")"
+psql -X -q -v ON_ERROR_STOP=1 -v dbname="$populated_probe_db" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+SELECT format('CREATE DATABASE %I', :'dbname') \gexec
+SQL
+populated_url="$(PROBE_DB="$populated_probe_db" node -e '
 const u=new URL(process.env.NICCOLO_PG_ADMIN_URL);
-u.pathname="/niccolo_ci_populated_probe";
+u.pathname="/"+process.env.PROBE_DB;
 process.stdout.write(u.toString());
 ')"
 psql -X -q -v ON_ERROR_STOP=1 "$populated_url" \
@@ -349,8 +354,9 @@ grep -q 'Database contains existing user relations' "$probe_root/populated-probe
   echo 'Unsafe data mutation while refusing populated-database bootstrap' >&2
   exit 1
 }
-psql -X -q -v ON_ERROR_STOP=1 "$NICCOLO_PG_ADMIN_URL" \
-  -c 'DROP DATABASE niccolo_ci_populated_probe'
+psql -X -q -v ON_ERROR_STOP=1 -v dbname="$populated_probe_db" "$NICCOLO_PG_ADMIN_URL" <<'SQL'
+SELECT format('DROP DATABASE %I', :'dbname') \gexec
+SQL
 echo 'PASS: unrelated application data is protected from first-run migrations'
 
 echo 'PASS: bootstrap, embedded UI, Situation lifecycle, and auth isolation'
