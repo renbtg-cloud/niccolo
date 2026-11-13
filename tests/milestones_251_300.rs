@@ -303,7 +303,12 @@ async fn reasoning_packet_round_robins_sources_before_advancing_fragment_depth()
 
     for (document, locator, added_at, prefix) in [
         (first, "fixture://packet-first", "2026-01-01T00:00:00Z", "A"),
-        (second, "fixture://packet-second", "2026-01-01T00:00:01Z", "B"),
+        (
+            second,
+            "fixture://packet-second",
+            "2026-01-01T00:00:01Z",
+            "B",
+        ),
     ] {
         sqlx::query(
             "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
@@ -1722,10 +1727,9 @@ async fn failover_chain_never_starts_when_its_attempt_ceiling_exceeds_remaining_
     assert_eq!(router.provider_attempt_ceiling(), 2);
 
     authz::with_auth_digest("test-digest".into(), async {
-        let outcome =
-            agentic_runtime::run_until_boundary(&app, scope, s.principal, &router)
-                .await
-                .unwrap();
+        let outcome = agentic_runtime::run_until_boundary(&app, scope, s.principal, &router)
+            .await
+            .unwrap();
         assert!(outcome.terminal);
         let operation = bff_operations::get(&app, scope).await.unwrap();
         assert_eq!(operation.state, "SUCCEEDED");
