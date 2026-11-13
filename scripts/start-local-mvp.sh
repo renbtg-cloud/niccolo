@@ -112,10 +112,17 @@ if ! [[ "$SITUATION_UUID" =~ $uuid_re ]]; then
   echo "Invalid SITUATION_UUID in $ids_file" >&2
   exit 2
 fi
-if ! [[ "$NICCOLO_API_PORT" =~ ^[0-9]+$ ]] || (( NICCOLO_API_PORT < 1 || NICCOLO_API_PORT > 65535 )); then
+if ! [[ "$NICCOLO_API_PORT" =~ ^[0-9]+$ ]] || (( ${#NICCOLO_API_PORT} > 5 )); then
   echo 'NICCOLO_API_PORT must be an integer from 1 to 65535.' >&2
   exit 2
 fi
+api_port_value=$((10#$NICCOLO_API_PORT))
+if (( api_port_value < 1 || api_port_value > 65535 )); then
+  echo 'NICCOLO_API_PORT must be an integer from 1 to 65535.' >&2
+  exit 2
+fi
+NICCOLO_API_PORT="$api_port_value"
+export NICCOLO_API_PORT
 if [[ "$(wc -l < "$token_file")" -ne 1 ]] || ! grep -Eq '^ncl_[0-9a-f]{64}\r?$' "$token_file"; then
   echo "Invalid local bearer token file: $token_file" >&2
   echo 'Re-bootstrap a fresh dedicated local installation instead of guessing or repairing the token by hand.' >&2
