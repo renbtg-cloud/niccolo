@@ -617,6 +617,12 @@ impl OpenAiCompatibleModel {
         let mut connected = None;
         let mut last_error = None;
         for address in addresses {
+            // Plain HTTP is accepted only for the local-model case. Re-check
+            // the resolved address so a poisoned localhost mapping cannot send
+            // source material to a non-loopback host.
+            if self.endpoint.scheme == "http" && !address.ip().is_loopback() {
+                continue;
+            }
             match TcpStream::connect_timeout(&address, timeout) {
                 Ok(stream) => {
                     connected = Some(stream);
@@ -941,6 +947,23 @@ mod bounded_response_tests {
             "https://user@example.com/v1",
         ] {
             assert!(ParsedEndpoint::parse(url).is_err(), "accepted {url}");
+        }
+    }
+
+    #[test]
+    fn plain_http_endpoint_policy_is_loopback_only_after_resolution() {
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+        for address in [
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11434),
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 11434),
+        ] {
+            assert!(address.ip().is_loopback());
+        }
+        for address in [
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 11434),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 5)), 11434),
+        ] {
+            assert!(!address.ip().is_loopback());
         }
     }
 
