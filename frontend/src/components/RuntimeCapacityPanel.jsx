@@ -8,6 +8,8 @@ function reasonLabel(value) {
     CRITICAL_MEMORY_PRESSURE: 'critical memory pressure',
     HIGH_MEMORY_PRESSURE: 'high memory pressure',
     MEMORY_PRESSURE_UNKNOWN: 'memory pressure unavailable',
+    PID_CAPACITY: 'PID headroom',
+    PID_LIMIT_EXHAUSTED: 'PID limit exhausted',
     OPERATOR_DELEGATED_CONTROL: 'concurrency delegated to the operator',
   })[value] ?? value.replaceAll('_',' ').toLowerCase();
 }
@@ -25,6 +27,7 @@ export function RuntimeCapacityPanel({ diagnostic, pending, error }) {
     <summary>Runtime capacity: {pressure}</summary>
     <p>Current policy recommends up to <strong>{diagnostic.recommended_parallel_operations}</strong> concurrent operation(s) from an observed ceiling of <strong>{diagnostic.observed_parallel_ceiling}</strong>.</p>
     {memoryPercent!==null&&<p>Observed memory pressure: <strong>{memoryPercent}%</strong>.</p>}
+    {Number.isInteger(diagnostic.pids_headroom)&&<p>Observed PID headroom: <strong>{diagnostic.pids_headroom}</strong> process/thread slot(s).</p>}
     {diagnostic.defer_nonessential_new_work&&<p><strong>Critical pressure:</strong> Niccolò may defer explicitly nonessential reasoning passes while preserving synthesis, adversarial challenge and human control.</p>}
     {reasons.length>0&&<p><small>Operational reasons: {reasons.join(' · ')}.</small></p>}
     <small>This is operational capacity advice only. It is not confidence, epistemic quality, completeness or truth, and Niccolò does not mutate host resource limits.</small>
