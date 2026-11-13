@@ -1512,6 +1512,71 @@ async fn v1201_v1300_failover_records_the_provider_that_actually_answered() {
 }
 
 #[tokio::test]
+async fn failed_primary_and_fallback_are_both_counted_as_provider_attempts() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    authz::with_auth_digest("test-digest".into(), async {
+        let steps = agentic_policy::default_plan(&app, s.workspace, s.situation, s.analysis)
+            .await
+            .unwrap();
+        let (rev, _) =
+            agentic_controller::create_plan(&app, scope, s.principal, &steps)
+                .await
+                .unwrap();
+        let primary: std::sync::Arc<dyn model_adapter::ReasoningModel> =
+            std::sync::Arc::new(model_adapter::UnavailableModel);
+        let fallback: std::sync::Arc<dyn model_adapter::ReasoningModel> =
+            std::sync::Arc::new(model_adapter::UnavailableModel);
+        let router = model_adapter::FailoverModel::new(primary, fallback);
+        let error = model_adapter::invoke_recorded_with_policy(
+            &app,
+            InvocationScope {
+                operation: scope,
+                plan_revision: rev,
+                step_id: steps[0].step_id,
+            },
+            s.principal,
+            &router,
+            &ModelRequest {
+                purpose: "INSPECT_SOURCES".into(),
+                input: json!({}),
+                output_contract: json!({}),
+            },
+            model_adapter::InvocationPolicy {
+                timeout_ms: 1000,
+                max_attempts: 1,
+                max_total_tokens: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            model_adapter::ModelError::ProviderChain { attempts: 2, .. }
+        ));
+        let row: (String, i32, bool) = sqlx::query_as(
+            "SELECT status,attempt_count,fallback_used FROM niccolo.model_invocations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(row, ("FAILED".into(), 2, false));
+        let budget = niccolo_evidence::operation_budget::view(&app, scope)
+            .await
+            .unwrap();
+        assert_eq!(budget.used_invocations, 2);
+        assert_eq!(budget.unreported_token_usage_invocations, 2);
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn v1301_v1400_material_state_discovered_after_planning_creates_versioned_human_gate() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
