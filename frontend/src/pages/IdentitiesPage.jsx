@@ -17,6 +17,16 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
   }, [binding?.event_id, binding?.person_id]);
 
   const current = identities.find((item) => item.person_id === binding?.person_id);
+  useEffect(() => {
+    if (
+      choice
+      && choice !== '__new__'
+      && choice !== binding?.person_id
+      && !identities.some((item) => item.person_id === choice)
+    ) {
+      setChoice(binding?.person_id ?? '');
+    }
+  }, [binding?.person_id, choice, identities]);
   const canAssign = reason.trim() && (choice === '__new__' ? newLabel.trim() : choice);
 
   return <article className="speaker-row">
