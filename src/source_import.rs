@@ -104,6 +104,7 @@ fn parse_email_header(
     let mut body_start = None;
     let mut has_date = false;
     let mut has_subject = false;
+    let mut allow_nonsemantic_fold = false;
 
     for (relative_start, relative_end, line) in iter_lines(&src[start..]) {
         let line = if start == 0 && relative_start == 0 {
@@ -116,7 +117,13 @@ fn parse_email_header(
             break;
         }
         if line.starts_with(' ') || line.starts_with('\t') {
-            return invalid_email_header(nested, "folded email header");
+            // RFC 5322 continuation in Subject or a nonessential header is
+            // harmless: we do not interpret its value. Never fold From or
+            // MIME headers without a real unfolding/validation step.
+            if !allow_nonsemantic_fold {
+                return invalid_email_header(nested, "folded identity or MIME header");
+            }
+            continue;
         }
         let Some((key, value)) = line.split_once(':') else {
             return invalid_email_header(nested, "email header");
@@ -125,7 +132,12 @@ fn parse_email_header(
             return invalid_email_header(nested, "email header name");
         }
         let value = value.trim();
-        match key.to_ascii_lowercase().as_str() {
+        let normalized_key = key.to_ascii_lowercase();
+        allow_nonsemantic_fold = !matches!(
+            normalized_key.as_str(),
+            "from" | "content-type" | "content-transfer-encoding"
+        );
+        match normalized_key.as_str() {
             "from" if from.replace(value).is_some() => {
                 return invalid_email_header(nested, "duplicate From");
             }
@@ -612,6 +624,31 @@ mod tests {
                 .content
                 .contains("From: quoted@example.org")
         );
+    }
+
+    #[test]
+    fn folded_email_subject_and_ignored_headers_preserve_exact_body_offsets() {
+        let src = "From: ana@example.org\r\nSubject: A complicated\r\n follow-up subject\r\nX-Trace: first\r\n second\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nOriginal body\r\n";
+        let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].speaker_label, "ana@example.org");
+        assert_eq!(parsed.fragments[0].content, "Original body\r\n");
+        let f = &parsed.fragments[0];
+        assert_eq!(f.content.as_bytes(), &src.as_bytes()[f.byte_start as usize..f.byte_end as usize]);
+    }
+
+    #[test]
+    fn folded_email_identity_or_mime_headers_remain_unsupported() {
+        for src in [
+            "From: ana@example.org\r\n attacker@example.org\r\n\r\nBody",
+            "From: ana@example.org\r\nContent-Type: text/plain;\r\n charset=utf-8\r\n\r\nBody",
+            "From: ana@example.org\r\nContent-Transfer-Encoding: 8bit\r\n malicious\r\n\r\nBody",
+        ] {
+            assert!(matches!(
+                parse_source(SourceFormat::Eml, src.as_bytes()),
+                Err(ParseError::Unsupported(_))
+            ));
+        }
     }
 
     #[test]
