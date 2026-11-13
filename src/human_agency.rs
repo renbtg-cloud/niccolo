@@ -384,9 +384,39 @@ pub async fn create_goal(
     {
         return Err(AgencyError::Invalid);
     }
+    let goal = input.goal.trim();
+    let success_criterion = input.success_criterion.trim();
     let mut tx = scoped(pool, workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_goals(workspace_id,situation_id,goal_id,goal_text,success_criterion,owner_principal_id,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
-        .bind(workspace).bind(situation).bind(input.goal_id).bind(&input.goal).bind(&input.success_criterion).bind(input.owner).bind(input.created_by).execute(&mut *tx).await?;
+        .bind(workspace)
+        .bind(situation)
+        .bind(input.goal_id)
+        .bind(goal)
+        .bind(success_criterion)
+        .bind(input.owner)
+        .bind(input.created_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(String, String, Uuid, Uuid)> = sqlx::query_as(
+        "SELECT goal_text,success_criterion,owner_principal_id,created_by_principal_id
+           FROM niccolo.situation_goals
+          WHERE workspace_id=$1 AND situation_id=$2 AND goal_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(input.goal_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            goal.into(),
+            success_criterion.into(),
+            input.owner,
+            input.created_by,
+        ))
+    {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -407,9 +437,31 @@ pub async fn append_goal_event(
     {
         return Err(AgencyError::Invalid);
     }
+    let note = event.note.trim();
     let mut tx = scoped(pool, workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_goal_events(workspace_id,situation_id,goal_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
-        .bind(workspace).bind(situation).bind(goal).bind(event.event_id).bind(&event.kind).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+        .bind(workspace)
+        .bind(situation)
+        .bind(goal)
+        .bind(event.event_id)
+        .bind(&event.kind)
+        .bind(note)
+        .bind(event.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT goal_id,event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_goal_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(event.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((goal, event.kind.clone(), note.into(), event.recorded_by)) {
+        return Err(AgencyError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
