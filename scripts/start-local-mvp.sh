@@ -94,9 +94,9 @@ const controls = value => [...value].some(ch => {
   const code = ch.codePointAt(0);
   return code < 0x20 || code === 0x7f;
 });
-if (!base || !model || controls(model) || model.length > 512 ||
+if (!base || !model.trim() || controls(model) || model.length > 512 ||
     controls(key) || key.length > 4096 ||
-    controls(provider) || provider.length > 128 ||
+    (provider && !provider.trim()) || controls(provider) || provider.length > 128 ||
     (jsonMode && !/^(1|0|true|false|TRUE|FALSE|yes|no|YES|NO)$/.test(jsonMode))) process.exit(2);
 try {
   if (/\s/.test(base) || base.length > 2048) process.exit(2);
@@ -106,7 +106,7 @@ try {
     (url.hostname === '127.0.0.1' || url.hostname === 'localhost');
   const remote = url.protocol === 'https:' && Boolean(url.hostname);
   if (!loopback && !remote) process.exit(2);
-  if (remote && !key) process.exit(3);
+  if (remote && !key.trim()) process.exit(3);
 } catch {
   process.exit(2);
 }
