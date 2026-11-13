@@ -130,7 +130,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     let mut ord = std::collections::BTreeSet::new();
     let mut ids = std::collections::BTreeSet::new();
     for c in &a.claims {
-        if c.ordinal < 1
+        if c.claim_id.is_nil()
+            || c.ordinal < 1
             || !valid_kind(&c.kind)
             || !valid_text(&c.text, 8192)
             || c.qualification
@@ -146,7 +147,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
         a.claims.iter().map(|claim| claim.claim_id).collect();
     let mut source_links = std::collections::BTreeSet::new();
     for link in &a.source_links {
-        if !claim_ids.contains(&link.claim_id)
+        if link.evidence_id.is_nil()
+            || !claim_ids.contains(&link.claim_id)
             || !matches!(
                 link.relation.as_str(),
                 "SUPPORTS_AS_USED" | "CONTRADICTS_AS_USED" | "CONTEXT_ONLY"
@@ -172,7 +174,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
 
     let mut context_links = std::collections::BTreeSet::new();
     for link in &a.context_links {
-        if !claim_ids.contains(&link.claim_id)
+        if link.contribution_id.is_nil()
+            || !claim_ids.contains(&link.claim_id)
             || !matches!(
                 link.relation.as_str(),
                 "INFORMS" | "QUALIFIES" | "CONFLICTS_WITH_REPORTED_CONTEXT"
@@ -184,7 +187,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     let mut a_ids = std::collections::BTreeSet::new();
     for x in &a.assumptions {
-        if !a_ids.insert(x.assumption_id)
+        if x.assumption_id.is_nil()
+            || !a_ids.insert(x.assumption_id)
             || x.claim_id.is_some_and(|claim_id| !claim_ids.contains(&claim_id))
             || !valid_text(&x.statement, 4096)
             || !valid_text(&x.basis_note, 4096)
@@ -194,7 +198,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     let mut alt_ids = std::collections::BTreeSet::new();
     for x in &a.alternatives {
-        if !alt_ids.insert(x.alternative_id)
+        if x.alternative_id.is_nil()
+            || !alt_ids.insert(x.alternative_id)
             || !claim_ids.contains(&x.claim_id)
             || !valid_text(&x.text, 4096)
             || !valid_text(&x.rationale, 4096)
@@ -204,7 +209,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     let mut gap_ids = std::collections::BTreeSet::new();
     for x in &a.evidence_gaps {
-        if !gap_ids.insert(x.gap_id)
+        if x.gap_id.is_nil()
+            || !gap_ids.insert(x.gap_id)
             || x.claim_id.is_some_and(|claim_id| !claim_ids.contains(&claim_id))
             || !valid_text(&x.description, 4096)
             || x.requested_source_kind
@@ -216,7 +222,8 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     let mut q_ids = std::collections::BTreeSet::new();
     for x in &a.clarifications {
-        if !q_ids.insert(x.question_id)
+        if x.question_id.is_nil()
+            || !q_ids.insert(x.question_id)
             || !valid_text(&x.text, 4096)
             || !valid_text(&x.reason, 2048)
         {
@@ -468,6 +475,34 @@ mod tests {
             claim_id: Some(foreign),
             description: "Foreign gap".into(),
             requested_source_kind: None,
+        });
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
+    }
+
+    #[test]
+    fn synthesis_artifact_rejects_nil_domain_identifiers() {
+        let mut value = artifact("INFERENCE", false);
+        value.claims[0].claim_id = Uuid::nil();
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
+
+        let mut value = artifact("INFERENCE", true);
+        value.source_links[0].evidence_id = Uuid::nil();
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
+
+        let mut value = artifact("INFERENCE", false);
+        let claim_id = value.claims[0].claim_id;
+        value.context_links.push(ArtifactContextLink {
+            claim_id,
+            contribution_id: Uuid::nil(),
+            relation: "INFORMS".into(),
+        });
+        assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
+
+        let mut value = artifact("INFERENCE", false);
+        value.clarifications.push(ArtifactClarification {
+            question_id: Uuid::nil(),
+            text: "What happened next?".into(),
+            reason: "A nil question identity cannot be replay-safe.".into(),
         });
         assert!(matches!(validate(&value), Err(ArtifactError::Invalid)));
     }
