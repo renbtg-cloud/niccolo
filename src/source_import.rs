@@ -473,6 +473,12 @@ pub fn parse_source(format: SourceFormat, raw: &[u8]) -> Result<ParsedSource, Pa
     if src.contains('\0') {
         return Err(ParseError::Unsupported("NUL in text"));
     }
+    if src
+        .chars()
+        .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+    {
+        return Err(ParseError::Unsupported("control character in text"));
+    }
     let fragments = match format {
         SourceFormat::Eml => parse_eml(src)?,
         SourceFormat::WhatsappExport => parse_whatsapp(src)?,
@@ -834,6 +840,17 @@ mod tests {
             ));
         }
     }
+    #[test]
+    fn rejects_terminal_control_characters_but_preserves_tabs_and_line_breaks() {
+        let dangerous = b"From: x@example.org\n\nhello\x1b[31mred";
+        assert_eq!(
+            parse_source(SourceFormat::Eml, dangerous),
+            Err(ParseError::Unsupported("control character in text"))
+        );
+        let ordinary = b"From: x@example.org\n\nhello\tworld\r\n";
+        assert!(parse_source(SourceFormat::Eml, ordinary).is_ok());
+    }
+
     #[test]
     fn rejects_unattributed_or_invalid_input() {
         assert!(parse_source(SourceFormat::WhatsappExport, b"system message\n").is_err());
