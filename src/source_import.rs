@@ -201,8 +201,23 @@ fn parse_email_header(
                 return invalid_email_header(nested, "MIME parameter");
             };
             let key = key.trim();
-            let value = value.trim().trim_matches('"');
-            if key.is_empty() || value.is_empty() || !seen_params.insert(key) {
+            let raw_value = value.trim();
+            let value = if raw_value.starts_with('"') || raw_value.ends_with('"') {
+                if raw_value.len() < 2
+                    || !raw_value.starts_with('"')
+                    || !raw_value.ends_with('"')
+                {
+                    return invalid_email_header(nested, "MIME parameter quoting");
+                }
+                &raw_value[1..raw_value.len() - 1]
+            } else {
+                raw_value
+            };
+            if value.contains('"')
+                || key.is_empty()
+                || value.is_empty()
+                || !seen_params.insert(key)
+            {
                 return invalid_email_header(
                     nested,
                     if seen_params.contains(key) {
@@ -773,6 +788,22 @@ mod tests {
         let parsed = parse_source(SourceFormat::Eml, src.as_bytes()).unwrap();
         assert_eq!(parsed.fragments.len(), 1);
         assert_eq!(parsed.fragments[0].content, "body");
+    }
+
+    #[test]
+    fn rejects_malformed_or_nested_quotes_in_mime_parameter_values() {
+        for content_type in [
+            "text/plain; charset=\"UTF-8",
+            "text/plain; charset=UTF-8\"",
+            "text/plain; charset=\"\"UTF-8\"\"",
+        ] {
+            let src = format!("From: x@example.org\nContent-Type: {content_type}\n\nbody");
+            assert!(matches!(
+                parse_source(SourceFormat::Eml, src.as_bytes()),
+                Err(ParseError::Unsupported("MIME parameter quoting"))
+                    | Err(ParseError::Unsupported("MIME parameter"))
+            ));
+        }
     }
 
     #[test]
