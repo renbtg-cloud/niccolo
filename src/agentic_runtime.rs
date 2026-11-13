@@ -752,23 +752,14 @@ async fn run_until_boundary_with_resource_observer<
             Ok(()) => {}
             Err(RuntimeError::Budget(error)) => {
                 if let Some(reason) = budget_stop_reason(&error) {
-                    return finish_budget_boundary(
-                        pool, scope, actor, &step, completed, reason,
-                    )
-                    .await;
+                    return finish_budget_boundary(pool, scope, actor, &step, completed, reason)
+                        .await;
                 }
                 return Err(error.into());
             }
             Err(RuntimeError::Model(model_adapter::ModelError::Budget)) => {
-                return finish_budget_boundary(
-                    pool,
-                    scope,
-                    actor,
-                    &step,
-                    completed,
-                    "TOKEN_LIMIT",
-                )
-                .await;
+                return finish_budget_boundary(pool, scope, actor, &step, completed, "TOKEN_LIMIT")
+                    .await;
             }
             Err(RuntimeError::Model(model_adapter::ModelError::Timeout)) => {
                 // A provider timeout is ordinarily an execution failure. If the
