@@ -1041,6 +1041,8 @@ mod tests {
         checkpoint_git_publication::CheckpointPublicationIntentView,
         checkpoint_package::CheckpointPackage,
         git_publication::{PublicationIntentView, TargetView},
+        intake_git_publication::IntakePublicationIntentView,
+        intake_package::{IntakePackage, IntakeReceipt},
     };
     use std::{collections::VecDeque, sync::Mutex};
 
