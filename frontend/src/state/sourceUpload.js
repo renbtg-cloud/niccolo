@@ -9,7 +9,9 @@ export function sourceDescriptor(file) {
   if (!Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_SOURCE_BYTES) {
     throw new Error('Source must be non-empty and at most 4 MiB.');
   }
-  const name = file.name.trim();
+  // Preserve the user's exact filename as locator metadata. Whitespace is
+  // meaningful provenance; only an all-whitespace name is invalid.
+  const name = file.name;
   // Match the server's 1024-byte UTF-8 locator limit and control-character
   // rejection before transferring a potentially multi-megabyte source.
   if (new TextEncoder().encode(name).length > 1024 || /\p{Cc}/u.test(name)) {
