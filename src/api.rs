@@ -99,6 +99,87 @@ fn unique_bearer(headers: &HeaderMap) -> Option<&str> {
     first.to_str().ok()?.strip_prefix("Bearer ")
 }
 
+fn unique_header_text<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>, ApiError> {
+    let mut values = headers.get_all(name).iter();
+    let Some(first) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "ambiguous source locator"));
+    }
+    first
+        .to_str()
+        .map(Some)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))
+}
+
+fn decode_percent_encoded_locator(encoded: &str) -> Result<String, ApiError> {
+    if encoded.is_empty() || encoded.len() > 3 * 1024 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
+    }
+    let raw = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(raw.len().min(1024));
+    let mut index = 0;
+    while index < raw.len() {
+        let byte = if raw[index] == b'%' {
+            if index + 2 >= raw.len() {
+                return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
+            }
+            let hex = |value: u8| -> Option<u8> {
+                match value {
+                    b'0'..=b'9' => Some(value - b'0'),
+                    b'a'..=b'f' => Some(value - b'a' + 10),
+                    b'A'..=b'F' => Some(value - b'A' + 10),
+                    _ => None,
+                }
+            };
+            let high = hex(raw[index + 1])
+                .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))?;
+            let low = hex(raw[index + 2])
+                .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))?;
+            index += 3;
+            (high << 4) | low
+        } else {
+            let value = raw[index];
+            if !value.is_ascii() {
+                return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
+            }
+            index += 1;
+            value
+        };
+        decoded.push(byte);
+        if decoded.len() > 1024 {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
+        }
+    }
+    let locator = String::from_utf8(decoded)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))?;
+    if locator.is_empty() || locator.chars().any(char::is_control) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"));
+    }
+    Ok(locator)
+}
+
+fn source_locator(headers: &HeaderMap) -> Result<String, ApiError> {
+    let encoded = unique_header_text(headers, "x-source-locator-percent-encoded")?;
+    let legacy = unique_header_text(headers, "x-source-locator")?;
+    match (encoded, legacy) {
+        (Some(_), Some(_)) => Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "ambiguous source locator",
+        )),
+        (Some(value), None) => decode_percent_encoded_locator(value),
+        (None, Some(value)) => {
+            if value.is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
+                Err(ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))
+            } else {
+                Ok(value.to_owned())
+            }
+        }
+        (None, None) => Err(ApiError(StatusCode::BAD_REQUEST, "missing source locator")),
+    }
+}
+
 /// Bind a validated token digest only for the lifetime of the downstream HTTP
 /// future. All SQLx workspace transactions apply the digest with SET LOCAL.
 async fn request_digest_context(
@@ -1619,10 +1700,7 @@ async fn ingest(
             ));
         }
     };
-    let locator = headers
-        .get("x-source-locator")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError(StatusCode::BAD_REQUEST, "missing source locator"))?;
+    let locator = source_locator(&headers)?;
     let operational_event_id = headers
         .get("x-operational-event-id")
         .map(|v| v.to_str())
@@ -1638,7 +1716,7 @@ async fn ingest(
         workspace,
         document,
         format,
-        locator,
+        &locator,
         &body,
         operational_event_id,
     )
