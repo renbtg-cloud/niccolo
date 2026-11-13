@@ -10,14 +10,29 @@ port="${2:-}"
 # secret-bearing variables even when the helper is invoked directly.
 unset NICCOLO_LLM_API_KEY NICCOLO_PG_SECURE_URL NICCOLO_PG_SECURE_PASSWORD NICCOLO_PG_ADMIN_URL NICCOLO_NEXT_ADMIN_URL NICCOLO_NEXT_APP_URL PGPASSWORD
 
-[[ "$prepared_url" == http://127.0.0.1:* ]] || {
-  echo 'Refusing to open a non-loopback Niccolò URL.' >&2
-  exit 2
-}
 [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || {
   echo 'Invalid Niccolò local port.' >&2
   exit 2
 }
+# Prefix matching is not an origin check: e.g. 127.0.0.1:38080@host.example
+# is a URL whose actual host is host.example. Validate the parsed origin,
+# credentials and port before passing anything to a browser opener.
+if ! node - "$prepared_url" "$port" <<'JS'
+try {
+  const url = new URL(process.argv[2]);
+  const port = Number(process.argv[3]);
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' ||
+      url.username || url.password || Number(url.port || 80) !== port) {
+    process.exit(1);
+  }
+} catch (_) {
+  process.exit(1);
+}
+JS
+then
+  echo 'Refusing to open a non-loopback Niccolò URL.' >&2
+  exit 2
+fi
 
 platform="$(uname -s)"
 linux_gui=0
