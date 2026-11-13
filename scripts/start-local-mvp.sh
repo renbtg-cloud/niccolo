@@ -76,6 +76,41 @@ echo "Bearer token fallback: $token_file"
 llm_base="${NICCOLO_LLM_BASE_URL:-}"
 llm_model="${NICCOLO_LLM_MODEL:-}"
 llm_key="${NICCOLO_LLM_API_KEY:-}"
+if [[ -n "$llm_base" || -n "$llm_model" || -n "$llm_key" ]]; then
+  command -v node >/dev/null 2>&1 || {
+    echo 'Node.js is required to validate the reasoning-model configuration.' >&2
+    exit 1
+  }
+  if ! NICCOLO_START_BASE_URL="$llm_base" NICCOLO_START_MODEL="$llm_model" NICCOLO_START_KEY="$llm_key" node - <<'NODE'
+const base = process.env.NICCOLO_START_BASE_URL ?? '';
+const model = process.env.NICCOLO_START_MODEL ?? '';
+const key = process.env.NICCOLO_START_KEY ?? '';
+if (!base || !model || /[\r\n\0]/.test(model) || model.length > 512 ||
+    /[\r\n\0]/.test(key) || key.length > 4096) process.exit(2);
+try {
+  if (/\s/.test(base) || base.length > 2048) process.exit(2);
+  const url = new URL(base);
+  if (url.username || url.password || url.search || url.hash) process.exit(2);
+  const loopback = url.protocol === 'http:' &&
+    (url.hostname === '127.0.0.1' || url.hostname === 'localhost');
+  const remote = url.protocol === 'https:' && Boolean(url.hostname);
+  if (!loopback && !remote) process.exit(2);
+  if (remote && !key) process.exit(3);
+} catch {
+  process.exit(2);
+}
+NODE
+  then
+    status=$?
+    echo 'Reasoning model: INVALID CONFIGURATION' >&2
+    if [[ "$status" == 3 ]]; then
+      echo 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' >&2
+    else
+      echo 'Model base URL must be credential-free HTTPS, or HTTP on 127.0.0.1/localhost; model/key values must be bounded and header-safe.' >&2
+    fi
+    exit 2
+  fi
+fi
 if [[ -z "$llm_base" && -z "$llm_model" && -z "$llm_key" ]]; then
   echo "Reasoning model: NOT CONFIGURED"
   echo "To enable Analyze, run: bash scripts/configure-local-model.sh"
@@ -83,10 +118,6 @@ if [[ -z "$llm_base" && -z "$llm_model" && -z "$llm_key" ]]; then
 elif [[ -z "$llm_base" || -z "$llm_model" ]]; then
   echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
   echo "Both NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL are required." >&2
-  exit 2
-elif [[ "$llm_base" == https://* && -z "$llm_key" ]]; then
-  echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
-  echo "Remote HTTPS model providers require NICCOLO_LLM_API_KEY." >&2
   exit 2
 else
   echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
