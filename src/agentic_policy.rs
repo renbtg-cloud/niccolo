@@ -56,6 +56,21 @@ pub async fn signals(
     })
 }
 
+fn clarification_pressure(
+    clarification_question_count: i64,
+    answered_question_count: i64,
+    signals: &PolicySignals,
+) -> i64 {
+    // Imported/legacy counters must never let an overcount of answers cancel
+    // unrelated live evidence gaps, conflicts or source requests.
+    clarification_question_count
+        .saturating_sub(answered_question_count)
+        .max(0)
+        .saturating_add(signals.open_evidence_gaps.max(0))
+        .saturating_add(signals.conflict_sets.max(0))
+        .saturating_add(signals.source_requests.max(0))
+}
+
 pub async fn default_plan(
     pool: &PgPool,
     workspace: Uuid,
@@ -138,10 +153,11 @@ pub async fn plan_for_intent(
             depends_on: vec![assumptions],
         },
     ];
-    let clarification_pressure = r.clarification_question_count - r.answered_question_count
-        + sig.open_evidence_gaps
-        + sig.conflict_sets
-        + sig.source_requests;
+    let clarification_pressure = clarification_pressure(
+        r.clarification_question_count,
+        r.answered_question_count,
+        &sig,
+    );
     let mut synth_deps = vec![alternatives];
     if clarification_pressure > 0 {
         steps.push(StepInput{step_id:clarify,ordinal:6,kind:"PROPOSE_CLARIFICATION".into(),label:format!("Address {} recorded clarification/evidence/conflict/source-request pressure point(s)",clarification_pressure),requires_human:false,depends_on:vec![alternatives]});
@@ -246,4 +262,33 @@ pub fn human_attention_plan(reason: &str) -> Result<Vec<StepInput>, PolicyError>
             depends_on: vec![human],
         },
     ])
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overcounted_answers_never_cancel_unrelated_investigation_pressure() {
+        let signals = PolicySignals {
+            open_evidence_gaps: 2,
+            conflict_sets: 1,
+            triggered_stop_conditions: 0,
+            source_requests: 3,
+        };
+        assert_eq!(clarification_pressure(2, 9, &signals), 6);
+        assert_eq!(clarification_pressure(5, 2, &signals), 9);
+    }
+
+    #[test]
+    fn malformed_negative_signal_counts_never_reduce_pressure() {
+        let signals = PolicySignals {
+            open_evidence_gaps: -9,
+            conflict_sets: -3,
+            triggered_stop_conditions: 0,
+            source_requests: 2,
+        };
+        assert_eq!(clarification_pressure(1, 1, &signals), 2);
+    }
 }
