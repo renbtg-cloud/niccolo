@@ -75,6 +75,12 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingCorrection.current.id');
   });
 
+  it('clears stale identity-mapping drafts after the persisted binding advances', () => {
+    expect(identities).toContain('[binding?.event_id, binding?.person_id]');
+    expect(identities).toContain("setNewLabel('')");
+    expect(identities).toContain("setReason('')");
+  });
+
   it('reuses a newly created person when only the mapping reason changes after a partial retry', () => {
     expect(identities).toContain('newPersonSignature');
     expect(identities).toContain('pendingAssign.current?.newPersonSignature === newPersonSignature');
