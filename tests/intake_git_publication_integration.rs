@@ -176,7 +176,10 @@ async fn intake_publication_planning_is_received_only_idempotent_and_not_remote_
     .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(created["intent"]["scope_kind"], "INTAKE_RECEIPT");
-    assert_eq!(created["intent"]["package_sha256"], preview["package_sha256"]);
+    assert_eq!(
+        created["intent"]["package_sha256"],
+        preview["package_sha256"]
+    );
     assert_eq!(created["remote_publish_performed"], false);
     assert_eq!(created["source_state_preserved"], "RECEIVED");
 
@@ -194,7 +197,10 @@ async fn intake_publication_planning_is_received_only_idempotent_and_not_remote_
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(replay["replayed"], true);
-    assert_eq!(replay["intent"]["package_sha256"], preview["package_sha256"]);
+    assert_eq!(
+        replay["intent"]["package_sha256"],
+        preview["package_sha256"]
+    );
 
     let (status, _) = call(
         f.router.clone(),
