@@ -301,8 +301,43 @@ pub async fn add_consequence(
     {
         return Err(ControlError::Invalid);
     }
+    let text = c.text.trim();
+    let uncertainty_note = c.uncertainty_note.trim();
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.situation_analysis_option_consequences(workspace_id,situation_id,analysis_id,decision_id,option_id,consequence_id,consequence_text,uncertainty_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).bind(option).bind(c.consequence_id).bind(&c.text).bind(&c.uncertainty_note).bind(c.recorded_by).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO niccolo.situation_analysis_option_consequences(workspace_id,situation_id,analysis_id,decision_id,option_id,consequence_id,consequence_text,uncertainty_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(decision)
+        .bind(option)
+        .bind(c.consequence_id)
+        .bind(text)
+        .bind(uncertainty_note)
+        .bind(c.recorded_by)
+        .execute(&mut *tx)
+        .await?;
+    let stored: Option<(Uuid, Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT decision_id,option_id,consequence_text,uncertainty_note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_option_consequences
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND consequence_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(c.consequence_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            decision,
+            option,
+            text.into(),
+            uncertainty_note.into(),
+            c.recorded_by,
+        ))
+    {
+        return Err(ControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
