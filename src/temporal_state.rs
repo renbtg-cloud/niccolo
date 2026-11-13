@@ -75,36 +75,49 @@ fn valid_text(value: &str, max: usize) -> bool {
 }
 
 fn valid_input(input: &TemporalAssertionInput) -> bool {
+    let assertion_type_valid = matches!(
+        input.assertion_type.as_str(),
+        "ROLE"
+            | "FORMAL_AUTHORITY"
+            | "ACCESS_TO_INFORMATION"
+            | "COMMUNICATION"
+            | "DECLARED_BELIEF"
+            | "ATTRIBUTED_BELIEF"
+            | "INFERRED_AWARENESS"
+            | "RELATIONSHIP"
+            | "DECISION_PARTICIPATION"
+            | "PRACTICAL_INFLUENCE"
+    );
+    let epistemic_kind_valid = matches!(
+        input.epistemic_kind.as_str(),
+        "DOCUMENTARY_OBSERVATION" | "HUMAN_ASSERTION" | "MACHINE_HYPOTHESIS"
+    );
+    let qualification_valid = matches!(
+        input.qualification.as_str(),
+        "OBSERVED"
+            | "REPORTED"
+            | "ATTRIBUTED"
+            | "INFERRED"
+            | "UNCERTAIN"
+            | "CONTRADICTED"
+            | "UNKNOWN"
+    );
+    // Awareness is never directly observable in this bounded actor model.
+    // A source may observe communication or access, but the step from those
+    // observations to awareness must remain visibly inferential/uncertain.
+    let bounded_theory_of_mind = input.assertion_type != "INFERRED_AWARENESS"
+        || matches!(
+            input.qualification.as_str(),
+            "INFERRED" | "UNCERTAIN" | "CONTRADICTED" | "UNKNOWN"
+        );
+
     valid_text(&input.subject_label, 512)
         && valid_text(&input.object_text, 4096)
         && valid_text(&input.rationale, 4096)
-        && matches!(
-            input.assertion_type.as_str(),
-            "ROLE"
-                | "FORMAL_AUTHORITY"
-                | "ACCESS_TO_INFORMATION"
-                | "COMMUNICATION"
-                | "DECLARED_BELIEF"
-                | "ATTRIBUTED_BELIEF"
-                | "INFERRED_AWARENESS"
-                | "RELATIONSHIP"
-                | "DECISION_PARTICIPATION"
-                | "PRACTICAL_INFLUENCE"
-        )
-        && matches!(
-            input.epistemic_kind.as_str(),
-            "DOCUMENTARY_OBSERVATION" | "HUMAN_ASSERTION" | "MACHINE_HYPOTHESIS"
-        )
-        && matches!(
-            input.qualification.as_str(),
-            "OBSERVED"
-                | "REPORTED"
-                | "ATTRIBUTED"
-                | "INFERRED"
-                | "UNCERTAIN"
-                | "CONTRADICTED"
-                | "UNKNOWN"
-        )
+        && assertion_type_valid
+        && epistemic_kind_valid
+        && qualification_valid
+        && bounded_theory_of_mind
         && !(input.evidence_id.is_some() && input.contribution_id.is_some())
         && input
             .valid_from
@@ -370,6 +383,18 @@ mod tests {
         let mut x = sample("INFERRED_AWARENESS", "INFERRED");
         x.epistemic_kind = "MACHINE_HYPOTHESIS".into();
         assert!(valid_input(&x));
+
+        for forbidden in ["OBSERVED", "REPORTED", "ATTRIBUTED"] {
+            x.qualification = forbidden.into();
+            assert!(
+                !valid_input(&x),
+                "awareness must remain inferential even when source material is strong"
+            );
+        }
+        for bounded in ["INFERRED", "UNCERTAIN", "CONTRADICTED", "UNKNOWN"] {
+            x.qualification = bounded.into();
+            assert!(valid_input(&x));
+        }
     }
 
     #[test]
