@@ -375,6 +375,30 @@ async fn temporal_state_keeps_formal_authority_separate_from_practical_influence
         )
         .await
         .unwrap();
+        let forbidden_awareness = temporal_state::record(
+            &app,
+            scope,
+            s.principal,
+            &temporal_state::TemporalAssertionInput {
+                assertion_id: Uuid::new_v4(),
+                subject_label: "Julian".into(),
+                assertion_type: "INFERRED_AWARENESS".into(),
+                object_text: "Knew the downstream bonus effect".into(),
+                valid_from: Some("2026-03-01T00:00:00Z".into()),
+                valid_to: Some("2026-03-31T23:59:59Z".into()),
+                epistemic_kind: "MACHINE_HYPOTHESIS".into(),
+                qualification: "OBSERVED".into(),
+                evidence_id: None,
+                contribution_id: None,
+                rationale: "Even strong communication evidence cannot make internal awareness directly observed.".into(),
+            },
+        )
+        .await;
+        assert!(matches!(
+            forbidden_awareness,
+            Err(temporal_state::TemporalStateError::Invalid)
+        ));
+
         temporal_state::record(
             &app,
             scope,
