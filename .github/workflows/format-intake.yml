@@ -1,0 +1,31 @@
+name: Format current intake slice
+on:
+  push:
+    branches: [ci/vm-source-export]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci/mvp-checkpoint
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: rustfmt
+      - name: Format intake slice and push immediately
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2024 src/api.rs src/github_publisher.rs src/intake_git_publication.rs
+          if git diff --quiet -- src/api.rs src/github_publisher.rs src/intake_git_publication.rs; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "ChatGPT autonomous worker"
+          git config user.email "chatgpt-local@invalid"
+          git add src/api.rs src/github_publisher.rs src/intake_git_publication.rs
+          git commit -m "style(intake): rustfmt generic receipt publication slice"
+          git push origin HEAD:ci/mvp-checkpoint
