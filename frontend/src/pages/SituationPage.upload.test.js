@@ -19,9 +19,14 @@ describe('Situation multi-source first-user import', () => {
 
   it('keeps stable document IDs across a partially failed retry', () => {
     expect(source).toContain('pendingDocumentIds = useRef(new Map())');
-    expect(source).toContain('pendingDocumentIds.current.get(signature)');
-    expect(source).toContain('pendingDocumentIds.current.set(signature, documentId)');
+    expect(source).toContain('pendingDocumentIds.current.get(selected)');
+    expect(source).toContain('pendingDocumentIds.current.set(selected, documentId)');
     expect(source).toContain('retrying the same selection replays rather than duplicates');
+  });
+
+  it('does not alias distinct files that happen to share metadata', () => {
+    expect(source).toContain('same name/size/mtime yet different bytes');
+    expect(source).not.toContain('JSON.stringify([\n          selected.name');
   });
 
   it('shows bounded per-file progress and preserves completed work after a partial failure', () => {
