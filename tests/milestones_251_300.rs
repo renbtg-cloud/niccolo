@@ -1503,6 +1503,11 @@ async fn v1201_v1300_failover_records_the_provider_that_actually_answered() {
   let v=model_adapter::invoke_recorded(&app,InvocationScope{operation:scope,plan_revision:rev,step_id:steps[0].step_id},s.principal,&router,&ModelRequest{purpose:"INSPECT_SOURCES".into(),input:json!({}),output_contract:json!({})}).await.unwrap();
   assert_eq!(v.provider,"niccolo-router");assert_eq!(v.effective_provider.as_deref(),Some("fallback-provider"));assert_eq!(v.effective_model.as_deref(),Some("fallback-model"));assert!(v.fallback_used);
   let row:(Option<String>,Option<String>,bool)=sqlx::query_as("SELECT effective_provider,effective_model,fallback_used FROM niccolo.model_invocations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND invocation_id=$4").bind(s.workspace).bind(s.situation).bind(scope.operation).bind(v.invocation_id).fetch_one(&admin).await.unwrap();assert_eq!(row,(Some("fallback-provider".into()),Some("fallback-model".into()),true));
+  let budget=niccolo_evidence::operation_budget::view(&app,scope).await.unwrap();
+  assert_eq!(budget.used_invocations,2);
+  assert_eq!(budget.unreported_token_usage_invocations,1);
+  assert!(!budget.token_usage_complete);
+  assert!(budget.remaining_total_tokens_is_upper_bound);
  }).await;
 }
 
