@@ -311,8 +311,8 @@ fn looks_like_datetime(dt: &str) -> bool {
     // Some WhatsApp exports include seconds and/or an AM/PM suffix.
     // Accept only those explicit forms; never guess the date locale.
     let (clock, meridiem) = match time.trim().rsplit_once(' ') {
-        Some((clock, "AM")) => (clock, Some("AM")),
-        Some((clock, "PM")) => (clock, Some("PM")),
+        Some((clock, suffix)) if suffix.eq_ignore_ascii_case("AM") => (clock, Some("AM")),
+        Some((clock, suffix)) if suffix.eq_ignore_ascii_case("PM") => (clock, Some("PM")),
         Some(_) => return false,
         None => (time.trim(), None),
     };
@@ -508,6 +508,17 @@ mod tests {
                 &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
             );
         }
+    }
+
+    #[test]
+    fn lowercase_meridiem_whatsapp_timestamps_are_supported_without_locale_guessing() {
+        let src = "[02/11/2026, 9:05 pm] Ana: Evening.\n[02/11/2026, 9:06 PM] Beto: Same clock.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        assert!(looks_like_datetime("02/11/2026, 9:05 am"));
+        assert!(!looks_like_datetime("02/11/2026, 13:05 pm"));
     }
 
     #[test]
