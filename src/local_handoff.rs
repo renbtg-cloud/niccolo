@@ -6,6 +6,7 @@ use crate::authz;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
+    io::Read,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -46,7 +47,16 @@ fn code_digest(code: &str) -> String {
 }
 
 fn read_bearer(path: &PathBuf) -> Result<String, LocalHandoffError> {
-    let raw = fs::read_to_string(path).map_err(|_| LocalHandoffError::SecretUnavailable)?;
+    // A local path may point to a file larger than a credential (including
+    // a symlink to a large file). Read at most 71 bytes, then fail closed.
+    // Valid credentials are 68 bytes, optionally followed by LF or CRLF.
+    let mut raw = String::new();
+    fs::File::open(path)
+        .and_then(|file| file.take(71).read_to_string(&mut raw))
+        .map_err(|_| LocalHandoffError::SecretUnavailable)?;
+    if raw.len() > 70 {
+        return Err(LocalHandoffError::SecretUnavailable);
+    }
     let token = raw.strip_suffix('\n').unwrap_or(&raw);
     let token = token.strip_suffix('\r').unwrap_or(token);
     if token.contains(['\r', '\n']) || authz::credential_digest(token).is_err() {
@@ -222,6 +232,23 @@ mod tests {
             LocalHandoff::configured(&code, path.clone(), Duration::from_millis(1)).unwrap();
         std::thread::sleep(Duration::from_millis(5));
         assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn oversized_token_file_is_rejected_without_consuming_handoff() {
+        let path = std::env::temp_dir().join(format!("niccolo-handoff-{}.token", Uuid::new_v4()));
+        fs::write(&path, "ncl_".to_owned() + &"a".repeat(1024)).unwrap();
+        let code = "b".repeat(64);
+        let handoff =
+            LocalHandoff::configured(&code, path.clone(), Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            handoff.consume(&code),
+            Err(LocalHandoffError::SecretUnavailable)
+        );
+        fs::write(&path, format!("ncl_{}\r\n", "a".repeat(64))).unwrap();
+        assert!(handoff.consume(&code).is_ok());
         assert_eq!(handoff.consume(&code), Err(LocalHandoffError::NotFound));
         let _ = fs::remove_file(path);
     }
