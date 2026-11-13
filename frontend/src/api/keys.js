@@ -1,5 +1,6 @@
 export const qk = {
   situation: (c) => ['situation', c.workspace, c.situation],
+  runtimeResources: (c) => ['runtime-resources', c.workspace],
   sources: (c) => ['sources', c.workspace],
   sourceSpeakers: (c, document) => ['source-speakers', c.workspace, document],
   identities: (c) => ['identities', c.workspace],
