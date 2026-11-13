@@ -170,13 +170,16 @@ impl ReasoningModel for FailoverModel {
                     r.effective_model = Some(self.primary.model().into());
                     Ok(r)
                 }
-                Err(_) => {
+                Err(error) if retryable_model_error(&error) => {
                     let mut r = self.fallback.invoke(request).await?;
                     r.effective_provider = Some(self.fallback.provider().into());
                     r.effective_model = Some(self.fallback.model().into());
                     r.fallback_used = true;
                     Ok(r)
                 }
+                // An invalid request, exhausted budget or database failure is
+                // not a provider outage. Never route it to another paid model.
+                Err(error) => Err(error),
             }
         })
     }
@@ -935,6 +938,73 @@ mod bounded_response_tests {
         assert!(matches!(model.perform_blocking(&request), Err(ModelError::Timeout)));
         assert!(start.elapsed() < Duration::from_millis(1350));
         server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn failover_routes_only_transient_errors() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        #[derive(Clone)]
+        struct ModelStub {
+            failure: Option<&'static str>,
+            called: Arc<AtomicUsize>,
+        }
+        impl ReasoningModel for ModelStub {
+            fn provider(&self) -> &str {
+                "stub"
+            }
+            fn model(&self) -> &str {
+                "stub-model"
+            }
+            fn invoke<'a>(&'a self, _: &'a ModelRequest) -> ModelFuture<'a> {
+                Box::pin(async move {
+                    self.called.fetch_add(1, Ordering::SeqCst);
+                    match self.failure {
+                        Some("budget") => Err(ModelError::Budget),
+                        Some("invalid") => Err(ModelError::Invalid),
+                        Some("provider") => Err(ModelError::Provider("transient".into())),
+                        _ => Ok(ModelResponse {
+                            value: serde_json::json!({"ok":true}),
+                            prompt_tokens: None,
+                            completion_tokens: None,
+                            effective_provider: None,
+                            effective_model: None,
+                            fallback_used: false,
+                        }),
+                    }
+                })
+            }
+        }
+        let request = ModelRequest {
+            purpose: "SYNTHESIZE".into(),
+            input: serde_json::json!({}),
+            output_contract: serde_json::json!({}),
+        };
+        for (failure, should_fallback) in [
+            ("budget", false),
+            ("invalid", false),
+            ("provider", true),
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let primary = Arc::new(ModelStub {
+                failure: Some(failure),
+                called: Arc::new(AtomicUsize::new(0)),
+            });
+            let fallback = Arc::new(ModelStub {
+                failure: None,
+                called: calls.clone(),
+            });
+            let router = FailoverModel::new(primary, fallback);
+            let result = router.invoke(&request).await;
+            assert_eq!(calls.load(Ordering::SeqCst), usize::from(should_fallback));
+            if should_fallback {
+                assert!(result.unwrap().fallback_used);
+            } else {
+                assert!(result.is_err());
+            }
+        }
     }
 
     #[test]
