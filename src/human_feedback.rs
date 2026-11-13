@@ -122,7 +122,7 @@ pub async fn list_questions(
     after: Option<Uuid>,
     limit: i64,
 ) -> Result<(Vec<Question>, Option<Uuid>), FeedbackError> {
-    if !(1..=100).contains(&limit) {
+    if workspace.is_nil() || after.is_some_and(|id| id.is_nil()) || !(1..=100).contains(&limit) {
         return Err(FeedbackError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
@@ -218,7 +218,7 @@ pub async fn feedback_history(
     after: i64,
     limit: i64,
 ) -> Result<(Vec<FeedbackEvent>, Option<i64>), FeedbackError> {
-    if after < 0 || !(1..=100).contains(&limit) {
+    if workspace.is_nil() || question_id.is_nil() || after < 0 || !(1..=100).contains(&limit) {
         return Err(FeedbackError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
@@ -266,6 +266,9 @@ pub async fn wholly_rejected_question_ids(
     situation: Uuid,
     analysis: Uuid,
 ) -> Result<std::collections::BTreeSet<Uuid>, FeedbackError> {
+    if workspace.is_nil() || situation.is_nil() || analysis.is_nil() {
+        return Err(FeedbackError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let ids: Vec<Uuid> = sqlx::query_scalar(
         "SELECT latest.question_id
@@ -299,7 +302,11 @@ pub async fn positions(
     after_actor: Option<Uuid>,
     limit: i64,
 ) -> Result<(Vec<FeedbackEvent>, Option<Uuid>), FeedbackError> {
-    if !(1..=100).contains(&limit) {
+    if workspace.is_nil()
+        || question_id.is_nil()
+        || after_actor.is_some_and(|id| id.is_nil())
+        || !(1..=100).contains(&limit)
+    {
         return Err(FeedbackError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
@@ -391,6 +398,40 @@ mod tests {
                 Uuid::new_v4(),
                 HumanResponse::Unknown,
                 "Unknown"
+            )
+            .await,
+            Err(FeedbackError::Invalid)
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_feedback_read_scopes_fail_before_database_access() {
+        let pool = PgPool::connect_lazy("postgres://127.0.0.1:1/never").unwrap();
+        assert!(matches!(
+            list_questions(&pool, Uuid::nil(), None, 10).await,
+            Err(FeedbackError::Invalid)
+        ));
+        assert!(matches!(
+            feedback_history(&pool, Uuid::new_v4(), Uuid::nil(), 0, 10).await,
+            Err(FeedbackError::Invalid)
+        ));
+        assert!(matches!(
+            wholly_rejected_question_ids(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::nil(),
+                Uuid::new_v4()
+            )
+            .await,
+            Err(FeedbackError::Invalid)
+        ));
+        assert!(matches!(
+            positions(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Some(Uuid::nil()),
+                10
             )
             .await,
             Err(FeedbackError::Invalid)
