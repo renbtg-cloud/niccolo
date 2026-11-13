@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - ci/mvp-checkpoint
+      - ci/mvp-checkpoint-chatgpt-20261113
 
 concurrency:
   group: epistemic-${{ github.ref_name }}
