@@ -205,6 +205,24 @@ binary="./target/release/niccolo-api${ext}"
   exit 1
 }
 
+# Refuse to let the browser opener mistake an unrelated/stale service for this
+# Niccolò instance. Probe the exact loopback bind before minting a handoff.
+command -v node >/dev/null 2>&1 || {
+  echo 'Node.js is required to verify the local API port before startup.' >&2
+  exit 1
+}
+if ! NICCOLO_START_PORT="$NICCOLO_API_PORT" node - <<'NODE'
+const net = require('node:net');
+const port = Number(process.env.NICCOLO_START_PORT);
+const server = net.createServer();
+server.once('error', () => process.exit(1));
+server.listen(port, '127.0.0.1', () => server.close(() => process.exit(0)));
+NODE
+then
+  echo "Local API port $NICCOLO_API_PORT is already in use; choose another NICCOLO_API_PORT." >&2
+  exit 1
+fi
+
 open_browser=1
 if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
   open_browser=0
