@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn nested artifact_records_cannot_reference_claims_outside_the_artifact() {
+    fn nested_artifact_records_cannot_reference_claims_outside_the_artifact() {
         let mut value = artifact("INFERENCE", false);
         let foreign = Uuid::new_v4();
         value.assumptions.push(ArtifactAssumption {
