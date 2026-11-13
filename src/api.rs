@@ -116,6 +116,25 @@ fn unique_header_text<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid source locator"))
 }
 
+fn unique_operational_event_id(headers: &HeaderMap) -> Result<Option<&str>, ApiError> {
+    let mut values = headers.get_all("x-operational-event-id").iter();
+    let Some(first) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "ambiguous operational event id header",
+        ));
+    }
+    first.to_str().map(Some).map_err(|_| {
+        ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid operational event id header",
+        )
+    })
+}
+
 fn unsafe_locator_character(value: char) -> bool {
     value.is_control()
         || matches!(
@@ -1761,16 +1780,7 @@ async fn ingest(
         }
     };
     let locator = source_locator(&headers)?;
-    let operational_event_id = headers
-        .get("x-operational-event-id")
-        .map(|v| v.to_str())
-        .transpose()
-        .map_err(|_| {
-            ApiError(
-                StatusCode::BAD_REQUEST,
-                "invalid operational event id header",
-            )
-        })?;
+    let operational_event_id = unique_operational_event_id(&headers)?;
     let result = postgres_ingest::ingest_source_with_operational_id(
         &state.pool,
         workspace,
