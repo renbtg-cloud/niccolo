@@ -35,6 +35,11 @@ export function mergeOperationObservation(previous, incoming) {
   };
 }
 
+export function eventPageNeedsCatchup(incoming, limit) {
+  if (!Number.isInteger(limit) || limit < 1) return false;
+  return (incoming?.events?.length ?? 0) >= limit;
+}
+
 export function operationPhase(observation, transport = {}) {
   if (transport.error) return 'error';
   const operation = observation?.operation;
