@@ -69,9 +69,47 @@ type TemporalRow = (
     Uuid,
 );
 
-fn valid_text(value: &str, max: usize) -> bool {
-    let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
+fn unsafe_directional_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{061c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'
+            | '\u{202b}'
+            | '\u{202c}'
+            | '\u{202d}'
+            | '\u{202e}'
+            | '\u{2066}'
+            | '\u{2067}'
+            | '\u{2068}'
+            | '\u{2069}'
+    )
+}
+
+fn valid_label(value: &str, max: usize) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= max
+        && !value
+            .chars()
+            .any(|ch| ch.is_control() || unsafe_directional_char(ch))
+}
+
+fn valid_note(value: &str, max: usize) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= max
+        && !value.chars().any(|ch| {
+            (ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+                || unsafe_directional_char(ch)
+        })
+}
+
+fn valid_timestamp_text(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= 128
+        && !value
+            .chars()
+            .any(|ch| ch.is_control() || unsafe_directional_char(ch))
 }
 
 fn valid_input(input: &TemporalAssertionInput) -> bool {
@@ -111,9 +149,9 @@ fn valid_input(input: &TemporalAssertionInput) -> bool {
             "INFERRED" | "UNCERTAIN" | "CONTRADICTED" | "UNKNOWN"
         );
 
-    valid_text(&input.subject_label, 512)
-        && valid_text(&input.object_text, 4096)
-        && valid_text(&input.rationale, 4096)
+    valid_label(&input.subject_label, 512)
+        && valid_note(&input.object_text, 4096)
+        && valid_note(&input.rationale, 4096)
         && assertion_type_valid
         && epistemic_kind_valid
         && qualification_valid
@@ -122,7 +160,7 @@ fn valid_input(input: &TemporalAssertionInput) -> bool {
         && input
             .valid_from
             .as_ref()
-            .is_none_or(|v| valid_text(v, 128))
+            .is_none_or(|v| valid_timestamp_text(v))
         && input
             .valid_to
             .as_ref()
@@ -390,6 +428,25 @@ mod tests {
             contribution_id: None,
             rationale: "Current evidence supports only a qualified inference.".into(),
         }
+    }
+
+    #[test]
+    fn temporal_actor_metadata_rejects_control_and_directional_spoofing() {
+        let mut x = sample("ROLE", "ATTRIBUTED");
+        x.subject_label = "Actor\u{202e}spoof".into();
+        assert!(!valid_input(&x));
+
+        let mut x = sample("ROLE", "ATTRIBUTED");
+        x.object_text = "Role\u{1b}[2J".into();
+        assert!(!valid_input(&x));
+
+        let mut x = sample("ROLE", "ATTRIBUTED");
+        x.rationale = "Line one.\nLine two.".into();
+        assert!(valid_input(&x));
+
+        let mut x = sample("ROLE", "ATTRIBUTED");
+        x.valid_from = Some("2026-03-01T00:00:00Z\nforged".into());
+        assert!(!valid_input(&x));
     }
 
     #[test]
