@@ -246,27 +246,44 @@ pub async fn answer(
     })
 }
 
-/// IDs already answered by a human for this frozen analysis.
-/// Answers are attributed context, never independent documentary evidence.
-pub async fn answered_question_ids(
+/// Current answer counts for this frozen analysis.
+///
+/// Retraction removes an answer from the current state. Correction preserves the
+/// fact that the human answered by following `corrected_by` until an ACTIVE
+/// successor is reached. Historical rows remain unchanged.
+pub(crate) async fn current_answer_counts(
     pool: &PgPool,
     workspace: Uuid,
     situation: Uuid,
     analysis: Uuid,
-) -> Result<std::collections::BTreeSet<Uuid>, ClarificationAnswerError> {
+) -> Result<std::collections::BTreeMap<Uuid, i64>, ClarificationAnswerError> {
     if workspace.is_nil() || situation.is_nil() || analysis.is_nil() {
         return Err(ClarificationAnswerError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
-    let ids: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT DISTINCT a.question_id
-           FROM niccolo.situation_analysis_clarification_answers a
-           JOIN niccolo.situation_contributions c
-             ON c.workspace_id=a.workspace_id
-            AND c.situation_id=a.situation_id
-            AND c.contribution_id=a.contribution_id
-          WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3
-            AND c.status='ACTIVE'",
+    let rows: Vec<(Uuid, i64)> = sqlx::query_as(
+        "WITH RECURSIVE answer_lineage(question_id,answer_id,contribution_id,status,corrected_by) AS (
+           SELECT a.question_id,a.answer_id,c.contribution_id,c.status,c.corrected_by
+             FROM niccolo.situation_analysis_clarification_answers a
+             JOIN niccolo.situation_contributions c
+               ON c.workspace_id=a.workspace_id
+              AND c.situation_id=a.situation_id
+              AND c.contribution_id=a.contribution_id
+            WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3
+           UNION
+           SELECT l.question_id,l.answer_id,c.contribution_id,c.status,c.corrected_by
+             FROM answer_lineage l
+             JOIN niccolo.situation_contributions c
+               ON c.workspace_id=$1
+              AND c.situation_id=$2
+              AND c.contribution_id=l.corrected_by
+            WHERE l.status='CORRECTED'
+         )
+         SELECT question_id,count(DISTINCT answer_id)::bigint
+           FROM answer_lineage
+          WHERE status='ACTIVE'
+          GROUP BY question_id
+          ORDER BY question_id",
     )
     .bind(workspace)
     .bind(situation)
@@ -274,7 +291,21 @@ pub async fn answered_question_ids(
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(ids.into_iter().collect())
+    Ok(rows.into_iter().collect())
+}
+
+/// IDs currently answered by a human for this frozen analysis.
+/// Answers are attributed context, never independent documentary evidence.
+pub async fn answered_question_ids(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+) -> Result<std::collections::BTreeSet<Uuid>, ClarificationAnswerError> {
+    Ok(current_answer_counts(pool, workspace, situation, analysis)
+        .await?
+        .into_keys()
+        .collect())
 }
 
 pub async fn list(
