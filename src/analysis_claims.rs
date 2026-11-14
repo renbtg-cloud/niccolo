@@ -74,6 +74,9 @@ pub struct ClarificationImpact {
     pub recorded_by: Uuid,
 }
 
+type ClaimLineageReplayRow = (Uuid, Uuid, Uuid, Option<Uuid>, String, String, Uuid);
+type ClarificationImpactReplayRow = (Uuid, Uuid, Uuid, Uuid, Uuid, String, String, Uuid);
+
 async fn scoped(
     pool: &PgPool,
     workspace: Uuid,
@@ -451,7 +454,7 @@ pub async fn record_lineage(
     .bind(lineage.recorded_by)
     .execute(&mut *tx)
     .await?;
-    let stored: Option<(Uuid, Uuid, Uuid, Option<Uuid>, String, String, Uuid)> =
+    let stored: Option<ClaimLineageReplayRow> =
         sqlx::query_as(
             "SELECT prior_analysis_id,prior_claim_id,new_analysis_id,new_claim_id,
                     relation,rationale,recorded_by_principal_id
@@ -525,7 +528,7 @@ pub async fn record_clarification_impact(
     .bind(impact.recorded_by)
     .execute(&mut *tx)
     .await?;
-    let stored: Option<(Uuid, Uuid, Uuid, Uuid, Uuid, String, String, Uuid)> =
+    let stored: Option<ClarificationImpactReplayRow> =
         sqlx::query_as(
             "SELECT source_analysis_id,question_id,answer_id,contribution_id,target_analysis_id,
                     recorded_effect,note,recorded_by_principal_id
