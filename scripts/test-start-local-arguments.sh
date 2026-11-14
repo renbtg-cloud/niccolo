@@ -31,11 +31,16 @@ assert_bad_option 'Usage: bash scripts/start-local-mvp.sh' --no-browser --print-
 
 # Reject mistyped browser-policy values before inspecting private files.
 status=0
-NICCOLO_OPEN_BROWSER='sometimes' bash scripts/start-local-mvp.sh --no-browser >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+NICCOLO_OPEN_BROWSER='sometimes' bash scripts/start-local-mvp.sh >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
 [[ "$status" == 2 ]]
 grep -Fq 'NICCOLO_OPEN_BROWSER must be' "$TMP/stderr"
 [[ ! -e .niccolo-local ]]
 
+# Explicit headless mode overrides the environment without interpreting it.
+status=0
+NICCOLO_OPEN_BROWSER='sometimes' bash scripts/start-local-mvp.sh --no-browser >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+[[ "$status" == 1 ]]
+grep -Fq 'Missing local bootstrap file:' "$TMP/stderr"
 
 # A supported option must get past argument validation and reach the
 # ordinary local-bootstrap preflight, which is intentionally absent here.
