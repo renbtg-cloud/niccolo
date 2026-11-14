@@ -3,6 +3,7 @@ use niccolo_evidence::analysis_structure::AnalysisScope;
 use niccolo_evidence::clarification_answer;
 use niccolo_evidence::reasoning_handoff;
 use niccolo_evidence::review_workflow::{self, ReviewSessionScope, SessionNote, UseRationale};
+use niccolo_evidence::situation_store;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -515,4 +516,51 @@ async fn v090_handoff_is_deterministic_and_grants_no_authority() {
         reasoning_handoff::sha256(&a).unwrap(),
         reasoning_handoff::sha256(&after_answer).unwrap()
     );
+
+    situation_store::retract_contribution(&app, s.workspace, s.principal, s.situation, answer)
+        .await
+        .unwrap();
+
+    let after_retraction = reasoning_handoff::bundle(&app, analysis_scope(s))
+        .await
+        .unwrap();
+    assert_eq!(after_retraction.clarifications[0].answer_count, 0);
+    assert!(!after_retraction.clarifications[0].answered);
+    assert_eq!(after_retraction.open_questions.len(), 1);
+    assert_eq!(after_retraction.open_questions[0].question_id, s.question);
+
+    let active_ids =
+        clarification_answer::answered_question_ids(&app, s.workspace, s.situation, s.analysis)
+            .await
+            .unwrap();
+    assert!(!active_ids.contains(&s.question));
+
+    let (historical_answers, _) = clarification_answer::list(
+        &app,
+        s.workspace,
+        s.situation,
+        s.analysis,
+        s.question,
+        None,
+        10,
+    )
+    .await
+    .unwrap();
+    assert_eq!(historical_answers.len(), 1);
+    assert_eq!(historical_answers[0].contribution_status, "RETRACTED");
+
+    assert!(matches!(
+        clarification_answer::answer(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            s.analysis,
+            s.question,
+            answer,
+            "A later human answer adds context without rewriting the question.",
+        )
+        .await,
+        Err(clarification_answer::ClarificationAnswerError::Conflict)
+    ));
 }
