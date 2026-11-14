@@ -156,7 +156,7 @@ function ConnectedSituation({client}){
           body: selected,
         });
         const attached = await client.addSituationSource(documentId);
-        imported.push({ documentId, ingest: ingested.value, situation: attached.value });
+        imported.push({ documentId, fileName: selected.name, ingest: ingested.value, situation: attached.value });
         setUploadProgress({ done: index + 1, total: selectedFiles.length, current: null });
       }
       return { imported };
@@ -232,7 +232,12 @@ function ConnectedSituation({client}){
       {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected, index) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}:${index}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
       {uploadProgress && <p role="status"><small>Imported and attached {uploadProgress.done}/{uploadProgress.total}{uploadProgress.current ? <> · processing <strong>{uploadProgress.current}</strong></> : ''}.</small></p>}
       {upload.error && <p className="error">{upload.error.message} Successfully completed files remain attached and will replay safely if you retry the same selection.</p>}
-      {upload.data && <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>}
+      {upload.data && <div role="status" className="upload-success">
+        <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>
+        <ul>{upload.data.imported.slice(0,8).map(({documentId,fileName}) => <li key={documentId}><small>{fileName} · document {documentId}</small></li>)}</ul>
+        {upload.data.imported.length > 8 && <small>+ {upload.data.imported.length - 8} more record(s) imported</small>}
+        <small>Source catalog pages are ordered by document ID; new records may not appear on the current page.</small>
+      </div>
     </article>
 
     <article>
