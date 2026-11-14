@@ -290,6 +290,32 @@ mod tests {
         assert_eq!(evaluate(p, None, &rows).unwrap().net_points, -40);
     }
     #[test]
+    fn weaker_copies_from_a_known_origin_cannot_manufacture_corroboration() {
+        let baseline = vec![
+            obs(1, Some(5), Stance::Supports, 80),
+            obs(2, Some(5), Stance::Contradicts, 65),
+        ];
+        let original = evaluate(WeightPolicy::default(), None, &baseline).unwrap();
+        let mut copied = baseline;
+        for (id, stance, strength) in [
+            (3, Stance::Supports, 70),
+            (4, Stance::Supports, 70),
+            (5, Stance::Contradicts, 60),
+            (6, Stance::ContextOnly, 100),
+        ] {
+            copied.push(obs(id, Some(5), stance, strength));
+        }
+        let report = evaluate(WeightPolicy::default(), Some(99), &copied).unwrap();
+        assert_eq!(report.support_points, original.support_points);
+        assert_eq!(report.counter_points, original.counter_points);
+        assert_eq!(report.net_points, original.net_points);
+        assert_eq!(report.origins[0].item_count, 6);
+        assert!(!report.independence_established);
+        assert!(!report.human_confidence_is_documentary_evidence);
+        assert!(!report.establishes_fact);
+    }
+
+    #[test]
     fn context_is_not_evidence() {
         let rows = vec![obs(1, Some(5), Stance::ContextOnly, 100)];
         assert_eq!(
