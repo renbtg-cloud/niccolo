@@ -263,8 +263,17 @@ fi
 
 publish_prepared_url
 
-open_browser=1
-if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
+# Browser launch is an explicit opt-in policy, not a loose truthiness test.
+# Reject typos rather than unexpectedly opening a browser with a handoff link.
+case "${NICCOLO_OPEN_BROWSER:-1}" in
+  1|true|TRUE|yes|YES) open_browser=1 ;;
+  0|false|FALSE|no|NO) open_browser=0 ;;
+  *)
+    echo 'NICCOLO_OPEN_BROWSER must be 1/0, true/false, or yes/no.' >&2
+    exit 2
+    ;;
+esac
+if [[ "${1:-}" == "--no-browser" ]]; then
   open_browser=0
 fi
 # Never inherit a stale handoff capability supplied by the surrounding shell.
