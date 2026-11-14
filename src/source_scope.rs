@@ -70,7 +70,7 @@ type ScopeRow = (
 
 fn valid_text(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
+    !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
 fn valid(input: &SourceScopeInput) -> bool {
@@ -306,6 +306,19 @@ pub async fn list(
     .await?;
     tx.commit().await?;
     Ok(rows.into_iter().map(|row| from_row(row, false)).collect())
+}
+
+#[cfg(test)]
+mod control_character_tests {
+    use super::*;
+
+    #[test]
+    fn source_scope_text_rejects_control_characters() {
+        for value in ["family\nforged", "scope\rforged", "reason\tforged", "x\0y"] {
+            assert!(!valid_text(value, 4096));
+        }
+        assert!(valid_text("Messages from the requested date range.", 4096));
+    }
 }
 
 #[cfg(test)]
