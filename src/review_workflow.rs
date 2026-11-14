@@ -305,6 +305,20 @@ pub async fn record_context_use_rationale(
     .bind(item.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT contribution_id,reason_kind,reason,recorded_by_principal_id
+           FROM niccolo.situation_analysis_used_context_rationales
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND rationale_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(item.rationale_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((contribution, item.reason_kind.clone(), item.reason.clone(), item.recorded_by)) {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -338,6 +352,20 @@ pub async fn record_fragment_rationale(
     .bind(item.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT evidence_id,reason_kind,reason,recorded_by_principal_id
+           FROM niccolo.situation_analysis_examined_fragment_rationales
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND rationale_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(item.rationale_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((evidence, item.reason_kind.clone(), item.reason.clone(), item.recorded_by)) {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -371,6 +399,22 @@ pub async fn link_claim_question(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT relation_kind,linked_by_principal_id
+           FROM niccolo.situation_analysis_claim_question_links
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND claim_id=$4 AND question_id=$5",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(claim)
+    .bind(question)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((relation_kind.to_owned(), principal)) {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
