@@ -113,7 +113,7 @@ pub struct HypothesisEvent {
 
 fn valid_note(value: &str) -> bool {
     let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= 4096 && !value.contains('\0')
+    !trimmed.is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
 pub async fn append_event(
@@ -323,4 +323,18 @@ pub async fn portfolio(
         forced_single_winner: false,
         truncated,
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hypothesis_event_note_rejects_control_characters() {
+        for value in ["challenge\nforged", "note\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_note(value));
+        }
+        assert!(valid_note("Retain as a live alternative pending more evidence."));
+    }
 }
