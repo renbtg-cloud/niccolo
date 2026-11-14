@@ -94,4 +94,28 @@ bash scripts/start-local-mvp.sh --no-browser >"$TMP/stdout" 2>"$TMP/stderr" || s
 grep -Fq 'Missing API binary:' "$TMP/stderr"
 [[ "$(cat .niccolo-local/prepared-url.txt)" == 'last-working-url' ]]
 
-echo 'PASS: startup validates arguments, model and binary before publishing a local URL.'
+# A build with an external Cargo target must be launchable without copying
+# release binaries into the default target/release directory.
+mkdir -p "$TMP/external-target/release" "$TMP/repo/relative-target/release"
+cat > "$TMP/external-target/release/niccolo-api" <<'SH'
+#!/usr/bin/env bash
+printf 'launched external Cargo binary\n'
+SH
+cat > "$TMP/repo/relative-target/release/niccolo-api" <<'SH'
+#!/usr/bin/env bash
+printf 'launched relative Cargo binary\n'
+SH
+chmod +x "$TMP/external-target/release/niccolo-api" "$TMP/repo/relative-target/release/niccolo-api"
+# Obtain an unused loopback port using Node.js, which is already a startup
+# prerequisite. The production launch performs its own final preflight.
+port="$(node -e "const net=require('node:net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()});")"
+NICCOLO_API_PORT="$port" CARGO_TARGET_DIR="$TMP/external-target" \
+  bash scripts/start-local-mvp.sh --no-browser > "$TMP/external-out" 2> "$TMP/external-err"
+grep -Fxq 'launched external Cargo binary' "$TMP/external-out"
+grep -Fq "http://127.0.0.1:${port}/?workspace=" "$TMP/external-out"
+port="$(node -e "const net=require('node:net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()});")"
+NICCOLO_API_PORT="$port" CARGO_TARGET_DIR='relative-target' \
+  bash scripts/start-local-mvp.sh --no-browser > "$TMP/relative-out" 2> "$TMP/relative-err"
+grep -Fxq 'launched relative Cargo binary' "$TMP/relative-out"
+
+echo 'PASS: startup validates configuration and honors Cargo release target overrides.'
