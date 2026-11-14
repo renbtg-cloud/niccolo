@@ -215,6 +215,10 @@ fn valid_text(value: &str, max: usize) -> bool {
         && !value.chars().any(unsafe_display_character)
 }
 
+fn valid_source_path_cursor(value: &str) -> bool {
+    value.len() <= 2048 && !value.chars().any(unsafe_display_character)
+}
+
 fn decode_hex(value: &str) -> Result<Vec<u8>, ForensicImportError> {
     if !value.len().is_multiple_of(2) {
         return Err(ForensicImportError::Invalid);
@@ -709,8 +713,7 @@ pub async fn list_items(
 ) -> Result<ImportItemPage, ForensicImportError> {
     if batch.is_nil()
         || !(1..=200).contains(&limit)
-        || after_source_path
-            .is_some_and(|value| value.len() > 2048 || value.contains('\0'))
+        || after_source_path.is_some_and(|value| !valid_source_path_cursor(value))
     {
         return Err(ForensicImportError::Invalid);
     }
@@ -966,6 +969,14 @@ mod tests {
         assert!(!valid_text("trusted\u{202e}untrusted", 2048));
         assert!(!valid_text("trusted\u{2067}untrusted", 2048));
         assert!(!valid_text("   ", 2048));
+    }
+
+    #[test]
+    fn import_cursor_rejects_control_and_directional_characters() {
+        assert!(valid_source_path_cursor("logical/table/00000001.json"));
+        assert!(!valid_source_path_cursor("logical/table/0000\n0001.json"));
+        assert!(!valid_source_path_cursor("logical/table/\u{202e}0001.json"));
+        assert!(!valid_source_path_cursor(&"x".repeat(2049)));
     }
 
     #[test]
