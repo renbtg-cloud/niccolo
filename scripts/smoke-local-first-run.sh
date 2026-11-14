@@ -43,6 +43,19 @@ if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example
   exit 1
 fi
 grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY.' .niccolo-local/incomplete-model.log
+# Local model traffic may be plaintext on loopback; remote plaintext HTTP is unsafe.
+# Parse the URL, rather than trusting a string prefix that can hide userinfo@host.
+for unsafe_url in 'http://remote.example:11434/v1' 'http://127.0.0.1:80@remote.example/v1'; do
+  if NICCOLO_LLM_BASE_URL="$unsafe_url" NICCOLO_LLM_MODEL='example-model' NICCOLO_LLM_API_KEY='' \
+      bash scripts/start-local-mvp.sh --print-only > .niccolo-local/insecure-model.log 2>&1; then
+    echo 'Start helper accepted a remote plaintext model endpoint' >&2
+    exit 1
+  fi
+  grep -Fq 'HTTP model providers must use loopback; remote providers must use HTTPS.' .niccolo-local/insecure-model.log
+done
+NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='local-model' \
+    bash scripts/start-local-mvp.sh --print-only > .niccolo-local/loopback-model.log 2>&1
+grep -Fq 'Reasoning model: configured (local-model)' .niccolo-local/loopback-model.log
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
 ./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
