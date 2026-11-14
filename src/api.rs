@@ -315,6 +315,8 @@ fn router_with_model_and_handoff(
         .route("/operations", get(frontend_index))
         .route("/review", get(frontend_index))
         .route("/inspector", get(frontend_index))
+        .route("/forensic", get(frontend_index))
+        .route("/playground", get(frontend_index))
         .route("/assets/chunks/{name}", get(frontend_technical_chunk))
         .route(
             "/assets/app.js",
