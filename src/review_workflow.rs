@@ -115,6 +115,14 @@ fn valid_text(value: &str, max: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
+fn valid_review_scope(scope: ReviewSessionScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.session.is_nil()
+}
+
+fn valid_analysis_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 pub async fn start_session(
     pool: &PgPool,
     workspace: Uuid,
@@ -124,7 +132,13 @@ pub async fn start_session(
     purpose: &str,
     principal: Uuid,
 ) -> Result<(), ReviewWorkflowError> {
-    if !valid_text(purpose, 2048) {
+    if workspace.is_nil()
+        || situation.is_nil()
+        || session.is_nil()
+        || analysis.is_some_and(|id| id.is_nil())
+        || principal.is_nil()
+        || !valid_text(purpose, 2048)
+    {
         return Err(ReviewWorkflowError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -165,7 +179,11 @@ pub async fn end_session(
     note: Option<&str>,
     principal: Uuid,
 ) -> Result<(), ReviewWorkflowError> {
-    if note.is_some_and(|v| !valid_text(v, 4096)) {
+    if !valid_review_scope(scope)
+        || end_id.is_nil()
+        || principal.is_nil()
+        || note.is_some_and(|v| !valid_text(v, 4096))
+    {
         return Err(ReviewWorkflowError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -191,7 +209,11 @@ pub async fn add_session_note(
     scope: ReviewSessionScope,
     item: &SessionNote,
 ) -> Result<(), ReviewWorkflowError> {
-    if !matches!(item.kind.as_str(), "NOTE" | "BOOKMARK")
+    if !valid_review_scope(scope)
+        || item.note_id.is_nil()
+        || item.recorded_by.is_nil()
+        || item.target_id.is_some_and(|id| id.is_nil())
+        || !matches!(item.kind.as_str(), "NOTE" | "BOOKMARK")
         || !valid_text(&item.text, 4096)
         || item.target_type.is_some() != item.target_id.is_some()
     {
@@ -244,6 +266,9 @@ pub async fn session_digest(
     pool: &PgPool,
     scope: ReviewSessionScope,
 ) -> Result<ReviewSessionDigest, ReviewWorkflowError> {
+    if !valid_review_scope(scope) {
+        return Err(ReviewWorkflowError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     type Row = (Option<Uuid>, String, i64, i64, bool);
     let row: Option<Row> = sqlx::query_as(
@@ -644,6 +669,25 @@ pub async fn reanalysis_candidates(
         .collect())
 }
 
+
+#[cfg(test)]
+mod identity_validation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn nil_review_session_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = ReviewSessionScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            session: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            session_digest(&pool, scope).await,
+            Err(ReviewWorkflowError::Invalid)
+        ));
+    }
+}
 
 #[cfg(test)]
 mod tests {
