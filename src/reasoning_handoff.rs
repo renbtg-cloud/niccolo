@@ -3,6 +3,7 @@
 use crate::analysis_assumptions;
 use crate::analysis_claims;
 use crate::analysis_structure::AnalysisScope;
+use crate::clarification_answer;
 use crate::{
     collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
     integrity_scope, source_scope, temporal_state,
@@ -135,16 +136,8 @@ pub async fn bundle(
     .bind(scope.analysis)
     .fetch_one(&mut *tx)
     .await?;
-    let clarification_rows: Vec<(Uuid, String, String, i64, i64)> = sqlx::query_as(
-        "SELECT q.question_id,q.question,c.reason,s.input_revision,
-                (SELECT count(*) FROM niccolo.situation_analysis_clarification_answers a
-                 JOIN niccolo.situation_contributions ac
-                   ON ac.workspace_id=a.workspace_id
-                  AND ac.situation_id=a.situation_id
-                  AND ac.contribution_id=a.contribution_id
-                 WHERE a.workspace_id=c.workspace_id AND a.situation_id=c.situation_id
-                   AND a.analysis_id=c.analysis_id AND a.question_id=c.question_id
-                   AND ac.status='ACTIVE')::bigint
+    let clarification_rows: Vec<(Uuid, String, String, i64)> = sqlx::query_as(
+        "SELECT q.question_id,q.question,c.reason,s.input_revision
          FROM niccolo.situation_analysis_clarification_questions c
          JOIN niccolo.investigative_questions q USING(workspace_id,question_id)
          JOIN niccolo.situation_analysis_snapshots s USING(workspace_id,situation_id,analysis_id)
@@ -157,6 +150,14 @@ pub async fn bundle(
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
+    let answer_counts = clarification_answer::current_answer_counts(
+        pool,
+        scope.workspace,
+        scope.situation,
+        scope.analysis,
+    )
+    .await
+    .map_err(|error| HandoffError::Dependency(error.to_string()))?;
     let claims =
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
             .await?
@@ -182,13 +183,16 @@ pub async fn bundle(
     let clarifications = clarification_rows
         .into_iter()
         .map(
-            |(question_id, text, reason, input_revision, answer_count)| HandoffClarification {
-                question_id,
-                text,
-                reason,
-                input_revision,
-                answer_count,
-                answered: answer_count > 0,
+            |(question_id, text, reason, input_revision)| {
+                let answer_count = answer_counts.get(&question_id).copied().unwrap_or(0);
+                HandoffClarification {
+                    question_id,
+                    text,
+                    reason,
+                    input_revision,
+                    answer_count,
+                    answered: answer_count > 0,
+                }
             },
         )
         .collect();
