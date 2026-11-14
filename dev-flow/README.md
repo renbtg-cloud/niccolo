@@ -7,4 +7,6 @@ Niccolò's development records are retained for traceability, but are deliberate
 - **[Planning](planning/)** — proposals, deferred scope and implementation plans.
 - **[Editorial](editorial/)** — README editing and documentation-review notes.
 
+**For ongoing MVP development:** consult the [composite evidence and human-guided circumstances contract](../docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) whenever a milestone touches intake, attachments, documents, provenance, context, or reasoning. Decide whether to implement/refactor now or at a better technical point; document consequential deferrals without treating the contract as post-MVP scope.
+
 Start with [the public README](../README.md) and [documentation guide](../docs/README.md). The authoritative implementation is the code, migrations and current passing validation, not a milestone count.
