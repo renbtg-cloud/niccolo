@@ -137,6 +137,16 @@ grep -Fxq 'start:--no-browser' "$TMP/trace"
 [[ ! -f "$TMP/repo/.niccolo-local/model.env" ]]
 unset NICCOLO_LLM_BASE_URL NICCOLO_LLM_MODEL NICCOLO_LLM_API_KEY
 
+# An existing but empty model file must not count as configured: the
+# interactive wizard can repair it, and non-interactive runs explain the fix.
+: > "$TMP/repo/.niccolo-local/model.env"
+: > "$TMP/trace"
+status=0
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser >"$TMP/empty-model-out" 2>"$TMP/empty-model-err" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'reasoning model is not configured' "$TMP/empty-model-err"
+[[ ! -s "$TMP/trace" ]]
+
 # A persisted model configuration is reused without re-bootstrap/reconfigure.
 printf 'export NICCOLO_LLM_BASE_URL=%q\nexport NICCOLO_LLM_MODEL=%q\n' \
   'http://127.0.0.1:11434/v1' 'stored-model' > "$TMP/repo/.niccolo-local/model.env"
