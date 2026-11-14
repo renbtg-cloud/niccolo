@@ -14,6 +14,8 @@ pub enum ReviewSessionError {
     Privileged,
     #[error("invalid review checkpoint")]
     Invalid,
+    #[error("review checkpoint replay conflicts with stored content")]
+    Conflict,
     #[error("checkpoint not visible")]
     Invisible,
     #[error("read model failed: {0}")]
@@ -130,6 +132,26 @@ pub async fn record_checkpoint(
     .bind(item.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(i64, Option<Uuid>, Option<String>, Uuid)> = sqlx::query_as(
+        "SELECT observed_revision,observed_analysis_id,note,recorded_by_principal_id
+           FROM niccolo.situation_review_checkpoints
+          WHERE workspace_id=$1 AND situation_id=$2 AND checkpoint_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(item.checkpoint_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            item.observed_revision,
+            item.observed_analysis_id,
+            item.note.clone(),
+            item.recorded_by,
+        ))
+    {
+        return Err(ReviewSessionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
