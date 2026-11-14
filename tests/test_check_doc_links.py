@@ -28,6 +28,20 @@ class DocumentationLinksTests(unittest.TestCase):
             self.assertEqual(links, 2)
             self.assertEqual(len(errors), 2)
 
+    def test_root_agents_file_is_permitted_but_unrelated_docs_are_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Cargo.toml").write_text("[package]\nname = 'example'\n")
+            (root / "README.md").write_text("# README\n")
+            (root / "AGENTS.md").write_text("# Instructions for coding agents\n")
+            self.assertEqual(doc_checker.check(root), (0, []))
+            (root / "NOTES.md").write_text("# Unrelated root document\n")
+            extra_root_docs = sorted(
+                p.name for p in root.glob("*.md")
+                if p.name not in {"README.md", "AGENTS.md"}
+            )
+            self.assertEqual(extra_root_docs, ["NOTES.md"])
+
     def test_ignores_fenced_code_and_checks_reference_definitions(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
