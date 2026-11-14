@@ -145,12 +145,6 @@ if [[ "$(wc -l < "$token_file")" -ne 1 ]] || ! grep -Eq '^ncl_[0-9a-f]{64}\r?$' 
 fi
 
 prepared_url="http://127.0.0.1:${NICCOLO_API_PORT}/?workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}"
-printf '%s\n' "$prepared_url" > "$url_file"
-chmod 600 "$url_file" 2>/dev/null || true
-
-echo "Niccolo local session"
-echo "Open: $prepared_url"
-echo "Bearer token fallback: $token_file"
 llm_base="${NICCOLO_LLM_BASE_URL:-}"
 llm_model="${NICCOLO_LLM_MODEL:-}"
 llm_key="${NICCOLO_LLM_API_KEY:-}"
@@ -213,6 +207,14 @@ elif [[ -z "$llm_base" || -z "$llm_model" ]]; then
 else
   echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
 fi
+
+# Publish the prepared URL only after all credential/model validation succeeds.
+# An invalid startup must not replace a previously valid prepared session link.
+printf '%s\n' "$prepared_url" > "$url_file"
+chmod 600 "$url_file" 2>/dev/null || true
+echo "Niccolo local session"
+echo "Open: $prepared_url"
+echo "Bearer token fallback: $token_file"
 
 if [[ "${1:-}" == "--print-only" ]]; then
   exit 0
