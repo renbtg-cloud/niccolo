@@ -230,8 +230,15 @@ function ConnectedSituation({client}){
         {upload.isPending ? `Importing ${files.length} record(s)…` : `Import and attach ${files.length || ''} record${files.length === 1 ? '' : 's'}`}
       </button>
       {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected, index) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}:${index}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
-      {uploadProgress && <p role="status"><small>Imported and attached {uploadProgress.done}/{uploadProgress.total}{uploadProgress.current ? <> · processing <strong>{uploadProgress.current}</strong></> : ''}.</small></p>}
-      {upload.error && <p className="error">{upload.error.message} Successfully completed files remain attached and will replay safely if you retry the same selection.</p>}
+      {uploadProgress && <p role="status"><small>
+        Imported and attached {uploadProgress.done}/{uploadProgress.total}
+        {upload.error
+          ? <> · stopped at <strong>{uploadProgress.current ?? 'an unknown record'}</strong>; no further records in this batch were attempted</>
+          : uploadProgress.current
+            ? <> · processing <strong>{uploadProgress.current}</strong></>
+            : ''}.
+      </small></p>}
+      {upload.error && <p className="error" role="alert">{upload.error.message} The failed record may have been ingested before attachment failed; retrying this same selection reuses its document ID. Successfully completed records remain attached.</p>}
       {upload.data && <div role="status" className="upload-success">
         <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>
         <ul>{upload.data.imported.slice(0,8).map(({documentId,fileName}) => <li key={documentId}><small>{fileName} · document {documentId}</small></li>)}</ul>
