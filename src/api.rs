@@ -253,6 +253,43 @@ async fn frontend_index() -> Html<&'static str> {
     Html(include_str!("../frontend/dist/index.html"))
 }
 
+// The React build generates deterministic module chunks. Serve only the
+// explicitly embedded assets; never interpret URL paths as filesystem paths.
+async fn frontend_technical_chunk(Path(name): Path<String>) -> Response {
+    let body: Option<&'static str> = match name.as_str() {
+        "AnalysisPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/AnalysisPage.js"
+        )),
+        "InspectorPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/InspectorPage.js"
+        )),
+        "ReasoningPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/ReasoningPage.js"
+        )),
+        "IdentitiesPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/IdentitiesPage.js"
+        )),
+        "FeedbackPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/FeedbackPage.js"
+        )),
+        "EpistemicPlaygroundPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/EpistemicPlaygroundPage.js"
+        )),
+        "ForensicPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/ForensicPage.js"
+        )),
+        _ => None,
+    };
+    match body {
+        Some(source) => (
+            [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+            source,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 pub fn router(pool: PgPool) -> Router {
     router_with_model(pool, Arc::new(UnavailableModel))
 }
@@ -278,6 +315,9 @@ fn router_with_model_and_handoff(
         .route("/operations", get(frontend_index))
         .route("/review", get(frontend_index))
         .route("/inspector", get(frontend_index))
+        .route("/forensic", get(frontend_index))
+        .route("/playground", get(frontend_index))
+        .route("/assets/chunks/{name}", get(frontend_technical_chunk))
         .route(
             "/assets/app.js",
             get(|| async {
@@ -4900,6 +4940,85 @@ mod tests {
         let body: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["token"], token);
         let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn direct_technical_route_navigation_returns_the_react_shell() {
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        for path in ["/forensic", "/playground"] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/html; charset=utf-8"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn embedded_technical_chunks_are_served_as_javascript_without_path_traversal() {
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        for name in [
+            "AnalysisPage",
+            "InspectorPage",
+            "ReasoningPage",
+            "IdentitiesPage",
+            "FeedbackPage",
+            "EpistemicPlaygroundPage",
+            "ForensicPage",
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(format!("/assets/chunks/{name}.js"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "missing JS chunk: {name}"
+            );
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/javascript; charset=utf-8"
+            );
+        }
+        for path in [
+            "/assets/chunks/nonexistent.js",
+            "/assets/chunks/app.js",
+            "/assets/chunks/..%2Fapp.js",
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_ne!(
+                response.status(),
+                StatusCode::OK,
+                "unexpected JS asset: {path}"
+            );
+        }
     }
 
     #[tokio::test]

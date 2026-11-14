@@ -28,7 +28,14 @@ else
 fi
 echo "[3/5] Build the frontend that Rust embeds"
 (cd frontend && "$NPM" run build)
-for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/assets/app.css; do
+for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/assets/app.css \
+    frontend/dist/assets/chunks/AnalysisPage.js \
+    frontend/dist/assets/chunks/InspectorPage.js \
+    frontend/dist/assets/chunks/ReasoningPage.js \
+    frontend/dist/assets/chunks/IdentitiesPage.js \
+    frontend/dist/assets/chunks/FeedbackPage.js \
+    frontend/dist/assets/chunks/EpistemicPlaygroundPage.js \
+    frontend/dist/assets/chunks/ForensicPage.js; do
   if [[ ! -s "$file" ]]; then
     echo "Missing built frontend artifact: $file" >&2
     exit 1
