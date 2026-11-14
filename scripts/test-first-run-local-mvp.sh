@@ -107,6 +107,20 @@ grep -Fq 'local bootstrap state is incomplete' "$TMP/partial-err"
 ! grep -Fq '^bootstrap$' "$TMP/trace"
 rm -rf "$TMP/repo/.niccolo-local"
 
+# Existing, apparently complete bootstrap files must all be nonempty and
+# regular. A zero-byte token cannot be repaired by rerunning migrations.
+mkdir -p "$TMP/repo/.niccolo-local"
+printf '%s\n' 'export NICCOLO_PG_SECURE_URL=postgres://runtime' > "$TMP/repo/.niccolo-local/local.env"
+printf '%s\n' 'WORKSPACE_UUID=11111111-1111-4111-8111-111111111111' > "$TMP/repo/.niccolo-local/identifiers.txt"
+: > "$TMP/repo/.niccolo-local/token.txt"
+: > "$TMP/trace"
+status=0
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --skip-model-config --no-browser >"$TMP/empty-token-out" 2>"$TMP/empty-token-err" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'Unsafe or empty local bootstrap file:' "$TMP/empty-token-err"
+[[ ! -s "$TMP/trace" ]]
+rm -rf "$TMP/repo/.niccolo-local"
+
 # A fresh non-interactive first run may bootstrap, but must not silently launch
 # Analyze without a reasoning model.
 : > "$TMP/trace"
