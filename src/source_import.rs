@@ -379,6 +379,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     {
         return false;
     }
+    let two_digit_year = year.len() == 2;
     let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (
         day.parse::<u8>(),
         month.parse::<u8>(),
@@ -391,7 +392,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     if second.is_some_and(|s| s.parse::<u8>().map_or(true, |value| value >= 60))
         || minute >= 60
         || !(1..=12).contains(&month)
-        || year == 0
+        || (!two_digit_year && year == 0)
         || match meridiem {
             Some(_) => !(1..=12).contains(&hour),
             None => hour >= 24,
@@ -399,7 +400,11 @@ fn looks_like_datetime(dt: &str) -> bool {
     {
         return false;
     }
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    // Two-digit "00" is a valid export-year representation (e.g. 2000).
+    // This century is used only to check the calendar day; source timestamps
+    // are never normalized, interpreted as authenticated dates or rewritten.
+    let calendar_year = if two_digit_year { 2000 + year } else { year };
+    let leap = calendar_year % 4 == 0 && (calendar_year % 100 != 0 || calendar_year % 400 == 0);
     let days_in_month = match month {
         2 if leap => 29,
         2 => 28,
@@ -562,6 +567,26 @@ mod tests {
             "[WhatsApp system event — unverified]"
         );
         assert_eq!(parsed.fragments[1].speaker_label, "Ana");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
+    fn whatsapp_two_digit_year_zero_is_not_an_impossible_date() {
+        assert!(looks_like_datetime("01/01/00, 10:05"));
+        assert!(looks_like_datetime("29/02/00, 10:05"));
+        assert!(!looks_like_datetime("29/02/01, 10:05"));
+        assert!(!looks_like_datetime("29/02/0000, 10:05"));
+
+        let src = "[29/02/00, 10:05] Ana: First record.\n[01/03/00, 10:06] Beto: Next.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
         for fragment in parsed.fragments {
             assert_eq!(
                 fragment.content.as_bytes(),
