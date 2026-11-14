@@ -22,9 +22,9 @@ cat > "$fixture/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
 printf 'cargo' >> "$BUILD_MODE_LOG"; printf ' <%s>' "$@" >> "$BUILD_MODE_LOG"; printf '\n' >> "$BUILD_MODE_LOG"
 if [[ " ${1:-} " == ' build ' ]]; then
-  mkdir -p target/release
-  printf 'api\n' > target/release/niccolo-api
-  printf 'provision\n' > target/release/niccolo-provision
+  mkdir -p "${CARGO_TARGET_DIR:-target}/release"
+  printf 'api\n' > "${CARGO_TARGET_DIR:-target}/release/niccolo-api"
+  printf 'provision\n' > "${CARGO_TARGET_DIR:-target}/release/niccolo-provision"
 fi
 EOF
 chmod +x "$fixture/bin/npm" "$fixture/bin/cargo"
@@ -54,6 +54,16 @@ NPM="$fixture/bin/npm" CARGO="$fixture/bin/cargo" NICCOLO_BUILD_VERIFY=0 bash sc
 ! grep -Fq 'cargo <test>' "$log"
 grep -Fq 'npm <run> <build>' "$log"
 grep -Fq 'cargo <build> <--locked> <--release>' "$log"
+
+# Cargo may be configured with an external target directory (for example
+# to share compiled dependencies across disposable checkout worktrees).
+: > "$log"
+rm -rf frontend/dist
+CARGO_TARGET_DIR="$fixture/custom-target" NPM="$fixture/bin/npm" CARGO="$fixture/bin/cargo" \
+  NICCOLO_BUILD_VERIFY=0 bash scripts/build-mvp.sh > "$fixture/custom-target.log"
+test -s "$fixture/custom-target/release/niccolo-api"
+test -s "$fixture/custom-target/release/niccolo-provision"
+grep -Fq "Binaries: $fixture/custom-target/release/niccolo-api" "$fixture/custom-target.log"
 
 if NPM="$fixture/bin/npm" CARGO="$fixture/bin/cargo" NICCOLO_BUILD_VERIFY=maybe bash scripts/build-mvp.sh >/dev/null 2>&1; then
   echo 'Invalid NICCOLO_BUILD_VERIFY unexpectedly accepted' >&2
