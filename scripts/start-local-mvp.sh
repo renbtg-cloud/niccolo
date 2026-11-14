@@ -208,15 +208,19 @@ else
   echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
 fi
 
-# Publish the prepared URL only after all credential/model validation succeeds.
-# An invalid startup must not replace a previously valid prepared session link.
-printf '%s\n' "$prepared_url" > "$url_file"
-chmod 600 "$url_file" 2>/dev/null || true
-echo "Niccolo local session"
-echo "Open: $prepared_url"
-echo "Bearer token fallback: $token_file"
+# Only publish a fresh prepared link after the requested startup mode is
+# ready: print-only needs validated configuration, while normal startup must
+# additionally pass executable and port preflight.
+publish_prepared_url() {
+  printf '%s\n' "$prepared_url" > "$url_file"
+  chmod 600 "$url_file" 2>/dev/null || true
+  echo "Niccolo local session"
+  echo "Open: $prepared_url"
+  echo "Bearer token fallback: $token_file"
+}
 
 if [[ "${1:-}" == "--print-only" ]]; then
+  publish_prepared_url
   exit 0
 fi
 
@@ -248,6 +252,8 @@ then
   echo "Local API port $NICCOLO_API_PORT is already in use; choose another NICCOLO_API_PORT." >&2
   exit 1
 fi
+
+publish_prepared_url
 
 open_browser=1
 if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
