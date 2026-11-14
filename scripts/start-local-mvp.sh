@@ -92,6 +92,7 @@ case "$(uname -s)" in
       }
     }
     assert_private_file "$env_file"
+    assert_private_file "$ids_file"
     assert_private_file "$token_file"
     [[ ! -e "$model_env_file" ]] || assert_private_file "$model_env_file"
     ;;
@@ -122,8 +123,36 @@ fi
 [[ -z "$explicit_model_provider_set" ]] || NICCOLO_LLM_PROVIDER="$explicit_model_provider"
 [[ -z "$explicit_model_key_set" ]] || NICCOLO_LLM_API_KEY="$explicit_model_key"
 [[ -z "$explicit_model_json_set" ]] || NICCOLO_LLM_JSON_MODE="$explicit_model_json"
-# shellcheck disable=SC1091
-source "$ids_file"
+# Identifier files are data, not shell programs. A copied or tampered file
+# must never execute shell substitutions. Bootstrap writes two plain UUIDs.
+WORKSPACE_UUID=''
+SITUATION_UUID=''
+seen_workspace=0
+seen_situation=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+  case "$line" in
+    WORKSPACE_UUID=*)
+      if (( seen_workspace )); then
+        echo "Duplicate WORKSPACE_UUID in $ids_file" >&2
+        exit 2
+      fi
+      seen_workspace=1
+      WORKSPACE_UUID="${line#WORKSPACE_UUID=}"
+      ;;
+    SITUATION_UUID=*)
+      if (( seen_situation )); then
+        echo "Duplicate SITUATION_UUID in $ids_file" >&2
+        exit 2
+      fi
+      seen_situation=1
+      SITUATION_UUID="${line#SITUATION_UUID=}"
+      ;;
+    *)
+      echo "Unsupported identifier entry in $ids_file" >&2
+      exit 2
+      ;;
+  esac
+done < "$ids_file"
 
 # Database-owner credentials are never needed by the restricted runtime API.
 # Strip an inherited bootstrap URL before any long-lived child process starts.
