@@ -2,6 +2,7 @@
 
 These describe components or intended contracts. Source code and tests determine the presently implemented behavior.
 
+- [Epistemic architecture revamp — work in progress](EPISTEMIC_ARCHITECTURE_REVAMP_IN_PROGRESS.md) — exploratory, non-normative review
 - [MVP composite evidence and human-guided circumstances](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md)
 - [Model evolution architecture](EVOLUTION_ENGINE.md)
 - [Epistemic weighting API](EPISTEMIC_WEIGHTING_API.md)
