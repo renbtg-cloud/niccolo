@@ -670,6 +670,34 @@ mod tests {
     }
 
     #[test]
+    fn malformed_whatsapp_date_width_does_not_forge_a_speaker_boundary() {
+        for invalid in [
+            "001/11/2026, 10:05",
+            "01/011/2026, 10:05",
+            "01/11/026, 10:05",
+            "01/11/20266, 10:05",
+        ] {
+            assert!(!looks_like_datetime(invalid), "unsupported date shape accepted: {invalid}");
+        }
+        // Single-digit day/month and 2-digit years are supported exports.
+        assert!(looks_like_datetime("1/2/26, 9:05"));
+        assert!(looks_like_datetime("01/02/2026, 09:05"));
+
+        let src = "[02/11/2026, 10:00] Ana: Start\n[001/11/2026, 10:01] Fake: This is quoted text\n[02/11/2026, 10:02] Beto: Reply\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert!(parsed.fragments[0].content.contains("Fake: This is quoted text"));
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
     fn directional_control_characters_cannot_spoof_source_speaker_labels() {
         for source in [
             "From: Alice \u{202e}<mallory@example.org>\nSubject: test\n\nbody",
