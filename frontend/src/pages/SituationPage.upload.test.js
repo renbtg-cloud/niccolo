@@ -53,6 +53,13 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('onError: refresh');
   });
 
+  it('shows a bounded, identifiable receipt after a completed multi-source import', () => {
+    expect(source).toContain('fileName: selected.name');
+    expect(source).toContain('upload.data.imported.slice(0,8).map(({documentId,fileName})');
+    expect(source).toContain('new records may not appear on the current page');
+    expect(source).toContain('role="status" className="upload-success"');
+  });
+
   it('keeps receipt publication attached to the visible source record rather than the upload action', () => {
     expect(source).toContain("import { SourceIntakePublicationPanel }");
     expect(source).toContain('<SourceIntakePublicationPanel document={document}/>');
