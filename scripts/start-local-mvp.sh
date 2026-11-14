@@ -3,6 +3,21 @@
 # The bearer token is deliberately NOT placed in the URL or printed to stdout.
 set -Eeuo pipefail
 
+# Reject mistyped or conflicting options before reading private credentials,
+# writing a prepared URL, or attempting to start a service.
+if (( $# > 1 )); then
+  printf '%s\n' 'Usage: bash scripts/start-local-mvp.sh [--print-only | --no-browser]' >&2
+  exit 2
+fi
+case "${1:-}" in
+  ''|--print-only|--no-browser) ;;
+  *)
+    printf 'Unknown startup option: %s\n' "$1" >&2
+    printf '%s\n' 'Usage: bash scripts/start-local-mvp.sh [--print-only | --no-browser]' >&2
+    exit 2
+    ;;
+esac
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
