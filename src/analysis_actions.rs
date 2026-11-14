@@ -83,12 +83,20 @@ fn valid_text(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 pub async fn record_proposal(
     pool: &PgPool,
     scope: AnalysisScope,
     p: &ActionProposal,
 ) -> Result<(), ActionError> {
-    if !valid_text(&p.action_text)
+    if !valid_scope(scope)
+        || p.proposal_id.is_nil()
+        || p.claim_id.is_some_and(|id| id.is_nil())
+        || p.proposed_by.is_nil()
+        || !valid_text(&p.action_text)
         || !valid_text(&p.rationale)
         || p.risk_note.as_ref().is_some_and(|value| !valid_text(value))
     {
@@ -126,10 +134,15 @@ pub async fn append_decision(
     scope: AnalysisScope,
     d: &ActionDecision,
 ) -> Result<(), ActionError> {
-    if !matches!(
-        d.kind.as_str(),
-        "ACCEPTED" | "REJECTED" | "DEFERRED" | "MODIFIED"
-    ) || !valid_text(&d.note)
+    if !valid_scope(scope)
+        || d.proposal_id.is_nil()
+        || d.decision_id.is_nil()
+        || d.decided_by.is_nil()
+        || !matches!(
+            d.kind.as_str(),
+            "ACCEPTED" | "REJECTED" | "DEFERRED" | "MODIFIED"
+        )
+        || !valid_text(&d.note)
     {
         return Err(ActionError::Invalid);
     }
@@ -162,6 +175,9 @@ pub async fn agency_report(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<AgencyReport, ActionError> {
+    if !valid_scope(scope) {
+        return Err(ActionError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let proposal_count: i64 = sqlx::query_scalar("SELECT count(*) FROM niccolo.situation_analysis_action_proposals WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3")
         .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_one(&mut *tx).await?;
@@ -191,6 +207,28 @@ pub async fn agency_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_action_scope_is_rejected_without_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        let proposal = ActionProposal {
+            proposal_id: Uuid::new_v4(),
+            claim_id: None,
+            action_text: "Ask the user.".into(),
+            rationale: "Human authorization required.".into(),
+            risk_note: None,
+            proposed_by: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            record_proposal(&pool, scope, &proposal).await,
+            Err(ActionError::Invalid)
+        ));
+    }
 
     #[test]
     fn action_text_inputs_reject_control_characters() {
