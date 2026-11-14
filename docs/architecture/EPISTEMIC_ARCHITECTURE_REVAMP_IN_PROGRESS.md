@@ -8,6 +8,7 @@ Read this with:
 
 - [MVP composite evidence and human-guided circumstances](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md)
 - [Qualified temporal actor state](TEMPORAL_ACTOR_STATE_MVP.md)
+- [Independent interdisciplinary epistemic-domain review (66 sources)](EPISTEMIC_DOMAIN_INTERDISCIPLINARY_REVIEW_V1.md)
 - [Epistemic weighting API](EPISTEMIC_WEIGHTING_API.md)
 - [System-integrator boundaries and near-term hardening](SYSTEM_INTEGRATOR_BOUNDARIES_AND_HARDENING.md)
 - [Architecture index](README.md)
