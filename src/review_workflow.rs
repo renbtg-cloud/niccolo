@@ -483,6 +483,20 @@ pub async fn record_revision_condition(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT claim_id,trigger_kind,condition_text,recorded_by_principal_id
+           FROM niccolo.situation_analysis_claim_revision_conditions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND condition_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(condition)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((claim, trigger_kind.to_owned(), text.to_owned(), principal)) {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -525,6 +539,32 @@ pub async fn append_condition_event(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Uuid, Uuid, String, String, Option<Uuid>, Option<Uuid>, Uuid)> =
+        sqlx::query_as(
+            "SELECT claim_id,condition_id,event_kind,resolution_note,
+                    related_evidence_id,related_contribution_id,recorded_by_principal_id
+               FROM niccolo.situation_analysis_claim_condition_events
+              WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.analysis)
+        .bind(event)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if stored
+        != Some((
+            claim,
+            condition,
+            kind.to_owned(),
+            note.to_owned(),
+            related_evidence,
+            related_contribution,
+            principal,
+        ))
+    {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
