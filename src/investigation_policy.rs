@@ -62,6 +62,23 @@ fn actionable_source_request(state: &str) -> bool {
     matches!(state, "PROPOSED" | "ACCEPTED" | "REOPENED")
 }
 
+// Human steering on an explicit next step must survive ranking. ACCEPTED still
+// means "the human wants to pursue this", not "Niccolò executed it".
+fn actionable_next_step(state: &str) -> bool {
+    matches!(state, "PROPOSED" | "ACCEPTED" | "REOPENED")
+}
+
+fn next_step_information_value(kind: &str, state: &str) -> u16 {
+    let base = match kind {
+        "REANALYZE" => 87,
+        "GATHER_EVIDENCE" => 85,
+        "ASK_HUMAN" => 83,
+        "USER_ACTION" => 78,
+        _ => 70,
+    };
+    base + u16::from(matches!(state, "ACCEPTED" | "REOPENED")) * 3
+}
+
 pub async fn queue(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -77,6 +94,7 @@ pub async fn queue(
     let requests = human_handoff::source_requests(pool, scope)
         .await
         .map_err(dep)?;
+    let next_steps = human_agency::next_steps(pool, scope).await.map_err(dep)?;
     let (questions, _) = clarification::list(
         pool,
         scope.workspace,
@@ -173,6 +191,26 @@ pub async fn queue(
             system_may_execute_external_action: false,
         });
     }
+    for step in next_steps
+        .steps
+        .into_iter()
+        .filter(|step| actionable_next_step(&step.state))
+    {
+        let score = next_step_information_value(&step.kind, &step.state);
+        items.push(InvestigationCandidate {
+            id: step.step_id,
+            kind: "NEXT_STEP".into(),
+            text: step.text,
+            rationale: format!(
+                "{}; human steering state: {}; proposed step kind: {}",
+                step.rationale, step.state, step.kind
+            ),
+            information_value_score: score,
+            score_is_heuristic: true,
+            requires_human_action: true,
+            system_may_execute_external_action: false,
+        });
+    }
     for q in questions
         .into_iter()
         .filter(|q| {
@@ -248,6 +286,25 @@ mod tests {
             acquisition_cost: Some(acquisition_cost),
             cheaper_alternative: cheaper.then(|| "Use the already available ledger".into()),
         }
+    }
+
+    #[test]
+    fn human_next_step_state_controls_proactive_eligibility() {
+        for state in ["PROPOSED", "ACCEPTED", "REOPENED"] {
+            assert!(actionable_next_step(state), "{state}");
+        }
+        for state in ["DEFERRED", "DISMISSED", "UNKNOWN", ""] {
+            assert!(!actionable_next_step(state), "{state}");
+        }
+    }
+
+    #[test]
+    fn accepted_or_reopened_next_step_gets_small_priority_bump_without_execution_claim() {
+        assert_eq!(
+            next_step_information_value("GATHER_EVIDENCE", "ACCEPTED"),
+            next_step_information_value("GATHER_EVIDENCE", "PROPOSED") + 3
+        );
+        assert!(next_step_information_value("REANALYZE", "PROPOSED") <= 100);
     }
 
     #[test]
