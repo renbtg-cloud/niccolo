@@ -100,6 +100,10 @@ async fn scoped(
     Ok(tx)
 }
 
+fn valid_note(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn record_checkpoint(
     pool: &PgPool,
     workspace: Uuid,
@@ -107,10 +111,7 @@ pub async fn record_checkpoint(
     item: &ReviewCheckpoint,
 ) -> Result<(), ReviewSessionError> {
     if item.observed_revision < 1
-        || item
-            .note
-            .as_ref()
-            .is_some_and(|v| v.trim().is_empty() || v.len() > 4096)
+        || item.note.as_ref().is_some_and(|value| !valid_note(value))
     {
         return Err(ReviewSessionError::Invalid);
     }
@@ -395,4 +396,18 @@ pub async fn human_control_state(
         automatic_reanalysis_started: false,
         external_actions_executed: false,
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkpoint_note_rejects_control_characters() {
+        for value in ["checkpoint\nforged", "note\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_note(value));
+        }
+        assert!(valid_note("Reviewed without implying acceptance."));
+    }
 }
