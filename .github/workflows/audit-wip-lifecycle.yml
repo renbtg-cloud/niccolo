@@ -61,6 +61,27 @@ jobs:
                       f.write(f"  {q['kind']}:\n")
                       for c in q['commits']:
                           f.write(f"    {c['sha'][:12]} {c['message']}\n")
+          # Deduplicate by identical commit series; most branches share the same
+          # historic WIP sequence, and raw per-branch counts inflate the problem.
+          unique={}
+          for row in results:
+              for group in row['dangling']:
+                  key=tuple(c['sha'] for c in group['commits'])
+                  unique.setdefault(key,{'commits':group['commits'],'branches':[]})['branches'].append(row['ref'])
+          compact={'branches_scanned':len(refs),'unique_unclosed_sequences':len(unique),
+                   'sequences':[{'commits':v['commits'],'refs':v['branches'],
+                                 'on_main':'origin/main' in v['branches']}
+                                for v in unique.values()]}
+          with open('wip-audit-deduplicated.json','w') as f: json.dump(compact,f,indent=2,ensure_ascii=False)
+          canonical=subprocess.check_output(['git','log','--first-parent','--format=%H%x09%s','origin/main'],text=True).splitlines()
+          with open('wip-context.txt','w') as f:
+              for key,group in unique.items():
+                  f.write('\\n'+'='*72+'\\n'+f'{len(group["branches"])} branches, main={("origin/main" in group["branches"])}\\n')
+                  for c in group['commits']:f.write(f'{c["sha"][:12]} {c["message"]}\\n')
+                  pos=next((i for i,line in enumerate(canonical) if line.startswith(key[-1])),None)
+                  if pos is not None:
+                      f.write('Adjacent mainline commits (newest first):\\n')
+                      for row in canonical[max(0,pos-5):pos+8]: f.write('  '+row[:150]+'\\n')
           print(open('wip-audit.txt').read()[:30000])
           PY
       - uses: actions/upload-artifact@v4
@@ -70,4 +91,6 @@ jobs:
             branches-all.txt
             wip-audit.json
             wip-audit.txt
+            wip-audit-deduplicated.json
+            wip-context.txt
           retention-days: 3
