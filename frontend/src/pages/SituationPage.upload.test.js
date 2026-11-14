@@ -34,6 +34,17 @@ describe('Situation multi-source first-user import', () => {
     expect(source).not.toContain('JSON.stringify([\n          selected.name');
   });
 
+  it('prevalidates selected source batches before enabling the upload action', () => {
+    expect(source).toContain("let uploadPreflightError = ''");
+    expect(source).toContain('if (files.length > 0) {');
+    expect(source).toContain('sourceBatchDescriptors(files);');
+    expect(source).toContain('|| !!uploadPreflightError}');
+    expect(source).toContain('Cannot import this batch: {uploadPreflightError}');
+    expect(source).toContain('role="alert"');
+    // Still validate in the mutation itself before the first network request.
+    expect(source).toContain('const descriptors = sourceBatchDescriptors(selectedFiles)');
+  });
+
   it('shows bounded per-file progress and preserves completed work after a partial failure', () => {
     expect(source).toContain('setUploadProgress({ done: 0, total: selectedFiles.length');
     expect(source).toContain('processing <strong>{uploadProgress.current}</strong>');
