@@ -12,6 +12,20 @@ cd "$fixture_root"
 
 run_cfg(){ bash scripts/configure-local-model.sh --from-env; }
 
+# Help and rejected arguments must be side-effect free and not create local
+# credential directories or reconfigure a model.
+bash scripts/configure-local-model.sh --help > help.log
+grep -Fq 'Usage:' help.log
+[[ ! -e .niccolo-local ]]
+for args in '--bogus' '--from-env --help'; do
+  status=0
+  # Intentional word splitting: exercise both one and two CLI arguments.
+  bash scripts/configure-local-model.sh $args > invalid-args.log 2>&1 || status=$?
+  [[ "$status" == 2 ]]
+  grep -Fq 'Usage:' invalid-args.log
+  [[ ! -e .niccolo-local ]]
+done
+
 # Keyless loopback is the only HTTP provider shape accepted.
 NICCOLO_LLM_BASE_URL='http://127.0.0.1:18080/v1' \
 NICCOLO_LLM_MODEL='local model' \
