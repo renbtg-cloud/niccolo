@@ -58,6 +58,18 @@ elif [[ "$llm_base" == https://* && -z "$llm_key" ]]; then
   echo "Reasoning model: INCOMPLETE CONFIGURATION" >&2
   echo "Remote HTTPS model providers require NICCOLO_LLM_API_KEY." >&2
   exit 2
+elif ! NICCOLO_LLM_BASE_URL="$llm_base" node -e '
+try {
+  const url = new URL(process.env.NICCOLO_LLM_BASE_URL);
+  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) process.exit(1);
+} catch {
+  process.exit(1);
+}
+'; then
+  echo "Reasoning model: INSECURE OR INVALID URL" >&2
+  echo "HTTP model providers must use loopback; remote providers must use HTTPS." >&2
+  exit 2
 else
   echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
 fi
