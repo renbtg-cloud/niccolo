@@ -43,6 +43,7 @@ export function SituationPage(){
 }
 
 function ConnectedSituation({client}){
+  const sessionGeneration = useSessionStore((state) => state.generation);
   const qc = useQueryClient();
   const [files, setFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(null);
@@ -68,7 +69,7 @@ function ConnectedSituation({client}){
     queryFn: async () => (await client.sources(sourceCursor, 100)).value,
   });
   const readiness = useQuery({
-    queryKey: ['mvp-runtime-readiness'],
+    queryKey: qk.readiness(sessionGeneration),
     enabled: !!client,
     queryFn: async () => (await client.readiness()).value,
     staleTime: 60000,
