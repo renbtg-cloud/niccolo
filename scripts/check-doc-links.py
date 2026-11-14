@@ -66,7 +66,7 @@ def main() -> int:
     args = parser.parse_args()
     links, failures = check(args.root)
     if (args.root / "Cargo.toml").exists():
-        extra_root_docs = sorted(p.name for p in args.root.glob("*.md") if p.name != "README.md")
+        extra_root_docs = sorted(p.name for p in args.root.glob("*.md") if p.name not in {"README.md", "AGENTS.md"})
         failures.extend(f"root Markdown must be organized: {name}" for name in extra_root_docs)
     for message in failures:
         print(message, file=sys.stderr)
