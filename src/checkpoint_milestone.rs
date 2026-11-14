@@ -94,6 +94,7 @@ fn valid(input: &NewMilestone) -> bool {
         && !input.reason.trim().is_empty()
         && input.reason.trim().len() <= 1000
         && input.reason == input.reason.trim()
+        && !input.reason.chars().any(char::is_control)
 }
 
 type Row = (
@@ -239,5 +240,8 @@ mod tests {
             "Not a permitted semantic upgrade"
         )));
         assert!(!valid(&input("OTHER", &"x".repeat(1001))));
+        for value in ["line\nforged", "line\rforged", "line\tforged", "x\0y"] {
+            assert!(!valid(&input("OTHER", value)));
+        }
     }
 }
