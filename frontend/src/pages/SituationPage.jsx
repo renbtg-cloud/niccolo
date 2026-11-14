@@ -138,10 +138,10 @@ function ConnectedSituation({client}){
     mutationFn: async (selectedFiles) => {
       const descriptors = sourceBatchDescriptors(selectedFiles);
       const imported = [];
-      setUploadProgress({ done: 0, total: selectedFiles.length, current: null });
+      setUploadProgress({ done: 0, total: selectedFiles.length, current: null, completed: [] });
       for (const [index, selected] of selectedFiles.entries()) {
         const descriptor = descriptors[index];
-        setUploadProgress({ done: index, total: selectedFiles.length, current: selected.name });
+        setUploadProgress({ done: index, total: selectedFiles.length, current: selected.name, completed: imported.slice() });
         // Keep one id per actual File object. Two selected files can have the
         // same name/size/mtime yet different bytes; metadata keys would alias
         // them and turn the second upload into a false idempotency conflict.
@@ -157,7 +157,7 @@ function ConnectedSituation({client}){
         });
         const attached = await client.addSituationSource(documentId);
         imported.push({ documentId, fileName: selected.name, ingest: ingested.value, situation: attached.value });
-        setUploadProgress({ done: index + 1, total: selectedFiles.length, current: null });
+        setUploadProgress({ done: index + 1, total: selectedFiles.length, current: null, completed: imported.slice() });
       }
       return { imported };
     },
@@ -239,6 +239,12 @@ function ConnectedSituation({client}){
             : ''}.
       </small></p>}
       {upload.error && <p className="error" role="alert">{upload.error.message} The failed record may have been ingested before attachment failed; retrying this same selection reuses its document ID. Successfully completed records remain attached.</p>}
+      {upload.error && uploadProgress?.completed?.length > 0 && <div className="partial-upload-receipts">
+        <p><strong>Completed before the failure:</strong> these records were imported and attached, and retrying the same selection preserves their document IDs.</p>
+        <ul>{uploadProgress.completed.slice(0,8).map(({documentId,fileName}) => <li key={documentId}><small>{fileName} · document {documentId}</small></li>)}</ul>
+        {uploadProgress.completed.length > 8 && <small>+ {uploadProgress.completed.length - 8} additional completed record(s)</small>}
+      </div>}
+
       {upload.data && <div role="status" className="upload-success">
         <p>{upload.data.imported.length} record(s) imported and attached to this Situation.</p>
         <ul>{upload.data.imported.slice(0,8).map(({documentId,fileName}) => <li key={documentId}><small>{fileName} · document {documentId}</small></li>)}</ul>
