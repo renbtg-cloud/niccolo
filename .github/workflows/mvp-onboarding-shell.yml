@@ -37,3 +37,12 @@ jobs:
         run: bash scripts/test-first-run-local-mvp.sh
       - name: Local startup regression
         run: bash scripts/test-start-local-arguments.sh
+      - name: Package checked-out source for offline Linux validation
+        run: tar --exclude='./.git' --exclude='./target' --exclude='./frontend/node_modules' -czf "$RUNNER_TEMP/niccolo-source.tar.gz" .
+      - name: Retain test-validated source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-onboarding-source
+          path: ${{ runner.temp }}/niccolo-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
