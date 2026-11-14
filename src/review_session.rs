@@ -106,13 +106,21 @@ fn valid_note(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_situation_scope(workspace: Uuid, situation: Uuid) -> bool {
+    !workspace.is_nil() && !situation.is_nil()
+}
+
 pub async fn record_checkpoint(
     pool: &PgPool,
     workspace: Uuid,
     situation: Uuid,
     item: &ReviewCheckpoint,
 ) -> Result<(), ReviewSessionError> {
-    if item.observed_revision < 1
+    if !valid_situation_scope(workspace, situation)
+        || item.checkpoint_id.is_nil()
+        || item.observed_analysis_id.is_some_and(|id| id.is_nil())
+        || item.recorded_by.is_nil()
+        || item.observed_revision < 1
         || item.note.as_ref().is_some_and(|value| !valid_note(value))
     {
         return Err(ReviewSessionError::Invalid);
@@ -162,6 +170,9 @@ pub async fn since_checkpoint(
     situation: Uuid,
     checkpoint: Uuid,
 ) -> Result<SinceCheckpoint, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) || checkpoint.is_nil() {
+        return Err(ReviewSessionError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let row: Option<(i64, i64, i64, i64)> = sqlx::query_as(
         "SELECT c.observed_revision,s.current_revision,\
@@ -208,6 +219,9 @@ pub async fn dashboard(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<SituationDashboard, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) {
+        return Err(ReviewSessionError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let current_revision: i64 = sqlx::query_scalar(
         "SELECT current_revision FROM niccolo.situations WHERE workspace_id=$1 AND situation_id=$2",
@@ -298,6 +312,9 @@ pub async fn export(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<SituationReviewExport, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) {
+        return Err(ReviewSessionError::Invalid);
+    }
     Ok(SituationReviewExport {
         format: "niccolo.situation-review".into(),
         version: 1,
@@ -314,6 +331,9 @@ pub async fn to_json(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<String, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) {
+        return Err(ReviewSessionError::Invalid);
+    }
     Ok(serde_json::to_string(
         &export(pool, workspace, situation).await?,
     )?)
@@ -324,6 +344,9 @@ pub async fn sha256(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<String, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) {
+        return Err(ReviewSessionError::Invalid);
+    }
     let digest = Sha256::digest(to_json(pool, workspace, situation).await?.as_bytes());
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
@@ -344,6 +367,9 @@ pub async fn checkpoint_history(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<Vec<CheckpointHistoryItem>, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) {
+        return Err(ReviewSessionError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     type Row = (Uuid, i64, Option<Uuid>, Option<String>, Uuid);
     let rows: Vec<Row> = sqlx::query_as(
@@ -391,6 +417,9 @@ pub async fn human_control_state(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<HumanControlState, ReviewSessionError> {
+    if !valid_situation_scope(workspace, situation) {
+        return Err(ReviewSessionError::Invalid);
+    }
     let d = dashboard(pool, workspace, situation).await?;
     let mut tx = scoped(pool, workspace, true).await?;
     let review_checkpoints: i64 = sqlx::query_scalar(
@@ -424,6 +453,15 @@ pub async fn human_control_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_review_situation_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        assert!(matches!(
+            dashboard(&pool, Uuid::nil(), Uuid::new_v4()).await,
+            Err(ReviewSessionError::Invalid)
+        ));
+    }
 
     #[test]
     fn checkpoint_note_rejects_control_characters() {
