@@ -84,7 +84,7 @@ async fn scoped(
     Ok(tx)
 }
 fn valid(s: &str) -> bool {
-    !s.trim().is_empty() && s.len() <= 4096
+    !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
 pub async fn create(
     pool: &PgPool,
@@ -181,4 +181,18 @@ pub fn sha256(v: &DecisionPackage) -> Result<String, serde_json::Error> {
         "{:x}",
         Sha256::digest(canonical_json(v)?.as_bytes())
     ))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decision_text_rejects_control_characters() {
+        for value in ["question\nforged", "context\rforged", "option\tforged", "x\0y"] {
+            assert!(!valid(value));
+        }
+        assert!(valid("Ask the user before taking any external action."));
+    }
 }
