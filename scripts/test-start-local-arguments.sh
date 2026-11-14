@@ -65,6 +65,28 @@ bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || s
 grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY' "$TMP/stderr"
 [[ "$(cat .niccolo-local/prepared-url.txt)" == 'previous-valid-url' ]]
 
+# Treat identifier values as untrusted data: never evaluate shell substitutions.
+cp .niccolo-local/identifiers.txt "$TMP/valid-identifiers"
+printf 'WORKSPACE_UUID=$(touch %s)\nSITUATION_UUID=22222222-2222-4222-8222-222222222222\n' \
+  "$TMP/must-not-exist" > .niccolo-local/identifiers.txt
+status=0
+bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'Invalid WORKSPACE_UUID' "$TMP/stderr"
+[[ ! -e "$TMP/must-not-exist" ]]
+
+# Duplicate assignments must not be silently overwritten by the last entry.
+printf '%s\n' 'WORKSPACE_UUID=11111111-1111-4111-8111-111111111111' \
+  'WORKSPACE_UUID=33333333-3333-4333-8333-333333333333' \
+  'SITUATION_UUID=22222222-2222-4222-8222-222222222222' > .niccolo-local/identifiers.txt
+status=0
+bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'Duplicate WORKSPACE_UUID' "$TMP/stderr"
+
+cp "$TMP/valid-identifiers" .niccolo-local/identifiers.txt
+chmod 600 .niccolo-local/identifiers.txt
+
 # After removing the invalid model settings, printing the prepared URL succeeds.
 rm .niccolo-local/model.env
 bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr"
