@@ -2858,6 +2858,8 @@ fn clarification_answer_json(answer: &clarification_answer::ClarificationAnswer)
         "analysis_id": answer.analysis_id,
         "contribution_id": answer.contribution_id,
         "text": answer.text,
+        "contribution_status": answer.contribution_status,
+        "answer_is_currently_active": answer.contribution_status == "ACTIVE",
         "answered_by_principal_id": answer.answered_by,
         "question_input_revision": answer.question_input_revision,
         "answer_revision": answer.answer_revision,
