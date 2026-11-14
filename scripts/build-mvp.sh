@@ -47,12 +47,15 @@ ext=''
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) ext='.exe' ;;
 esac
+# Cargo honors CARGO_TARGET_DIR, including when it points outside the repo.
+# The build check must inspect the same directory that Cargo wrote to.
+release_dir="${CARGO_TARGET_DIR:-target}/release"
 for bin in niccolo-api niccolo-provision; do
-  test -s "target/release/${bin}${ext}" || {
-    echo "Expected executable missing: target/release/${bin}${ext}" >&2
+  test -s "${release_dir}/${bin}${ext}" || {
+    echo "Expected executable missing: ${release_dir}/${bin}${ext}" >&2
     exit 1
   }
 done
 echo "MVP build complete. The Rust API binary embeds the freshly built React UI."
-echo "Binaries: target/release/niccolo-api${ext} and niccolo-provision${ext}"
+echo "Binaries: ${release_dir}/niccolo-api${ext} and niccolo-provision${ext}"
 echo "PostgreSQL setup and service credentials are still required to run the API."
