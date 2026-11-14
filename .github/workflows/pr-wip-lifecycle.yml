@@ -1,0 +1,33 @@
+name: PR WIP lifecycle gate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - ci/mvp-checkpoint
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commit-lifecycle:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Test lifecycle analyzer
+        run: python3 -m unittest discover -s tests -p 'test_pr_wip_lifecycle.py' -v
+      - name: Validate ready-to-merge PR commit history
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+          python3 scripts/check-pr-wip-lifecycle.py \
+            --base "refs/remotes/origin/${BASE_BRANCH}" --head "${PR_HEAD_SHA}"
