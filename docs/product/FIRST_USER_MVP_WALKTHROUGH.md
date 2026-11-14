@@ -110,7 +110,7 @@ Supported MVP source files include:
 - `.txt` WhatsApp chat export.
 
 WhatsApp timestamps are interpreted as **day/month/year**, including single-digit hours,
-optional seconds and explicit `AM`/`PM`. Unambiguous timestamped system notices
+optional seconds and explicit `AM`/`PM` (including mobile no-break separators before the suffix). Unambiguous timestamped system notices
 are retained with a **system-event** label rather than attributed to the previous
 human speaker. Locale-ambiguous dates, self-reported display names and system
 notices are not authenticated by an export; check attribution against the

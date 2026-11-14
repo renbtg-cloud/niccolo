@@ -350,7 +350,12 @@ fn looks_like_datetime(dt: &str) -> bool {
     };
     // Some WhatsApp exports include seconds and/or an AM/PM suffix.
     // Accept only those explicit forms; never guess the date locale.
-    let (clock, meridiem) = match time.trim().rsplit_once(' ') {
+    // Mobile WhatsApp exports may separate AM/PM with a no-break space.
+    // Accept only the known spacing variants; do not normalize the source.
+    let (clock, meridiem) = match time
+        .trim()
+        .rsplit_once(|c: char| matches!(c, ' ' | '\u{00a0}' | '\u{202f}'))
+    {
         Some((clock, suffix)) if suffix.eq_ignore_ascii_case("AM") => (clock, Some("AM")),
         Some((clock, suffix)) if suffix.eq_ignore_ascii_case("PM") => (clock, Some("PM")),
         Some(_) => return false,
@@ -587,6 +592,24 @@ mod tests {
         assert_eq!(parsed.fragments.len(), 2);
         assert_eq!(parsed.fragments[0].speaker_label, "Ana");
         assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
+    fn no_break_space_before_meridiem_preserves_whatsapp_speaker_boundaries() {
+        let src = "[02/11/2026, 9:05\u{202f}pm] Ana: First.\n[02/11/2026, 9:06\u{00a0}PM] Beto: Second.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        assert!(looks_like_datetime("02/11/2026, 9:05\u{202f}PM"));
+        assert!(looks_like_datetime("02/11/2026, 9:05\u{00a0}am"));
+        assert!(!looks_like_datetime("02/11/2026, 13:05\u{202f}PM"));
         for fragment in parsed.fragments {
             assert_eq!(
                 fragment.content.as_bytes(),
