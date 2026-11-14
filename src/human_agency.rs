@@ -46,7 +46,7 @@ async fn scoped(
     Ok(tx)
 }
 fn valid(s: &str) -> bool {
-    !s.trim().is_empty() && s.len() <= 4096
+    !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
 
 type DecisionRationaleRow = (Uuid, Option<Uuid>, String, Option<String>, Uuid);
@@ -684,6 +684,13 @@ mod tests {
             situation: Uuid::new_v4(),
             analysis: Uuid::new_v4(),
         }
+    }
+
+    #[test]
+    fn agency_text_rejects_control_character_spoofing() {
+        assert!(valid("ordinary human rationale"));
+        assert!(!valid("line\nbreak"));
+        assert!(!valid("hidden\0suffix"));
     }
 
     #[tokio::test]
