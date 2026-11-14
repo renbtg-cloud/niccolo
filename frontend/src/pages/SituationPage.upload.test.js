@@ -61,6 +61,14 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('role="alert"');
   });
 
+  it('retains a bounded receipt list for records completed before a later upload failure', () => {
+    expect(source).toContain('completed: imported.slice()');
+    expect(source).toContain('upload.error && uploadProgress?.completed?.length > 0');
+    expect(source).toContain('uploadProgress.completed.slice(0,8).map(({documentId,fileName})');
+    expect(source).toContain('retrying the same selection preserves their document IDs');
+    expect(source).toContain('additional completed record(s)');
+  });
+
   it('shows a bounded, identifiable receipt after a completed multi-source import', () => {
     expect(source).toContain('fileName: selected.name');
     expect(source).toContain('upload.data.imported.slice(0,8).map(({documentId,fileName})');
