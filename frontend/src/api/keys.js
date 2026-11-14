@@ -1,4 +1,7 @@
 export const qk = {
+  // Readiness is runtime-wide, but cached clients must not reuse another login's result.
+  // Session generation changes on every connect/disconnect, including token rotation.
+  readiness: (generation) => ['mvp-runtime-readiness', generation],
   situation: (c) => ['situation', c.workspace, c.situation],
   purposeHistory: (c) => ['purpose-history', c.workspace, c.situation],
   runtimeResources: (c) => ['runtime-resources', c.workspace],
