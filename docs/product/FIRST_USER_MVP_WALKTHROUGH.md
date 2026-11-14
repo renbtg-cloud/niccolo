@@ -125,8 +125,18 @@ not authenticate an email sender.
 
 Choose one or several files and then **Import and attach**. A browser batch is prevalidated
 before the first upload, is bounded to 32 files / 64 MiB total, and each file still keeps the
-server's 4 MiB per-source limit. If a later file fails after earlier ones were attached, retrying
-the same selection reuses their document identities rather than creating duplicate records.
+server's 4 MiB per-source limit. Once a batch succeeds, the Situation view
+lists the first eight imported filenames together with the assigned document IDs;
+additional successful files are counted. The source catalog is paginated by document
+ID, so an imported record may not appear on the current catalog page.
+
+If a later file fails, the upload status identifies which file stopped the batch,
+how many had already been attached, and that later files were not attempted. The
+failed file might already have been **ingested** but not yet **attached** to the
+Situation. Leave the same selected files in place and click **Import and attach**
+again: the retry reuses the original document IDs, including the failed file.
+Choosing a new file selection resets those in-memory retry identities; do not
+reselect unless you intentionally want a new import attempt.
 
 For information that is remembered, hypothetical, or an investigative preference rather than a
 source record, use **Human context** instead. Niccolò keeps that separate from verified evidence.
