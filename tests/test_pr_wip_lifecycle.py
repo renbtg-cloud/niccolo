@@ -47,6 +47,9 @@ class PrWipLifecycleTests(unittest.TestCase):
         self.assertTrue(any("malformed" in e for e in audit("WIP unfinished")))
         self.assertTrue(any("malformed" in e for e in audit("DONE unfinished")))
 
+    def test_similarly_prefixed_ordinary_subjects_are_not_lifecycle_markers(self):
+        self.assertEqual(audit("WIPER: maintenance", "DONEDOCKER: release"), [])
+
     def test_unrelated_subjects_do_not_close_wip(self):
         self.assertTrue(any("dangling" in e for e in audit(
             "WIP 001: backend", "docs: notes", "fix: unrelated"
