@@ -53,6 +53,14 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('onError: refresh');
   });
 
+  it('distinguishes an import stopped by failure from a still-processing file', () => {
+    expect(source).toContain('upload.error\n          ? <> · stopped at');
+    expect(source).toContain('no further records in this batch were attempted');
+    expect(source).toContain('failed record may have been ingested before attachment failed');
+    expect(source).toContain('retrying this same selection reuses its document ID');
+    expect(source).toContain('role="alert"');
+  });
+
   it('shows a bounded, identifiable receipt after a completed multi-source import', () => {
     expect(source).toContain('fileName: selected.name');
     expect(source).toContain('upload.data.imported.slice(0,8).map(({documentId,fileName})');
