@@ -70,6 +70,10 @@ fn valid_sha256(v: &str) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
+fn valid_note(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn record(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -77,10 +81,7 @@ pub async fn record(
 ) -> Result<(), AcknowledgementError> {
     if !valid_sha256(&item.package_sha256)
         || !matches!(item.kind.as_str(), "VIEWED" | "EXPORTED" | "DISCUSSED")
-        || item
-            .note
-            .as_ref()
-            .is_some_and(|v| v.trim().is_empty() || v.len() > 4096)
+        || item.note.as_ref().is_some_and(|value| !valid_note(value))
     {
         return Err(AcknowledgementError::Invalid);
     }
@@ -157,4 +158,18 @@ pub async fn history(
             },
         )
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acknowledgement_note_rejects_control_characters() {
+        for value in ["viewed\nforged", "discussed\rforged", "exported\tforged", "x\0y"] {
+            assert!(!valid_note(value));
+        }
+        assert!(valid_note("Reviewed, with disagreement preserved."));
+    }
 }
