@@ -23,6 +23,15 @@ describe('primary analysis path', () => {
     expect(operations).toContain('No answer was published. You can start another analysis.');
   });
 
+  it('does not confuse an in-flight new analysis with the prior run answer or controls', () => {
+    expect(operations).toContain('Starting the new analysis. The preceding run');
+    expect(operations).toContain('run.isPending\n   ? <p role="status">');
+    expect(operations).toContain(': <AnswerPanel output={output.data}');
+    expect(operations).toContain('{!run.isPending&&waitingStep&&<form');
+    expect(operations).toContain('{!run.isPending&&budget.data?.budget&&');
+    expect(operations).toContain('{!run.isPending&&<details className="desktop-only technical-details">');
+  });
+
   it('blocks analysis when the prepared Situation has not been created, but permits focus-only reasoning', () => {
     expect(operations).toContain('client.situation()');
     expect(operations).toContain('situation.error?.status===404');
