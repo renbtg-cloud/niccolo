@@ -418,6 +418,31 @@ pub async fn record_lineage(
     .bind(lineage.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Uuid, Uuid, Uuid, Option<Uuid>, String, String, Uuid)> =
+        sqlx::query_as(
+            "SELECT prior_analysis_id,prior_claim_id,new_analysis_id,new_claim_id,
+                    relation,rationale,recorded_by_principal_id
+               FROM niccolo.situation_analysis_claim_lineage
+              WHERE workspace_id=$1 AND situation_id=$2 AND lineage_id=$3",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(lineage.lineage_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if stored
+        != Some((
+            lineage.prior_analysis_id,
+            lineage.prior_claim_id,
+            lineage.new_analysis_id,
+            lineage.new_claim_id,
+            lineage.relation.clone(),
+            lineage.rationale.clone(),
+            lineage.recorded_by,
+        ))
+    {
+        return Err(ClaimError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -457,6 +482,34 @@ pub async fn record_clarification_impact(
     .bind(impact.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Uuid, Uuid, Uuid, Uuid, Uuid, String, String, Uuid)> =
+        sqlx::query_as(
+            "SELECT source_analysis_id,question_id,answer_id,contribution_id,target_analysis_id,
+                    recorded_effect,note,recorded_by_principal_id
+               FROM niccolo.situation_analysis_clarification_claim_impacts
+              WHERE workspace_id=$1 AND situation_id=$2 AND impact_id=$3
+                AND target_claim_id=$4",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(impact.impact_id)
+        .bind(impact.target_claim_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if stored
+        != Some((
+            impact.source_analysis_id,
+            impact.question_id,
+            impact.answer_id,
+            impact.contribution_id,
+            impact.target_analysis_id,
+            impact.recorded_effect.clone(),
+            impact.note.clone(),
+            impact.recorded_by,
+        ))
+    {
+        return Err(ClaimError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
