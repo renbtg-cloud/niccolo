@@ -140,6 +140,20 @@ pub async fn append_decision(
         .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(d.proposal_id)
         .bind(d.decision_id).bind(&d.kind).bind(&d.note).bind(d.decided_by)
         .execute(&mut *tx).await?;
+    let existing: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT proposal_id,decision_kind,note,decided_by_principal_id
+           FROM niccolo.situation_analysis_action_decisions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND decision_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(d.decision_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if existing != Some((d.proposal_id, d.kind.clone(), d.note.clone(), d.decided_by)) {
+        return Err(ActionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
