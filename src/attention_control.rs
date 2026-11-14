@@ -79,12 +79,20 @@ fn valid_reason(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_analysis_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 pub async fn append_pin_event(
     pool: &PgPool,
     scope: AnalysisScope,
     event: &PinEvent,
 ) -> Result<(), AttentionControlError> {
-    if !matches!(
+    if !valid_analysis_scope(scope)
+        || event.event_id.is_nil()
+        || event.target_id.is_nil()
+        || event.recorded_by.is_nil()
+        || !matches!(
         event.target_type.as_str(),
         "CLAIM" | "UNCERTAINTY" | "ACTION_PROPOSAL"
     ) || !matches!(event.kind.as_str(), "PINNED" | "UNPINNED")
@@ -140,6 +148,9 @@ pub async fn current_pins(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<Vec<CurrentPin>, AttentionControlError> {
+    if workspace.is_nil() || situation.is_nil() {
+        return Err(AttentionControlError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     type Row = (Uuid, String, Uuid, String, Uuid, Uuid);
     let rows: Vec<Row> = sqlx::query_as(
@@ -173,6 +184,9 @@ pub async fn reasons(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<AttentionReason>, AttentionControlError> {
+    if !valid_analysis_scope(scope) {
+        return Err(AttentionControlError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let unresolved: Vec<Uuid> = sqlx::query_scalar(
         "SELECT u.uncertainty_id FROM niccolo.situation_analysis_uncertainties u \
@@ -248,6 +262,20 @@ pub async fn reasons(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_attention_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            reasons(&pool, scope).await,
+            Err(AttentionControlError::Invalid)
+        ));
+    }
 
     #[test]
     fn pin_reason_rejects_control_characters() {
