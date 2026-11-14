@@ -118,7 +118,24 @@ pub fn evaluate(
         if o.declared_strength > 100 {
             return Err(WeightError::InvalidWeight);
         }
-        if o.rationale.trim().is_empty() || o.rationale.len() > 4096 || o.rationale.contains('\0') {
+        // Rationale is an inspectable human/analyst explanation. Reject
+        // invisible direction overrides and terminal-control payloads that
+        // could alter how the reported evidence balance is perceived.
+        // Ordinary multi-line paragraphs, tabs and Unicode text remain valid.
+        if o.rationale.trim().is_empty()
+            || o.rationale.len() > 4096
+            || o.rationale.chars().any(|ch| {
+                (ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+                    || matches!(
+                        ch,
+                        '\u{061c}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                    )
+            })
+        {
             return Err(WeightError::InvalidRationale);
         }
         if !seen.insert(o.evidence_id) {
@@ -282,6 +299,29 @@ mod tests {
             0
         );
     }
+    #[test]
+    fn evidence_rationales_remain_readable_and_cannot_hide_directional_controls() {
+        let mut row = obs(1, Some(5), Stance::Supports, 40);
+        for bad in [
+            "claim supported\u{202e}DENIED",
+            "claim supported\u{2066}DENIED",
+            "claim supported\u{001b}[2J",
+            "claim supported\u{0000}hidden",
+        ] {
+            row.rationale = bad.to_owned();
+            assert_eq!(
+                evaluate(WeightPolicy::default(), None, &[row.clone()]),
+                Err(WeightError::InvalidRationale)
+            );
+        }
+        row.rationale =
+            "Reason 1: observed by Ana.\nReason 2: not independently checked.\tRevisit.".into();
+        let report = evaluate(WeightPolicy::default(), None, &[row]).unwrap();
+        assert_eq!(report.support_points, 40);
+        assert!(!report.independence_established);
+        assert!(!report.establishes_fact);
+    }
+
     #[test]
     fn invalid_and_duplicate_inputs_fail_closed() {
         assert_eq!(
