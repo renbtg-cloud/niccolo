@@ -307,10 +307,15 @@ pub async fn record_context_use_rationale(
     contribution: Uuid,
     item: &UseRationale,
 ) -> Result<(), ReviewWorkflowError> {
-    if !matches!(
-        item.reason_kind.as_str(),
-        "GOAL_RELEVANCE" | "CLARIFICATION_DEPENDENCY" | "DISAMBIGUATION" | "CROSS_CHECK" | "OTHER"
-    ) || !valid_text(&item.reason, 2048)
+    if !valid_analysis_scope(scope)
+        || contribution.is_nil()
+        || item.rationale_id.is_nil()
+        || item.recorded_by.is_nil()
+        || !matches!(
+            item.reason_kind.as_str(),
+            "GOAL_RELEVANCE" | "CLARIFICATION_DEPENDENCY" | "DISAMBIGUATION" | "CROSS_CHECK" | "OTHER"
+        )
+        || !valid_text(&item.reason, 2048)
     {
         return Err(ReviewWorkflowError::Invalid);
     }
@@ -354,10 +359,15 @@ pub async fn record_fragment_rationale(
     evidence: Uuid,
     item: &UseRationale,
 ) -> Result<(), ReviewWorkflowError> {
-    if !matches!(
-        item.reason_kind.as_str(),
-        "DIRECT_SUPPORT" | "CROSS_CHECK" | "CONTEXT" | "CONTRADICTION" | "OTHER"
-    ) || !valid_text(&item.reason, 2048)
+    if !valid_analysis_scope(scope)
+        || evidence.is_nil()
+        || item.rationale_id.is_nil()
+        || item.recorded_by.is_nil()
+        || !matches!(
+            item.reason_kind.as_str(),
+            "DIRECT_SUPPORT" | "CROSS_CHECK" | "CONTEXT" | "CONTRADICTION" | "OTHER"
+        )
+        || !valid_text(&item.reason, 2048)
     {
         return Err(ReviewWorkflowError::Invalid);
     }
@@ -403,10 +413,15 @@ pub async fn link_claim_question(
     relation_kind: &str,
     principal: Uuid,
 ) -> Result<(), ReviewWorkflowError> {
-    if !matches!(
-        relation_kind,
-        "OPEN_QUESTION" | "WOULD_CLARIFY" | "CHALLENGES"
-    ) {
+    if !valid_analysis_scope(scope)
+        || claim.is_nil()
+        || question.is_nil()
+        || principal.is_nil()
+        || !matches!(
+            relation_kind,
+            "OPEN_QUESTION" | "WOULD_CLARIFY" | "CHALLENGES"
+        )
+    {
         return Err(ReviewWorkflowError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -448,6 +463,9 @@ pub async fn claim_questions(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<ClaimQuestion>, ReviewWorkflowError> {
+    if !valid_analysis_scope(scope) {
+        return Err(ReviewWorkflowError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(Uuid, Uuid, String, bool)> = sqlx::query_as(
         "SELECT l.claim_id,l.question_id,l.relation_kind, \
@@ -485,10 +503,15 @@ pub async fn record_revision_condition(
     text: &str,
     principal: Uuid,
 ) -> Result<(), ReviewWorkflowError> {
-    if !matches!(
-        trigger_kind,
-        "NEW_EVIDENCE" | "CLARIFICATION" | "CONTEXT_CORRECTION" | "OTHER"
-    ) || !valid_text(text, 4096)
+    if !valid_analysis_scope(scope)
+        || claim.is_nil()
+        || condition.is_nil()
+        || principal.is_nil()
+        || !matches!(
+            trigger_kind,
+            "NEW_EVIDENCE" | "CLARIFICATION" | "CONTEXT_CORRECTION" | "OTHER"
+        )
+        || !valid_text(text, 4096)
     {
         return Err(ReviewWorkflowError::Invalid);
     }
@@ -539,7 +562,14 @@ pub async fn append_condition_event(
     related_contribution: Option<Uuid>,
     principal: Uuid,
 ) -> Result<(), ReviewWorkflowError> {
-    if !matches!(kind, "MET" | "NOT_MET" | "REOPENED")
+    if !valid_analysis_scope(scope)
+        || claim.is_nil()
+        || condition.is_nil()
+        || event.is_nil()
+        || principal.is_nil()
+        || related_evidence.is_some_and(|id| id.is_nil())
+        || related_contribution.is_some_and(|id| id.is_nil())
+        || !matches!(kind, "MET" | "NOT_MET" | "REOPENED")
         || !valid_text(note, 4096)
         || (related_evidence.is_some() && related_contribution.is_some())
     {
@@ -598,6 +628,9 @@ pub async fn revision_conditions(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<RevisionCondition>, ReviewWorkflowError> {
+    if !valid_analysis_scope(scope) {
+        return Err(ReviewWorkflowError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(Uuid, Uuid, String, String, Option<String>)> = sqlx::query_as(
         "SELECT c.claim_id,c.condition_id,c.trigger_kind,c.condition_text, \
