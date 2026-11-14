@@ -65,7 +65,7 @@ pub struct DecisionReadinessView {
 
 fn valid_text(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
+    !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
 fn valid(input: &DecisionReadinessInput) -> bool {
@@ -369,6 +369,14 @@ mod tests {
         input.reversal_conditions[0].condition_id = original_id;
         input.reversal_conditions.push(input.reversal_conditions[0].clone());
         assert!(!valid(&input));
+    }
+
+    #[test]
+    fn readiness_text_rejects_control_characters() {
+        for value in ["subject\nforged", "reason\rforged", "unknowns\tforged", "x\0y"] {
+            assert!(!valid_text(value, 4096));
+        }
+        assert!(valid_text("Uncertainty remains material to the decision.", 4096));
     }
 
     #[test]
