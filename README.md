@@ -78,7 +78,7 @@ The local web interface is intentionally functional and visually restrained. Som
 - **Frontend:** React, React Router, TanStack Query, Zustand, React Hook Form, and Zod.
 - **Model layer:** provider/model interaction and evaluation are independent concerns; the core must not assume that a generated answer is evidence or that a model may authorize action.
 
-Technical details and architectural contracts: [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
+Technical details and architectural contracts: [MVP composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) (**normative MVP scope; not a claim of implemented behavior**), [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
 
 ## First-time setup on one PC
 
