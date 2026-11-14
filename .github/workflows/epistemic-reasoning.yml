@@ -7,9 +7,12 @@ on:
     branches:
       - ci/mvp-checkpoint
 
+# New commits supersede an older push-triggered checkpoint run, but a
+# deliberate manual validation targets an exact SHA and must run to completion
+# even while rapid WIP/DONE pushes continue on the checkpoint branch.
 concurrency:
-  group: epistemic-${{ github.ref_name }}
-  cancel-in-progress: true
+  group: epistemic-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read
