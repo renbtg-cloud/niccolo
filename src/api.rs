@@ -257,13 +257,27 @@ async fn frontend_index() -> Html<&'static str> {
 // explicitly embedded assets; never interpret URL paths as filesystem paths.
 async fn frontend_technical_chunk(Path(name): Path<String>) -> Response {
     let body: Option<&'static str> = match name.as_str() {
-        "AnalysisPage.js" => Some(include_str!("../frontend/dist/assets/chunks/AnalysisPage.js")),
-        "InspectorPage.js" => Some(include_str!("../frontend/dist/assets/chunks/InspectorPage.js")),
-        "ReasoningPage.js" => Some(include_str!("../frontend/dist/assets/chunks/ReasoningPage.js")),
-        "IdentitiesPage.js" => Some(include_str!("../frontend/dist/assets/chunks/IdentitiesPage.js")),
-        "FeedbackPage.js" => Some(include_str!("../frontend/dist/assets/chunks/FeedbackPage.js")),
-        "EpistemicPlaygroundPage.js" => Some(include_str!("../frontend/dist/assets/chunks/EpistemicPlaygroundPage.js")),
-        "ForensicPage.js" => Some(include_str!("../frontend/dist/assets/chunks/ForensicPage.js")),
+        "AnalysisPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/AnalysisPage.js"
+        )),
+        "InspectorPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/InspectorPage.js"
+        )),
+        "ReasoningPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/ReasoningPage.js"
+        )),
+        "IdentitiesPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/IdentitiesPage.js"
+        )),
+        "FeedbackPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/FeedbackPage.js"
+        )),
+        "EpistemicPlaygroundPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/EpistemicPlaygroundPage.js"
+        )),
+        "ForensicPage.js" => Some(include_str!(
+            "../frontend/dist/assets/chunks/ForensicPage.js"
+        )),
         _ => None,
     };
     match body {
