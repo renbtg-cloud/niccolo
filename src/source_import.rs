@@ -677,7 +677,10 @@ mod tests {
             "01/11/026, 10:05",
             "01/11/20266, 10:05",
         ] {
-            assert!(!looks_like_datetime(invalid), "unsupported date shape accepted: {invalid}");
+            assert!(
+                !looks_like_datetime(invalid),
+                "unsupported date shape accepted: {invalid}"
+            );
         }
         // Single-digit day/month and 2-digit years are supported exports.
         assert!(looks_like_datetime("1/2/26, 9:05"));
@@ -687,7 +690,11 @@ mod tests {
         let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
         assert_eq!(parsed.fragments.len(), 2);
         assert_eq!(parsed.fragments[0].speaker_label, "Ana");
-        assert!(parsed.fragments[0].content.contains("Fake: This is quoted text"));
+        assert!(
+            parsed.fragments[0]
+                .content
+                .contains("Fake: This is quoted text")
+        );
         assert_eq!(parsed.fragments[1].speaker_label, "Beto");
         for fragment in parsed.fragments {
             assert_eq!(
