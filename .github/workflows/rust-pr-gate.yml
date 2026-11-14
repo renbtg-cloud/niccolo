@@ -1,0 +1,53 @@
+name: Rust pull-request compilation gate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - ci/mvp-checkpoint
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'frontend/dist/**'
+      - '.github/workflows/rust-pr-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt
+          rustup default 1.99.1
+      - name: Check formatting of changed Rust source files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$BASE_SHA" ]]; then
+            mapfile -d '' files < <(git diff --name-only --diff-filter=ACMR -z "$BASE_SHA" HEAD -- src tests)
+            for file in "${files[@]}"; do
+              [[ "$file" == *.rs ]] || continue
+              rustfmt --edition 2024 --check "$file"
+            done
+          fi
+      - name: Compile API and provision binaries with locked dependencies
+        run: cargo check --locked --bins
+      - name: Verify Rust unit regressions
+        run: cargo test --locked --lib
