@@ -37,8 +37,8 @@ describe('Situation multi-source first-user import', () => {
   it('shows bounded per-file progress and preserves completed work after a partial failure', () => {
     expect(source).toContain('setUploadProgress({ done: 0, total: selectedFiles.length');
     expect(source).toContain('processing <strong>{uploadProgress.current}</strong>');
-    expect(source).toContain('Successfully completed files remain attached');
-    expect(source).toContain('will replay safely if you retry the same selection');
+    expect(source).toContain('Successfully completed records remain attached');
+    expect(source).toContain('retrying this same selection reuses its document ID');
   });
 
   it('clears the native file input after a successful batch so the same files can be selected again', () => {
