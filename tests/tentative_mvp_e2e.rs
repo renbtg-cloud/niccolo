@@ -86,7 +86,8 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
     if malformed_synthesis && purpose == "SYNTHESIZE" {
         return (
             purpose.to_owned(),
-            json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{"answer_text":42}}).to_string(),
+            json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{"answer_text":42}})
+                .to_string(),
         );
     }
     let value = match purpose {
@@ -365,10 +366,13 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     let (status, _) = invoke(
         h.router.clone(),
         json_request(
-            "POST", &situation_path, &h.token,
+            "POST",
+            &situation_path,
+            &h.token,
             Some(json!({"focus":"Interpret conflicting context carefully"})),
         ),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
 
     let document = Uuid::new_v4();
@@ -377,17 +381,24 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
         raw_request(
             "POST",
             &format!("/v1/workspaces/{}/sources/{document}", h.workspace),
-            &h.token, "text/plain", "chat.txt",
+            &h.token,
+            "text/plain",
+            "chat.txt",
             "01/01/2026, 10:00 - Ana: Please confirm by noon\n",
         ),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let (status, _) = invoke(
         h.router.clone(),
         json_request(
-            "POST", &format!("{situation_path}/sources/{document}"), &h.token, None,
+            "POST",
+            &format!("{situation_path}/sources/{document}"),
+            &h.token,
+            None,
         ),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
 
     let contribution = Uuid::new_v4();
@@ -397,7 +408,8 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
             "POST", &format!("{situation_path}/contributions/{contribution}"), &h.token,
             Some(json!({"kind":"user_reported","text":"The deadline may matter.","related_evidence_id":null})),
         ),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
 
     let operation = Uuid::new_v4();
@@ -405,7 +417,9 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     let (status, response) = invoke(
         h.router.clone(),
         json_request(
-            "POST", &format!("{situation_path}/bff/intents/{operation}/sync"), &h.token,
+            "POST",
+            &format!("{situation_path}/bff/intents/{operation}/sync"),
+            &h.token,
             Some(json!({
                 "analysis_id": analysis,
                 "intent": "UNDERSTAND",
@@ -416,7 +430,8 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
                 "context": {}
             })),
         ),
-    ).await;
+    )
+    .await;
     assert!(
         !status.is_success() || response["operation"]["state"] == "FAILED",
         "a malformed LLM artifact must not be presented as a successful analysis"
@@ -430,7 +445,10 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     .fetch_one(&h._admin)
     .await
     .unwrap();
-    assert_eq!(failed_synthesis, 1, "durable synthesis step must be marked FAILED");
+    assert_eq!(
+        failed_synthesis, 1,
+        "durable synthesis step must be marked FAILED"
+    );
     let operation_state: String = sqlx::query_scalar(
         "SELECT state FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3"
     )
@@ -440,7 +458,10 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     .fetch_one(&h._admin)
     .await
     .unwrap();
-    assert_eq!(operation_state, "FAILED", "human-facing operation must also terminate");
+    assert_eq!(
+        operation_state, "FAILED",
+        "human-facing operation must also terminate"
+    );
 }
 
 #[tokio::test]
