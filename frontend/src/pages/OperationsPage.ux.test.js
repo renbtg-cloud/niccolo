@@ -116,6 +116,11 @@ describe('primary analysis path', () => {
     expect(operations).toContain('client.operationCheckpointPackage(active,checkpoint.checkpoint_id,milestone?.milestone_id??null)');
   });
 
+  it('does not reuse a GitHub publication token or intent across checkpoint changes', () => {
+    expect(operations).toContain('key={`${active}:${latestCheckpoint.checkpoint_id}:${latestMilestone.data.milestone_id}`}');
+    expect(operations).toContain('operationId={active} checkpoint={latestCheckpoint} milestone={latestMilestone.data}');
+  });
+
   it('lets the user inspect the exact milestone package before remote publication', () => {
     expect(operations).toContain('Download exact milestone package');
     expect(operations).toContain('milestone?.milestone_id??null');
