@@ -29,6 +29,14 @@ assert_bad_option() {
 assert_bad_option 'Unknown startup option: --no-broswer' --no-broswer
 assert_bad_option 'Usage: bash scripts/start-local-mvp.sh' --no-browser --print-only
 
+# Reject mistyped browser-policy values before inspecting private files.
+status=0
+NICCOLO_OPEN_BROWSER='sometimes' bash scripts/start-local-mvp.sh --no-browser >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'NICCOLO_OPEN_BROWSER must be' "$TMP/stderr"
+[[ ! -e .niccolo-local ]]
+
+
 # A supported option must get past argument validation and reach the
 # ordinary local-bootstrap preflight, which is intentionally absent here.
 status=0
