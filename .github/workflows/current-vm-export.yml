@@ -1,0 +1,30 @@
+name: Export current Niccolò checkpoint into Linux VM
+on:
+  push:
+    branches: [ci/vm-refresh-source-20261114]
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Pack exact pre-export checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD^)"
+          git archive --format=tar.gz -o niccolo-source.tar.gz "$sha"
+          printf '%s\n' "$sha" > source-commit.txt
+          sha256sum niccolo-source.tar.gz > source-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-current-vm
+          path: |
+            niccolo-source.tar.gz
+            source-commit.txt
+            source-sha256.txt
+          retention-days: 1
