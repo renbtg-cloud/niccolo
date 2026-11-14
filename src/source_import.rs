@@ -361,10 +361,16 @@ fn looks_like_datetime(dt: &str) -> bool {
         return false;
     };
     let second = time_parts.next();
+    // WhatsApp date fields are one or two digits; years are two or four.
+    // Accepting 001/002/026 lets a plausible-looking quoted line fabricate
+    // a new speaker boundary despite not being a supported export timestamp.
     if time_parts.next().is_some()
+        || !(1..=2).contains(&day.len())
+        || !(1..=2).contains(&month.len())
+        || (year.len() != 2 && year.len() != 4)
         || ![day, month, year, hour, minute]
             .iter()
-            .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+            .all(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
         || hour.is_empty()
         || hour.len() > 2
         || minute.len() != 2
@@ -661,6 +667,34 @@ mod tests {
         assert!(!looks_like_datetime("29/02/2025, 12:01"));
         assert!(!looks_like_datetime("00/12/2025, 12:01"));
         assert!(!looks_like_datetime("01/13/2025, 12:01"));
+    }
+
+    #[test]
+    fn malformed_whatsapp_date_width_does_not_forge_a_speaker_boundary() {
+        for invalid in [
+            "001/11/2026, 10:05",
+            "01/011/2026, 10:05",
+            "01/11/026, 10:05",
+            "01/11/20266, 10:05",
+        ] {
+            assert!(!looks_like_datetime(invalid), "unsupported date shape accepted: {invalid}");
+        }
+        // Single-digit day/month and 2-digit years are supported exports.
+        assert!(looks_like_datetime("1/2/26, 9:05"));
+        assert!(looks_like_datetime("01/02/2026, 09:05"));
+
+        let src = "[02/11/2026, 10:00] Ana: Start\n[001/11/2026, 10:01] Fake: This is quoted text\n[02/11/2026, 10:02] Beto: Reply\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert!(parsed.fragments[0].content.contains("Fake: This is quoted text"));
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
     }
 
     #[test]
