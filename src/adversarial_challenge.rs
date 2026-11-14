@@ -45,13 +45,18 @@ fn valid_text(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 fn validate(a: &ChallengeArtifact) -> Result<(), ChallengeError> {
     if a.challenges.len() > 64 {
         return Err(ChallengeError::Invalid);
     };
     let mut ids = std::collections::BTreeSet::new();
     for c in &a.challenges {
-        if !ids.insert(c.challenge_id)
+        if c.challenge_id.is_nil()
+            || !ids.insert(c.challenge_id)
             || !matches!(
                 c.kind.as_str(),
                 "COUNTEREVIDENCE" | "ALTERNATIVE" | "ASSUMPTION_RISK" | "COVERAGE_GAP" | "OTHER"
@@ -106,6 +111,9 @@ pub async fn apply(
     actor: Uuid,
     a: &ChallengeArtifact,
 ) -> Result<usize, ChallengeError> {
+    if !valid_scope(s) || actor.is_nil() {
+        return Err(ChallengeError::Invalid);
+    }
     validate(a)?;
     let mut tx = scoped(pool, s.workspace, false).await?;
     for c in &a.challenges {
@@ -127,7 +135,11 @@ pub async fn event(
     note: &str,
     actor: Uuid,
 ) -> Result<(), ChallengeError> {
-    if !matches!(kind, "ACKNOWLEDGED" | "WAIVED" | "ADDRESSED" | "REOPENED")
+    if !valid_scope(s)
+        || challenge.is_nil()
+        || event_id.is_nil()
+        || actor.is_nil()
+        || !matches!(kind, "ACKNOWLEDGED" | "WAIVED" | "ADDRESSED" | "REOPENED")
         || !valid_text(note)
     {
         return Err(ChallengeError::Invalid);
@@ -138,6 +150,9 @@ pub async fn event(
     Ok(())
 }
 pub async fn list(pool: &PgPool, s: AnalysisScope) -> Result<Vec<ChallengeView>, ChallengeError> {
+    if !valid_scope(s) {
+        return Err(ChallengeError::Invalid);
+    }
     let mut tx = scoped(pool, s.workspace, true).await?;
     let rows:Vec<(Uuid,String,String,i32,Option<String>)>=sqlx::query_as("SELECT c.challenge_id,c.challenge_kind,c.challenge_text,c.materiality,(SELECT e.event_kind FROM niccolo.situation_analysis_challenge_events e WHERE e.workspace_id=c.workspace_id AND e.situation_id=c.situation_id AND e.analysis_id=c.analysis_id AND e.challenge_id=c.challenge_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_challenges c WHERE c.workspace_id=$1 AND c.situation_id=$2 AND c.analysis_id=$3 ORDER BY c.materiality DESC,c.challenge_id").bind(s.workspace).bind(s.situation).bind(s.analysis).fetch_all(&mut *tx).await?;
     tx.commit().await?;
@@ -163,6 +178,20 @@ pub async fn list(pool: &PgPool, s: AnalysisScope) -> Result<Vec<ChallengeView>,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_challenge_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            list(&pool, scope).await,
+            Err(ChallengeError::Invalid)
+        ));
+    }
 
     #[test]
     fn challenge_text_rejects_control_characters() {
