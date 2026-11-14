@@ -41,7 +41,16 @@ export function sourceBatchDescriptors(files) {
   if (selected.length > MAX_SOURCE_BATCH_FILES) {
     throw new Error(`Choose at most ${MAX_SOURCE_BATCH_FILES} source files at once.`);
   }
-  const descriptors = selected.map(sourceDescriptor);
+  // Validate all files before the first request. When a large batch contains
+  // an invalid member, report its position without echoing its potentially
+  // unsafe or sensitive filename into an error message.
+  const descriptors = selected.map((file, index) => {
+    try {
+      return sourceDescriptor(file);
+    } catch (error) {
+      throw new Error(`File ${index + 1} of ${selected.length}: ${error.message}`);
+    }
+  });
   const totalBytes = selected.reduce((sum, file) => sum + file.size, 0);
   if (!Number.isSafeInteger(totalBytes) || totalBytes > MAX_SOURCE_BATCH_BYTES) {
     throw new Error('Selected source batch must be at most 64 MiB.');
