@@ -50,6 +50,17 @@ chmod +x "$TMP/repo/scripts/"*.sh
 export NICCOLO_TEST_TRACE="$TMP/trace"
 : > "$TMP/trace"
 
+# Duplicate first-run flags must fail before bootstrap, even if both flags
+# would individually be valid. No credential prompts or local state writes.
+for option in --no-browser --skip-model-config; do
+  status=0
+  bash "$TMP/repo/scripts/first-run-local-mvp.sh" "$option" "$option" >"$TMP/duplicate-out" 2>"$TMP/duplicate-err" || status=$?
+  [[ "$status" == 2 ]]
+  grep -Fq "Duplicate first-run option: $option" "$TMP/duplicate-err"
+  [[ ! -e "$TMP/repo/.niccolo-local" ]]
+  [[ ! -s "$TMP/trace" ]]
+done
+
 # Missing local build tools fail before asking for database-owner credentials.
 preflight_bin="$TMP/preflight-bin"
 mkdir -p "$preflight_bin"
