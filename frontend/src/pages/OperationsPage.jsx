@@ -127,6 +127,9 @@ export function OperationsPage(){
    const r=v.mode==='sync'?await client.runIntentSync(operationId,task):await client.runIntentAsync(operationId,task);
    setAnalysis(r.value.analysis_id); setActive(operationId); return r.value;
  },onSuccess:()=>{pendingLaunch.current=null;}});
+ // A disabled submit button is a UX signal, not a submission boundary:
+ // implicit form submissions or programmatic dispatch may still reach onSubmit.
+ const launchReady=!!client&&!run.isPending&&!modelUnavailable&&!readiness.isPending&&!readiness.isError&&!situation.isPending&&!situationMissing&&!situationUnavailable;
  const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
  const respond=useMutation({mutationFn:async(v)=>{
    if(!active||!waitingStep)throw new Error('No waiting human step');
@@ -144,7 +147,7 @@ export function OperationsPage(){
  {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. For the local MVP, run bash scripts/configure-local-model.sh, restart Niccolò, then return here.</p>}
  {readiness.error&&<p className="error" role="alert">Niccolò is not ready to analyze: {readiness.error.message}</p>}
  <RuntimeCapacityPanel diagnostic={resources.data} pending={resources.isPending} error={resources.error}/>
- <form onSubmit={handleSubmit(v=>run.mutate(v))}>
+ <form onSubmit={handleSubmit(v=>{if(launchReady)run.mutate(v);})}>
    <label>What are you trying to do?<select {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
    <label>Goal / question (optional)<textarea {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
    <details><summary>Advanced execution</summary><label>Delivery<select {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Return immediately and observe by PULL</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" {...register('stepBudget')}/></label><label>Maximum model calls<input aria-label="Maximum model calls" type="number" {...register('maxInvocations')}/></label><label>Maximum reported model tokens<input aria-label="Maximum model tokens" type="number" {...register('maxTotalTokens')}/></label><label>Finalization reserve (ms)<input aria-label="Finalization reserve" type="number" {...register('finalizationReserveMs')}/></label><small>The defaults are appropriate for ordinary use. These are hard resource limits, not a quality score. Niccolò preserves a provisional result when a model-call budget is exhausted.</small></details>
