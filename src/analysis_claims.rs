@@ -112,6 +112,10 @@ fn valid_claim_kind(v: &str) -> bool {
     )
 }
 
+fn valid_text(value: &str, max: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+}
+
 pub async fn record_claim(
     pool: &PgPool,
     workspace: Uuid,
@@ -122,12 +126,11 @@ pub async fn record_claim(
 ) -> Result<Claim, ClaimError> {
     if claim.ordinal < 1
         || !valid_claim_kind(&claim.kind)
-        || claim.text.trim().is_empty()
-        || claim.text.len() > 8192
+        || !valid_text(&claim.text, 8192)
         || claim
             .qualification
             .as_ref()
-            .is_some_and(|q| q.trim().is_empty() || q.len() > 4096)
+            .is_some_and(|qualification| !valid_text(qualification, 4096))
     {
         return Err(ClaimError::Invalid);
     }
@@ -304,8 +307,7 @@ pub async fn append_review(
     if !matches!(
         kind,
         "CHALLENGED" | "INSUFFICIENT_EVIDENCE" | "UNKNOWN_TO_USER" | "CORRECTION" | "COMMENT"
-    ) || note.trim().is_empty()
-        || note.len() > 4096
+    ) || !valid_text(note, 4096)
     {
         return Err(ClaimError::Invalid);
     }
@@ -361,8 +363,7 @@ pub async fn record_lineage(
     if !matches!(
         lineage.relation.as_str(),
         "RETAINED" | "REFINED" | "REVERSED" | "DROPPED" | "SPLIT" | "MERGED"
-    ) || lineage.rationale.trim().is_empty()
-        || lineage.rationale.len() > 4096
+    ) || !valid_text(&lineage.rationale, 4096)
         || (lineage.relation == "DROPPED") != lineage.new_claim_id.is_none()
     {
         return Err(ClaimError::Invalid);
@@ -400,8 +401,7 @@ pub async fn record_clarification_impact(
             impact.recorded_effect.as_str(),
             "INFORMS" | "QUALIFIES" | "RESOLVES_FOR_THIS_ANALYSIS" | "INTRODUCES_UNCERTAINTY"
         )
-        || impact.note.trim().is_empty()
-        || impact.note.len() > 4096
+        || !valid_text(&impact.note, 4096)
     {
         return Err(ClaimError::Invalid);
     }
@@ -460,4 +460,21 @@ pub async fn list_reviews(
             reviewer,
         })
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claim_text_fields_reject_control_characters() {
+        for value in ["claim\nforged", "qualification\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_text(value, 8192));
+        }
+        assert!(valid_text(
+            "Inference remains provisional pending independent corroboration.",
+            8192
+        ));
+    }
 }
