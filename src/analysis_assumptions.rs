@@ -12,6 +12,8 @@ pub enum AssumptionError {
     Privileged,
     #[error("invalid assumption input")]
     Invalid,
+    #[error("assumption replay conflicts with stored content")]
+    Conflict,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssumptionInput {
@@ -111,6 +113,20 @@ pub async fn record(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_assumptions(workspace_id,situation_id,analysis_id,assumption_id,claim_id,statement,basis_note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.assumption_id).bind(a.claim_id).bind(&a.statement).bind(&a.basis_note).bind(a.recorded_by).execute(&mut *tx).await?;
+    let stored: Option<(Option<Uuid>, String, String, Uuid)> = sqlx::query_as(
+        "SELECT claim_id,statement,basis_note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_assumptions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND assumption_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(a.assumption_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((a.claim_id, a.statement.clone(), a.basis_note.clone(), a.recorded_by)) {
+        return Err(AssumptionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -129,6 +145,20 @@ pub async fn append_event(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_assumption_events(workspace_id,situation_id,analysis_id,assumption_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(assumption).bind(e.event_id).bind(&e.kind).bind(&e.note).bind(e.recorded_by).execute(&mut *tx).await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT assumption_id,event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_assumption_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(e.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((assumption, e.kind.clone(), e.note.clone(), e.recorded_by)) {
+        return Err(AssumptionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -142,6 +172,20 @@ pub async fn add_alternative(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_claim_alternatives(workspace_id,situation_id,analysis_id,claim_id,alternative_id,alternative_text,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(a.claim_id).bind(a.alternative_id).bind(&a.text).bind(&a.rationale).bind(a.recorded_by).execute(&mut *tx).await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT claim_id,alternative_text,rationale,recorded_by_principal_id
+           FROM niccolo.situation_analysis_claim_alternatives
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND alternative_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(a.alternative_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((a.claim_id, a.text.clone(), a.rationale.clone(), a.recorded_by)) {
+        return Err(AssumptionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
