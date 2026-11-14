@@ -171,6 +171,20 @@ pub async fn record_suggestion(
     .bind(item.proposed_by)
     .execute(&mut *tx)
     .await?;
+    let existing: Option<(String, String, Uuid)> = sqlx::query_as(
+        "SELECT reason_kind,reason,proposed_by_principal_id
+           FROM niccolo.situation_reanalysis_suggestions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND suggestion_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(item.suggestion_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if existing != Some((item.reason_kind.clone(), item.reason.clone(), item.proposed_by)) {
+        return Err(ReanalysisControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -201,6 +215,20 @@ pub async fn append_suggestion_decision(
     .bind(item.decided_by)
     .execute(&mut *tx)
     .await?;
+    let existing: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT suggestion_id,decision_kind,note,decided_by_principal_id
+           FROM niccolo.situation_reanalysis_suggestion_decisions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND decision_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(item.decision_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if existing != Some((item.suggestion_id, item.kind.clone(), item.note.clone(), item.decided_by)) {
+        return Err(ReanalysisControlError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
