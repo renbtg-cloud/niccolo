@@ -3,6 +3,7 @@
 These describe components or intended contracts. Source code and tests determine the presently implemented behavior.
 
 - [Epistemic architecture revamp — work in progress](EPISTEMIC_ARCHITECTURE_REVAMP_IN_PROGRESS.md) — exploratory, non-normative review
+- [Independent interdisciplinary epistemic-domain review (66-source corpus)](EPISTEMIC_DOMAIN_INTERDISCIPLINARY_REVIEW_V1.md) — research synthesis, not an implementation gap assessment
 - [MVP composite evidence and human-guided circumstances](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md)
 - [Model evolution architecture](EVOLUTION_ENGINE.md)
 - [Epistemic weighting API](EPISTEMIC_WEIGHTING_API.md)
