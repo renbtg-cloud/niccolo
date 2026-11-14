@@ -577,6 +577,26 @@ mod tests {
     }
 
     #[test]
+    fn whatsapp_two_digit_year_zero_is_not_an_impossible_date() {
+        assert!(looks_like_datetime("01/01/00, 10:05"));
+        assert!(looks_like_datetime("29/02/00, 10:05"));
+        assert!(!looks_like_datetime("29/02/01, 10:05"));
+        assert!(!looks_like_datetime("29/02/0000, 10:05"));
+
+        let src = "[29/02/00, 10:05] Ana: First record.\n[01/03/00, 10:06] Beto: Next.\n";
+        let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        assert_eq!(parsed.fragments[0].speaker_label, "Ana");
+        assert_eq!(parsed.fragments[1].speaker_label, "Beto");
+        for fragment in parsed.fragments {
+            assert_eq!(
+                fragment.content.as_bytes(),
+                &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
+            );
+        }
+    }
+
+    #[test]
     fn lowercase_meridiem_whatsapp_timestamps_are_supported_without_locale_guessing() {
         let src = "[02/11/2026, 9:05 pm] Ana: Evening.\n[02/11/2026, 9:06 PM] Beto: Same clock.\n";
         let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
