@@ -205,7 +205,9 @@ pub async fn record_evidence_gap(
         || input
             .requested_source_kind
             .as_ref()
-            .is_some_and(|x| x.trim().is_empty() || x.len() > 256)
+            .is_some_and(|x| {
+                x.trim().is_empty() || x.len() > 256 || x.chars().any(char::is_control)
+            })
     {
         return Err(AgencyError::Invalid);
     }
