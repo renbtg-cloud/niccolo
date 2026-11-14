@@ -74,12 +74,19 @@ fn valid_note(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 pub async fn record(
     pool: &PgPool,
     scope: AnalysisScope,
     item: &ReviewAcknowledgement,
 ) -> Result<(), AcknowledgementError> {
-    if !valid_sha256(&item.package_sha256)
+    if !valid_scope(scope)
+        || item.acknowledgement_id.is_nil()
+        || item.acknowledged_by.is_nil()
+        || !valid_sha256(&item.package_sha256)
         || !matches!(item.kind.as_str(), "VIEWED" | "EXPORTED" | "DISCUSSED")
         || item.note.as_ref().is_some_and(|value| !valid_note(value))
     {
@@ -130,6 +137,9 @@ pub async fn history(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<AcknowledgementHistoryItem>, AcknowledgementError> {
+    if !valid_scope(scope) {
+        return Err(AcknowledgementError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     type Row = (Uuid, String, String, Option<String>, Uuid);
     let rows: Vec<Row> = sqlx::query_as(
@@ -164,6 +174,20 @@ pub async fn history(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_acknowledgement_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            history(&pool, scope).await,
+            Err(AcknowledgementError::Invalid)
+        ));
+    }
 
     #[test]
     fn acknowledgement_note_rejects_control_characters() {
