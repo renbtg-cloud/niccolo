@@ -83,7 +83,12 @@ fn valid_text(value: &str, max: usize) -> bool {
 }
 
 fn valid(input: &CollectionEventInput) -> bool {
-    valid_text(&input.actor_label, 512)
+    !input.event_id.is_nil()
+        && input.input_document_id.is_none_or(|id| !id.is_nil())
+        && input.input_evidence_id.is_none_or(|id| !id.is_nil())
+        && input.output_document_id.is_none_or(|id| !id.is_nil())
+        && input.output_evidence_id.is_none_or(|id| !id.is_nil())
+        && valid_text(&input.actor_label, 512)
         && valid_text(&input.operation, 512)
         && valid_text(&input.method, 4096)
         && valid_text(&input.note, 4096)
@@ -123,6 +128,10 @@ fn valid(input: &CollectionEventInput) -> bool {
             || input.input_evidence_id.is_some()
             || input.output_document_id.is_some()
             || input.output_evidence_id.is_some())
+}
+
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
 }
 
 async fn scoped(
@@ -226,7 +235,7 @@ pub async fn record(
     actor: Uuid,
     input: &CollectionEventInput,
 ) -> Result<CollectionEvent, CollectionProvenanceError> {
-    if !valid(input) {
+    if !valid_scope(scope) || actor.is_nil() || !valid(input) {
         return Err(CollectionProvenanceError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -345,6 +354,9 @@ pub async fn list(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<CollectionEvent>, CollectionProvenanceError> {
+    if !valid_scope(scope) {
+        return Err(CollectionProvenanceError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots
@@ -396,6 +408,20 @@ mod tests {
             qualification: "ATTRIBUTED".into(),
             note: "Role describes collection behavior, not source authorship.".into(),
         }
+    }
+
+    #[test]
+    fn nil_collection_artifact_identities_are_invalid() {
+        let mut value = sample("COLLECTOR");
+        value.event_id = Uuid::nil();
+        assert!(!valid(&value));
+        value = sample("COLLECTOR");
+        value.input_document_id = Some(Uuid::nil());
+        assert!(!valid(&value));
+        value = sample("COLLECTOR");
+        value.input_document_id = None;
+        value.output_evidence_id = Some(Uuid::nil());
+        assert!(!valid(&value));
     }
 
     #[test]
