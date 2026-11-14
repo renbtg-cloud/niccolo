@@ -1,0 +1,39 @@
+name: MVP onboarding shell regression
+
+# A small, focused PR gate: do not run the heavyweight Rust/PostgreSQL
+# checkpoint workflow just to validate onboarding scripts.
+on:
+  pull_request:
+    branches:
+      - ci/mvp-checkpoint
+    paths:
+      - 'scripts/first-run-local-mvp.sh'
+      - 'scripts/start-local-mvp.sh'
+      - 'scripts/test-first-run-local-mvp.sh'
+      - 'scripts/test-start-local-arguments.sh'
+      - '.github/workflows/mvp-onboarding-shell.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onboarding-shell-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onboarding-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Bash syntax
+        run: |
+          bash -n scripts/first-run-local-mvp.sh
+          bash -n scripts/start-local-mvp.sh
+          bash -n scripts/test-first-run-local-mvp.sh
+          bash -n scripts/test-start-local-arguments.sh
+      - name: First-run regression
+        run: bash scripts/test-first-run-local-mvp.sh
+      - name: Local startup regression
+        run: bash scripts/test-start-local-arguments.sh
