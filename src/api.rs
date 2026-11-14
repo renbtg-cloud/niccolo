@@ -4943,6 +4943,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn direct_technical_route_navigation_returns_the_react_shell() {
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        for path in ["/forensic", "/playground"] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/html; charset=utf-8"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn embedded_technical_chunks_are_served_as_javascript_without_path_traversal() {
         use tower::ServiceExt;
         let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
