@@ -274,7 +274,12 @@ mod tests {
     }
     #[test]
     fn rationale_rejects_control_characters() {
-        for value in ["because\nforged", "because\rforged", "because\tforged", "x\0y"] {
+        for value in [
+            "because\nforged",
+            "because\rforged",
+            "because\tforged",
+            "x\0y",
+        ] {
             let mut v = sample();
             v.rationale = value.into();
             assert!(!valid(&v));
