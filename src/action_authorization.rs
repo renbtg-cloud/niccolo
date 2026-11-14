@@ -67,12 +67,21 @@ fn valid_scope(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_analysis_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 pub async fn append_event(
     pool: &PgPool,
     scope: AnalysisScope,
     event: &AuthorizationEvent,
 ) -> Result<(), AuthorizationError> {
-    if !matches!(event.kind.as_str(), "AUTHORIZED" | "REVOKED")
+    if !valid_analysis_scope(scope)
+        || event.proposal_id.is_nil()
+        || event.authorization_id.is_nil()
+        || event.recorded_by.is_nil()
+        || event.accepted_decision_id.is_some_and(|id| id.is_nil())
+        || !matches!(event.kind.as_str(), "AUTHORIZED" | "REVOKED")
         || !valid_scope(&event.scope)
         || (event.kind == "AUTHORIZED" && event.accepted_decision_id.is_none())
         || (event.kind == "REVOKED" && event.accepted_decision_id.is_some())
@@ -126,6 +135,9 @@ pub async fn statuses(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<AuthorizationStatus>, AuthorizationError> {
+    if !valid_analysis_scope(scope) {
+        return Err(AuthorizationError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(Uuid, String, String)> = sqlx::query_as(
         "SELECT proposal_id,event_kind,authorization_scope FROM (\
@@ -167,6 +179,9 @@ pub async fn lifecycle(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<ActionLifecycle>, AuthorizationError> {
+    if !valid_analysis_scope(scope) {
+        return Err(AuthorizationError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     type Row = (Uuid, Option<String>, Option<String>);
     let rows: Vec<Row> = sqlx::query_as(
@@ -203,6 +218,20 @@ pub async fn lifecycle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_authorization_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            statuses(&pool, scope).await,
+            Err(AuthorizationError::Invalid)
+        ));
+    }
 
     #[test]
     fn authorization_scope_rejects_control_characters() {
