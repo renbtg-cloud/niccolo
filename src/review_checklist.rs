@@ -70,6 +70,10 @@ async fn scoped(
     Ok(tx)
 }
 
+fn valid_text(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn create_item(
     pool: &PgPool,
     scope: ReviewSessionScope,
@@ -77,7 +81,7 @@ pub async fn create_item(
     text: &str,
     principal: Uuid,
 ) -> Result<(), ChecklistError> {
-    if text.trim().is_empty() || text.len() > 4096 {
+    if !valid_text(text) {
         return Err(ChecklistError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -94,8 +98,7 @@ pub async fn append_event(
     event: &ChecklistEvent,
 ) -> Result<(), ChecklistError> {
     if !matches!(event.kind.as_str(), "DONE" | "REOPENED" | "WAIVED")
-        || event.note.trim().is_empty()
-        || event.note.len() > 4096
+        || !valid_text(&event.note)
     {
         return Err(ChecklistError::Invalid);
     }
@@ -146,4 +149,18 @@ pub fn canonical_json(value: &ChecklistSummary) -> Result<String, serde_json::Er
 pub fn sha256(value: &ChecklistSummary) -> Result<String, serde_json::Error> {
     let bytes = canonical_json(value)?;
     Ok(format!("{:x}", Sha256::digest(bytes.as_bytes())))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checklist_text_rejects_control_characters() {
+        for value in ["item\nforged", "note\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_text(value));
+        }
+        assert!(valid_text("Confirm the unresolved contradiction with the user."));
+    }
 }
