@@ -252,6 +252,22 @@ pub async fn link_fragment(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT relation,recorded_by_principal_id
+           FROM niccolo.situation_analysis_claim_fragments
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND claim_id=$4 AND evidence_id=$5",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(claim_id)
+    .bind(evidence_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((relation.to_owned(), principal)) {
+        return Err(ClaimError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -288,6 +304,22 @@ pub async fn link_contribution(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT relation,recorded_by_principal_id
+           FROM niccolo.situation_analysis_claim_contributions
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+            AND claim_id=$4 AND contribution_id=$5",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .bind(claim_id)
+    .bind(contribution_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((relation.to_owned(), principal)) {
+        return Err(ClaimError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
