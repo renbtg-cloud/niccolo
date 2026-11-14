@@ -352,10 +352,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     // Accept only those explicit forms; never guess the date locale.
     // Mobile WhatsApp exports may separate AM/PM with a no-break space.
     // Accept only the known spacing variants; do not normalize the source.
-    let (clock, meridiem) = match time
-        .trim()
-        .rsplit_once(|c: char| matches!(c, ' ' | '\u{00a0}' | '\u{202f}'))
-    {
+    let (clock, meridiem) = match time.trim().rsplit_once([' ', '\u{00a0}', '\u{202f}']) {
         Some((clock, suffix)) if suffix.eq_ignore_ascii_case("AM") => (clock, Some("AM")),
         Some((clock, suffix)) if suffix.eq_ignore_ascii_case("PM") => (clock, Some("PM")),
         Some(_) => return false,
