@@ -13,6 +13,8 @@ pub enum ChecklistError {
     Privileged,
     #[error("invalid checklist input")]
     Invalid,
+    #[error("checklist replay conflicts with stored content")]
+    Conflict,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +89,20 @@ pub async fn create_item(
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_review_checklist_items(workspace_id,situation_id,session_id,item_id,item_text,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
         .bind(scope.workspace).bind(scope.situation).bind(scope.session).bind(item).bind(text).bind(principal).execute(&mut *tx).await?;
+    let stored: Option<(String, Uuid)> = sqlx::query_as(
+        "SELECT item_text,created_by_principal_id
+           FROM niccolo.situation_review_checklist_items
+          WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3 AND item_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.session)
+    .bind(item)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((text.to_owned(), principal)) {
+        return Err(ChecklistError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -105,6 +121,20 @@ pub async fn append_event(
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_review_checklist_events(workspace_id,situation_id,session_id,item_id,event_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
         .bind(scope.workspace).bind(scope.situation).bind(scope.session).bind(item).bind(event.event_id).bind(&event.kind).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+    let stored: Option<(Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT item_id,event_kind,note,recorded_by_principal_id
+           FROM niccolo.situation_review_checklist_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.session)
+    .bind(event.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((item, event.kind.clone(), event.note.clone(), event.recorded_by)) {
+        return Err(ChecklistError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
