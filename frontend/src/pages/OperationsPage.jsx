@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { useClient } from '../hooks/useClient.js';
 import { qk } from '../api/keys.js';
 import { useUiStore } from '../stores/ui.js';
+import { useSessionStore } from '../stores/session.js';
 import { situationGuide } from '../state/situationGuide.js';
 import { useOperationObserver } from '../hooks/useOperationObserver.js';
 import { useAgenticPlan } from '../hooks/useAgenticPlan.js';
@@ -70,6 +71,7 @@ function AnswerPanel({ output, operation, error }) {
 
 export function OperationsPage(){
  const client=useClient(); const qc=useQueryClient();
+ const sessionGeneration=useSessionStore(s=>s.generation);
  const situation=useQuery({
    queryKey:client?qk.situation(client.config):['situation','none'],
    enabled:!!client,
@@ -77,7 +79,7 @@ export function OperationsPage(){
    retry:false,
  });
  const readiness=useQuery({
-   queryKey:['mvp-runtime-readiness'],
+   queryKey:qk.readiness(sessionGeneration),
    enabled:!!client,
    queryFn:async()=> (await client.readiness()).value,
    staleTime:60000,
