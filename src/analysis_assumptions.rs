@@ -103,12 +103,22 @@ async fn scoped(
 fn valid(s: &str) -> bool {
     !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
+
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
 pub async fn record(
     pool: &PgPool,
     scope: AnalysisScope,
     a: &AssumptionInput,
 ) -> Result<(), AssumptionError> {
-    if !valid(&a.statement) || !valid(&a.basis_note) {
+    if !valid_scope(scope)
+        || a.assumption_id.is_nil()
+        || a.claim_id.is_some_and(|id| id.is_nil())
+        || a.recorded_by.is_nil()
+        || !valid(&a.statement)
+        || !valid(&a.basis_note)
+    {
         return Err(AssumptionError::Invalid);
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -136,10 +146,15 @@ pub async fn append_event(
     assumption: Uuid,
     e: &AssumptionEvent,
 ) -> Result<(), AssumptionError> {
-    if !matches!(
-        e.kind.as_str(),
-        "CHALLENGED" | "RETAINED_FOR_ANALYSIS" | "RETRACTED_FOR_ANALYSIS"
-    ) || !valid(&e.note)
+    if !valid_scope(scope)
+        || assumption.is_nil()
+        || e.event_id.is_nil()
+        || e.recorded_by.is_nil()
+        || !matches!(
+            e.kind.as_str(),
+            "CHALLENGED" | "RETAINED_FOR_ANALYSIS" | "RETRACTED_FOR_ANALYSIS"
+        )
+        || !valid(&e.note)
     {
         return Err(AssumptionError::Invalid);
     };
@@ -167,7 +182,13 @@ pub async fn add_alternative(
     scope: AnalysisScope,
     a: &AlternativeInput,
 ) -> Result<(), AssumptionError> {
-    if !valid(&a.text) || !valid(&a.rationale) {
+    if !valid_scope(scope)
+        || a.alternative_id.is_nil()
+        || a.claim_id.is_nil()
+        || a.recorded_by.is_nil()
+        || !valid(&a.text)
+        || !valid(&a.rationale)
+    {
         return Err(AssumptionError::Invalid);
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -193,6 +214,9 @@ pub async fn candidate_interpretations(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<CandidateInterpretationView>, AssumptionError> {
+    if !valid_scope(scope) {
+        return Err(AssumptionError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(Uuid, String, String)> = sqlx::query_as(
         "SELECT interpretation_id,interpretation_text,rationale FROM niccolo.situation_analysis_candidate_interpretations WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 ORDER BY created_at,interpretation_id",
@@ -218,6 +242,9 @@ pub async fn candidate_interpretations(
 }
 
 pub async fn lens(pool: &PgPool, scope: AnalysisScope) -> Result<AnalysisLens, AssumptionError> {
+    if !valid_scope(scope) {
+        return Err(AssumptionError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let arows: Vec<AssumptionRow> = sqlx::query_as("SELECT a.assumption_id,a.claim_id,a.statement,a.basis_note,(SELECT e.event_kind FROM niccolo.situation_analysis_assumption_events e WHERE e.workspace_id=a.workspace_id AND e.situation_id=a.situation_id AND e.analysis_id=a.analysis_id AND e.assumption_id=a.assumption_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_assumptions a WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3 ORDER BY a.assumption_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
     let brows: Vec<AlternativeRow> = sqlx::query_as("SELECT alternative_id,claim_id,alternative_text,rationale FROM niccolo.situation_analysis_claim_alternatives WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 ORDER BY claim_id,alternative_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
@@ -265,6 +292,27 @@ pub fn sha256(v: &AnalysisLens) -> Result<String, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_analysis_scope_is_rejected_without_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        let input = AssumptionInput {
+            assumption_id: Uuid::new_v4(),
+            claim_id: None,
+            statement: "A".into(),
+            basis_note: "B".into(),
+            recorded_by: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            record(&pool, scope, &input).await,
+            Err(AssumptionError::Invalid)
+        ));
+    }
 
     #[test]
     fn assumption_text_rejects_control_characters() {
