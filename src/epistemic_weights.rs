@@ -118,7 +118,24 @@ pub fn evaluate(
         if o.declared_strength > 100 {
             return Err(WeightError::InvalidWeight);
         }
-        if o.rationale.trim().is_empty() || o.rationale.len() > 4096 || o.rationale.contains('\0') {
+        // Rationale is an inspectable human/analyst explanation. Reject
+        // invisible direction overrides and terminal-control payloads that
+        // could alter how the reported evidence balance is perceived.
+        // Ordinary multi-line paragraphs, tabs and Unicode text remain valid.
+        if o.rationale.trim().is_empty()
+            || o.rationale.len() > 4096
+            || o.rationale.chars().any(|ch| {
+                (ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+                    || matches!(
+                        ch,
+                        '\u{061c}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                    )
+            })
+        {
             return Err(WeightError::InvalidRationale);
         }
         if !seen.insert(o.evidence_id) {
