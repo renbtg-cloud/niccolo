@@ -74,7 +74,10 @@ fn valid_text(value: &str, max: usize) -> bool {
 }
 
 fn valid(input: &SourceScopeInput) -> bool {
-    valid_text(&input.source_family, 512)
+    !input.scope_id.is_nil()
+        && input.document_id.is_none_or(|id| !id.is_nil())
+        && input.supersedes_scope_id.is_none_or(|id| !id.is_nil())
+        && valid_text(&input.source_family, 512)
         && valid_text(&input.scope_description, 4096)
         && valid_text(&input.reason, 4096)
         && matches!(
@@ -99,6 +102,10 @@ fn valid(input: &SourceScopeInput) -> bool {
             .as_ref()
             .is_none_or(|v| valid_text(v, 1024))
         && input.supersedes_scope_id != Some(input.scope_id)
+}
+
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
 }
 
 async fn scoped(
@@ -155,7 +162,7 @@ pub async fn record(
     actor: Uuid,
     input: &SourceScopeInput,
 ) -> Result<SourceScopeAssertion, SourceScopeError> {
-    if !valid(input) {
+    if !valid_scope(scope) || actor.is_nil() || !valid(input) {
         return Err(SourceScopeError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -274,6 +281,9 @@ pub async fn list(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<SourceScopeAssertion>, SourceScopeError> {
+    if !valid_scope(scope) {
+        return Err(SourceScopeError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots
@@ -338,6 +348,19 @@ mod tests {
             document_id: None,
             supersedes_scope_id: None,
         }
+    }
+
+    #[test]
+    fn nil_source_scope_identities_are_invalid() {
+        let mut value = sample("UNKNOWN_EXISTENCE");
+        value.scope_id = Uuid::nil();
+        assert!(!valid(&value));
+        value = sample("UNKNOWN_EXISTENCE");
+        value.document_id = Some(Uuid::nil());
+        assert!(!valid(&value));
+        value = sample("UNKNOWN_EXISTENCE");
+        value.supersedes_scope_id = Some(Uuid::nil());
+        assert!(!valid(&value));
     }
 
     #[test]
