@@ -931,8 +931,16 @@ async fn proactive_queue_respects_reanalysis_suggestion_human_decisions() {
     authz::with_auth_digest("test-digest".into(), async {
         for (suggestion_id, reason_kind, reason) in [
             (pending, "UNCERTAINTY", "Material uncertainty remains"),
-            (requested, "CONTEXT_DELTA", "New context materially changes the input"),
-            (deferred, "CLAIM_REVIEW", "A challenged claim may warrant reanalysis"),
+            (
+                requested,
+                "CONTEXT_DELTA",
+                "New context materially changes the input",
+            ),
+            (
+                deferred,
+                "CLAIM_REVIEW",
+                "A challenged claim may warrant reanalysis",
+            ),
         ] {
             niccolo_evidence::reanalysis_control::record_suggestion(
                 &app,
