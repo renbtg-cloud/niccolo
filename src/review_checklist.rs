@@ -76,6 +76,10 @@ fn valid_text(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(scope: ReviewSessionScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.session.is_nil()
+}
+
 pub async fn create_item(
     pool: &PgPool,
     scope: ReviewSessionScope,
@@ -83,7 +87,7 @@ pub async fn create_item(
     text: &str,
     principal: Uuid,
 ) -> Result<(), ChecklistError> {
-    if !valid_text(text) {
+    if !valid_scope(scope) || item.is_nil() || principal.is_nil() || !valid_text(text) {
         return Err(ChecklistError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -113,7 +117,11 @@ pub async fn append_event(
     item: Uuid,
     event: &ChecklistEvent,
 ) -> Result<(), ChecklistError> {
-    if !matches!(event.kind.as_str(), "DONE" | "REOPENED" | "WAIVED")
+    if !valid_scope(scope)
+        || item.is_nil()
+        || event.event_id.is_nil()
+        || event.recorded_by.is_nil()
+        || !matches!(event.kind.as_str(), "DONE" | "REOPENED" | "WAIVED")
         || !valid_text(&event.note)
     {
         return Err(ChecklistError::Invalid);
@@ -143,6 +151,9 @@ pub async fn summary(
     pool: &PgPool,
     scope: ReviewSessionScope,
 ) -> Result<ChecklistSummary, ChecklistError> {
+    if !valid_scope(scope) {
+        return Err(ChecklistError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(Uuid,String,Option<String>)> = sqlx::query_as("SELECT i.item_id,i.item_text,(SELECT e.event_kind FROM niccolo.situation_review_checklist_events e WHERE e.workspace_id=i.workspace_id AND e.situation_id=i.situation_id AND e.session_id=i.session_id AND e.item_id=i.item_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_review_checklist_items i WHERE i.workspace_id=$1 AND i.situation_id=$2 AND i.session_id=$3 ORDER BY i.item_id")
         .bind(scope.workspace).bind(scope.situation).bind(scope.session).fetch_all(&mut *tx).await?;
@@ -185,6 +196,27 @@ pub fn sha256(value: &ChecklistSummary) -> Result<String, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_review_scope_is_rejected_without_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = ReviewSessionScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            session: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            create_item(
+                &pool,
+                scope,
+                Uuid::new_v4(),
+                "Review this",
+                Uuid::new_v4()
+            )
+            .await,
+            Err(ChecklistError::Invalid)
+        ));
+    }
 
     #[test]
     fn checklist_text_rejects_control_characters() {
