@@ -63,14 +63,17 @@ async fn scoped(
     Ok(tx)
 }
 
+fn valid_scope(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn append_event(
     pool: &PgPool,
     scope: AnalysisScope,
     event: &AuthorizationEvent,
 ) -> Result<(), AuthorizationError> {
     if !matches!(event.kind.as_str(), "AUTHORIZED" | "REVOKED")
-        || event.scope.trim().is_empty()
-        || event.scope.len() > 4096
+        || !valid_scope(&event.scope)
         || (event.kind == "AUTHORIZED" && event.accepted_decision_id.is_none())
         || (event.kind == "REVOKED" && event.accepted_decision_id.is_some())
     {
@@ -194,4 +197,18 @@ pub async fn lifecycle(
             },
         )
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authorization_scope_rejects_control_characters() {
+        for value in ["scope\nforged", "scope\rforged", "scope\tforged", "x\0y"] {
+            assert!(!valid_scope(value));
+        }
+        assert!(valid_scope("Only send the approved draft to the named recipient."));
+    }
 }
