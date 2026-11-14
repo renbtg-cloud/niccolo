@@ -316,6 +316,37 @@ mod tests {
     }
 
     #[test]
+    fn evidence_input_permutation_cannot_change_explainable_balance() {
+        let rows = vec![
+            obs(1, Some(17), Stance::Supports, 87),
+            obs(2, Some(17), Stance::Contradicts, 62),
+            obs(3, None, Stance::Supports, 50),
+            obs(4, None, Stance::ContextOnly, 90),
+            obs(5, Some(31), Stance::Contradicts, 33),
+        ];
+        let policy = WeightPolicy {
+            support_multiplier_pct: 140,
+            counter_multiplier_pct: 75,
+            per_origin_cap: 85,
+        };
+        let reference = evaluate(policy, Some(23), &rows).unwrap();
+        for offset in 0..rows.len() {
+            let mut permutation = rows.clone();
+            permutation.rotate_left(offset);
+            if offset % 2 == 1 {
+                permutation.reverse();
+            }
+            let score = evaluate(policy, Some(23), &permutation).unwrap();
+            assert_eq!(
+                score, reference,
+                "input ordering changed the score at rotation {offset}"
+            );
+        }
+        assert!(!reference.score_is_probability_of_truth);
+        assert!(!reference.independence_established);
+    }
+
+    #[test]
     fn context_is_not_evidence() {
         let rows = vec![obs(1, Some(5), Stance::ContextOnly, 100)];
         assert_eq!(
