@@ -404,8 +404,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     // This century is used only to check the calendar day; source timestamps
     // are never normalized, interpreted as authenticated dates or rewritten.
     let calendar_year = if two_digit_year { 2000 + year } else { year };
-    let leap = calendar_year % 4 == 0
-        && (calendar_year % 100 != 0 || calendar_year % 400 == 0);
+    let leap = calendar_year % 4 == 0 && (calendar_year % 100 != 0 || calendar_year % 400 == 0);
     let days_in_month = match month {
         2 if leap => 29,
         2 => 28,
