@@ -116,6 +116,10 @@ fn valid_text(value: &str, max: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(workspace: Uuid, situation: Uuid, analysis: Uuid) -> bool {
+    !workspace.is_nil() && !situation.is_nil() && !analysis.is_nil()
+}
+
 pub async fn record_claim(
     pool: &PgPool,
     workspace: Uuid,
@@ -124,7 +128,10 @@ pub async fn record_claim(
     principal: Uuid,
     claim: NewClaim,
 ) -> Result<Claim, ClaimError> {
-    if claim.ordinal < 1
+    if !valid_scope(workspace, situation, analysis)
+        || principal.is_nil()
+        || claim.claim_id.is_nil()
+        || claim.ordinal < 1
         || !valid_claim_kind(&claim.kind)
         || !valid_text(&claim.text, 8192)
         || claim
@@ -192,6 +199,9 @@ pub async fn list_claims(
     situation: Uuid,
     analysis: Uuid,
 ) -> Result<Vec<Claim>, ClaimError> {
+    if !valid_scope(workspace, situation, analysis) {
+        return Err(ClaimError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<(Uuid, i32, String, String, Option<String>, Uuid)> = sqlx::query_as(
         "SELECT claim_id,ordinal,claim_kind,claim_text,qualification,created_by_principal_id \
@@ -231,10 +241,15 @@ pub async fn link_fragment(
     relation: &str,
     principal: Uuid,
 ) -> Result<(), ClaimError> {
-    if !matches!(
-        relation,
-        "SUPPORTS_AS_USED" | "CONTRADICTS_AS_USED" | "CONTEXT_ONLY"
-    ) {
+    if !valid_scope(workspace, situation, analysis)
+        || claim_id.is_nil()
+        || evidence_id.is_nil()
+        || principal.is_nil()
+        || !matches!(
+            relation,
+            "SUPPORTS_AS_USED" | "CONTRADICTS_AS_USED" | "CONTEXT_ONLY"
+        )
+    {
         return Err(ClaimError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -283,10 +298,15 @@ pub async fn link_contribution(
     relation: &str,
     principal: Uuid,
 ) -> Result<(), ClaimError> {
-    if !matches!(
-        relation,
-        "INFORMS" | "QUALIFIES" | "CONFLICTS_WITH_REPORTED_CONTEXT"
-    ) {
+    if !valid_scope(workspace, situation, analysis)
+        || claim_id.is_nil()
+        || contribution_id.is_nil()
+        || principal.is_nil()
+        || !matches!(
+            relation,
+            "INFORMS" | "QUALIFIES" | "CONFLICTS_WITH_REPORTED_CONTEXT"
+        )
+    {
         return Err(ClaimError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
@@ -336,10 +356,15 @@ pub async fn append_review(
     note: &str,
     reviewer: Uuid,
 ) -> Result<ClaimReview, ClaimError> {
-    if !matches!(
-        kind,
-        "CHALLENGED" | "INSUFFICIENT_EVIDENCE" | "UNKNOWN_TO_USER" | "CORRECTION" | "COMMENT"
-    ) || !valid_text(note, 4096)
+    if !valid_scope(workspace, situation, analysis)
+        || claim_id.is_nil()
+        || review_id.is_nil()
+        || reviewer.is_nil()
+        || !matches!(
+            kind,
+            "CHALLENGED" | "INSUFFICIENT_EVIDENCE" | "UNKNOWN_TO_USER" | "CORRECTION" | "COMMENT"
+        )
+        || !valid_text(note, 4096)
     {
         return Err(ClaimError::Invalid);
     }
@@ -392,7 +417,15 @@ pub async fn record_lineage(
     situation: Uuid,
     lineage: ClaimLineage,
 ) -> Result<(), ClaimError> {
-    if !matches!(
+    if workspace.is_nil()
+        || situation.is_nil()
+        || lineage.lineage_id.is_nil()
+        || lineage.prior_analysis_id.is_nil()
+        || lineage.prior_claim_id.is_nil()
+        || lineage.new_analysis_id.is_nil()
+        || lineage.new_claim_id.is_some_and(|id| id.is_nil())
+        || lineage.recorded_by.is_nil()
+        || !matches!(
         lineage.relation.as_str(),
         "RETAINED" | "REFINED" | "REVERSED" | "DROPPED" | "SPLIT" | "MERGED"
     ) || !valid_text(&lineage.rationale, 4096)
@@ -453,7 +486,17 @@ pub async fn record_clarification_impact(
     situation: Uuid,
     impact: ClarificationImpact,
 ) -> Result<(), ClaimError> {
-    if impact.source_analysis_id == impact.target_analysis_id
+    if workspace.is_nil()
+        || situation.is_nil()
+        || impact.impact_id.is_nil()
+        || impact.source_analysis_id.is_nil()
+        || impact.question_id.is_nil()
+        || impact.answer_id.is_nil()
+        || impact.contribution_id.is_nil()
+        || impact.target_analysis_id.is_nil()
+        || impact.target_claim_id.is_nil()
+        || impact.recorded_by.is_nil()
+        || impact.source_analysis_id == impact.target_analysis_id
         || !matches!(
             impact.recorded_effect.as_str(),
             "INFORMS" | "QUALIFIES" | "RESOLVES_FOR_THIS_ANALYSIS" | "INTRODUCES_UNCERTAINTY"
@@ -521,6 +564,9 @@ pub async fn list_reviews(
     analysis: Uuid,
     claim_id: Uuid,
 ) -> Result<Vec<ClaimReview>, ClaimError> {
+    if !valid_scope(workspace, situation, analysis) || claim_id.is_nil() {
+        return Err(ClaimError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<(Uuid, String, String, Uuid)> = sqlx::query_as(
         "SELECT review_id,review_kind,note,reviewer_principal_id \
@@ -551,6 +597,15 @@ pub async fn list_reviews(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_claim_scope_is_rejected_without_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        assert!(matches!(
+            list_claims(&pool, Uuid::nil(), Uuid::new_v4(), Uuid::new_v4()).await,
+            Err(ClaimError::Invalid)
+        ));
+    }
 
     #[test]
     fn claim_text_fields_reject_control_characters() {
