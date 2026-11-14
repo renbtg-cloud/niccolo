@@ -54,7 +54,7 @@ pub fn valid(input: &NewHumanCredence) -> bool {
         )
         && !input.rationale.trim().is_empty()
         && input.rationale.len() <= 4096
-        && !input.rationale.contains('\0')
+        && !input.rationale.chars().any(char::is_control)
 }
 
 fn view(row: (Uuid, Uuid, i16, String, String, Uuid)) -> HumanCredenceView {
@@ -246,6 +246,15 @@ mod tests {
         v.confidence_percent = -1;
         assert!(!valid(&v));
     }
+    #[test]
+    fn rationale_rejects_control_characters() {
+        for value in ["because\nforged", "because\rforged", "because\tforged", "x\0y"] {
+            let mut v = sample();
+            v.rationale = value.into();
+            assert!(!valid(&v));
+        }
+    }
+
     #[test]
     fn operational_premise_is_explicit_not_implicit() {
         let mut v = sample();
