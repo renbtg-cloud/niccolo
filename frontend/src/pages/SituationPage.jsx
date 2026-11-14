@@ -189,6 +189,15 @@ function ConnectedSituation({client}){
   const attached = new Set(snapshot?.source_document_ids ?? []);
   const documents = sources.data?.documents ?? [];
   const guide = situationGuide(snapshot);
+  // Validate selection before upload is clicked; mutation rechecks the batch.
+  let uploadPreflightError = '';
+  if (files.length > 0) {
+    try {
+      sourceBatchDescriptors(files);
+    } catch (error) {
+      uploadPreflightError = error.message;
+    }
+  }
 
   return <section>
     <h2>Situation</h2>
@@ -226,9 +235,10 @@ function ConnectedSituation({client}){
           setFiles(Array.from(event.target.files ?? []));
         }}
       />
-      <button disabled={files.length === 0 || upload.isPending} onClick={() => files.length && upload.mutate(files)}>
+      <button disabled={files.length === 0 || upload.isPending || !!uploadPreflightError} onClick={() => files.length && upload.mutate(files)}>
         {upload.isPending ? `Importing ${files.length} record(s)…` : `Import and attach ${files.length || ''} record${files.length === 1 ? '' : 's'}`}
       </button>
+      {uploadPreflightError && <p className="error" role="alert">Cannot import this batch: {uploadPreflightError}</p>}
       {files.length > 0 && <div><small>Selected {files.length} file(s) · {files.reduce((sum, selected) => sum + selected.size, 0)} bytes total</small><ul>{files.slice(0,8).map((selected, index) => <li key={`${selected.name}:${selected.size}:${selected.lastModified}:${index}`}><small>{selected.name} · {selected.size} bytes</small></li>)}</ul>{files.length > 8 && <small>+ {files.length - 8} more file(s)</small>}</div>}
       {uploadProgress && <p role="status"><small>
         Imported and attached {uploadProgress.done}/{uploadProgress.total}
