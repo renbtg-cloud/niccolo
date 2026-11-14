@@ -68,6 +68,10 @@ fn valid_text(value: &str, max: usize) -> bool {
     !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 fn valid(input: &DecisionReadinessInput) -> bool {
     if input.assessment_id.is_nil()
         || input.decision_id.is_nil()
@@ -183,7 +187,7 @@ pub async fn record(
     actor: Uuid,
     input: &DecisionReadinessInput,
 ) -> Result<DecisionReadinessView, DecisionReadinessError> {
-    if !valid(input) {
+    if !valid_scope(scope) || actor.is_nil() || !valid(input) {
         return Err(DecisionReadinessError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -283,6 +287,9 @@ pub async fn latest(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<DecisionReadinessView>, DecisionReadinessError> {
+    if !valid_scope(scope) {
+        return Err(DecisionReadinessError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots
@@ -320,6 +327,20 @@ pub async fn latest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_readiness_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            latest(&pool, scope).await,
+            Err(DecisionReadinessError::Invalid)
+        ));
+    }
 
     #[test]
     fn readiness_can_coexist_with_material_reversal_condition() {
