@@ -314,7 +314,8 @@ mod tests {
                 Err(WeightError::InvalidRationale)
             );
         }
-        row.rationale = "Reason 1: observed by Ana.\nReason 2: not independently checked.\tRevisit.".into();
+        row.rationale =
+            "Reason 1: observed by Ana.\nReason 2: not independently checked.\tRevisit.".into();
         let report = evaluate(WeightPolicy::default(), None, &[row]).unwrap();
         assert_eq!(report.support_points, 40);
         assert!(!report.independence_established);
