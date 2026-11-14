@@ -18,18 +18,19 @@ case "${1:-}" in
     ;;
 esac
 
-# Browser launch is an explicit opt-in policy, not a loose truthiness test.
-# Reject typos rather than unexpectedly opening a browser with a handoff link.
-case "${NICCOLO_OPEN_BROWSER:-1}" in
-  1|true|TRUE|yes|YES) open_browser=1 ;;
-  0|false|FALSE|no|NO) open_browser=0 ;;
-  *)
-    echo 'NICCOLO_OPEN_BROWSER must be 1/0, true/false, or yes/no.' >&2
-    exit 2
-    ;;
-esac
-if [[ "${1:-}" == "--no-browser" ]]; then
+# Explicit --no-browser always wins. --print-only never opens a browser,
+# so neither mode needs to interpret the launch-policy environment variable.
+if [[ "${1:-}" == "--no-browser" || "${1:-}" == "--print-only" ]]; then
   open_browser=0
+else
+  case "${NICCOLO_OPEN_BROWSER:-1}" in
+    1|true|TRUE|yes|YES) open_browser=1 ;;
+    0|false|FALSE|no|NO) open_browser=0 ;;
+    *)
+      echo 'NICCOLO_OPEN_BROWSER must be 1/0, true/false, or yes/no.' >&2
+      exit 2
+      ;;
+  esac
 fi
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
