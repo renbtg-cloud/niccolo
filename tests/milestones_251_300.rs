@@ -826,6 +826,77 @@ async fn v451_v500_investigation_queue_is_bounded_ranked_and_never_executes_exte
 }
 
 #[tokio::test]
+async fn retracted_clarification_answer_resurfaces_the_question_as_a_proactive_lead() {
+    let (_admin, app) = pools().await;
+    let s = seed(&_admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let question = Uuid::new_v4();
+    let answer = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        niccolo_evidence::clarification::propose(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            s.analysis,
+            question,
+            "Which account was used for the transfer?",
+            "The account changes the interpretation.",
+        )
+        .await
+        .unwrap();
+
+        let before_answer = niccolo_evidence::investigation_policy::queue(&app, scope, 32)
+            .await
+            .unwrap();
+        assert!(before_answer.items.iter().any(|item| item.id == question));
+
+        niccolo_evidence::clarification_answer::answer(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            s.analysis,
+            question,
+            answer,
+            "The joint account.",
+        )
+        .await
+        .unwrap();
+        let answered = niccolo_evidence::investigation_policy::queue(&app, scope, 32)
+            .await
+            .unwrap();
+        assert!(!answered.items.iter().any(|item| item.id == question));
+
+        niccolo_evidence::situation_store::retract_contribution(
+            &app,
+            s.workspace,
+            s.principal,
+            s.situation,
+            answer,
+        )
+        .await
+        .unwrap();
+        let reopened = niccolo_evidence::investigation_policy::queue(&app, scope, 32)
+            .await
+            .unwrap();
+        let lead = reopened
+            .items
+            .iter()
+            .find(|item| item.id == question)
+            .expect("retracted answer makes the clarification active again");
+        assert_eq!(lead.kind, "CLARIFICATION");
+        assert!(lead.requires_human_action);
+        assert!(!lead.system_may_execute_external_action);
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn proactive_queue_respects_human_next_step_state_without_claiming_execution() {
     let (_admin, app) = pools().await;
     let s = seed(&_admin).await;
