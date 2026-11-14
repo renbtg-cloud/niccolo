@@ -47,7 +47,10 @@ pub struct HumanCredenceView {
 }
 
 pub fn valid(input: &NewHumanCredence) -> bool {
-    (0..=100).contains(&input.confidence_percent)
+    !input.credence_id.is_nil()
+        && !input.claim_id.is_nil()
+        && !input.recorded_by.is_nil()
+        && (0..=100).contains(&input.confidence_percent)
         && matches!(
             input.usage_policy.as_str(),
             "SUBJECTIVE_BELIEF" | "OPERATIONAL_PREMISE"
@@ -55,6 +58,10 @@ pub fn valid(input: &NewHumanCredence) -> bool {
         && !input.rationale.trim().is_empty()
         && input.rationale.len() <= 4096
         && !input.rationale.chars().any(char::is_control)
+}
+
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
 }
 
 fn view(row: (Uuid, Uuid, i16, String, String, Uuid)) -> HumanCredenceView {
@@ -108,7 +115,7 @@ pub async fn record(
     scope: AnalysisScope,
     input: &NewHumanCredence,
 ) -> Result<bool, CredenceError> {
-    if !valid(input) {
+    if !valid_scope(scope) || !valid(input) {
         return Err(CredenceError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -174,6 +181,9 @@ pub async fn list_for_claim(
     scope: AnalysisScope,
     claim_id: Uuid,
 ) -> Result<Vec<HumanCredenceView>, CredenceError> {
+    if !valid_scope(scope) || claim_id.is_nil() {
+        return Err(CredenceError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM niccolo.situation_analysis_claims \
@@ -208,6 +218,9 @@ pub async fn list_for_analysis(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<HumanCredenceView>, CredenceError> {
+    if !valid_scope(scope) {
+        return Err(CredenceError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(Uuid, Uuid, i16, String, String, Uuid)> = sqlx::query_as(
         "SELECT credence_id,claim_id,confidence_percent,usage_policy,rationale,recorded_by_principal_id \
@@ -229,7 +242,7 @@ mod tests {
     use super::*;
     fn sample() -> NewHumanCredence {
         NewHumanCredence {
-            credence_id: Uuid::nil(),
+            credence_id: Uuid::from_u128(3),
             claim_id: Uuid::from_u128(1),
             confidence_percent: 90,
             usage_policy: "SUBJECTIVE_BELIEF".into(),
@@ -237,6 +250,19 @@ mod tests {
             recorded_by: Uuid::from_u128(2),
         }
     }
+    #[test]
+    fn nil_credence_identities_are_invalid() {
+        let mut value = sample();
+        value.credence_id = Uuid::nil();
+        assert!(!valid(&value));
+        value = sample();
+        value.claim_id = Uuid::nil();
+        assert!(!valid(&value));
+        value = sample();
+        value.recorded_by = Uuid::nil();
+        assert!(!valid(&value));
+    }
+
     #[test]
     fn human_percentage_is_bounded() {
         assert!(valid(&sample()));
