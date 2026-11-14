@@ -16,6 +16,10 @@ if [[ " $* " == *' run build '* ]]; then
   printf '<html></html>\n' > dist/index.html
   printf 'app\n' > dist/assets/app.js
   printf 'css\n' > dist/assets/app.css
+  mkdir -p dist/assets/chunks
+  for page in AnalysisPage InspectorPage ReasoningPage IdentitiesPage FeedbackPage EpistemicPlaygroundPage ForensicPage; do
+    printf '%s\n' "$page" > "dist/assets/chunks/$page.js"
+  done
 fi
 EOF
 cat > "$fixture/bin/cargo" <<'EOF'
