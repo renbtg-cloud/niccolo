@@ -1,0 +1,96 @@
+name: Audit WIP lifecycle across every branch
+on:
+  push:
+    branches:
+      - audit/wip-lifecycle-20261114
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch every branch (including archive and temporary branches)
+        run: |
+          git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | sort > branches-all.txt
+      - name: Scan all first-parent histories and identify WIP chains
+        run: |
+          python3 - <<'PY'
+          import json,re,subprocess
+          from collections import defaultdict
+          refs=[line.strip() for line in open('branches-all.txt') if line.strip() and line.strip()!='origin/HEAD']
+          wip=re.compile(r'^WIP[\s:_-]*(\d+)\b',re.I)
+          done=re.compile(r'^DONE\b',re.I)
+          results=[]
+          for ref in refs:
+              raw=subprocess.check_output(['git','log','--first-parent','--reverse','--format=%H%x09%s',ref],text=True)
+              pending=[]; groups=[]; interruptions=[]
+              for line in raw.splitlines():
+                  if '\t' not in line: continue
+                  sha,msg=line.split('\t',1)
+                  wm=wip.search(msg)
+                  if wm:
+                      num=int(wm.group(1))
+                      if pending and num==1:
+                          interruptions.append({'kind':'restarted_without_done','commits':pending})
+                          pending=[]
+                      pending.append({'sha':sha,'number':num,'message':msg})
+                  elif done.search(msg):
+                      if pending:
+                          groups.append({'commits':pending,'done':{'sha':sha,'message':msg}})
+                          pending=[]
+              if pending: interruptions.append({'kind':'end_without_done','commits':pending})
+              results.append({'ref':ref,'head':subprocess.check_output(['git','rev-parse',ref],text=True).strip(),'dangling':interruptions,'completed_groups':len(groups),'wip_groups':len(groups)+len(interruptions)})
+          report={'branches':len(refs),'branches_with_dangling':sum(bool(x['dangling']) for x in results),
+                  'dangling_sequences':sum(len(x['dangling']) for x in results),
+                  'results':results}
+          with open('wip-audit.json','w') as f: json.dump(report,f,indent=2,ensure_ascii=False)
+          with open('wip-audit.txt','w') as f:
+              f.write(f"Branches: {report['branches']} | branches with unmatched WIP: {report['branches_with_dangling']} | sequences: {report['dangling_sequences']}\n")
+              for x in results:
+                  if not x['dangling']:continue
+                  f.write(f"\n{x['ref']} ({x['head'][:12]})\n")
+                  for q in x['dangling']:
+                      f.write(f"  {q['kind']}:\n")
+                      for c in q['commits']:
+                          f.write(f"    {c['sha'][:12]} {c['message']}\n")
+          # Deduplicate by identical commit series; most branches share the same
+          # historic WIP sequence, and raw per-branch counts inflate the problem.
+          unique={}
+          for row in results:
+              for group in row['dangling']:
+                  key=tuple(c['sha'] for c in group['commits'])
+                  unique.setdefault(key,{'commits':group['commits'],'branches':[]})['branches'].append(row['ref'])
+          compact={'branches_scanned':len(refs),'unique_unclosed_sequences':len(unique),
+                   'sequences':[{'commits':v['commits'],'refs':v['branches'],
+                                 'on_main':'origin/main' in v['branches']}
+                                for v in unique.values()]}
+          with open('wip-audit-deduplicated.json','w') as f: json.dump(compact,f,indent=2,ensure_ascii=False)
+          canonical=subprocess.check_output(['git','log','--first-parent','--format=%H%x09%s','origin/main'],text=True).splitlines()
+          with open('wip-context.txt','w') as f:
+              for key,group in unique.items():
+                  f.write('\\n'+'='*72+'\\n'+f'{len(group["branches"])} branches, main={("origin/main" in group["branches"])}\\n')
+                  for c in group['commits']:f.write(f'{c["sha"][:12]} {c["message"]}\\n')
+                  pos=next((i for i,line in enumerate(canonical) if line.startswith(key[-1])),None)
+                  if pos is not None:
+                      f.write('Adjacent mainline commits (newest first):\\n')
+                      for row in canonical[max(0,pos-5):pos+8]: f.write('  '+row[:150]+'\\n')
+          print(open('wip-audit.txt').read()[:30000])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: all-branches-wip-audit
+          path: |
+            branches-all.txt
+            wip-audit.json
+            wip-audit.txt
+            wip-audit-deduplicated.json
+            wip-context.txt
+          retention-days: 3
