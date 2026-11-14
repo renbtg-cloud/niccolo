@@ -361,10 +361,16 @@ fn looks_like_datetime(dt: &str) -> bool {
         return false;
     };
     let second = time_parts.next();
+    // WhatsApp date fields are one or two digits; years are two or four.
+    // Accepting 001/002/026 lets a plausible-looking quoted line fabricate
+    // a new speaker boundary despite not being a supported export timestamp.
     if time_parts.next().is_some()
+        || !(1..=2).contains(&day.len())
+        || !(1..=2).contains(&month.len())
+        || (year.len() != 2 && year.len() != 4)
         || ![day, month, year, hour, minute]
             .iter()
-            .all(|v| !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit()))
+            .all(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
         || hour.is_empty()
         || hour.len() > 2
         || minute.len() != 2
