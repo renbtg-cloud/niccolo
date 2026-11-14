@@ -37,8 +37,8 @@ describe('Situation multi-source first-user import', () => {
   it('shows bounded per-file progress and preserves completed work after a partial failure', () => {
     expect(source).toContain('setUploadProgress({ done: 0, total: selectedFiles.length');
     expect(source).toContain('processing <strong>{uploadProgress.current}</strong>');
-    expect(source).toContain('Successfully completed files remain attached');
-    expect(source).toContain('will replay safely if you retry the same selection');
+    expect(source).toContain('Successfully completed records remain attached');
+    expect(source).toContain('retrying this same selection reuses its document ID');
   });
 
   it('clears the native file input after a successful batch so the same files can be selected again', () => {
@@ -51,6 +51,14 @@ describe('Situation multi-source first-user import', () => {
     expect(source).toContain('pendingDocumentIds.current.clear()');
     expect(source).toContain('setFiles([])');
     expect(source).toContain('onError: refresh');
+  });
+
+  it('distinguishes an import stopped by failure from a still-processing file', () => {
+    expect(source).toContain('upload.error\n          ? <> · stopped at');
+    expect(source).toContain('no further records in this batch were attempted');
+    expect(source).toContain('failed record may have been ingested before attachment failed');
+    expect(source).toContain('retrying this same selection reuses its document ID');
+    expect(source).toContain('role="alert"');
   });
 
   it('shows a bounded, identifiable receipt after a completed multi-source import', () => {
