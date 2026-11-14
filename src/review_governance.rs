@@ -94,7 +94,7 @@ async fn scoped(
 }
 
 fn text_ok(v: &str, max: usize) -> bool {
-    !v.trim().is_empty() && v.len() <= max
+    !v.trim().is_empty() && v.len() <= max && !v.chars().any(char::is_control)
 }
 
 pub async fn append_scope_event(
@@ -315,4 +315,18 @@ pub async fn current_dispositions(
             },
         )
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_governance_text_rejects_control_characters() {
+        for value in ["reason\nforged", "note\rforged", "note\tforged", "x\0y"] {
+            assert!(!text_ok(value, 4096));
+        }
+        assert!(text_ok("Keep this unresolved for the current session.", 4096));
+    }
 }
