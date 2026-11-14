@@ -839,9 +839,17 @@ async fn proactive_queue_respects_human_next_step_state_without_claiming_executi
     let accepted = Uuid::new_v4();
     authz::with_auth_digest("test-digest".into(), async {
         for (step_id, kind, text) in [
-            (proposed, "ASK_HUMAN", "Ask which account should be checked first"),
+            (
+                proposed,
+                "ASK_HUMAN",
+                "Ask which account should be checked first",
+            ),
             (deferred, "GATHER_EVIDENCE", "Collect the archived message"),
-            (accepted, "REANALYZE", "Run a new analysis over the revised context"),
+            (
+                accepted,
+                "REANALYZE",
+                "Run a new analysis over the revised context",
+            ),
         ] {
             niccolo_evidence::human_agency::propose_next_step(
                 &app,
@@ -887,7 +895,11 @@ async fn proactive_queue_respects_human_next_step_state_without_claiming_executi
         let q = niccolo_evidence::investigation_policy::queue(&app, scope, 32)
             .await
             .unwrap();
-        let ids = q.items.iter().map(|item| item.id).collect::<std::collections::BTreeSet<_>>();
+        let ids = q
+            .items
+            .iter()
+            .map(|item| item.id)
+            .collect::<std::collections::BTreeSet<_>>();
         assert!(ids.contains(&proposed));
         assert!(ids.contains(&accepted));
         assert!(!ids.contains(&deferred));
@@ -895,7 +907,11 @@ async fn proactive_queue_respects_human_next_step_state_without_claiming_executi
         assert_eq!(accepted_lead.kind, "NEXT_STEP");
         assert!(accepted_lead.requires_human_action);
         assert!(!accepted_lead.system_may_execute_external_action);
-        assert!(accepted_lead.rationale.contains("human steering state: ACCEPTED"));
+        assert!(
+            accepted_lead
+                .rationale
+                .contains("human steering state: ACCEPTED")
+        );
     })
     .await;
 }
