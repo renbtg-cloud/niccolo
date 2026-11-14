@@ -81,14 +81,17 @@ async fn scoped(
     Ok(tx)
 }
 
+fn valid_text(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn record_request(
     pool: &PgPool,
     workspace: Uuid,
     situation: Uuid,
     item: &ReanalysisRequest,
 ) -> Result<(), ReanalysisControlError> {
-    if item.reason.trim().is_empty()
-        || item.reason.len() > 4096
+    if !valid_text(&item.reason)
         || !matches!(
             item.steering_event_type.as_str(),
             "CLAIM_REVIEW"
@@ -145,8 +148,7 @@ pub async fn record_suggestion(
     scope: AnalysisScope,
     item: &ReanalysisSuggestion,
 ) -> Result<(), ReanalysisControlError> {
-    if item.reason.trim().is_empty()
-        || item.reason.len() > 4096
+    if !valid_text(&item.reason)
         || !matches!(
             item.reason_kind.as_str(),
             "UNCERTAINTY" | "CONTEXT_DELTA" | "CLAIM_REVIEW" | "CLARIFICATION" | "OTHER"
@@ -178,8 +180,7 @@ pub async fn append_suggestion_decision(
     scope: AnalysisScope,
     item: &SuggestionDecision,
 ) -> Result<(), ReanalysisControlError> {
-    if item.note.trim().is_empty()
-        || item.note.len() > 4096
+    if !valid_text(&item.note)
         || !matches!(item.kind.as_str(), "REQUESTED" | "DISMISSED" | "DEFERRED")
     {
         return Err(ReanalysisControlError::Invalid);
@@ -236,4 +237,18 @@ pub async fn suggestion_statuses(
             },
         )
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reanalysis_text_rejects_control_characters() {
+        for value in ["reason\nforged", "reason\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_text(value));
+        }
+        assert!(valid_text("Reanalyse only after this human steering event."));
+    }
 }
