@@ -473,7 +473,10 @@ pub async fn claim_questions(
     let rows: Vec<(Uuid, Uuid, String, bool)> = sqlx::query_as(
         "SELECT l.claim_id,l.question_id,l.relation_kind, \
          EXISTS(SELECT 1 FROM niccolo.situation_analysis_clarification_answers a \
-           WHERE a.workspace_id=l.workspace_id AND a.situation_id=l.situation_id AND a.analysis_id=l.analysis_id AND a.question_id=l.question_id) \
+           JOIN niccolo.situation_contributions ac \
+             ON ac.workspace_id=a.workspace_id AND ac.situation_id=a.situation_id AND ac.contribution_id=a.contribution_id \
+           WHERE a.workspace_id=l.workspace_id AND a.situation_id=l.situation_id AND a.analysis_id=l.analysis_id AND a.question_id=l.question_id \
+             AND ac.status='ACTIVE') \
          FROM niccolo.situation_analysis_claim_question_links l \
          WHERE l.workspace_id=$1 AND l.situation_id=$2 AND l.analysis_id=$3 \
          ORDER BY l.claim_id,l.question_id,l.relation_kind",
