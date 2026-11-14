@@ -110,7 +110,7 @@ async fn scoped(
 }
 
 fn valid_text(value: &str, max: usize) -> bool {
-    !value.trim().is_empty() && value.len() <= max
+    !value.trim().is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
 pub async fn start_session(
@@ -521,4 +521,18 @@ pub async fn reanalysis_candidates(
             },
         )
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_workflow_text_rejects_control_characters() {
+        for value in ["purpose\nforged", "note\rforged", "reason\tforged", "x\0y"] {
+            assert!(!valid_text(value, 4096));
+        }
+        assert!(valid_text("Review unresolved contradictions without implying approval.", 4096));
+    }
 }
