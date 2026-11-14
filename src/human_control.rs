@@ -44,7 +44,7 @@ async fn scoped(
     Ok(tx)
 }
 fn valid(s: &str) -> bool {
-    !s.trim().is_empty() && s.len() <= 4096
+    !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -522,6 +522,13 @@ pub async fn stop_conditions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn control_text_rejects_hidden_control_characters() {
+        assert!(valid("explicit human constraint"));
+        assert!(!valid("constraint\nthat changes display"));
+        assert!(!valid("hidden\0suffix"));
+    }
 
     #[tokio::test]
     async fn invalid_control_identifiers_fail_before_database_access() {
