@@ -379,6 +379,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     {
         return false;
     }
+    let two_digit_year = year.len() == 2;
     let (Ok(day), Ok(month), Ok(year), Ok(hour), Ok(minute)) = (
         day.parse::<u8>(),
         month.parse::<u8>(),
@@ -391,7 +392,7 @@ fn looks_like_datetime(dt: &str) -> bool {
     if second.is_some_and(|s| s.parse::<u8>().map_or(true, |value| value >= 60))
         || minute >= 60
         || !(1..=12).contains(&month)
-        || year == 0
+        || (!two_digit_year && year == 0)
         || match meridiem {
             Some(_) => !(1..=12).contains(&hour),
             None => hour >= 24,
@@ -399,7 +400,12 @@ fn looks_like_datetime(dt: &str) -> bool {
     {
         return false;
     }
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    // Two-digit "00" is a valid export-year representation (e.g. 2000).
+    // This century is used only to check the calendar day; source timestamps
+    // are never normalized, interpreted as authenticated dates or rewritten.
+    let calendar_year = if two_digit_year { 2000 + year } else { year };
+    let leap = calendar_year % 4 == 0
+        && (calendar_year % 100 != 0 || calendar_year % 400 == 0);
     let days_in_month = match month {
         2 if leap => 29,
         2 => 28,
