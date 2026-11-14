@@ -2,7 +2,7 @@
 //! Scores are deterministic scheduling heuristics, never probability or truth.
 use crate::{
     analysis_structure::AnalysisScope, clarification, clarification_answer, human_agency,
-    human_feedback, human_handoff,
+    human_feedback, human_handoff, reanalysis_control,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -79,6 +79,21 @@ fn next_step_information_value(kind: &str, state: &str) -> u16 {
     base + u16::from(matches!(state, "ACCEPTED" | "REOPENED")) * 3
 }
 
+fn actionable_reanalysis_suggestion(latest_decision: Option<&str>) -> bool {
+    matches!(latest_decision, None | Some("REQUESTED"))
+}
+
+fn reanalysis_information_value(reason_kind: &str, requested: bool) -> u16 {
+    let base = match reason_kind {
+        "CONTEXT_DELTA" => 89,
+        "CLAIM_REVIEW" => 87,
+        "CLARIFICATION" => 86,
+        "UNCERTAINTY" => 84,
+        _ => 80,
+    };
+    (base + u16::from(requested) * 3).min(100)
+}
+
 pub async fn queue(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -95,6 +110,9 @@ pub async fn queue(
         .await
         .map_err(dep)?;
     let next_steps = human_agency::next_steps(pool, scope).await.map_err(dep)?;
+    let reanalysis_suggestions = reanalysis_control::suggestion_statuses(pool, scope)
+        .await
+        .map_err(dep)?;
     let (questions, _) = clarification::list(
         pool,
         scope.workspace,
@@ -186,6 +204,31 @@ pub async fn queue(
             text: r.text,
             rationale: r.rationale,
             information_value_score: 88,
+            score_is_heuristic: true,
+            requires_human_action: true,
+            system_may_execute_external_action: false,
+        });
+    }
+    for suggestion in reanalysis_suggestions
+        .into_iter()
+        .filter(|suggestion| {
+            actionable_reanalysis_suggestion(suggestion.latest_decision.as_deref())
+        })
+    {
+        let requested = suggestion.latest_decision.as_deref() == Some("REQUESTED");
+        items.push(InvestigationCandidate {
+            id: suggestion.suggestion_id,
+            kind: "REANALYSIS_SUGGESTION".into(),
+            text: suggestion.reason.clone(),
+            rationale: format!(
+                "reanalysis reason kind: {}; human decision: {}",
+                suggestion.reason_kind,
+                suggestion.latest_decision.as_deref().unwrap_or("PENDING")
+            ),
+            information_value_score: reanalysis_information_value(
+                &suggestion.reason_kind,
+                requested,
+            ),
             score_is_heuristic: true,
             requires_human_action: true,
             system_may_execute_external_action: false,
@@ -286,6 +329,24 @@ mod tests {
             acquisition_cost: Some(acquisition_cost),
             cheaper_alternative: cheaper.then(|| "Use the already available ledger".into()),
         }
+    }
+
+    #[test]
+    fn reanalysis_human_decision_controls_proactive_eligibility() {
+        assert!(actionable_reanalysis_suggestion(None));
+        assert!(actionable_reanalysis_suggestion(Some("REQUESTED")));
+        for state in ["DEFERRED", "DISMISSED", "UNKNOWN"] {
+            assert!(!actionable_reanalysis_suggestion(Some(state)), "{state}");
+        }
+    }
+
+    #[test]
+    fn requested_reanalysis_gets_bounded_priority_bump() {
+        assert_eq!(
+            reanalysis_information_value("CONTEXT_DELTA", true),
+            reanalysis_information_value("CONTEXT_DELTA", false) + 3
+        );
+        assert!(reanalysis_information_value("OTHER", true) <= 100);
     }
 
     #[test]
