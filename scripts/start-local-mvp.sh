@@ -251,7 +251,10 @@ ext=''
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) ext='.exe' ;;
 esac
-binary="./target/release/niccolo-api${ext}"
+# Honor Cargo's custom output directory. A relative CARGO_TARGET_DIR is
+# resolved from the repository root after the cd above.
+release_dir="${CARGO_TARGET_DIR:-target}/release"
+binary="${release_dir}/niccolo-api${ext}"
 [[ -x "$binary" || -f "$binary" ]] || {
   echo "Missing API binary: $binary" >&2
   echo "Run the bootstrap/build first." >&2

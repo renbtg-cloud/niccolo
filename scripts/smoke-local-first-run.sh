@@ -5,6 +5,8 @@ set -Eeuo pipefail
 trap 'status=$?; printf "first-run smoke failed at line %s (exit %s): %s\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# Match the bootstrap/build output path during end-to-end smoke validation.
+release_dir="${CARGO_TARGET_DIR:-target}/release"
 : "${NICCOLO_PG_ADMIN_URL:?new disposable DB required}"
 command -v curl >/dev/null
 command -v node >/dev/null
@@ -94,7 +96,7 @@ token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
 probe_principal="$(node -p "require('node:crypto').randomUUID()")"
 if NICCOLO_PG_ADMIN_URL="$NICCOLO_PG_SECURE_URL" \
-    ./target/release/niccolo-provision mint "$WORKSPACE_UUID" "$probe_principal" read 1 \
+    "$release_dir/niccolo-provision" mint "$WORKSPACE_UUID" "$probe_principal" read 1 \
     > .niccolo-local/runtime-provision.log 2>&1; then
   echo 'Restricted runtime login unexpectedly provisioned a bearer token' >&2
   exit 1
@@ -157,7 +159,7 @@ wrong_handoff_payload="$(printf '{"code":"%s"}' "$wrong_handoff")"
 NICCOLO_API_PORT=38081 \
 NICCOLO_LOCAL_HANDOFF_CODE="$handoff_code" \
 NICCOLO_LOCAL_HANDOFF_TOKEN_FILE="$ROOT/.niccolo-local/token.txt" \
-  ./target/release/niccolo-api > .niccolo-local/ci-handoff-server.log 2>&1 &
+  "$release_dir/niccolo-api" > .niccolo-local/ci-handoff-server.log 2>&1 &
 handoff_pid=$!
 handoff_started=0
 for _ in $(seq 1 40); do

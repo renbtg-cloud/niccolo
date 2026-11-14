@@ -190,7 +190,9 @@ printf 'export NICCOLO_API_PORT=38080\n' >> .niccolo-local/local.env
 SITUATION_UUID="$(node -p "require('node:crypto').randomUUID()")"
 printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/identifiers.txt
 printf 'http://127.0.0.1:38080/?workspace=%s&situation=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/prepared-url.txt
-provision_bin="./target/release/niccolo-provision${ext}"
+# Use the executable from the same target directory as the preceding Cargo build.
+release_dir="${CARGO_TARGET_DIR:-target}/release"
+provision_bin="${release_dir}/niccolo-provision${ext}"
 # Provisioning deliberately needs the database-owner connection, but only for
 # this child process. Keep both URL and password out of argv and restore neither
 # to the surrounding bootstrap environment.
