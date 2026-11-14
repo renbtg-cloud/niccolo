@@ -29,6 +29,7 @@ pub struct ClarificationAnswer {
     pub analysis_id: Uuid,
     pub contribution_id: Uuid,
     pub text: String,
+    pub contribution_status: String,
     pub answered_by: Uuid,
     pub question_input_revision: i64,
     pub answer_revision: i64,
@@ -63,7 +64,7 @@ async fn scoped(
     Ok(tx)
 }
 
-type AnswerRow = (Uuid, String, Uuid, i64, i64);
+type AnswerRow = (Uuid, String, String, Uuid, i64, i64);
 
 async fn question_input_revision(
     tx: &mut Transaction<'_, Postgres>,
@@ -116,7 +117,7 @@ pub async fn answer(
         question_input_revision(&mut tx, workspace, situation, analysis, question).await?;
 
     let existing: Option<AnswerRow> = sqlx::query_as(
-        "SELECT a.contribution_id,c.contribution_text,a.answered_by_principal_id,a.answer_revision,s.current_revision \
+        "SELECT a.contribution_id,c.contribution_text,c.status,a.answered_by_principal_id,a.answer_revision,s.current_revision \
          FROM niccolo.situation_analysis_clarification_answers a \
          JOIN niccolo.situation_contributions c \
            ON c.workspace_id=a.workspace_id AND c.situation_id=a.situation_id AND c.contribution_id=a.contribution_id \
@@ -130,10 +131,14 @@ pub async fn answer(
     .bind(answer)
     .fetch_optional(&mut *tx)
     .await?;
-    if let Some((contribution_id, stored_text, answered_by, answer_revision, current_revision)) =
+    if let Some((contribution_id, stored_text, contribution_status, answered_by, answer_revision, current_revision)) =
         existing
     {
-        if stored_text != text || answered_by != actor || contribution_id != answer {
+        if contribution_status != "ACTIVE"
+            || stored_text != text
+            || answered_by != actor
+            || contribution_id != answer
+        {
             return Err(ClarificationAnswerError::Conflict);
         }
         tx.commit().await?;
@@ -143,6 +148,7 @@ pub async fn answer(
             analysis_id: analysis,
             contribution_id,
             text: stored_text,
+            contribution_status,
             answered_by,
             question_input_revision: input_revision,
             answer_revision,
@@ -168,7 +174,7 @@ pub async fn answer(
         == 1;
     if !inserted {
         let raced: Option<AnswerRow> = sqlx::query_as(
-            "SELECT a.contribution_id,c.contribution_text,a.answered_by_principal_id,a.answer_revision,s.current_revision \
+            "SELECT a.contribution_id,c.contribution_text,c.status,a.answered_by_principal_id,a.answer_revision,s.current_revision \
              FROM niccolo.situation_analysis_clarification_answers a \
              JOIN niccolo.situation_contributions c \
                ON c.workspace_id=a.workspace_id AND c.situation_id=a.situation_id AND c.contribution_id=a.contribution_id \
@@ -182,8 +188,9 @@ pub async fn answer(
         .bind(answer)
         .fetch_optional(&mut *tx)
         .await?;
-        if let Some((contribution_id, stored_text, answered_by, answer_revision, current_revision)) =
+        if let Some((contribution_id, stored_text, contribution_status, answered_by, answer_revision, current_revision)) =
             raced
+            && contribution_status == "ACTIVE"
             && stored_text == text
             && answered_by == actor
             && contribution_id == answer
@@ -195,6 +202,7 @@ pub async fn answer(
                 analysis_id: analysis,
                 contribution_id,
                 text: stored_text,
+                contribution_status,
                 answered_by,
                 question_input_revision: input_revision,
                 answer_revision,
@@ -229,6 +237,7 @@ pub async fn answer(
         analysis_id: analysis,
         contribution_id: answer,
         text,
+        contribution_status: "ACTIVE".into(),
         answered_by: actor,
         question_input_revision: input_revision,
         answer_revision: snapshot.revision,
@@ -250,9 +259,14 @@ pub async fn answered_question_ids(
     }
     let mut tx = scoped(pool, workspace, true).await?;
     let ids: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT DISTINCT question_id
-           FROM niccolo.situation_analysis_clarification_answers
-          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+        "SELECT DISTINCT a.question_id
+           FROM niccolo.situation_analysis_clarification_answers a
+           JOIN niccolo.situation_contributions c
+             ON c.workspace_id=a.workspace_id
+            AND c.situation_id=a.situation_id
+            AND c.contribution_id=a.contribution_id
+          WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.analysis_id=$3
+            AND c.status='ACTIVE'",
     )
     .bind(workspace)
     .bind(situation)
@@ -291,8 +305,8 @@ pub async fn list(
     .bind(situation)
     .fetch_one(&mut *tx)
     .await?;
-    let rows: Vec<(Uuid, Uuid, String, Uuid, i64)> = sqlx::query_as(
-        "SELECT a.answer_id,a.contribution_id,c.contribution_text,a.answered_by_principal_id,a.answer_revision \
+    let rows: Vec<(Uuid, Uuid, String, String, Uuid, i64)> = sqlx::query_as(
+        "SELECT a.answer_id,a.contribution_id,c.contribution_text,c.status,a.answered_by_principal_id,a.answer_revision \
          FROM niccolo.situation_analysis_clarification_answers a \
          JOIN niccolo.situation_contributions c \
            ON c.workspace_id=a.workspace_id AND c.situation_id=a.situation_id AND c.contribution_id=a.contribution_id \
@@ -312,13 +326,14 @@ pub async fn list(
         .into_iter()
         .take(limit as usize)
         .map(
-            |(answer_id, contribution_id, text, answered_by, answer_revision)| {
+            |(answer_id, contribution_id, text, contribution_status, answered_by, answer_revision)| {
                 ClarificationAnswer {
                     answer_id,
                     question_id: question,
                     analysis_id: analysis,
                     contribution_id,
                     text,
+                    contribution_status,
                     answered_by,
                     question_input_revision: input_revision,
                     answer_revision,
