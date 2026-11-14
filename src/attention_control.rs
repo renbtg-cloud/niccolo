@@ -75,6 +75,10 @@ async fn scoped(
     Ok(tx)
 }
 
+fn valid_reason(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn append_pin_event(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -84,8 +88,7 @@ pub async fn append_pin_event(
         event.target_type.as_str(),
         "CLAIM" | "UNCERTAINTY" | "ACTION_PROPOSAL"
     ) || !matches!(event.kind.as_str(), "PINNED" | "UNPINNED")
-        || event.reason.trim().is_empty()
-        || event.reason.len() > 4096
+        || !valid_reason(&event.reason)
     {
         return Err(AttentionControlError::Invalid);
     }
@@ -239,4 +242,18 @@ pub async fn reasons(
     );
     out.sort_by_key(|r| (r.target_type.clone(), r.target_id, r.reason_kind.clone()));
     Ok(out)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pin_reason_rejects_control_characters() {
+        for value in ["reason\nforged", "reason\rforged", "reason\tforged", "x\0y"] {
+            assert!(!valid_reason(value));
+        }
+        assert!(valid_reason("Human wants this contradiction kept visible."));
+    }
 }
