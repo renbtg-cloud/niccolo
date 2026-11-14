@@ -440,7 +440,11 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     .fetch_one(&h._admin)
     .await
     .unwrap();
-    assert_eq!(operation_state, "FAILED", "human-facing operation must also terminate");
+    assert_eq!(
+        operation_state,
+        "FAILED",
+        "human-facing operation must also terminate"
+    );
 }
 
 #[tokio::test]
