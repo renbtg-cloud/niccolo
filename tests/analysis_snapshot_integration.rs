@@ -293,7 +293,6 @@ async fn different_analysis_ids_cannot_create_two_snapshots_of_same_revision() {
     let f = setup().await;
     let situation = Uuid::new_v4();
     create_situation(&f, situation).await;
-
     let first = Uuid::new_v4();
     let second = Uuid::new_v4();
     let (a, b) = tokio::join!(
@@ -303,8 +302,8 @@ async fn different_analysis_ids_cannot_create_two_snapshots_of_same_revision() {
                 "POST",
                 snapshot_path(&f, situation, first),
                 Some(&f.writer),
-                Some(json!({"goal":"One revision"})),
-            ),
+                Some(json!({"goal":"One revision"}))
+            )
         ),
         call(
             f.router.clone(),
@@ -312,14 +311,19 @@ async fn different_analysis_ids_cannot_create_two_snapshots_of_same_revision() {
                 "POST",
                 snapshot_path(&f, situation, second),
                 Some(&f.writer),
-                Some(json!({"goal":"One revision"})),
-            ),
+                Some(json!({"goal":"One revision"}))
+            )
         ),
     );
-
     let codes = [a.0, b.0];
-    assert_eq!(codes.iter().filter(|c| **c == StatusCode::CREATED).count(), 1);
-    assert_eq!(codes.iter().filter(|c| **c == StatusCode::CONFLICT).count(), 1);
+    assert_eq!(
+        codes.iter().filter(|c| **c == StatusCode::CREATED).count(),
+        1
+    );
+    assert_eq!(
+        codes.iter().filter(|c| **c == StatusCode::CONFLICT).count(),
+        1
+    );
     assert!(!codes.contains(&StatusCode::INTERNAL_SERVER_ERROR));
 }
 
