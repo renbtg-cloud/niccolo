@@ -1,0 +1,48 @@
+name: MVP frontend pull-request verification
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - ci/mvp-checkpoint
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/mvp-frontend-pr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify locked npm dependency tree
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Run complete React regression suite
+        working-directory: frontend
+        run: npm test
+      - name: Compile production React bundle and split chunks
+        working-directory: frontend
+        run: npm run build
+      - name: Assert embedded frontend build artifacts exist
+        run: |
+          set -euo pipefail
+          for file in frontend/dist/index.html frontend/dist/assets/app.js frontend/dist/assets/app.css; do
+            test -s "$file" || { echo "Missing frontend asset: $file" >&2; exit 1; }
+          done
+          for name in AnalysisPage InspectorPage ReasoningPage IdentitiesPage FeedbackPage EpistemicPlaygroundPage ForensicPage; do
+            test -s "frontend/dist/assets/chunks/${name}.js" ||
+              { echo "Missing lazy chunk: ${name}" >&2; exit 1; }
+          done
