@@ -2,6 +2,7 @@
 
 These describe components or intended contracts. Source code and tests determine the presently implemented behavior.
 
+- **[MVP composite evidence and human-guided circumstances contract](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md)** — read during related design/implementation, including before schema changes or refactoring; non-exhaustive and applicable at the technically best time.
 - [Model evolution architecture](EVOLUTION_ENGINE.md)
 - [Epistemic weighting API](EPISTEMIC_WEIGHTING_API.md)
 - [Discriminating-question scheduling](DISCRIMINATING_QUESTIONS_MVP.md)

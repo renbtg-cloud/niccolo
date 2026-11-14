@@ -101,6 +101,9 @@ This creates the Situation. It does not create a verdict.
 
 ## 5. Add material
 
+**Current implemented input path versus intended MVP:** the importer limits below describe today's tested native formats. The [composite evidence and human-guided circumstances MVP contract](../architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) additionally calls for user-described supporting media, recursive attachments/relationships and bounded human-guided PDF handling. Those capabilities must not be represented as available in this first-user path until implemented and verified.
+
+
 A first pass can run from the focus alone, but the useful path is to add at least one source or
 piece of human context.
 
