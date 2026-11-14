@@ -44,7 +44,9 @@ describe('buyer-facing primary surfaces', () => {
   });
 
   it('shows model readiness before the user enters Analyze', () => {
-    expect(situation).toContain("queryKey: ['mvp-runtime-readiness']");
+    expect(situation).toContain('queryKey: qk.readiness(sessionGeneration)');
+    const operations = readFileSync(new URL('./OperationsPage.jsx', import.meta.url), 'utf8');
+    expect(operations).toContain('queryKey:qk.readiness(sessionGeneration)');
     expect(situation).toContain('A reasoning model is not configured yet.');
     expect(situation).toContain('bash scripts/configure-local-model.sh');
     expect(situation).toContain('.niccolo-local/model.env');
