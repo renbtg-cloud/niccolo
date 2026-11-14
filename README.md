@@ -8,6 +8,8 @@ Its purpose is to **strengthen human judgment, not replace it**. The person defi
 
 Niccolò is developed by Cambrian Radiation Computing. This repository contains its Rust/PostgreSQL core, local HTTP API, first-party web interface, tests, and design/validation documents.
 
+**MVP engineering contract:** [Composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) covers nested/attached evidence, relationship-level interpretations, PDF text extraction, user-described media and circumstance-domain steering. It is an intended MVP contract, **not** an assertion that these features are already implemented; implementers should consult it during relevant development and choose the technically opportune integration/refactoring point.
+
 ## What Niccolò does
 
 A **Situation** is the working space for a human question or project. A Situation can combine multiple records and evolving human context without flattening uncertainty into a single authoritative story.
@@ -320,6 +322,8 @@ The direction is not a roadmap guarantee or a claim that all these integrations 
 - **Security must be demonstrated.** Workspace scoping and RLS are components of a security architecture, not a substitute for a reviewed deployment boundary.
 
 ## Further reading
+
+- [MVP composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) — normative, deliberately non-exhaustive MVP contract and timing/refactoring guidance.
 
 - [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md) — domain, BFF, controller and frontend architecture.
 - [HTTP_AUTH_V007.md](docs/reference/HTTP_AUTH_V007.md) — local API authorization model and development provisioning.
