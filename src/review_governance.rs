@@ -97,12 +97,19 @@ fn text_ok(v: &str, max: usize) -> bool {
     !v.trim().is_empty() && v.len() <= max && !v.chars().any(char::is_control)
 }
 
+fn valid_review_scope(scope: ReviewSessionScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.session.is_nil()
+}
+
 pub async fn append_scope_event(
     pool: &PgPool,
     scope: ReviewSessionScope,
     event: &ScopeEvent,
 ) -> Result<(), ReviewGovernanceError> {
-    if !matches!(
+    if !valid_review_scope(scope)
+        || event.event_id.is_nil()
+        || event.recorded_by.is_nil()
+        || !matches!(
         event.scope_kind.as_str(),
         "ALL" | "CLAIMS" | "SOURCES" | "CONTEXT" | "ACTIONS" | "QUESTIONS" | "CONDITIONS"
     ) || !matches!(event.event_kind.as_str(), "SELECTED" | "DESELECTED")
@@ -155,6 +162,9 @@ pub async fn current_scope(
     pool: &PgPool,
     scope: ReviewSessionScope,
 ) -> Result<Vec<String>, ReviewGovernanceError> {
+    if !valid_review_scope(scope) {
+        return Err(ReviewGovernanceError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<String> = sqlx::query_scalar(
         "SELECT scope_kind FROM ( \
@@ -180,7 +190,12 @@ pub async fn record_handoff_receipt(
     analysis: Uuid,
     receipt: &HandoffReceipt,
 ) -> Result<bool, ReviewGovernanceError> {
-    if receipt.handoff_sha256.len() != 64
+    if workspace.is_nil()
+        || situation.is_nil()
+        || analysis.is_nil()
+        || receipt.receipt_id.is_nil()
+        || receipt.recipient.is_nil()
+        || receipt.handoff_sha256.len() != 64
         || !receipt
             .handoff_sha256
             .bytes()
@@ -239,6 +254,9 @@ pub async fn handoff_receipts(
     situation: Uuid,
     analysis: Uuid,
 ) -> Result<Vec<ReceiptView>, ReviewGovernanceError> {
+    if workspace.is_nil() || situation.is_nil() || analysis.is_nil() {
+        return Err(ReviewGovernanceError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let rows: Vec<(Uuid, String, String, Option<String>, Uuid, String)> = sqlx::query_as(
         "SELECT receipt_id,handoff_sha256,receipt_kind,note,recipient_principal_id,created_at::text \
@@ -274,7 +292,11 @@ pub async fn record_disposition(
     scope: ReviewSessionScope,
     item: &SessionDisposition,
 ) -> Result<(), ReviewGovernanceError> {
-    if !matches!(
+    if !valid_review_scope(scope)
+        || item.disposition_id.is_nil()
+        || item.target_id.is_nil()
+        || item.recorded_by.is_nil()
+        || !matches!(
         item.target_type.as_str(),
         "CLAIM" | "QUESTION" | "CONDITION" | "ACTION_PROPOSAL" | "UNCERTAINTY"
     ) || !matches!(
@@ -331,6 +353,9 @@ pub async fn current_dispositions(
     pool: &PgPool,
     scope: ReviewSessionScope,
 ) -> Result<Vec<CurrentDisposition>, ReviewGovernanceError> {
+    if !valid_review_scope(scope) {
+        return Err(ReviewGovernanceError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let rows: Vec<(String, Uuid, String, String)> = sqlx::query_as(
         "SELECT target_type,target_id,disposition,note FROM ( \
@@ -360,6 +385,25 @@ pub async fn current_dispositions(
         .collect())
 }
 
+
+#[cfg(test)]
+mod identity_validation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn nil_review_governance_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = ReviewSessionScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            session: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            current_scope(&pool, scope).await,
+            Err(ReviewGovernanceError::Invalid)
+        ));
+    }
+}
 
 #[cfg(test)]
 mod tests {
