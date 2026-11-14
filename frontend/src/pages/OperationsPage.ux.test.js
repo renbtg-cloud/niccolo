@@ -42,6 +42,13 @@ describe('primary analysis path', () => {
     expect(operations).toContain('situationMissing||situationUnavailable');
   });
 
+  it('prevents implicit form submission while model or Situation preflight is pending or failed', () => {
+    expect(operations).toContain('const launchReady=!!client&&!run.isPending');
+    expect(operations).toContain('!modelUnavailable&&!readiness.isPending&&!readiness.isError');
+    expect(operations).toContain('!situation.isPending&&!situationMissing&&!situationUnavailable');
+    expect(operations).toContain('onSubmit={handleSubmit(v=>{if(launchReady)run.mutate(v);})}');
+  });
+
   it('explains unavailable model setup before starting costly analysis work', () => {
     expect(operations).toContain('client.readiness()');
     expect(operations).toContain('readiness.data?.model_configured===false');
