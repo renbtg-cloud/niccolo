@@ -79,18 +79,18 @@ async fn scoped(
     Ok(tx)
 }
 
+fn valid_text(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 pub async fn record_proposal(
     pool: &PgPool,
     scope: AnalysisScope,
     p: &ActionProposal,
 ) -> Result<(), ActionError> {
-    if p.action_text.trim().is_empty()
-        || p.action_text.len() > 4096
-        || p.rationale.trim().is_empty()
-        || p.rationale.len() > 4096
-        || p.risk_note
-            .as_ref()
-            .is_some_and(|v| v.trim().is_empty() || v.len() > 4096)
+    if !valid_text(&p.action_text)
+        || !valid_text(&p.rationale)
+        || p.risk_note.as_ref().is_some_and(|value| !valid_text(value))
     {
         return Err(ActionError::Invalid);
     }
@@ -129,8 +129,7 @@ pub async fn append_decision(
     if !matches!(
         d.kind.as_str(),
         "ACCEPTED" | "REJECTED" | "DEFERRED" | "MODIFIED"
-    ) || d.note.trim().is_empty()
-        || d.note.len() > 4096
+    ) || !valid_text(&d.note)
     {
         return Err(ActionError::Invalid);
     }
@@ -172,4 +171,18 @@ pub async fn agency_report(
         undecided_count,
         accepted_means_executed: false,
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_text_inputs_reject_control_characters() {
+        for value in ["act\nforged", "reason\rforged", "risk\tforged", "x\0y"] {
+            assert!(!valid_text(value));
+        }
+        assert!(valid_text("Ask for explicit confirmation before acting."));
+    }
 }
