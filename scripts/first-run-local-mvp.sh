@@ -89,7 +89,7 @@ if [[ -n "${NICCOLO_LLM_BASE_URL:-}" && -n "${NICCOLO_LLM_MODEL:-}" ]]; then
   model_from_process=1
 fi
 
-if [[ "$SKIP_MODEL_CONFIG" == 0 && ! -f "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
+if [[ "$SKIP_MODEL_CONFIG" == 0 && ! -s "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
   if [[ -t 0 && -t 1 ]]; then
     printf '%s\n' '[2/3] Configure the reasoning model used by Analyze.'
     bash "$ROOT/scripts/configure-local-model.sh"
@@ -103,7 +103,7 @@ Use --skip-model-config only when you intentionally want to prepare/import data 
 MSG
     exit 2
   fi
-elif [[ "$SKIP_MODEL_CONFIG" == 1 && ! -f "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
+elif [[ "$SKIP_MODEL_CONFIG" == 1 && ! -s "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
   printf '%s\n' '[2/3] Reasoning-model setup intentionally skipped; Analyze will remain unavailable.'
 else
   printf '%s\n' '[2/3] Reasoning-model configuration is available.'
