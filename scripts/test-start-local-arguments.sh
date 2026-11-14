@@ -58,6 +58,20 @@ bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr"
 grep -Fq 'Open: http://127.0.0.1:38080/?workspace=' "$TMP/stdout"
 grep -Fq 'http://127.0.0.1:38080/?workspace=' .niccolo-local/prepared-url.txt
 
+# An existing symlink must be replaced, not followed. Never overwrite the
+# symlink target even if the caller has ordinary filesystem permissions.
+printf '%s\n' 'do-not-touch' > "$TMP/unrelated"
+rm .niccolo-local/prepared-url.txt
+ln -s "$TMP/unrelated" .niccolo-local/prepared-url.txt
+bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr"
+[[ "$(cat "$TMP/unrelated")" == 'do-not-touch' ]]
+[[ -f .niccolo-local/prepared-url.txt && ! -L .niccolo-local/prepared-url.txt ]]
+grep -Fq 'http://127.0.0.1:38080/?workspace=' .niccolo-local/prepared-url.txt
+if [[ "$(uname -s)" != MINGW* && "$(uname -s)" != MSYS* && "$(uname -s)" != CYGWIN* ]]; then
+  [[ "$(stat -c '%a' .niccolo-local/prepared-url.txt)" == '600' ]]
+fi
+[[ -z "$(find .niccolo-local -maxdepth 1 -name 'prepared-url.txt.tmp.*' -print -quit)" ]]
+
 # Without a compiled API the normal startup must not replace the URL that
 # was already prepared for a previous instance, even when settings are valid.
 printf '%s\n' 'last-working-url' > .niccolo-local/prepared-url.txt
