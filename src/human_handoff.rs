@@ -86,6 +86,7 @@ pub async fn propose_source_request(
         || !valid(&r.text)
         || r.source_kind.trim().is_empty()
         || r.source_kind.len() > 256
+        || r.source_kind.chars().any(char::is_control)
         || !valid(&r.rationale)
     {
         return Err(HandoffError::Invalid);
