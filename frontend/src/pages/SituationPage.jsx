@@ -7,6 +7,7 @@ import { useClient } from '../hooks/useClient.js';
 import { useSessionStore } from '../stores/session.js';
 import { sourceBatchDescriptors } from '../state/sourceUpload.js';
 import { situationGuide } from '../state/situationGuide.js';
+import { afterSuccessfulContextSubmission } from '../state/contextDraft.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
   const [text,setText]=useState(item.text);
@@ -54,8 +55,8 @@ function ConnectedSituation({client}){
   const sourceInputRef = useRef(null);
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
-  const [contextKind,setContextKind]=useState('user_reported');
-  const [contextText,setContextText]=useState('');
+  const [contextDraft,setContextDraft]=useState({kind:'user_reported',text:''});
+  const {kind:contextKind,text:contextText}=contextDraft;
 
   const situation = useQuery({
     queryKey: client ? qk.situation(client.config) : ['situation','none'],
@@ -110,15 +111,18 @@ function ConnectedSituation({client}){
     },
   });
   const addContext = useMutation({
-    mutationFn: async () => {
-      const text = contextText.trim();
-      const signature = JSON.stringify({ kind: contextKind, text });
+    mutationFn: async ({kind,text}) => {
+      const signature = JSON.stringify({ kind, text });
       if (pendingContribution.current?.signature !== signature) {
         pendingContribution.current = { signature, id: crypto.randomUUID() };
       }
-      return client.addSituationContribution(pendingContribution.current.id, contextKind, text, null);
+      return client.addSituationContribution(pendingContribution.current.id, kind, text, null);
     },
-    onSuccess: async () => { pendingContribution.current = null; setContextText(''); await refresh(); },
+    onSuccess: async (_result, submitted) => {
+      pendingContribution.current = null;
+      setContextDraft(current => afterSuccessfulContextSubmission(current, submitted));
+      await refresh();
+    },
   });
   const correctContext = useMutation({
     mutationFn: ({item,text}) => {
@@ -294,9 +298,9 @@ function ConnectedSituation({client}){
     <article className="human-context">
       <h3>Human context</h3>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
-      <label>Kind<select value={contextKind} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
-      <label>Context<textarea aria-label="Human context text" value={contextText} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
-      <button disabled={!contextText.trim()||addContext.isPending} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
+      <label>Kind<select value={contextKind} onChange={e=>setContextDraft(draft=>({...draft,kind:e.target.value}))}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
+      <label>Context<textarea aria-label="Human context text" value={contextText} onChange={e=>setContextDraft(draft=>({...draft,text:e.target.value}))} placeholder="Add context in your own words"/></label>
+      <button disabled={!contextText.trim()||addContext.isPending} onClick={()=>addContext.mutate({kind:contextKind,text:contextText.trim()})}>{addContext.isPending?'Adding…':'Add context'}</button>
       {addContext.error&&<p className="error">{addContext.error.message}</p>}
       {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
       {correctContext.error&&<p className="error">{correctContext.error.message}</p>}
