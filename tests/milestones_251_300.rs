@@ -917,6 +917,88 @@ async fn proactive_queue_respects_human_next_step_state_without_claiming_executi
 }
 
 #[tokio::test]
+async fn proactive_queue_respects_reanalysis_suggestion_human_decisions() {
+    let (_admin, app) = pools().await;
+    let s = seed(&_admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let pending = Uuid::new_v4();
+    let requested = Uuid::new_v4();
+    let deferred = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        for (suggestion_id, reason_kind, reason) in [
+            (pending, "UNCERTAINTY", "Material uncertainty remains"),
+            (requested, "CONTEXT_DELTA", "New context materially changes the input"),
+            (deferred, "CLAIM_REVIEW", "A challenged claim may warrant reanalysis"),
+        ] {
+            niccolo_evidence::reanalysis_control::record_suggestion(
+                &app,
+                scope,
+                &niccolo_evidence::reanalysis_control::ReanalysisSuggestion {
+                    suggestion_id,
+                    reason_kind: reason_kind.into(),
+                    reason: reason.into(),
+                    proposed_by: s.principal,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        niccolo_evidence::reanalysis_control::append_suggestion_decision(
+            &app,
+            scope,
+            &niccolo_evidence::reanalysis_control::SuggestionDecision {
+                suggestion_id: requested,
+                decision_id: Uuid::new_v4(),
+                kind: "REQUESTED".into(),
+                note: "Human explicitly requests reanalysis".into(),
+                decided_by: s.principal,
+            },
+        )
+        .await
+        .unwrap();
+        niccolo_evidence::reanalysis_control::append_suggestion_decision(
+            &app,
+            scope,
+            &niccolo_evidence::reanalysis_control::SuggestionDecision {
+                suggestion_id: deferred,
+                decision_id: Uuid::new_v4(),
+                kind: "DEFERRED".into(),
+                note: "Human defers reanalysis for now".into(),
+                decided_by: s.principal,
+            },
+        )
+        .await
+        .unwrap();
+
+        let q = niccolo_evidence::investigation_policy::queue(&app, scope, 32)
+            .await
+            .unwrap();
+        let ids = q
+            .items
+            .iter()
+            .map(|item| item.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(ids.contains(&pending));
+        assert!(ids.contains(&requested));
+        assert!(!ids.contains(&deferred));
+        let requested_lead = q.items.iter().find(|item| item.id == requested).unwrap();
+        assert_eq!(requested_lead.kind, "REANALYSIS_SUGGESTION");
+        assert!(requested_lead.requires_human_action);
+        assert!(!requested_lead.system_may_execute_external_action);
+        assert!(
+            requested_lead
+                .rationale
+                .contains("human decision: REQUESTED")
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn v501_v550_material_change_recommends_but_never_secretly_starts_reanalysis() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
