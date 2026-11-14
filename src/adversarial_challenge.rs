@@ -41,6 +41,10 @@ pub struct ChallengeView {
     pub materiality_is_truth_probability: bool,
     pub challenge_establishes_error: bool,
 }
+fn valid_text(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+}
+
 fn validate(a: &ChallengeArtifact) -> Result<(), ChallengeError> {
     if a.challenges.len() > 64 {
         return Err(ChallengeError::Invalid);
@@ -52,9 +56,7 @@ fn validate(a: &ChallengeArtifact) -> Result<(), ChallengeError> {
                 c.kind.as_str(),
                 "COUNTEREVIDENCE" | "ALTERNATIVE" | "ASSUMPTION_RISK" | "COVERAGE_GAP" | "OTHER"
             )
-            || c.text.trim().is_empty()
-            || c.text.len() > 4096
-            || c.text.contains('\0')
+            || !valid_text(&c.text)
             || !(0..=100).contains(&c.materiality)
         {
             return Err(ChallengeError::Invalid);
@@ -126,8 +128,7 @@ pub async fn event(
     actor: Uuid,
 ) -> Result<(), ChallengeError> {
     if !matches!(kind, "ACKNOWLEDGED" | "WAIVED" | "ADDRESSED" | "REOPENED")
-        || note.trim().is_empty()
-        || note.len() > 4096
+        || !valid_text(note)
     {
         return Err(ChallengeError::Invalid);
     };
@@ -156,4 +157,18 @@ pub async fn list(pool: &PgPool, s: AnalysisScope) -> Result<Vec<ChallengeView>,
             }
         })
         .collect())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn challenge_text_rejects_control_characters() {
+        for value in ["challenge\nforged", "note\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_text(value));
+        }
+        assert!(valid_text("Alternative explanation remains plausible."));
+    }
 }
