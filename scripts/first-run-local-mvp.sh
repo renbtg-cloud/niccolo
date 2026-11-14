@@ -39,7 +39,14 @@ done
 bootstrap_files=("$LOCAL_ENV" "$IDENTIFIERS" "$TOKEN_FILE")
 bootstrap_present=0
 for file in "${bootstrap_files[@]}"; do
-  [[ ! -f "$file" ]] || ((bootstrap_present += 1))
+  if [[ -e "$file" || -L "$file" ]]; then
+    ((bootstrap_present += 1))
+    if [[ ! -f "$file" || -L "$file" || ! -s "$file" ]]; then
+      printf 'Unsafe or empty local bootstrap file: %s\n' "$file" >&2
+      echo 'Restore the complete original private bootstrap or use a new dedicated database.' >&2
+      exit 2
+    fi
+  fi
 done
 if (( bootstrap_present != 0 && bootstrap_present != ${#bootstrap_files[@]} )); then
   cat >&2 <<'MSG'
