@@ -87,6 +87,26 @@ grep -Fq 'Duplicate WORKSPACE_UUID' "$TMP/stderr"
 cp "$TMP/valid-identifiers" .niccolo-local/identifiers.txt
 chmod 600 .niccolo-local/identifiers.txt
 
+# On Unix, identifiers must be owner-only ordinary files. Refuse both
+# symlink redirection and a world-readable copied configuration file.
+if [[ "$(uname -s)" == Linux* || "$(uname -s)" == Darwin* ]]; then
+  cp .niccolo-local/identifiers.txt "$TMP/ids-backup"
+  rm .niccolo-local/identifiers.txt
+  ln -s "$TMP/ids-backup" .niccolo-local/identifiers.txt
+  status=0
+  bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+  [[ "$status" == 2 ]]
+  grep -Fq 'Unsafe private local file: .niccolo-local/identifiers.txt' "$TMP/stderr"
+  rm .niccolo-local/identifiers.txt
+  cp "$TMP/ids-backup" .niccolo-local/identifiers.txt
+  chmod 644 .niccolo-local/identifiers.txt
+  status=0
+  bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+  [[ "$status" == 2 ]]
+  grep -Fq 'Private local file is readable or writable by other users: .niccolo-local/identifiers.txt' "$TMP/stderr"
+  chmod 600 .niccolo-local/identifiers.txt
+fi
+
 # After removing the invalid model settings, printing the prepared URL succeeds.
 rm .niccolo-local/model.env
 bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr"
