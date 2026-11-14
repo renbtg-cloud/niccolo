@@ -8,14 +8,24 @@ IDENTIFIERS="$PRIVATE_DIR/identifiers.txt"
 TOKEN_FILE="$PRIVATE_DIR/token.txt"
 MODEL_ENV="$PRIVATE_DIR/model.env"
 SKIP_MODEL_CONFIG=0
+NO_BROWSER=0
 START_ARGS=()
 
 for arg in "$@"; do
   case "$arg" in
     --skip-model-config)
+      if (( SKIP_MODEL_CONFIG )); then
+        echo 'Duplicate first-run option: --skip-model-config' >&2
+        exit 2
+      fi
       SKIP_MODEL_CONFIG=1
       ;;
     --no-browser)
+      if (( NO_BROWSER )); then
+        echo 'Duplicate first-run option: --no-browser' >&2
+        exit 2
+      fi
+      NO_BROWSER=1
       START_ARGS+=("$arg")
       ;;
     *)
