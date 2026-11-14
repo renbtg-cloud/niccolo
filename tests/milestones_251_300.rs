@@ -826,6 +826,81 @@ async fn v451_v500_investigation_queue_is_bounded_ranked_and_never_executes_exte
 }
 
 #[tokio::test]
+async fn proactive_queue_respects_human_next_step_state_without_claiming_execution() {
+    let (_admin, app) = pools().await;
+    let s = seed(&_admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let proposed = Uuid::new_v4();
+    let deferred = Uuid::new_v4();
+    let accepted = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        for (step_id, kind, text) in [
+            (proposed, "ASK_HUMAN", "Ask which account should be checked first"),
+            (deferred, "GATHER_EVIDENCE", "Collect the archived message"),
+            (accepted, "REANALYZE", "Run a new analysis over the revised context"),
+        ] {
+            niccolo_evidence::human_agency::propose_next_step(
+                &app,
+                scope,
+                &niccolo_evidence::human_agency::NextStepInput {
+                    step_id,
+                    kind: kind.into(),
+                    text: text.into(),
+                    rationale: "Recorded analysis next step".into(),
+                    proposed_by: s.principal,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        niccolo_evidence::human_agency::append_next_step_event(
+            &app,
+            scope,
+            deferred,
+            &niccolo_evidence::human_agency::NextStepEvent {
+                event_id: Uuid::new_v4(),
+                kind: "DEFERRED".into(),
+                note: "Human chose not to pursue this now".into(),
+                recorded_by: s.principal,
+            },
+        )
+        .await
+        .unwrap();
+        niccolo_evidence::human_agency::append_next_step_event(
+            &app,
+            scope,
+            accepted,
+            &niccolo_evidence::human_agency::NextStepEvent {
+                event_id: Uuid::new_v4(),
+                kind: "ACCEPTED".into(),
+                note: "Human explicitly wants this pursued".into(),
+                recorded_by: s.principal,
+            },
+        )
+        .await
+        .unwrap();
+
+        let q = niccolo_evidence::investigation_policy::queue(&app, scope, 32)
+            .await
+            .unwrap();
+        let ids = q.items.iter().map(|item| item.id).collect::<std::collections::BTreeSet<_>>();
+        assert!(ids.contains(&proposed));
+        assert!(ids.contains(&accepted));
+        assert!(!ids.contains(&deferred));
+        let accepted_lead = q.items.iter().find(|item| item.id == accepted).unwrap();
+        assert_eq!(accepted_lead.kind, "NEXT_STEP");
+        assert!(accepted_lead.requires_human_action);
+        assert!(!accepted_lead.system_may_execute_external_action);
+        assert!(accepted_lead.rationale.contains("human steering state: ACCEPTED"));
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn v501_v550_material_change_recommends_but_never_secretly_starts_reanalysis() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
