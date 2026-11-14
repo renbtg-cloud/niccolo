@@ -39,13 +39,15 @@ jobs:
       - name: Validate local MVP shell syntax before compiling
         run: |
           set -euo pipefail
-          for script in scripts/bootstrap-local-mvp.sh scripts/test-bootstrap-prereqs.sh scripts/build-mvp.sh scripts/test-build-mvp-mode.sh scripts/first-run-local-mvp.sh scripts/test-first-run-local-mvp.sh scripts/start-local-mvp.sh scripts/test-start-local-arguments.sh scripts/test-start-local-handoff.sh scripts/open-local-mvp-browser.sh scripts/configure-local-model.sh scripts/test-configure-local-model.sh scripts/smoke-local-first-run.sh; do
+          for script in scripts/bootstrap-local-mvp.sh scripts/test-bootstrap-prereqs.sh scripts/test-bootstrap-cargo-target.sh scripts/build-mvp.sh scripts/test-build-mvp-mode.sh scripts/first-run-local-mvp.sh scripts/test-first-run-local-mvp.sh scripts/start-local-mvp.sh scripts/test-start-local-arguments.sh scripts/test-start-local-handoff.sh scripts/open-local-mvp-browser.sh scripts/configure-local-model.sh scripts/test-configure-local-model.sh scripts/smoke-local-first-run.sh; do
             bash -n "$script"
           done
       - name: Test online/offline MVP build dependency mode
         run: bash scripts/test-build-mvp-mode.sh
       - name: Test bootstrap prerequisite preflight
         run: bash scripts/test-bootstrap-prereqs.sh
+      - name: Verify custom Cargo target paths in first-run bootstrap
+        run: bash scripts/test-bootstrap-cargo-target.sh
       - name: Test private local-model configuration boundaries
         run: bash scripts/test-configure-local-model.sh
       - name: Test one-command first-run wrapper boundaries
