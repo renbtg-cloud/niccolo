@@ -300,6 +300,28 @@ mod tests {
         );
     }
     #[test]
+    fn evidence_rationales_remain_readable_and_cannot_hide_directional_controls() {
+        let mut row = obs(1, Some(5), Stance::Supports, 40);
+        for bad in [
+            "claim supported\u{202e}DENIED",
+            "claim supported\u{2066}DENIED",
+            "claim supported\u{001b}[2J",
+            "claim supported\u{0000}hidden",
+        ] {
+            row.rationale = bad.to_owned();
+            assert_eq!(
+                evaluate(WeightPolicy::default(), None, &[row.clone()]),
+                Err(WeightError::InvalidRationale)
+            );
+        }
+        row.rationale = "Reason 1: observed by Ana.\nReason 2: not independently checked.\tRevisit.".into();
+        let report = evaluate(WeightPolicy::default(), None, &[row]).unwrap();
+        assert_eq!(report.support_points, 40);
+        assert!(!report.independence_established);
+        assert!(!report.establishes_fact);
+    }
+
+    #[test]
     fn invalid_and_duplicate_inputs_fail_closed() {
         assert_eq!(
             evaluate(
