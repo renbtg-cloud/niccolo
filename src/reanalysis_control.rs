@@ -85,13 +85,23 @@ fn valid_text(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
+fn valid_analysis_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
+
 pub async fn record_request(
     pool: &PgPool,
     workspace: Uuid,
     situation: Uuid,
     item: &ReanalysisRequest,
 ) -> Result<(), ReanalysisControlError> {
-    if !valid_text(&item.reason)
+    if workspace.is_nil()
+        || situation.is_nil()
+        || item.request_id.is_nil()
+        || item.prior_analysis_id.is_nil()
+        || item.steering_event_id.is_nil()
+        || item.requested_by.is_nil()
+        || !valid_text(&item.reason)
         || !matches!(
             item.steering_event_type.as_str(),
             "CLAIM_REVIEW"
@@ -148,7 +158,10 @@ pub async fn record_suggestion(
     scope: AnalysisScope,
     item: &ReanalysisSuggestion,
 ) -> Result<(), ReanalysisControlError> {
-    if !valid_text(&item.reason)
+    if !valid_analysis_scope(scope)
+        || item.suggestion_id.is_nil()
+        || item.proposed_by.is_nil()
+        || !valid_text(&item.reason)
         || !matches!(
             item.reason_kind.as_str(),
             "UNCERTAINTY" | "CONTEXT_DELTA" | "CLAIM_REVIEW" | "CLARIFICATION" | "OTHER"
@@ -194,7 +207,11 @@ pub async fn append_suggestion_decision(
     scope: AnalysisScope,
     item: &SuggestionDecision,
 ) -> Result<(), ReanalysisControlError> {
-    if !valid_text(&item.note)
+    if !valid_analysis_scope(scope)
+        || item.suggestion_id.is_nil()
+        || item.decision_id.is_nil()
+        || item.decided_by.is_nil()
+        || !valid_text(&item.note)
         || !matches!(item.kind.as_str(), "REQUESTED" | "DISMISSED" | "DEFERRED")
     {
         return Err(ReanalysisControlError::Invalid);
@@ -237,6 +254,9 @@ pub async fn suggestion_statuses(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<Vec<SuggestionStatus>, ReanalysisControlError> {
+    if !valid_analysis_scope(scope) {
+        return Err(ReanalysisControlError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     type Row = (Uuid, String, String, Option<String>);
     let rows: Vec<Row> = sqlx::query_as(
@@ -271,6 +291,20 @@ pub async fn suggestion_statuses(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_reanalysis_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            suggestion_statuses(&pool, scope).await,
+            Err(ReanalysisControlError::Invalid)
+        ));
+    }
 
     #[test]
     fn reanalysis_text_rejects_control_characters() {
