@@ -69,6 +69,22 @@ describe('sourceBatchDescriptors', () => {
   });
 
   it('rejects any invalid member before a caller starts network work', () => {
-    expect(() => sourceBatchDescriptors([file('good.txt'), file('bad.pdf')])).toThrow(/Unsupported source type/);
+    expect(() => sourceBatchDescriptors([file('good.txt'), file('bad.pdf')])).toThrow(
+      'File 2 of 2: Unsupported source type.'
+    );
+  });
+
+  it('pinpoints the first invalid file without echoing its unsafe filename', () => {
+    const hostileName = 'secret\nspoofed-header.pdf';
+    let message = '';
+    try {
+      sourceBatchDescriptors([file('good.eml'), file(hostileName), file('later.txt')]);
+    } catch (error) {
+      message = error.message;
+    }
+    expect(message).toMatch(/^File 2 of 3: Source file name is invalid/);
+    expect(message).not.toContain('spoofed-header');
+    expect(() => sourceBatchDescriptors([file('bad.txt', 0), file('also.pdf')]))
+      .toThrow('File 1 of 2: Source must be non-empty');
   });
 });
