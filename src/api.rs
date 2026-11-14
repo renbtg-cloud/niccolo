@@ -3711,6 +3711,7 @@ impl From<DecisionError> for ApiError {
     fn from(error: DecisionError) -> Self {
         match error {
             DecisionError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid decision input"),
+            DecisionError::Conflict => Self(StatusCode::CONFLICT, "decision replay conflict"),
             DecisionError::Privileged => Self(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "decision runtime role unavailable",
