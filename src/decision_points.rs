@@ -88,6 +88,10 @@ async fn scoped(
 fn valid(s: &str) -> bool {
     !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
+
+fn valid_scope(scope: AnalysisScope) -> bool {
+    !scope.workspace.is_nil() && !scope.situation.is_nil() && !scope.analysis.is_nil()
+}
 pub async fn create(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -96,7 +100,12 @@ pub async fn create(
     context: Option<&str>,
     principal: Uuid,
 ) -> Result<(), DecisionError> {
-    if !valid(question) || context.is_some_and(|x| !valid(x)) {
+    if !valid_scope(scope)
+        || id.is_nil()
+        || principal.is_nil()
+        || !valid(question)
+        || context.is_some_and(|x| !valid(x))
+    {
         return Err(DecisionError::Invalid);
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -125,7 +134,13 @@ pub async fn add_option(
     opt: &DecisionOption,
     principal: Uuid,
 ) -> Result<(), DecisionError> {
-    if opt.ordinal < 1 || !valid(&opt.text) || opt.tradeoff_note.as_ref().is_some_and(|x| !valid(x))
+    if !valid_scope(scope)
+        || decision.is_nil()
+        || opt.option_id.is_nil()
+        || principal.is_nil()
+        || opt.ordinal < 1
+        || !valid(&opt.text)
+        || opt.tradeoff_note.as_ref().is_some_and(|x| !valid(x))
     {
         return Err(DecisionError::Invalid);
     };
@@ -160,7 +175,12 @@ pub async fn append_selection(
     decision: Uuid,
     event: &SelectionEvent,
 ) -> Result<(), DecisionError> {
-    if !matches!(event.kind.as_str(), "SELECTED" | "CLEARED" | "REOPENED")
+    if !valid_scope(scope)
+        || decision.is_nil()
+        || event.event_id.is_nil()
+        || event.recorded_by.is_nil()
+        || event.option_id.is_some_and(|id| id.is_nil())
+        || !matches!(event.kind.as_str(), "SELECTED" | "CLEARED" | "REOPENED")
         || !valid(&event.note)
         || (event.kind == "SELECTED") != event.option_id.is_some()
     {
@@ -195,6 +215,9 @@ pub async fn package(
     pool: &PgPool,
     scope: AnalysisScope,
 ) -> Result<DecisionPackage, DecisionError> {
+    if !valid_scope(scope) {
+        return Err(DecisionError::Invalid);
+    }
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let ds:Vec<(Uuid,String,Option<String>)>=sqlx::query_as("SELECT decision_id,question,context_note FROM niccolo.situation_analysis_decision_points WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 ORDER BY decision_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
     let mut decisions = Vec::with_capacity(ds.len());
@@ -243,6 +266,28 @@ pub fn sha256(v: &DecisionPackage) -> Result<String, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nil_decision_scope_is_rejected_without_database_access() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        let scope = AnalysisScope {
+            workspace: Uuid::nil(),
+            situation: Uuid::new_v4(),
+            analysis: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            create(
+                &pool,
+                scope,
+                Uuid::new_v4(),
+                "Question?",
+                None,
+                Uuid::new_v4()
+            )
+            .await,
+            Err(DecisionError::Invalid)
+        ));
+    }
 
     #[test]
     fn decision_text_rejects_control_characters() {
