@@ -99,7 +99,7 @@ async fn scoped(
     Ok(tx)
 }
 fn valid(s: &str) -> bool {
-    !s.trim().is_empty() && s.len() <= 4096
+    !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
 pub async fn record(
     pool: &PgPool,
@@ -215,4 +215,18 @@ pub fn sha256(v: &AnalysisLens) -> Result<String, serde_json::Error> {
         "{:x}",
         Sha256::digest(canonical_json(v)?.as_bytes())
     ))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assumption_text_rejects_control_characters() {
+        for value in ["statement\nforged", "basis\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid(value));
+        }
+        assert!(valid("Competing interpretation with explicit uncertainty."));
+    }
 }
