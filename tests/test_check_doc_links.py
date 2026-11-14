@@ -1,8 +1,12 @@
 """Tests for the release documentation link checker."""
+import contextlib
 import importlib.util
+import io
 from pathlib import Path
 import tempfile
+import sys
 import unittest
+from unittest import mock
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts" / "check-doc-links.py"
 spec = importlib.util.spec_from_file_location("doc_checker", MODULE_PATH)
@@ -34,13 +38,13 @@ class DocumentationLinksTests(unittest.TestCase):
             (root / "Cargo.toml").write_text("[package]\nname = 'example'\n")
             (root / "README.md").write_text("# README\n")
             (root / "AGENTS.md").write_text("# Instructions for coding agents\n")
-            self.assertEqual(doc_checker.check(root), (0, []))
+            with mock.patch.object(sys, "argv", ["check-doc-links.py", str(root)]):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(doc_checker.main(), 0)
             (root / "NOTES.md").write_text("# Unrelated root document\n")
-            extra_root_docs = sorted(
-                p.name for p in root.glob("*.md")
-                if p.name not in {"README.md", "AGENTS.md"}
-            )
-            self.assertEqual(extra_root_docs, ["NOTES.md"])
+            with mock.patch.object(sys, "argv", ["check-doc-links.py", str(root)]):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(doc_checker.main(), 1)
 
     def test_ignores_fenced_code_and_checks_reference_definitions(self):
         with tempfile.TemporaryDirectory() as tmp:
