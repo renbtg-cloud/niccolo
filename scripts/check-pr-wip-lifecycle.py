@@ -50,7 +50,7 @@ def check_commits(commits: list[Commit]) -> list[str]:
         elif DONE.fullmatch(subject):
             pending = []
             expected = 1
-        elif re.match(r"^(?:WIP|DONE)\\b", subject, re.IGNORECASE):
+        elif re.match(r"^(?:WIP|DONE)\b", subject, re.IGNORECASE):
             errors.append(
                 f"{commit.sha[:12]}: malformed lifecycle subject {subject!r}; "
                 "use 'WIP 001: description' or 'DONE: description'"
