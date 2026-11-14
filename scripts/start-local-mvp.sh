@@ -212,8 +212,16 @@ fi
 # ready: print-only needs validated configuration, while normal startup must
 # additionally pass executable and port preflight.
 publish_prepared_url() {
-  printf '%s\n' "$prepared_url" > "$url_file"
-  chmod 600 "$url_file" 2>/dev/null || true
+  # Stage the link with owner-only permissions, then rename it atomically.
+  # Redirecting into an existing link could truncate another local file.
+  local staged_url
+  staged_url="$(umask 077; mktemp "${url_file}.tmp.XXXXXXXX")"
+  if ! printf '%s\n' "$prepared_url" > "$staged_url" ||
+     ! mv -f -- "$staged_url" "$url_file"; then
+    rm -f -- "$staged_url"
+    echo 'Could not safely publish the prepared local browser URL.' >&2
+    return 1
+  fi
   echo "Niccolo local session"
   echo "Open: $prepared_url"
   echo "Bearer token fallback: $token_file"
