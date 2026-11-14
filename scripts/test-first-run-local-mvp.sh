@@ -50,6 +50,17 @@ chmod +x "$TMP/repo/scripts/"*.sh
 export NICCOLO_TEST_TRACE="$TMP/trace"
 : > "$TMP/trace"
 
+# Duplicate first-run flags must fail before bootstrap, even if both flags
+# would individually be valid. No credential prompts or local state writes.
+for option in --no-browser --skip-model-config; do
+  status=0
+  bash "$TMP/repo/scripts/first-run-local-mvp.sh" "$option" "$option" >"$TMP/duplicate-out" 2>"$TMP/duplicate-err" || status=$?
+  [[ "$status" == 2 ]]
+  grep -Fq "Duplicate first-run option: $option" "$TMP/duplicate-err"
+  [[ ! -e "$TMP/repo/.niccolo-local" ]]
+  [[ ! -s "$TMP/trace" ]]
+done
+
 # Missing local build tools fail before asking for database-owner credentials.
 preflight_bin="$TMP/preflight-bin"
 mkdir -p "$preflight_bin"
@@ -96,6 +107,20 @@ grep -Fq 'local bootstrap state is incomplete' "$TMP/partial-err"
 ! grep -Fq '^bootstrap$' "$TMP/trace"
 rm -rf "$TMP/repo/.niccolo-local"
 
+# Existing, apparently complete bootstrap files must all be nonempty and
+# regular. A zero-byte token cannot be repaired by rerunning migrations.
+mkdir -p "$TMP/repo/.niccolo-local"
+printf '%s\n' 'export NICCOLO_PG_SECURE_URL=postgres://runtime' > "$TMP/repo/.niccolo-local/local.env"
+printf '%s\n' 'WORKSPACE_UUID=11111111-1111-4111-8111-111111111111' > "$TMP/repo/.niccolo-local/identifiers.txt"
+: > "$TMP/repo/.niccolo-local/token.txt"
+: > "$TMP/trace"
+status=0
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --skip-model-config --no-browser >"$TMP/empty-token-out" 2>"$TMP/empty-token-err" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'Unsafe or empty local bootstrap file:' "$TMP/empty-token-err"
+[[ ! -s "$TMP/trace" ]]
+rm -rf "$TMP/repo/.niccolo-local"
+
 # A fresh non-interactive first run may bootstrap, but must not silently launch
 # Analyze without a reasoning model.
 : > "$TMP/trace"
@@ -125,6 +150,16 @@ bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser
 grep -Fxq 'start:--no-browser' "$TMP/trace"
 [[ ! -f "$TMP/repo/.niccolo-local/model.env" ]]
 unset NICCOLO_LLM_BASE_URL NICCOLO_LLM_MODEL NICCOLO_LLM_API_KEY
+
+# An existing but empty model file must not count as configured: the
+# interactive wizard can repair it, and non-interactive runs explain the fix.
+: > "$TMP/repo/.niccolo-local/model.env"
+: > "$TMP/trace"
+status=0
+bash "$TMP/repo/scripts/first-run-local-mvp.sh" --no-browser >"$TMP/empty-model-out" 2>"$TMP/empty-model-err" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'reasoning model is not configured' "$TMP/empty-model-err"
+[[ ! -s "$TMP/trace" ]]
 
 # A persisted model configuration is reused without re-bootstrap/reconfigure.
 printf 'export NICCOLO_LLM_BASE_URL=%q\nexport NICCOLO_LLM_MODEL=%q\n' \

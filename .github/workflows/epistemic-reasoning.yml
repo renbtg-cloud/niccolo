@@ -39,7 +39,7 @@ jobs:
       - name: Validate local MVP shell syntax before compiling
         run: |
           set -euo pipefail
-          for script in scripts/bootstrap-local-mvp.sh scripts/test-bootstrap-prereqs.sh scripts/build-mvp.sh scripts/test-build-mvp-mode.sh scripts/first-run-local-mvp.sh scripts/test-first-run-local-mvp.sh scripts/start-local-mvp.sh scripts/test-start-local-handoff.sh scripts/open-local-mvp-browser.sh scripts/configure-local-model.sh scripts/test-configure-local-model.sh scripts/smoke-local-first-run.sh; do
+          for script in scripts/bootstrap-local-mvp.sh scripts/test-bootstrap-prereqs.sh scripts/build-mvp.sh scripts/test-build-mvp-mode.sh scripts/first-run-local-mvp.sh scripts/test-first-run-local-mvp.sh scripts/start-local-mvp.sh scripts/test-start-local-arguments.sh scripts/test-start-local-handoff.sh scripts/open-local-mvp-browser.sh scripts/configure-local-model.sh scripts/test-configure-local-model.sh scripts/smoke-local-first-run.sh; do
             bash -n "$script"
           done
       - name: Test online/offline MVP build dependency mode
@@ -50,6 +50,8 @@ jobs:
         run: bash scripts/test-configure-local-model.sh
       - name: Test one-command first-run wrapper boundaries
         run: bash scripts/test-first-run-local-mvp.sh
+      - name: Test local startup CLI validation before reading credentials
+        run: bash scripts/test-start-local-arguments.sh
       - name: Test one-shot local browser handoff boundary
         run: bash scripts/test-start-local-handoff.sh
       - name: Standalone Python export template tests

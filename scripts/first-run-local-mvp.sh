@@ -8,14 +8,24 @@ IDENTIFIERS="$PRIVATE_DIR/identifiers.txt"
 TOKEN_FILE="$PRIVATE_DIR/token.txt"
 MODEL_ENV="$PRIVATE_DIR/model.env"
 SKIP_MODEL_CONFIG=0
+NO_BROWSER=0
 START_ARGS=()
 
 for arg in "$@"; do
   case "$arg" in
     --skip-model-config)
+      if (( SKIP_MODEL_CONFIG )); then
+        echo 'Duplicate first-run option: --skip-model-config' >&2
+        exit 2
+      fi
       SKIP_MODEL_CONFIG=1
       ;;
     --no-browser)
+      if (( NO_BROWSER )); then
+        echo 'Duplicate first-run option: --no-browser' >&2
+        exit 2
+      fi
+      NO_BROWSER=1
       START_ARGS+=("$arg")
       ;;
     *)
@@ -29,7 +39,14 @@ done
 bootstrap_files=("$LOCAL_ENV" "$IDENTIFIERS" "$TOKEN_FILE")
 bootstrap_present=0
 for file in "${bootstrap_files[@]}"; do
-  [[ ! -f "$file" ]] || ((bootstrap_present += 1))
+  if [[ -e "$file" || -L "$file" ]]; then
+    ((bootstrap_present += 1))
+    if [[ ! -f "$file" || -L "$file" || ! -s "$file" ]]; then
+      printf 'Unsafe or empty local bootstrap file: %s\n' "$file" >&2
+      echo 'Restore the complete original private bootstrap or use a new dedicated database.' >&2
+      exit 2
+    fi
+  fi
 done
 if (( bootstrap_present != 0 && bootstrap_present != ${#bootstrap_files[@]} )); then
   cat >&2 <<'MSG'
@@ -79,7 +96,7 @@ if [[ -n "${NICCOLO_LLM_BASE_URL:-}" && -n "${NICCOLO_LLM_MODEL:-}" ]]; then
   model_from_process=1
 fi
 
-if [[ "$SKIP_MODEL_CONFIG" == 0 && ! -f "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
+if [[ "$SKIP_MODEL_CONFIG" == 0 && ! -s "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
   if [[ -t 0 && -t 1 ]]; then
     printf '%s\n' '[2/3] Configure the reasoning model used by Analyze.'
     bash "$ROOT/scripts/configure-local-model.sh"
@@ -93,7 +110,7 @@ Use --skip-model-config only when you intentionally want to prepare/import data 
 MSG
     exit 2
   fi
-elif [[ "$SKIP_MODEL_CONFIG" == 1 && ! -f "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
+elif [[ "$SKIP_MODEL_CONFIG" == 1 && ! -s "$MODEL_ENV" && "$model_from_process" == 0 ]]; then
   printf '%s\n' '[2/3] Reasoning-model setup intentionally skipped; Analyze will remain unavailable.'
 else
   printf '%s\n' '[2/3] Reasoning-model configuration is available.'

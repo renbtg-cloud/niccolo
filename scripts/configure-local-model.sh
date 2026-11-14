@@ -4,6 +4,29 @@
 set -Eeuo pipefail
 umask 077
 
+usage(){
+  cat <<'USAGE'
+Usage:
+  bash scripts/configure-local-model.sh
+  bash scripts/configure-local-model.sh --from-env
+
+Interactive mode prompts for the base URL/model and hides API-key input.
+--from-env writes the already-exported NICCOLO_LLM_* values without prompting.
+Never pass an API key as a command-line argument.
+USAGE
+}
+
+if (( $# > 1 )); then
+  usage >&2
+  exit 2
+fi
+mode="${1:-}"
+case "$mode" in
+  ''|--from-env) ;;
+  --help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -75,28 +98,6 @@ model="${NICCOLO_LLM_MODEL:-}"
 provider="${NICCOLO_LLM_PROVIDER:-}"
 api_key="${NICCOLO_LLM_API_KEY:-}"
 json_mode="${NICCOLO_LLM_JSON_MODE:-}"
-
-usage(){
-  cat <<'USAGE'
-Usage:
-  bash scripts/configure-local-model.sh
-  bash scripts/configure-local-model.sh --from-env
-
-Interactive mode prompts for the base URL/model and hides API-key input.
---from-env writes the already-exported NICCOLO_LLM_* values without prompting.
-Never pass an API key as a command-line argument.
-USAGE
-}
-
-mode="${1:-}"
-if [[ -n "$mode" && "$mode" != "--from-env" && "$mode" != "--help" ]]; then
-  usage >&2
-  exit 2
-fi
-if [[ "$mode" == "--help" ]]; then
-  usage
-  exit 0
-fi
 
 if [[ "$mode" != "--from-env" ]]; then
   [[ -t 0 ]] || {

@@ -1,0 +1,54 @@
+name: MVP onboarding shell regression
+
+# A small, focused PR gate: do not run the heavyweight Rust/PostgreSQL
+# checkpoint workflow just to validate onboarding scripts.
+on:
+  pull_request:
+    branches:
+      - ci/mvp-checkpoint
+    paths:
+      - 'scripts/first-run-local-mvp.sh'
+      - 'scripts/start-local-mvp.sh'
+      - 'scripts/test-first-run-local-mvp.sh'
+      - 'scripts/test-start-local-arguments.sh'
+      - 'scripts/configure-local-model.sh'
+      - 'scripts/test-configure-local-model.sh'
+      - '.github/workflows/mvp-onboarding-shell.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onboarding-shell-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onboarding-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Bash syntax
+        run: |
+          bash -n scripts/first-run-local-mvp.sh
+          bash -n scripts/start-local-mvp.sh
+          bash -n scripts/test-first-run-local-mvp.sh
+          bash -n scripts/test-start-local-arguments.sh
+          bash -n scripts/configure-local-model.sh
+          bash -n scripts/test-configure-local-model.sh
+      - name: First-run regression
+        run: bash scripts/test-first-run-local-mvp.sh
+      - name: Local startup regression
+        run: bash scripts/test-start-local-arguments.sh
+      - name: Local model configurator regression
+        run: bash scripts/test-configure-local-model.sh
+      - name: Package checked-out source for offline Linux validation
+        run: tar --exclude='./.git' --exclude='./target' --exclude='./frontend/node_modules' -czf "$RUNNER_TEMP/niccolo-source.tar.gz" .
+      - name: Retain test-validated source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-onboarding-source
+          path: ${{ runner.temp }}/niccolo-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error

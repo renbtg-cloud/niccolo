@@ -3,6 +3,36 @@
 # The bearer token is deliberately NOT placed in the URL or printed to stdout.
 set -Eeuo pipefail
 
+# Reject mistyped or conflicting options before reading private credentials,
+# writing a prepared URL, or attempting to start a service.
+if (( $# > 1 )); then
+  printf '%s\n' 'Usage: bash scripts/start-local-mvp.sh [--print-only | --no-browser]' >&2
+  exit 2
+fi
+case "${1:-}" in
+  ''|--print-only|--no-browser) ;;
+  *)
+    printf 'Unknown startup option: %s\n' "$1" >&2
+    printf '%s\n' 'Usage: bash scripts/start-local-mvp.sh [--print-only | --no-browser]' >&2
+    exit 2
+    ;;
+esac
+
+# Explicit --no-browser always wins. --print-only never opens a browser,
+# so neither mode needs to interpret the launch-policy environment variable.
+if [[ "${1:-}" == "--no-browser" || "${1:-}" == "--print-only" ]]; then
+  open_browser=0
+else
+  case "${NICCOLO_OPEN_BROWSER:-1}" in
+    1|true|TRUE|yes|YES) open_browser=1 ;;
+    0|false|FALSE|no|NO) open_browser=0 ;;
+    *)
+      echo 'NICCOLO_OPEN_BROWSER must be 1/0, true/false, or yes/no.' >&2
+      exit 2
+      ;;
+  esac
+fi
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -130,12 +160,6 @@ if [[ "$(wc -l < "$token_file")" -ne 1 ]] || ! grep -Eq '^ncl_[0-9a-f]{64}\r?$' 
 fi
 
 prepared_url="http://127.0.0.1:${NICCOLO_API_PORT}/?workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}"
-printf '%s\n' "$prepared_url" > "$url_file"
-chmod 600 "$url_file" 2>/dev/null || true
-
-echo "Niccolo local session"
-echo "Open: $prepared_url"
-echo "Bearer token fallback: $token_file"
 llm_base="${NICCOLO_LLM_BASE_URL:-}"
 llm_model="${NICCOLO_LLM_MODEL:-}"
 llm_key="${NICCOLO_LLM_API_KEY:-}"
@@ -199,7 +223,27 @@ else
   echo "Reasoning model: configured (${NICCOLO_LLM_MODEL})"
 fi
 
+# Only publish a fresh prepared link after the requested startup mode is
+# ready: print-only needs validated configuration, while normal startup must
+# additionally pass executable and port preflight.
+publish_prepared_url() {
+  # Stage the link with owner-only permissions, then rename it atomically.
+  # Redirecting into an existing link could truncate another local file.
+  local staged_url
+  staged_url="$(umask 077; mktemp "${url_file}.tmp.XXXXXXXX")"
+  if ! printf '%s\n' "$prepared_url" > "$staged_url" ||
+     ! mv -f -- "$staged_url" "$url_file"; then
+    rm -f -- "$staged_url"
+    echo 'Could not safely publish the prepared local browser URL.' >&2
+    return 1
+  fi
+  echo "Niccolo local session"
+  echo "Open: $prepared_url"
+  echo "Bearer token fallback: $token_file"
+}
+
 if [[ "${1:-}" == "--print-only" ]]; then
+  publish_prepared_url
   exit 0
 fi
 
@@ -232,10 +276,8 @@ then
   exit 1
 fi
 
-open_browser=1
-if [[ "${NICCOLO_OPEN_BROWSER:-1}" == "0" || "${NICCOLO_OPEN_BROWSER:-1}" == "false" || "${1:-}" == "--no-browser" ]]; then
-  open_browser=0
-fi
+publish_prepared_url
+
 # Never inherit a stale handoff capability supplied by the surrounding shell.
 unset NICCOLO_LOCAL_HANDOFF_CODE NICCOLO_LOCAL_HANDOFF_TOKEN_FILE
 browser_url="$prepared_url"
