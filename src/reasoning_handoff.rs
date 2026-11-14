@@ -138,8 +138,13 @@ pub async fn bundle(
     let clarification_rows: Vec<(Uuid, String, String, i64, i64)> = sqlx::query_as(
         "SELECT q.question_id,q.question,c.reason,s.input_revision,
                 (SELECT count(*) FROM niccolo.situation_analysis_clarification_answers a
+                 JOIN niccolo.situation_contributions ac
+                   ON ac.workspace_id=a.workspace_id
+                  AND ac.situation_id=a.situation_id
+                  AND ac.contribution_id=a.contribution_id
                  WHERE a.workspace_id=c.workspace_id AND a.situation_id=c.situation_id
-                   AND a.analysis_id=c.analysis_id AND a.question_id=c.question_id)::bigint
+                   AND a.analysis_id=c.analysis_id AND a.question_id=c.question_id
+                   AND ac.status='ACTIVE')::bigint
          FROM niccolo.situation_analysis_clarification_questions c
          JOIN niccolo.investigative_questions q USING(workspace_id,question_id)
          JOIN niccolo.situation_analysis_snapshots s USING(workspace_id,situation_id,analysis_id)
