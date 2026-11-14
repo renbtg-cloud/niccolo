@@ -253,6 +253,29 @@ async fn frontend_index() -> Html<&'static str> {
     Html(include_str!("../frontend/dist/index.html"))
 }
 
+// The React build generates deterministic module chunks. Serve only the
+// explicitly embedded assets; never interpret URL paths as filesystem paths.
+async fn frontend_technical_chunk(Path(name): Path<String>) -> Response {
+    let body: Option<&'static str> = match name.as_str() {
+        "AnalysisPage.js" => Some(include_str!("../frontend/dist/assets/chunks/AnalysisPage.js")),
+        "InspectorPage.js" => Some(include_str!("../frontend/dist/assets/chunks/InspectorPage.js")),
+        "ReasoningPage.js" => Some(include_str!("../frontend/dist/assets/chunks/ReasoningPage.js")),
+        "IdentitiesPage.js" => Some(include_str!("../frontend/dist/assets/chunks/IdentitiesPage.js")),
+        "FeedbackPage.js" => Some(include_str!("../frontend/dist/assets/chunks/FeedbackPage.js")),
+        "EpistemicPlaygroundPage.js" => Some(include_str!("../frontend/dist/assets/chunks/EpistemicPlaygroundPage.js")),
+        "ForensicPage.js" => Some(include_str!("../frontend/dist/assets/chunks/ForensicPage.js")),
+        _ => None,
+    };
+    match body {
+        Some(source) => (
+            [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+            source,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 pub fn router(pool: PgPool) -> Router {
     router_with_model(pool, Arc::new(UnavailableModel))
 }
@@ -278,6 +301,7 @@ fn router_with_model_and_handoff(
         .route("/operations", get(frontend_index))
         .route("/review", get(frontend_index))
         .route("/inspector", get(frontend_index))
+        .route("/assets/chunks/{name}", get(frontend_technical_chunk))
         .route(
             "/assets/app.js",
             get(|| async {
