@@ -126,6 +126,27 @@ pub async fn append_scope_event(
     .bind(event.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(String, String, String, Uuid)> = sqlx::query_as(
+        "SELECT scope_kind,event_kind,reason,recorded_by_principal_id
+           FROM niccolo.situation_review_scope_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.session)
+    .bind(event.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            event.scope_kind.clone(),
+            event.event_kind.clone(),
+            event.reason.clone(),
+            event.recorded_by,
+        ))
+    {
+        return Err(ReviewGovernanceError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -280,6 +301,28 @@ pub async fn record_disposition(
     .bind(item.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(String, Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT target_type,target_id,disposition,note,recorded_by_principal_id
+           FROM niccolo.situation_review_session_dispositions
+          WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3 AND disposition_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.session)
+    .bind(item.disposition_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            item.target_type.clone(),
+            item.target_id,
+            item.disposition.clone(),
+            item.note.clone(),
+            item.recorded_by,
+        ))
+    {
+        return Err(ReviewGovernanceError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
