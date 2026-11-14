@@ -244,7 +244,7 @@ function ConnectedSituation({client}){
         <ul>{upload.data.imported.slice(0,8).map(({documentId,fileName}) => <li key={documentId}><small>{fileName} · document {documentId}</small></li>)}</ul>
         {upload.data.imported.length > 8 && <small>+ {upload.data.imported.length - 8} more record(s) imported</small>}
         <small>Source catalog pages are ordered by document ID; new records may not appear on the current page.</small>
-      </div>
+      </div>}
     </article>
 
     <article>
