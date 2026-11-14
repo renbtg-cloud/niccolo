@@ -289,6 +289,45 @@ async fn read_only_member_can_read_snapshot_but_cannot_start_one() {
 }
 
 #[tokio::test]
+async fn different_analysis_ids_cannot_create_two_snapshots_of_same_revision() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let (a, b) = tokio::join!(
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                snapshot_path(&f, situation, first),
+                Some(&f.writer),
+                Some(json!({"goal":"One revision"}))
+            )
+        ),
+        call(
+            f.router.clone(),
+            req(
+                "POST",
+                snapshot_path(&f, situation, second),
+                Some(&f.writer),
+                Some(json!({"goal":"One revision"}))
+            )
+        ),
+    );
+    let codes = [a.0, b.0];
+    assert_eq!(
+        codes.iter().filter(|c| **c == StatusCode::CREATED).count(),
+        1
+    );
+    assert_eq!(
+        codes.iter().filter(|c| **c == StatusCode::CONFLICT).count(),
+        1
+    );
+    assert!(!codes.contains(&StatusCode::INTERNAL_SERVER_ERROR));
+}
+
+#[tokio::test]
 async fn concurrent_identical_starts_create_one_immutable_snapshot() {
     let f = setup().await;
     let situation = Uuid::new_v4();

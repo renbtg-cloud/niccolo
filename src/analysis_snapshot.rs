@@ -227,7 +227,7 @@ pub async fn begin(
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_snapshots \
          (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING",
     )
     .bind(workspace)
     .bind(situation)
@@ -247,6 +247,10 @@ pub async fn begin(
     .rows_affected()
         == 1;
     if !inserted {
+        // Both the analysis-ID and revision-uniqueness constraints may reject
+        // this insert. Re-read the exact analysis ID: a concurrent identical
+        // call is an idempotent replay; another analysis owning this revision
+        // is a semantic conflict, never an unhandled database error.
         // A concurrent identical request won the race. Re-read and apply the
         // same immutable replay contract instead of binding to a newer revision.
         let stored: Option<StoredAnalysisSnapshotRow> = sqlx::query_as(
