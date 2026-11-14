@@ -63,6 +63,15 @@ async fn record_step_checkpoint(
     step: &agentic_controller::StepView,
 ) -> Result<(), RuntimeError> {
     let op = bff_operations::get(pool, scope).await?;
+    // A conservative provider-attempt admission check can hit a budget
+    // boundary before the first step starts. Make that an actual operation
+    // execution transition so the provisional boundary can terminate
+    // QUEUED work just as it terminates already-RUNNING work.
+    let op = if op.state == "QUEUED" {
+        bff_operations::start(pool, scope, op.state_version, actor).await?
+    } else {
+        op
+    };
     let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
     let controller = agentic_controller::view(pool, scope).await?;
     let budget = operation_budget::view(pool, scope).await?;
