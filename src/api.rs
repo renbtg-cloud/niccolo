@@ -4945,8 +4945,13 @@ mod tests {
         use tower::ServiceExt;
         let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
         for name in [
-            "AnalysisPage", "InspectorPage", "ReasoningPage", "IdentitiesPage",
-            "FeedbackPage", "EpistemicPlaygroundPage", "ForensicPage",
+            "AnalysisPage",
+            "InspectorPage",
+            "ReasoningPage",
+            "IdentitiesPage",
+            "FeedbackPage",
+            "EpistemicPlaygroundPage",
+            "ForensicPage",
         ] {
             let response = router
                 .clone()
@@ -4958,7 +4963,11 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::OK, "missing JS chunk: {name}");
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "missing JS chunk: {name}"
+            );
             assert_eq!(
                 response.headers()[header::CONTENT_TYPE],
                 "text/javascript; charset=utf-8"
@@ -4979,7 +4988,11 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_ne!(response.status(), StatusCode::OK, "unexpected JS asset: {path}");
+            assert_ne!(
+                response.status(),
+                StatusCode::OK,
+                "unexpected JS asset: {path}"
+            );
         }
     }
 
