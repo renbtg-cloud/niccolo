@@ -13,6 +13,8 @@ pub enum DecisionError {
     Privileged,
     #[error("invalid decision input")]
     Invalid,
+    #[error("decision replay conflicts with stored content")]
+    Conflict,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecisionOption {
@@ -99,6 +101,20 @@ pub async fn create(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_decision_points(workspace_id,situation_id,analysis_id,decision_id,question,context_note,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(id).bind(question).bind(context).bind(principal).execute(&mut *tx).await?;
+    let stored: Option<(String, Option<String>, Uuid)> = sqlx::query_as(
+        "SELECT question,context_note,created_by_principal_id
+           FROM niccolo.situation_analysis_decision_points
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND decision_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((question.to_owned(), context.map(str::to_owned), principal)) {
+        return Err(DecisionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -115,6 +131,26 @@ pub async fn add_option(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_decision_options(workspace_id,situation_id,analysis_id,decision_id,option_id,ordinal,option_text,tradeoff_note,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).bind(opt.option_id).bind(opt.ordinal).bind(&opt.text).bind(&opt.tradeoff_note).bind(principal).execute(&mut *tx).await?;
+    let stored: Option<(Uuid, i32, String, Option<String>, Uuid)> = sqlx::query_as(
+        "SELECT decision_id,ordinal,option_text,tradeoff_note,created_by_principal_id
+           FROM niccolo.situation_analysis_decision_options
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND option_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(opt.option_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((
+        decision,
+        opt.ordinal,
+        opt.text.clone(),
+        opt.tradeoff_note.clone(),
+        principal,
+    )) {
+        return Err(DecisionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -132,6 +168,26 @@ pub async fn append_selection(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.situation_analysis_decision_selection_events(workspace_id,situation_id,analysis_id,decision_id,event_id,event_kind,option_id,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(decision).bind(event.event_id).bind(&event.kind).bind(event.option_id).bind(&event.note).bind(event.recorded_by).execute(&mut *tx).await?;
+    let stored: Option<(Uuid, String, Option<Uuid>, String, Uuid)> = sqlx::query_as(
+        "SELECT decision_id,event_kind,option_id,note,recorded_by_principal_id
+           FROM niccolo.situation_analysis_decision_selection_events
+          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND event_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(event.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((
+        decision,
+        event.kind.clone(),
+        event.option_id,
+        event.note.clone(),
+        event.recorded_by,
+    )) {
+        return Err(DecisionError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
