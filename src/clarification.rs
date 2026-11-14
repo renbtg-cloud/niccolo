@@ -47,6 +47,10 @@ fn valid(value: &str, max: usize) -> bool {
     !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
+fn valid_scope(workspace: Uuid, situation: Uuid, analysis: Uuid) -> bool {
+    !workspace.is_nil() && !situation.is_nil() && !analysis.is_nil()
+}
+
 async fn scoped(
     pool: &PgPool,
     workspace: Uuid,
@@ -88,7 +92,12 @@ pub async fn propose(
     text: &str,
     reason: &str,
 ) -> Result<Clarification, ClarificationError> {
-    if !valid(text, 4096) || !valid(reason, 2048) {
+    if !valid_scope(workspace, situation, analysis)
+        || actor.is_nil()
+        || question.is_nil()
+        || !valid(text, 4096)
+        || !valid(reason, 2048)
+    {
         return Err(ClarificationError::Invalid);
     }
     let text = text.trim();
@@ -186,6 +195,9 @@ pub async fn values(
     situation: Uuid,
     analysis: Uuid,
 ) -> Result<Vec<ClarificationValue>, ClarificationError> {
+    if !valid_scope(workspace, situation, analysis) {
+        return Err(ClarificationError::Invalid);
+    }
     let mut tx = scoped(pool, workspace, true).await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_snapshots WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3)",
@@ -258,7 +270,10 @@ pub async fn list(
     after: Option<Uuid>,
     limit: i64,
 ) -> Result<(Vec<Clarification>, Option<Uuid>), ClarificationError> {
-    if !(1..=100).contains(&limit) {
+    if !valid_scope(workspace, situation, analysis)
+        || after.is_some_and(|id| id.is_nil())
+        || !(1..=100).contains(&limit)
+    {
         return Err(ClarificationError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
@@ -308,4 +323,31 @@ pub async fn list(
     let next_after = more.then(|| questions.last().expect("non-empty page").question_id);
     tx.commit().await?;
     Ok((questions, next_after))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn nil_clarification_scope_is_rejected_before_sql() {
+        let pool = PgPool::connect_lazy("postgres://nobody@127.0.0.1/unused").unwrap();
+        assert!(matches!(
+            values(&pool, Uuid::nil(), Uuid::new_v4(), Uuid::new_v4()).await,
+            Err(ClarificationError::Invalid)
+        ));
+        assert!(matches!(
+            list(
+                &pool,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Some(Uuid::nil()),
+                10,
+            )
+            .await,
+            Err(ClarificationError::Invalid)
+        ));
+    }
 }
