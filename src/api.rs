@@ -4927,6 +4927,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn embedded_technical_chunks_are_served_as_javascript_without_path_traversal() {
+        use tower::ServiceExt;
+        let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
+        for name in [
+            "AnalysisPage", "InspectorPage", "ReasoningPage", "IdentitiesPage",
+            "FeedbackPage", "EpistemicPlaygroundPage", "ForensicPage",
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(format!("/assets/chunks/{name}.js"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "missing JS chunk: {name}");
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/javascript; charset=utf-8"
+            );
+        }
+        for path in [
+            "/assets/chunks/nonexistent.js",
+            "/assets/chunks/app.js",
+            "/assets/chunks/..%2Fapp.js",
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_ne!(response.status(), StatusCode::OK, "unexpected JS asset: {path}");
+        }
+    }
+
+    #[tokio::test]
     async fn all_http_responses_have_privacy_headers() {
         use tower::ServiceExt;
         let router = router(PgPool::connect_lazy("postgres://x@127.0.0.1/test").unwrap());
