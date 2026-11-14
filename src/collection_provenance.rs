@@ -79,7 +79,7 @@ type EventRow = (
 
 fn valid_text(value: &str, max: usize) -> bool {
     let trimmed = value.trim();
-    !trimmed.is_empty() && value.len() <= max && !value.contains('\0')
+    !trimmed.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
 
 fn valid(input: &CollectionEventInput) -> bool {
@@ -404,6 +404,14 @@ mod tests {
         assert!(valid(&sample("SUMMARIZER")));
         assert!(valid(&sample("IMPORTER")));
         assert_ne!("COLLECTOR", "ORIGINAL_AUTHOR");
+    }
+
+    #[test]
+    fn provenance_text_rejects_control_characters() {
+        for value in ["label\nforged", "method\rforged", "note\tforged", "x\0y"] {
+            assert!(!valid_text(value, 4096));
+        }
+        assert!(valid_text("Human-authored collection note.", 4096));
     }
 
     #[test]
