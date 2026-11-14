@@ -46,7 +46,7 @@ async fn scoped(
     Ok(tx)
 }
 fn valid(s: &str) -> bool {
-    !s.trim().is_empty() && s.len() <= 4096
+    !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -491,6 +491,13 @@ mod tests {
             situation: Uuid::new_v4(),
             analysis: Uuid::new_v4(),
         }
+    }
+
+    #[test]
+    fn handoff_text_rejects_control_character_spoofing() {
+        assert!(valid("ordinary source request"));
+        assert!(!valid("request\nwith hidden line"));
+        assert!(!valid("hidden\0suffix"));
     }
 
     #[tokio::test]
