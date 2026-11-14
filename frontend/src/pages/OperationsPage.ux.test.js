@@ -144,7 +144,9 @@ describe('primary analysis path', () => {
     expect(operations).toContain('Declare latest checkpoint a milestone');
     expect(operations).toContain('historical label, not an epistemic upgrade');
     expect(operations).toContain('client.operationCheckpointMilestone(active,latestCheckpoint.checkpoint_id)');
-    expect(operations).toContain('client.declareOperationCheckpointMilestone(active,latestCheckpoint.checkpoint_id');
+    expect(operations).toContain('client.declareOperationCheckpointMilestone(operationId,checkpointId');
+    expect(operations).toContain('checkpointId:latestCheckpoint.checkpoint_id');
+    expect(operations).toContain('clearOnlySubmittedText(current,reason)');
   });
 
   it('surfaces runtime capacity without turning operational pressure into epistemic quality', () => {
