@@ -58,4 +58,13 @@ bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr"
 grep -Fq 'Open: http://127.0.0.1:38080/?workspace=' "$TMP/stdout"
 grep -Fq 'http://127.0.0.1:38080/?workspace=' .niccolo-local/prepared-url.txt
 
-echo 'PASS: startup validates arguments and model configuration before changing local state.'
+# Without a compiled API the normal startup must not replace the URL that
+# was already prepared for a previous instance, even when settings are valid.
+printf '%s\n' 'last-working-url' > .niccolo-local/prepared-url.txt
+status=0
+bash scripts/start-local-mvp.sh --no-browser >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+[[ "$status" == 1 ]]
+grep -Fq 'Missing API binary:' "$TMP/stderr"
+[[ "$(cat .niccolo-local/prepared-url.txt)" == 'last-working-url' ]]
+
+echo 'PASS: startup validates arguments, model and binary before publishing a local URL.'
