@@ -14,6 +14,8 @@ pub enum ReviewWorkflowError {
     Invalid,
     #[error("review object is not visible")]
     Invisible,
+    #[error("review workflow replay conflicts with stored content")]
+    Conflict,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +141,19 @@ pub async fn start_session(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(Option<Uuid>, String, Uuid)> = sqlx::query_as(
+        "SELECT analysis_id,purpose,started_by_principal_id
+           FROM niccolo.situation_review_sessions
+          WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(session)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored != Some((analysis, purpose.to_owned(), principal)) {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -199,6 +214,28 @@ pub async fn add_session_note(
     .bind(item.recorded_by)
     .execute(&mut *tx)
     .await?;
+    let stored: Option<(String, Option<String>, Option<Uuid>, String, Uuid)> = sqlx::query_as(
+        "SELECT note_kind,target_type,target_id,note_text,recorded_by_principal_id
+           FROM niccolo.situation_review_session_notes
+          WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3 AND note_id=$4",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.session)
+    .bind(item.note_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if stored
+        != Some((
+            item.kind.clone(),
+            item.target_type.clone(),
+            item.target_id,
+            item.text.clone(),
+            item.recorded_by,
+        ))
+    {
+        return Err(ReviewWorkflowError::Conflict);
+    }
     tx.commit().await?;
     Ok(())
 }
