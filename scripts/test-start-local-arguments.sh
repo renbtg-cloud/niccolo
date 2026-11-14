@@ -36,4 +36,26 @@ bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || s
 [[ "$status" == 1 ]]
 grep -Fq 'Missing local bootstrap file: .niccolo-local/local.env' "$TMP/stderr"
 
-echo 'PASS: local MVP startup rejects bad/conflicting options before touching private state.'
+# A failed model configuration must never replace a previously prepared link.
+mkdir -p .niccolo-local
+chmod 700 .niccolo-local
+printf '%s\n' 'export NICCOLO_PG_SECURE_URL=postgres://runtime' > .niccolo-local/local.env
+printf '%s\n' 'WORKSPACE_UUID=11111111-1111-4111-8111-111111111111' 'SITUATION_UUID=22222222-2222-4222-8222-222222222222' > .niccolo-local/identifiers.txt
+printf 'ncl_%064d\n' 0 > .niccolo-local/token.txt
+printf '%s\n' 'export NICCOLO_LLM_BASE_URL=https://models.example.test/v1' 'export NICCOLO_LLM_MODEL=test-model' > .niccolo-local/model.env
+chmod 600 .niccolo-local/*
+printf '%s\n' 'previous-valid-url' > .niccolo-local/prepared-url.txt
+
+status=0
+bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr" || status=$?
+[[ "$status" == 2 ]]
+grep -Fq 'Remote HTTPS model providers require NICCOLO_LLM_API_KEY' "$TMP/stderr"
+[[ "$(cat .niccolo-local/prepared-url.txt)" == 'previous-valid-url' ]]
+
+# After removing the invalid model settings, printing the prepared URL succeeds.
+rm .niccolo-local/model.env
+bash scripts/start-local-mvp.sh --print-only >"$TMP/stdout" 2>"$TMP/stderr"
+grep -Fq 'Open: http://127.0.0.1:38080/?workspace=' "$TMP/stdout"
+grep -Fq 'http://127.0.0.1:38080/?workspace=' .niccolo-local/prepared-url.txt
+
+echo 'PASS: startup validates arguments and model configuration before changing local state.'
