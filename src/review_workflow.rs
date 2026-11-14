@@ -54,6 +54,9 @@ pub struct UseRationale {
     pub recorded_by: Uuid,
 }
 
+type SessionNoteReplayRow = (String, Option<String>, Option<Uuid>, String, Uuid);
+type ConditionEventReplayRow = (Uuid, Uuid, String, String, Option<Uuid>, Option<Uuid>, Uuid);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClaimQuestion {
     pub claim_id: Uuid,
@@ -236,7 +239,7 @@ pub async fn add_session_note(
     .bind(item.recorded_by)
     .execute(&mut *tx)
     .await?;
-    let stored: Option<(String, Option<String>, Option<Uuid>, String, Uuid)> = sqlx::query_as(
+    let stored: Option<SessionNoteReplayRow> = sqlx::query_as(
         "SELECT note_kind,target_type,target_id,note_text,recorded_by_principal_id
            FROM niccolo.situation_review_session_notes
           WHERE workspace_id=$1 AND situation_id=$2 AND session_id=$3 AND note_id=$4",
@@ -594,7 +597,7 @@ pub async fn append_condition_event(
     .bind(principal)
     .execute(&mut *tx)
     .await?;
-    let stored: Option<(Uuid, Uuid, String, String, Option<Uuid>, Option<Uuid>, Uuid)> =
+    let stored: Option<ConditionEventReplayRow> =
         sqlx::query_as(
             "SELECT claim_id,condition_id,event_kind,resolution_note,
                     related_evidence_id,related_contribution_id,recorded_by_principal_id
