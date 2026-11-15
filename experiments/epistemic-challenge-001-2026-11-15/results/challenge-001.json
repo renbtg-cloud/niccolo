@@ -1,0 +1,1361 @@
+{
+  "experiment": "NICCOLÒ-EPISTEMIC-CHALLENGE-001",
+  "protocol": "preselected 15 synthetic micro-world cases; 12 operator parser items",
+  "method": "GGUF experimental CPU runner; constrained first-token X/Y/Z logit (not actual text explanations)",
+  "model_name": "Qwen3 1.7B",
+  "expected_model_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+  "hypotheses": [
+    "Does test-case framing improve Qwen compared to direct framing on identical questions?",
+    "Can a tiny model parse a statement operator accurately enough to drive a narrow mathematical verifier?"
+  ],
+  "limitations": [
+    "Synthetic preselected cases; no natural legal or personal input",
+    "Not blinded with respect to the harness designer; prompts fixed before running",
+    "No full natural-language generation of tests or explanations by Qwen",
+    "Parser hybrid uses gold actor/content/time scaffolding; not end-to-end",
+    "Not a head-to-head against DeepSeek",
+    "Custom unverified non-reference GGUF numerical runtime"
+  ],
+  "cases": [
+    {
+      "case_id": "C01",
+      "treatment": "direct",
+      "facts": [
+        "Mara knows at t1 that the audit was launched"
+      ],
+      "query": "the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Mara knows at t1 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 20.88753,
+        "Y": 12.61339,
+        "Z": 9.85109
+      },
+      "seconds": 13.106,
+      "prompt_tokens": 194,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C01; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara knows at t1 that the audit was launched.\nQUERY: the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C01",
+      "treatment": "challenge",
+      "facts": [
+        "Mara knows at t1 that the audit was launched"
+      ],
+      "query": "the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Mara knows at t1 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 18.01247,
+        "Y": 13.99885,
+        "Z": 16.93133
+      },
+      "seconds": 7.659,
+      "prompt_tokens": 332,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C01; TEST CASE 1/1\nCase C01; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara knows at t1 that the audit was launched.\nQUERY: the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C02",
+      "treatment": "direct",
+      "facts": [
+        "Mara knows at t1 that the audit was launched",
+        "Cheng believes at t2 that it is not the case that the audit was launched"
+      ],
+      "query": "it is not the case that the audit was launched",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Mara knows at t1 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 10.90801,
+        "Y": 8.8393,
+        "Z": 8.23612
+      },
+      "seconds": 4.302,
+      "prompt_tokens": 220,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C02; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara knows at t1 that the audit was launched.\nE2: Cheng believes at t2 that it is not the case that the audit was launched.\nQUERY: it is not the case that the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C02",
+      "treatment": "challenge",
+      "facts": [
+        "Mara knows at t1 that the audit was launched",
+        "Cheng believes at t2 that it is not the case that the audit was launched"
+      ],
+      "query": "it is not the case that the audit was launched",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Mara knows at t1 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 11.28031,
+        "Y": 8.32771,
+        "Z": 11.0446
+      },
+      "seconds": 6.561,
+      "prompt_tokens": 358,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C02; TEST CASE 1/1\nCase C02; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara knows at t1 that the audit was launched.\nE2: Cheng believes at t2 that it is not the case that the audit was launched.\nQUERY: it is not the case that the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C03",
+      "treatment": "direct",
+      "facts": [
+        "Mara told Nia at t1 that the audit was launched"
+      ],
+      "query": "Nia knows at t2 that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": true,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 14.58139,
+        "Y": 11.33985,
+        "Z": 9.06868
+      },
+      "seconds": 4.21,
+      "prompt_tokens": 203,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C03; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara told Nia at t1 that the audit was launched.\nQUERY: Nia knows at t2 that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C03",
+      "treatment": "challenge",
+      "facts": [
+        "Mara told Nia at t1 that the audit was launched"
+      ],
+      "query": "Nia knows at t2 that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": true,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 16.548,
+        "Y": 9.88854,
+        "Z": 11.06704
+      },
+      "seconds": 6.531,
+      "prompt_tokens": 341,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C03; TEST CASE 1/1\nCase C03; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara told Nia at t1 that the audit was launched.\nQUERY: Nia knows at t2 that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C04",
+      "treatment": "direct",
+      "facts": [
+        "Nia believes at t2 that Cheng knows at t2 that the audit was launched"
+      ],
+      "query": "Cheng knows at t2 that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": false,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 11.61593,
+        "Y": 8.87461,
+        "Z": 8.55856
+      },
+      "seconds": 4.468,
+      "prompt_tokens": 207,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C04; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Nia believes at t2 that Cheng knows at t2 that the audit was launched.\nQUERY: Cheng knows at t2 that the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C04",
+      "treatment": "challenge",
+      "facts": [
+        "Nia believes at t2 that Cheng knows at t2 that the audit was launched"
+      ],
+      "query": "Cheng knows at t2 that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": false,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 18.77401,
+        "Y": 13.74013,
+        "Z": 16.91167
+      },
+      "seconds": 6.372,
+      "prompt_tokens": 345,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C04; TEST CASE 1/1\nCase C04; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Nia believes at t2 that Cheng knows at t2 that the audit was launched.\nQUERY: Cheng knows at t2 that the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C05",
+      "treatment": "direct",
+      "facts": [
+        "Omar knows at t3 that Nia believes at t2 that Cheng knows at t2 that the audit was launched"
+      ],
+      "query": "Nia believes at t2 that Cheng knows at t2 that the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Omar knows at t3 that Nia believes at t2 that Cheng knows at t2 that the audit was launched",
+          "entailed": "Nia believes at t2 that Cheng knows at t2 that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 10.99895,
+        "Y": 8.91735,
+        "Z": 8.94195
+      },
+      "seconds": 4.606,
+      "prompt_tokens": 220,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C05; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Omar knows at t3 that Nia believes at t2 that Cheng knows at t2 that the audit was launched.\nQUERY: Nia believes at t2 that Cheng knows at t2 that the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C05",
+      "treatment": "challenge",
+      "facts": [
+        "Omar knows at t3 that Nia believes at t2 that Cheng knows at t2 that the audit was launched"
+      ],
+      "query": "Nia believes at t2 that Cheng knows at t2 that the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "Z",
+      "observed": "SUPPORTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Omar knows at t3 that Nia believes at t2 that Cheng knows at t2 that the audit was launched",
+          "entailed": "Nia believes at t2 that Cheng knows at t2 that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 13.06507,
+        "Y": 9.41263,
+        "Z": 13.20843
+      },
+      "seconds": 6.479,
+      "prompt_tokens": 358,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C05; TEST CASE 1/1\nCase C05; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Omar knows at t3 that Nia believes at t2 that Cheng knows at t2 that the audit was launched.\nQUERY: Nia believes at t2 that Cheng knows at t2 that the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C06",
+      "treatment": "direct",
+      "facts": [
+        "Priya knows at t4 that it is not the case that the evidence folder was destroyed"
+      ],
+      "query": "the evidence folder was destroyed",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t4 that it is not the case that the evidence folder was destroyed",
+          "entailed": "it is not the case that the evidence folder was destroyed"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 12.72829,
+        "Y": 10.66066,
+        "Z": 10.01278
+      },
+      "seconds": 4.16,
+      "prompt_tokens": 203,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C06; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t4 that it is not the case that the evidence folder was destroyed.\nQUERY: the evidence folder was destroyed.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C06",
+      "treatment": "challenge",
+      "facts": [
+        "Priya knows at t4 that it is not the case that the evidence folder was destroyed"
+      ],
+      "query": "the evidence folder was destroyed",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t4 that it is not the case that the evidence folder was destroyed",
+          "entailed": "it is not the case that the evidence folder was destroyed"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 17.51172,
+        "Y": 10.02601,
+        "Z": 11.60187
+      },
+      "seconds": 6.545,
+      "prompt_tokens": 341,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C06; TEST CASE 1/1\nCase C06; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t4 that it is not the case that the evidence folder was destroyed.\nQUERY: the evidence folder was destroyed.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C07",
+      "treatment": "direct",
+      "facts": [
+        "Priya knows at t4 that it is not the case that the evidence folder was destroyed"
+      ],
+      "query": "it is not the case that the evidence folder was destroyed",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t4 that it is not the case that the evidence folder was destroyed",
+          "entailed": "it is not the case that the evidence folder was destroyed"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 16.32523,
+        "Y": 10.54926,
+        "Z": 8.26728
+      },
+      "seconds": 4.686,
+      "prompt_tokens": 209,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C07; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t4 that it is not the case that the evidence folder was destroyed.\nQUERY: it is not the case that the evidence folder was destroyed.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C07",
+      "treatment": "challenge",
+      "facts": [
+        "Priya knows at t4 that it is not the case that the evidence folder was destroyed"
+      ],
+      "query": "it is not the case that the evidence folder was destroyed",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t4 that it is not the case that the evidence folder was destroyed",
+          "entailed": "it is not the case that the evidence folder was destroyed"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 17.70072,
+        "Y": 12.53328,
+        "Z": 16.22976
+      },
+      "seconds": 6.658,
+      "prompt_tokens": 347,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C07; TEST CASE 1/1\nCase C07; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t4 that it is not the case that the evidence folder was destroyed.\nQUERY: it is not the case that the evidence folder was destroyed.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C08",
+      "treatment": "direct",
+      "facts": [
+        "Cheng believes at t5 that it is not the case that the audit was launched"
+      ],
+      "query": "the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": false,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 12.75113,
+        "Y": 9.47214,
+        "Z": 8.73146
+      },
+      "seconds": 4.185,
+      "prompt_tokens": 200,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C08; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Cheng believes at t5 that it is not the case that the audit was launched.\nQUERY: the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C08",
+      "treatment": "challenge",
+      "facts": [
+        "Cheng believes at t5 that it is not the case that the audit was launched"
+      ],
+      "query": "the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": false,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 20.65759,
+        "Y": 13.20609,
+        "Z": 13.84285
+      },
+      "seconds": 6.852,
+      "prompt_tokens": 338,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C08; TEST CASE 1/1\nCase C08; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Cheng believes at t5 that it is not the case that the audit was launched.\nQUERY: the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C09",
+      "treatment": "direct",
+      "facts": [
+        "it is not the case that Cheng knows at t9 that the audit was launched",
+        "Cheng knows at t10 that the audit was launched"
+      ],
+      "query": "Cheng knows at t9 that the audit was launched",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Cheng knows at t10 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 13.72366,
+        "Y": 11.39015,
+        "Z": 11.28825
+      },
+      "seconds": 4.576,
+      "prompt_tokens": 221,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C09; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: it is not the case that Cheng knows at t9 that the audit was launched.\nE2: Cheng knows at t10 that the audit was launched.\nQUERY: Cheng knows at t9 that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C09",
+      "treatment": "challenge",
+      "facts": [
+        "it is not the case that Cheng knows at t9 that the audit was launched",
+        "Cheng knows at t10 that the audit was launched"
+      ],
+      "query": "Cheng knows at t9 that the audit was launched",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Cheng knows at t10 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 13.29219,
+        "Y": 8.08743,
+        "Z": 11.03977
+      },
+      "seconds": 6.235,
+      "prompt_tokens": 359,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C09; TEST CASE 1/1\nCase C09; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: it is not the case that Cheng knows at t9 that the audit was launched.\nE2: Cheng knows at t10 that the audit was launched.\nQUERY: Cheng knows at t9 that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C10",
+      "treatment": "direct",
+      "facts": [
+        "it is not the case that Cheng knows at t9 that the audit was launched",
+        "Cheng knows at t10 that the audit was launched"
+      ],
+      "query": "Cheng knows at t10 that the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Cheng knows at t10 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 12.72067,
+        "Y": 10.7541,
+        "Z": 10.23903
+      },
+      "seconds": 4.553,
+      "prompt_tokens": 222,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C10; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: it is not the case that Cheng knows at t9 that the audit was launched.\nE2: Cheng knows at t10 that the audit was launched.\nQUERY: Cheng knows at t10 that the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C10",
+      "treatment": "challenge",
+      "facts": [
+        "it is not the case that Cheng knows at t9 that the audit was launched",
+        "Cheng knows at t10 that the audit was launched"
+      ],
+      "query": "Cheng knows at t10 that the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "Z",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Cheng knows at t10 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 13.35004,
+        "Y": 10.89115,
+        "Z": 13.98641
+      },
+      "seconds": 6.346,
+      "prompt_tokens": 360,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C10; TEST CASE 1/1\nCase C10; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: it is not the case that Cheng knows at t9 that the audit was launched.\nE2: Cheng knows at t10 that the audit was launched.\nQUERY: Cheng knows at t10 that the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C11",
+      "treatment": "direct",
+      "facts": [
+        "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched"
+      ],
+      "query": "it is not the case that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched",
+          "entailed": "Nia told Omar at t7 that it is not the case that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 11.59329,
+        "Y": 9.63308,
+        "Z": 8.30249
+      },
+      "seconds": 4.067,
+      "prompt_tokens": 215,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C11; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched.\nQUERY: it is not the case that the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C11",
+      "treatment": "challenge",
+      "facts": [
+        "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched"
+      ],
+      "query": "it is not the case that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "Z",
+      "observed": "SUPPORTED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched",
+          "entailed": "Nia told Omar at t7 that it is not the case that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 12.04819,
+        "Y": 9.06907,
+        "Z": 12.44072
+      },
+      "seconds": 5.809,
+      "prompt_tokens": 353,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C11; TEST CASE 1/1\nCase C11; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched.\nQUERY: it is not the case that the audit was launched.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C12",
+      "treatment": "direct",
+      "facts": [
+        "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched"
+      ],
+      "query": "Nia told Omar at t7 that it is not the case that the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched",
+          "entailed": "Nia told Omar at t7 that it is not the case that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 20.12962,
+        "Y": 16.77218,
+        "Z": 11.75565
+      },
+      "seconds": 4.04,
+      "prompt_tokens": 223,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C12; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched.\nQUERY: Nia told Omar at t7 that it is not the case that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C12",
+      "treatment": "challenge",
+      "facts": [
+        "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched"
+      ],
+      "query": "Nia told Omar at t7 that it is not the case that the audit was launched",
+      "expected": "SUPPORTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched",
+          "entailed": "Nia told Omar at t7 that it is not the case that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 14.27389,
+        "Y": 8.69408,
+        "Z": 9.94508
+      },
+      "seconds": 5.491,
+      "prompt_tokens": 361,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C12; TEST CASE 1/1\nCase C12; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Priya knows at t8 that Nia told Omar at t7 that it is not the case that the audit was launched.\nQUERY: Nia told Omar at t7 that it is not the case that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C13",
+      "treatment": "direct",
+      "facts": [
+        "Mara knows at t6 that Cheng believes at t5 that it is not the case that the audit was launched"
+      ],
+      "query": "Cheng knows at t5 that it is not the case that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "X",
+      "observed": "SUPPORTED",
+      "match": false,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Mara knows at t6 that Cheng believes at t5 that it is not the case that the audit was launched",
+          "entailed": "Cheng believes at t5 that it is not the case that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 9.08043,
+        "Y": 7.45924,
+        "Z": 7.5163
+      },
+      "seconds": 3.726,
+      "prompt_tokens": 218,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C13; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara knows at t6 that Cheng believes at t5 that it is not the case that the audit was launched.\nQUERY: Cheng knows at t5 that it is not the case that the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C13",
+      "treatment": "challenge",
+      "facts": [
+        "Mara knows at t6 that Cheng believes at t5 that it is not the case that the audit was launched"
+      ],
+      "query": "Cheng knows at t5 that it is not the case that the audit was launched",
+      "expected": "UNRESOLVED",
+      "mapping": {
+        "X": "SUPPORTED",
+        "Y": "REFUTED",
+        "Z": "UNRESOLVED"
+      },
+      "chosen_letter": "Z",
+      "observed": "UNRESOLVED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Mara knows at t6 that Cheng believes at t5 that it is not the case that the audit was launched",
+          "entailed": "Cheng believes at t5 that it is not the case that the audit was launched"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 11.21233,
+        "Y": 8.98479,
+        "Z": 12.9184
+      },
+      "seconds": 5.296,
+      "prompt_tokens": 356,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C13; TEST CASE 1/1\nCase C13; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Mara knows at t6 that Cheng believes at t5 that it is not the case that the audit was launched.\nQUERY: Cheng knows at t5 that it is not the case that the audit was launched.\nX = SUPPORTED\nY = REFUTED\nZ = UNRESOLVED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C14",
+      "treatment": "direct",
+      "facts": [
+        "Omar believes at t3 that it is not the case that the evidence folder was destroyed",
+        "Priya knows at t4 that it is not the case that the evidence folder was destroyed"
+      ],
+      "query": "the evidence folder was destroyed",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t4 that it is not the case that the evidence folder was destroyed",
+          "entailed": "it is not the case that the evidence folder was destroyed"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 13.09732,
+        "Y": 10.48211,
+        "Z": 9.69699
+      },
+      "seconds": 3.925,
+      "prompt_tokens": 224,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C14; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Omar believes at t3 that it is not the case that the evidence folder was destroyed.\nE2: Priya knows at t4 that it is not the case that the evidence folder was destroyed.\nQUERY: the evidence folder was destroyed.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C14",
+      "treatment": "challenge",
+      "facts": [
+        "Omar believes at t3 that it is not the case that the evidence folder was destroyed",
+        "Priya knows at t4 that it is not the case that the evidence folder was destroyed"
+      ],
+      "query": "the evidence folder was destroyed",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "REFUTED",
+        "Y": "UNRESOLVED",
+        "Z": "SUPPORTED"
+      },
+      "chosen_letter": "X",
+      "observed": "REFUTED",
+      "match": true,
+      "verified_oracle_trace": [
+        {
+          "factive_premise": "Priya knows at t4 that it is not the case that the evidence folder was destroyed",
+          "entailed": "it is not the case that the evidence folder was destroyed"
+        }
+      ],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 12.43221,
+        "Y": 9.31429,
+        "Z": 12.16885
+      },
+      "seconds": 5.531,
+      "prompt_tokens": 362,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C14; TEST CASE 1/1\nCase C14; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: Omar believes at t3 that it is not the case that the evidence folder was destroyed.\nE2: Priya knows at t4 that it is not the case that the evidence folder was destroyed.\nQUERY: the evidence folder was destroyed.\nX = REFUTED\nY = UNRESOLVED\nZ = SUPPORTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C15",
+      "treatment": "direct",
+      "facts": [
+        "it is not the case that Cheng knows at t9 that the audit was launched"
+      ],
+      "query": "Cheng knows at t9 that the audit was launched",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 14.75438,
+        "Y": 11.39367,
+        "Z": 10.94123
+      },
+      "seconds": 3.716,
+      "prompt_tokens": 206,
+      "prompt": "<|im_start|>system\nYou are given independent, stipulated model facts. Decide whether the query is entailed by those facts, refuted by explicit negation, or unresolved. Knowledge is factive: if an agent knows a proposition, the proposition is true. Beliefs can be false. Reporting a proposition does not establish that it is true or that the recipient learned it. Do not infer unstated facts, including knowledge at another time. No closed-world negation. Judge the question using only the stated facts. <|im_end|>\n<|im_start|>user\nCase C15; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: it is not the case that Cheng knows at t9 that the audit was launched.\nQUERY: Cheng knows at t9 that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "C15",
+      "treatment": "challenge",
+      "facts": [
+        "it is not the case that Cheng knows at t9 that the audit was launched"
+      ],
+      "query": "Cheng knows at t9 that the audit was launched",
+      "expected": "REFUTED",
+      "mapping": {
+        "X": "UNRESOLVED",
+        "Y": "SUPPORTED",
+        "Z": "REFUTED"
+      },
+      "chosen_letter": "X",
+      "observed": "UNRESOLVED",
+      "match": false,
+      "verified_oracle_trace": [],
+      "oracle_explanation": "Factive knowledge closure; only explicit negation refutes; absence of entailment is unresolved.",
+      "logits_uncalibrated": {
+        "X": 15.99415,
+        "Y": 9.31223,
+        "Z": 13.27546
+      },
+      "seconds": 5.274,
+      "prompt_tokens": 344,
+      "prompt": "<|im_start|>system\nSolve a small, formal reasoning challenge with independently specified test cases. Do not substitute psychology, common sense, or world knowledge for the stipulated facts. Semantics: K(a,p,t) entails p (factivity), including when p is another mental-state assertion. B(a,p,t) is non-factive; R(a,b,p,t) records an utterance, not the truth of p or the recipient's knowledge. Explicit NOT(q) refutes q. No closed-world negation; no unstated temporal persistence. For this experiment, output only the result-code letter for the current test; the independent harness records input, expected and observed results, and explanatory derivations. Illustrative verified unit tests (not the target case): TEST T_A: Ada believes the gate is open; query \"the gate is open\" => UNRESOLVED. TEST T_B: Leo knows the gate is closed; query \"the gate is closed\" => SUPPORTED. TEST T_C: explicit NOT(package_sent); query \"package_sent\" => REFUTED. <|im_end|>\n<|im_start|>user\nCHALLENGE C15; TEST CASE 1/1\nCase C15; actors: Cheng, Mara, Nia, Omar, Priya.\nSTIPULATED FACTS:\nE1: it is not the case that Cheng knows at t9 that the audit was launched.\nQUERY: Cheng knows at t9 that the audit was launched.\nX = UNRESOLVED\nY = SUPPORTED\nZ = REFUTED\nChoose one answer letter: X, Y, or Z.\nOutput only the result-code letter for this test.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    }
+  ],
+  "parser_cases": [
+    {
+      "case_id": "P01",
+      "sentence": "Mara knows that the audit was launched.",
+      "gold_outer_operator": "KNOWLEDGE",
+      "model_outer_operator": "KNOWLEDGE",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "SUPPORTED",
+      "hybrid_query_outcome": "SUPPORTED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [
+        {
+          "factive_premise": "actor knows at t0 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "chosen_letter": "X",
+      "logits_uncalibrated": {
+        "X": 29.6723,
+        "Y": 21.91072,
+        "Z": 19.46005
+      },
+      "seconds": 2.833,
+      "prompt_tokens": 126,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P01. Mara knows that the audit was launched.\nX = KNOWLEDGE\nY = BELIEF\nZ = COMMUNICATION\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P02",
+      "sentence": "Cheng believes that the audit was launched.",
+      "gold_outer_operator": "BELIEF",
+      "model_outer_operator": "COMMUNICATION",
+      "operator_correct": false,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "chosen_letter": "Y",
+      "logits_uncalibrated": {
+        "X": 23.885,
+        "Y": 24.33127,
+        "Z": 20.54886
+      },
+      "seconds": 2.763,
+      "prompt_tokens": 126,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P02. Cheng believes that the audit was launched.\nX = BELIEF\nY = COMMUNICATION\nZ = KNOWLEDGE\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P03",
+      "sentence": "Nia says that the audit was launched.",
+      "gold_outer_operator": "COMMUNICATION",
+      "model_outer_operator": "COMMUNICATION",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "chosen_letter": "X",
+      "logits_uncalibrated": {
+        "X": 15.79596,
+        "Y": 12.21052,
+        "Z": 11.74741
+      },
+      "seconds": 3.228,
+      "prompt_tokens": 127,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P03. Nia says that the audit was launched.\nX = COMMUNICATION\nY = KNOWLEDGE\nZ = BELIEF\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P04",
+      "sentence": "Omar learned that the evidence folder was destroyed.",
+      "gold_outer_operator": "KNOWLEDGE",
+      "model_outer_operator": "KNOWLEDGE",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "SUPPORTED",
+      "hybrid_query_outcome": "SUPPORTED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [
+        {
+          "factive_premise": "actor knows at t0 that the evidence folder was destroyed",
+          "entailed": "the evidence folder was destroyed"
+        }
+      ],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "chosen_letter": "X",
+      "logits_uncalibrated": {
+        "X": 29.80397,
+        "Y": 22.10257,
+        "Z": 19.61937
+      },
+      "seconds": 3.134,
+      "prompt_tokens": 127,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P04. Omar learned that the evidence folder was destroyed.\nX = KNOWLEDGE\nY = BELIEF\nZ = COMMUNICATION\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P05",
+      "sentence": "Priya suspects that the evidence folder was destroyed.",
+      "gold_outer_operator": "BELIEF",
+      "model_outer_operator": "COMMUNICATION",
+      "operator_correct": false,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "chosen_letter": "Y",
+      "logits_uncalibrated": {
+        "X": 19.98665,
+        "Y": 22.50312,
+        "Z": 16.38114
+      },
+      "seconds": 2.825,
+      "prompt_tokens": 128,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P05. Priya suspects that the evidence folder was destroyed.\nX = BELIEF\nY = COMMUNICATION\nZ = KNOWLEDGE\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P06",
+      "sentence": "Mara reports that the evidence folder was destroyed.",
+      "gold_outer_operator": "COMMUNICATION",
+      "model_outer_operator": "COMMUNICATION",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "chosen_letter": "X",
+      "logits_uncalibrated": {
+        "X": 34.32344,
+        "Y": 23.67971,
+        "Z": 19.76568
+      },
+      "seconds": 2.841,
+      "prompt_tokens": 127,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P06. Mara reports that the evidence folder was destroyed.\nX = COMMUNICATION\nY = KNOWLEDGE\nZ = BELIEF\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P07",
+      "sentence": "Cheng is convinced that the audit was launched.",
+      "gold_outer_operator": "BELIEF",
+      "model_outer_operator": "BELIEF",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "chosen_letter": "Y",
+      "logits_uncalibrated": {
+        "X": 22.72941,
+        "Y": 25.32446,
+        "Z": 23.76455
+      },
+      "seconds": 2.731,
+      "prompt_tokens": 127,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P07. Cheng is convinced that the audit was launched.\nX = KNOWLEDGE\nY = BELIEF\nZ = COMMUNICATION\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P08",
+      "sentence": "Nia knows the audit was launched.",
+      "gold_outer_operator": "KNOWLEDGE",
+      "model_outer_operator": "KNOWLEDGE",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "SUPPORTED",
+      "hybrid_query_outcome": "SUPPORTED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [
+        {
+          "factive_premise": "actor knows at t0 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "chosen_letter": "Z",
+      "logits_uncalibrated": {
+        "X": 19.36965,
+        "Y": 20.12926,
+        "Z": 27.70889
+      },
+      "seconds": 3.024,
+      "prompt_tokens": 126,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P08. Nia knows the audit was launched.\nX = BELIEF\nY = COMMUNICATION\nZ = KNOWLEDGE\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P09",
+      "sentence": "Omar told Priya that the audit was launched.",
+      "gold_outer_operator": "COMMUNICATION",
+      "model_outer_operator": "COMMUNICATION",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "chosen_letter": "X",
+      "logits_uncalibrated": {
+        "X": 24.38053,
+        "Y": 18.29281,
+        "Z": 15.33951
+      },
+      "seconds": 2.687,
+      "prompt_tokens": 128,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P09. Omar told Priya that the audit was launched.\nX = COMMUNICATION\nY = KNOWLEDGE\nZ = BELIEF\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P10",
+      "sentence": "Priya understands that the audit was launched.",
+      "gold_outer_operator": "KNOWLEDGE",
+      "model_outer_operator": "KNOWLEDGE",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "SUPPORTED",
+      "hybrid_query_outcome": "SUPPORTED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [
+        {
+          "factive_premise": "actor knows at t0 that the audit was launched",
+          "entailed": "the audit was launched"
+        }
+      ],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "chosen_letter": "X",
+      "logits_uncalibrated": {
+        "X": 25.79469,
+        "Y": 20.37054,
+        "Z": 17.95687
+      },
+      "seconds": 2.767,
+      "prompt_tokens": 127,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P10. Priya understands that the audit was launched.\nX = KNOWLEDGE\nY = BELIEF\nZ = COMMUNICATION\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P11",
+      "sentence": "Mara claims that the audit was launched.",
+      "gold_outer_operator": "COMMUNICATION",
+      "model_outer_operator": "COMMUNICATION",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "chosen_letter": "Y",
+      "logits_uncalibrated": {
+        "X": 21.25772,
+        "Y": 27.87658,
+        "Z": 24.11368
+      },
+      "seconds": 2.794,
+      "prompt_tokens": 126,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P11. Mara claims that the audit was launched.\nX = BELIEF\nY = COMMUNICATION\nZ = KNOWLEDGE\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    },
+    {
+      "case_id": "P12",
+      "sentence": "Cheng suspects the audit was launched.",
+      "gold_outer_operator": "BELIEF",
+      "model_outer_operator": "BELIEF",
+      "operator_correct": true,
+      "gold_semantic_query_outcome": "UNRESOLVED",
+      "hybrid_query_outcome": "UNRESOLVED",
+      "hybrid_correct": true,
+      "verified_hybrid_trace": [],
+      "given_gold_scaffolding": [
+        "actor",
+        "content",
+        "time",
+        "structure"
+      ],
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "chosen_letter": "Z",
+      "logits_uncalibrated": {
+        "X": 15.23543,
+        "Y": 16.44216,
+        "Z": 18.85636
+      },
+      "seconds": 2.656,
+      "prompt_tokens": 125,
+      "prompt": "<|im_start|>system\nIdentify the MAIN OUTERMOST operator in the sentence. KNOWLEDGE means knows, learned, or understands; BELIEF means believes, suspects, or is convinced; COMMUNICATION means says, reports, claims, or told. Do not treat the asserted content as true unless operator is KNOWLEDGE. Return ONLY the answer letter from the mapping.<|im_end|>\n<|im_start|>user\nCase P12. Cheng suspects the audit was launched.\nX = COMMUNICATION\nY = KNOWLEDGE\nZ = BELIEF\nWhich letter matches the outermost operator?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n"
+    }
+  ],
+  "timings": {
+    "wall_seconds": 200.39
+  },
+  "summaries": {
+    "direct": {
+      "correct": 6,
+      "total": 15
+    },
+    "challenge": {
+      "correct": 7,
+      "total": 15
+    },
+    "parser": {
+      "operator_correct": 10,
+      "hybrid_correct": 12,
+      "total": 12
+    }
+  }
+}
