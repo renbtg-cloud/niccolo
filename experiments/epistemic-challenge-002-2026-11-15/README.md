@@ -159,6 +159,10 @@ bounded task, not superior general reasoning or real-world investigative truth.
 
 ## Next experiment
 
+**Paused:** see the [research handoff](RESEARCH_HANDOFF.md) for the immediate
+priority change to pervasive pseudonymization. The following benchmark design
+is preserved for later resumption.
+
 Preregister deterministic-first routing with an explicit model abstention
 option. Use new paraphrases and narrative patterns, including multiple
 ambiguous evidence records, provenance dependence, competing explanations,
