@@ -1,0 +1,110 @@
+{
+  "experiment": "NICCOLÒ-EPISTEMIC-CHALLENGE-001",
+  "matched_cases": 15,
+  "direct": {
+    "correct": 6,
+    "total": 15,
+    "prediction_distribution": {
+      "SUPPORTED": 5,
+      "REFUTED": 5,
+      "UNRESOLVED": 5
+    },
+    "gold_distribution": {
+      "SUPPORTED": 5,
+      "REFUTED": 5,
+      "UNRESOLVED": 5
+    },
+    "mean_prompt_tokens": 212.33,
+    "total_inference_seconds": 72.33,
+    "by_gold": {
+      "SUPPORTED": {
+        "correct": 3,
+        "total": 5
+      },
+      "REFUTED": {
+        "correct": 2,
+        "total": 5
+      },
+      "UNRESOLVED": {
+        "correct": 1,
+        "total": 5
+      }
+    }
+  },
+  "challenge": {
+    "correct": 7,
+    "total": 15,
+    "prediction_distribution": {
+      "SUPPORTED": 5,
+      "REFUTED": 3,
+      "UNRESOLVED": 7
+    },
+    "gold_distribution": {
+      "SUPPORTED": 5,
+      "REFUTED": 5,
+      "UNRESOLVED": 5
+    },
+    "mean_prompt_tokens": 350.33,
+    "total_inference_seconds": 93.64,
+    "by_gold": {
+      "SUPPORTED": {
+        "correct": 3,
+        "total": 5
+      },
+      "REFUTED": {
+        "correct": 2,
+        "total": 5
+      },
+      "UNRESOLVED": {
+        "correct": 2,
+        "total": 5
+      }
+    }
+  },
+  "paired_difference": {
+    "challenge_only_correct": 2,
+    "direct_only_correct": 1,
+    "two_sided_exact_mcnemar_pvalue": 1.0
+  },
+  "operator_parser": {
+    "correct": 10,
+    "total": 12,
+    "by_category": {
+      "KNOWLEDGE": {
+        "correct": 4,
+        "total": 4
+      },
+      "BELIEF": {
+        "correct": 2,
+        "total": 4
+      },
+      "COMMUNICATION": {
+        "correct": 4,
+        "total": 4
+      }
+    }
+  },
+  "hybrid_narrow_query": {
+    "correct": 12,
+    "total": 12,
+    "gold_structure_used": [
+      "agent",
+      "proposition",
+      "time",
+      "nested content"
+    ]
+  },
+  "trivial_lexical_baseline": {
+    "correct": 12,
+    "total": 12
+  },
+  "runtime": "Experimental non-reference Qwen GGUF CPU forward; token-logit choices only",
+  "caveats": [
+    "Small synthetic non-blind dataset; no inference that DeepSeek improves",
+    "Direct vs challenge prompts have different token counts and few-shot examples",
+    "Constrained first-token classification does NOT test free-form test-log generation",
+    "Hybrid given gold agent/proposition/time: NOT end-to-end extraction",
+    "Trivial lexical baseline is tailored to overt synthetic keywords",
+    "No independent validation of GGUF runner numerical equivalence"
+  ]
+}
