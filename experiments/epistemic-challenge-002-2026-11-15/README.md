@@ -159,9 +159,9 @@ bounded task, not superior general reasoning or real-world investigative truth.
 
 ## Next experiment
 
-**Paused:** see the [research handoff](RESEARCH_HANDOFF.md) for the immediate
-priority change to pervasive pseudonymization. The following benchmark design
-is preserved for later resumption.
+**Resumed:** see [Challenge 003](../epistemic-challenge-003-2026-11-15/README.md).
+The [research handoff](RESEARCH_HANDOFF.md) preserves the optional, non-blocking
+pseudonymization TODO. The following design remains the direction of the series.
 
 Preregister deterministic-first routing with an explicit model abstention
 option. Use new paraphrases and narrative patterns, including multiple

@@ -6,9 +6,9 @@ Challenge 002 is complete. Its frozen protocol, all 400 evaluations (200
 actual local Qwen calls), audit, and validation tests are committed and pushed.
 The pull request remains separate from the MVP implementation.
 
-Challenge 003 is deferred. Preserve the proposed deterministic-first routing
-experiment and its limitations in the existing README. Do not treat its
-exploratory 84/100 score as an independently replicated result.
+Challenge 003 has resumed in its own [experiment directory](../epistemic-challenge-003-2026-11-15/README.md).
+Preserve the proposed deterministic-first routing experiment and its limitations.
+Do not treat Challenge 002's exploratory 84/100 score as an independently replicated result.
 
 ## DeepSeek participation
 
@@ -19,10 +19,10 @@ The exact role, call allocation, and comparison design remain experiment
 specific. No provider receives data outside the user's authorized disclosure
 boundary.
 
-## New immediate research priority: pervasive pseudonymization
+## Optional research direction: pervasive pseudonymization
 
 Investigate a reversible, semantics-preserving pseudonymous representation
-of Situation data before resuming the epistemic benchmarks. The motivating
+of Situation data independently of the resumed epistemic benchmarks. The motivating
 example is replacing a real name such as John Doe with an invented, natural-
 looking alias such as Cornelius Stevenson, rather than deleting the reference.
 This is a user-proposed design hypothesis, not a finalized specification.
