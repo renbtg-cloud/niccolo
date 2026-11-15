@@ -1,0 +1,296 @@
+{
+  "experiment": "outermost-operator-semantic-parsing",
+  "model": "Qwen3-1.7B Q4_K_M",
+  "model_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+  "oracle": "synthetic human-authored tags; 5 K / 5 B / 5 R; counterbalanced first-letter labels",
+  "method": "first-token constrained logits, non-thinking Qwen prefix, custom non-reference CPU GGUF runtime",
+  "correct": 9,
+  "total": 15,
+  "records": [
+    {
+      "case": "S01",
+      "sentence": "Cheng knows that the audit is active.",
+      "expected_type": "K",
+      "mapping": {
+        "A": "K",
+        "B": "B",
+        "C": "R"
+      },
+      "predicted_type": "K",
+      "correct": true,
+      "prompt_tokens": 169,
+      "seconds": 5.05,
+      "choice_logits": {
+        "A": 52.566,
+        "B": 30.43,
+        "C": 33.107
+      }
+    },
+    {
+      "case": "S02",
+      "sentence": "Cheng believes the audit is active.",
+      "expected_type": "B",
+      "mapping": {
+        "A": "B",
+        "B": "R",
+        "C": "K"
+      },
+      "predicted_type": "R",
+      "correct": false,
+      "prompt_tokens": 168,
+      "seconds": 5.44,
+      "choice_logits": {
+        "A": 36.733,
+        "B": 57.984,
+        "C": 35.763
+      }
+    },
+    {
+      "case": "S03",
+      "sentence": "Cheng says the audit is active.",
+      "expected_type": "R",
+      "mapping": {
+        "A": "R",
+        "B": "K",
+        "C": "B"
+      },
+      "predicted_type": "R",
+      "correct": true,
+      "prompt_tokens": 168,
+      "seconds": 4.44,
+      "choice_logits": {
+        "A": 37.979,
+        "B": 33.595,
+        "C": 36.576
+      }
+    },
+    {
+      "case": "S04",
+      "sentence": "Maria knows that Cheng believes the audit is active.",
+      "expected_type": "K",
+      "mapping": {
+        "A": "K",
+        "B": "B",
+        "C": "R"
+      },
+      "predicted_type": "K",
+      "correct": true,
+      "prompt_tokens": 170,
+      "seconds": 4.72,
+      "choice_logits": {
+        "A": 47.889,
+        "B": 25.233,
+        "C": 26.605
+      }
+    },
+    {
+      "case": "S05",
+      "sentence": "Maria believes that Cheng knows the audit is active.",
+      "expected_type": "B",
+      "mapping": {
+        "A": "B",
+        "B": "R",
+        "C": "K"
+      },
+      "predicted_type": "R",
+      "correct": false,
+      "prompt_tokens": 170,
+      "seconds": 4.12,
+      "choice_logits": {
+        "A": 36.719,
+        "B": 56.199,
+        "C": 35.082
+      }
+    },
+    {
+      "case": "S06",
+      "sentence": "Maria reports that Cheng knows the audit is active.",
+      "expected_type": "R",
+      "mapping": {
+        "A": "R",
+        "B": "K",
+        "C": "B"
+      },
+      "predicted_type": "R",
+      "correct": true,
+      "prompt_tokens": 170,
+      "seconds": 4.89,
+      "choice_logits": {
+        "A": 46.917,
+        "B": 33.57,
+        "C": 35.889
+      }
+    },
+    {
+      "case": "S07",
+      "sentence": "Olivia knows that Maria reports that Cheng believes the audit is active.",
+      "expected_type": "K",
+      "mapping": {
+        "A": "K",
+        "B": "B",
+        "C": "R"
+      },
+      "predicted_type": "K",
+      "correct": true,
+      "prompt_tokens": 174,
+      "seconds": 4.65,
+      "choice_logits": {
+        "A": 45.724,
+        "B": 26.146,
+        "C": 28.58
+      }
+    },
+    {
+      "case": "S08",
+      "sentence": "Olivia suspects that Maria knows that Cheng approved the audit.",
+      "expected_type": "B",
+      "mapping": {
+        "A": "B",
+        "B": "R",
+        "C": "K"
+      },
+      "predicted_type": "R",
+      "correct": false,
+      "prompt_tokens": 172,
+      "seconds": 4.78,
+      "choice_logits": {
+        "A": 43.57,
+        "B": 43.776,
+        "C": 34.497
+      }
+    },
+    {
+      "case": "S09",
+      "sentence": "Olivia says that Maria believes Cheng knows about the audit.",
+      "expected_type": "R",
+      "mapping": {
+        "A": "R",
+        "B": "K",
+        "C": "B"
+      },
+      "predicted_type": "R",
+      "correct": true,
+      "prompt_tokens": 172,
+      "seconds": 3.84,
+      "choice_logits": {
+        "A": 34.099,
+        "B": 29.321,
+        "C": 30.999
+      }
+    },
+    {
+      "case": "S10",
+      "sentence": "Cheng knows that the audit is NOT active.",
+      "expected_type": "K",
+      "mapping": {
+        "A": "K",
+        "B": "B",
+        "C": "R"
+      },
+      "predicted_type": "K",
+      "correct": true,
+      "prompt_tokens": 170,
+      "seconds": 4.54,
+      "choice_logits": {
+        "A": 48.346,
+        "B": 27.648,
+        "C": 30.546
+      }
+    },
+    {
+      "case": "S11",
+      "sentence": "Cheng is convinced the audit is active.",
+      "expected_type": "B",
+      "mapping": {
+        "A": "B",
+        "B": "R",
+        "C": "K"
+      },
+      "predicted_type": "R",
+      "correct": false,
+      "prompt_tokens": 169,
+      "seconds": 3.85,
+      "choice_logits": {
+        "A": 39.778,
+        "B": 57.057,
+        "C": 42.246
+      }
+    },
+    {
+      "case": "S12",
+      "sentence": "Cheng testified that the audit is active.",
+      "expected_type": "R",
+      "mapping": {
+        "A": "R",
+        "B": "K",
+        "C": "B"
+      },
+      "predicted_type": "R",
+      "correct": true,
+      "prompt_tokens": 169,
+      "seconds": 4.96,
+      "choice_logits": {
+        "A": 57.679,
+        "B": 38.675,
+        "C": 41.632
+      }
+    },
+    {
+      "case": "S13",
+      "sentence": "Cheng suspects that Maria knows about the audit.",
+      "expected_type": "B",
+      "mapping": {
+        "A": "K",
+        "B": "B",
+        "C": "R"
+      },
+      "predicted_type": "K",
+      "correct": false,
+      "prompt_tokens": 170,
+      "seconds": 3.82,
+      "choice_logits": {
+        "A": 45.412,
+        "B": 32.931,
+        "C": 32.741
+      }
+    },
+    {
+      "case": "S14",
+      "sentence": "Cheng learned that the audit is active from a verified report.",
+      "expected_type": "K",
+      "mapping": {
+        "A": "B",
+        "B": "R",
+        "C": "K"
+      },
+      "predicted_type": "K",
+      "correct": true,
+      "prompt_tokens": 173,
+      "seconds": 4.75,
+      "choice_logits": {
+        "A": 45.244,
+        "B": 36.321,
+        "C": 46.774
+      }
+    },
+    {
+      "case": "S15",
+      "sentence": "Cheng claimed that the audit ended.",
+      "expected_type": "R",
+      "mapping": {
+        "A": "R",
+        "B": "K",
+        "C": "B"
+      },
+      "predicted_type": "B",
+      "correct": false,
+      "prompt_tokens": 168,
+      "seconds": 3.8,
+      "choice_logits": {
+        "A": 34.918,
+        "B": 32.789,
+        "C": 36.108
+      }
+    }
+  ]
+}

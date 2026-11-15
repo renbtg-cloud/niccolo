@@ -1,0 +1,296 @@
+{
+  "experiment": "epistemic-semantic-outermost-v2-no-label-collision",
+  "description": "15 synthetic non-blind statements, five per category. Balanced labels rotated by item. Research inference only.",
+  "model": "Qwen3-1.7B Q4_K_M",
+  "model_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+  "method": "no K/B/R label collisions; system role prompt; first token X/Y/Z logit; custom non-reference GGUF CPU runtime",
+  "correct": 13,
+  "total": 15,
+  "results": [
+    {
+      "id": "S01",
+      "sentence": "Cheng knows that the audit is active.",
+      "expected": "KNOWLEDGE",
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "predicted": "KNOWLEDGE",
+      "correct": true,
+      "tokens": 202,
+      "seconds": 5.85,
+      "logits": {
+        "X": 37.786,
+        "Y": 30.315,
+        "Z": 24.985
+      }
+    },
+    {
+      "id": "S02",
+      "sentence": "Cheng believes the audit is active.",
+      "expected": "BELIEF",
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "predicted": "BELIEF",
+      "correct": true,
+      "tokens": 201,
+      "seconds": 4.82,
+      "logits": {
+        "X": 37.975,
+        "Y": 37.93,
+        "Z": 27.64
+      }
+    },
+    {
+      "id": "S03",
+      "sentence": "Cheng says the audit is active.",
+      "expected": "COMMUNICATION",
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": true,
+      "tokens": 201,
+      "seconds": 5.2,
+      "logits": {
+        "X": 38.769,
+        "Y": 25.568,
+        "Z": 20.883
+      }
+    },
+    {
+      "id": "S04",
+      "sentence": "Maria knows that Cheng believes the audit is active.",
+      "expected": "KNOWLEDGE",
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "predicted": "KNOWLEDGE",
+      "correct": true,
+      "tokens": 203,
+      "seconds": 4.6,
+      "logits": {
+        "X": 27.942,
+        "Y": 22.769,
+        "Z": 17.311
+      }
+    },
+    {
+      "id": "S05",
+      "sentence": "Maria believes that Cheng knows the audit is active.",
+      "expected": "BELIEF",
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": false,
+      "tokens": 203,
+      "seconds": 5.27,
+      "logits": {
+        "X": 28.737,
+        "Y": 32.054,
+        "Z": 21.651
+      }
+    },
+    {
+      "id": "S06",
+      "sentence": "Maria reports that Cheng knows the audit is active.",
+      "expected": "COMMUNICATION",
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": true,
+      "tokens": 203,
+      "seconds": 4.71,
+      "logits": {
+        "X": 26.429,
+        "Y": 17.81,
+        "Z": 14.965
+      }
+    },
+    {
+      "id": "S07",
+      "sentence": "Olivia knows that Maria reports that Cheng believes the audit is active.",
+      "expected": "KNOWLEDGE",
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "predicted": "KNOWLEDGE",
+      "correct": true,
+      "tokens": 207,
+      "seconds": 5.27,
+      "logits": {
+        "X": 31.661,
+        "Y": 25.275,
+        "Z": 21.009
+      }
+    },
+    {
+      "id": "S08",
+      "sentence": "Olivia suspects that Maria knows that Cheng approved the audit.",
+      "expected": "BELIEF",
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "predicted": "BELIEF",
+      "correct": true,
+      "tokens": 205,
+      "seconds": 4.67,
+      "logits": {
+        "X": 33.83,
+        "Y": 31.011,
+        "Z": 22.217
+      }
+    },
+    {
+      "id": "S09",
+      "sentence": "Olivia says that Maria believes Cheng knows about the audit.",
+      "expected": "COMMUNICATION",
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": true,
+      "tokens": 205,
+      "seconds": 5.36,
+      "logits": {
+        "X": 26.184,
+        "Y": 21.492,
+        "Z": 17.313
+      }
+    },
+    {
+      "id": "S10",
+      "sentence": "Cheng knows that the audit is NOT active.",
+      "expected": "KNOWLEDGE",
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "predicted": "KNOWLEDGE",
+      "correct": true,
+      "tokens": 203,
+      "seconds": 4.5,
+      "logits": {
+        "X": 37.769,
+        "Y": 31.49,
+        "Z": 27.203
+      }
+    },
+    {
+      "id": "S11",
+      "sentence": "Cheng is convinced the audit is active.",
+      "expected": "BELIEF",
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": false,
+      "tokens": 202,
+      "seconds": 5.24,
+      "logits": {
+        "X": 28.002,
+        "Y": 34.071,
+        "Z": 28.664
+      }
+    },
+    {
+      "id": "S12",
+      "sentence": "Cheng testified that the audit is active.",
+      "expected": "COMMUNICATION",
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": true,
+      "tokens": 202,
+      "seconds": 4.62,
+      "logits": {
+        "X": 30.056,
+        "Y": 20.747,
+        "Z": 18.876
+      }
+    },
+    {
+      "id": "S13",
+      "sentence": "Cheng suspects that Maria knows about the audit.",
+      "expected": "BELIEF",
+      "mapping": {
+        "X": "KNOWLEDGE",
+        "Y": "BELIEF",
+        "Z": "COMMUNICATION"
+      },
+      "predicted": "BELIEF",
+      "correct": true,
+      "tokens": 203,
+      "seconds": 5.34,
+      "logits": {
+        "X": 23.519,
+        "Y": 32.545,
+        "Z": 23.595
+      }
+    },
+    {
+      "id": "S14",
+      "sentence": "Cheng learned that the audit is active from a verified report.",
+      "expected": "KNOWLEDGE",
+      "mapping": {
+        "X": "BELIEF",
+        "Y": "COMMUNICATION",
+        "Z": "KNOWLEDGE"
+      },
+      "predicted": "KNOWLEDGE",
+      "correct": true,
+      "tokens": 206,
+      "seconds": 4.6,
+      "logits": {
+        "X": 16.853,
+        "Y": 20.048,
+        "Z": 24.583
+      }
+    },
+    {
+      "id": "S15",
+      "sentence": "Cheng claimed that the audit ended.",
+      "expected": "COMMUNICATION",
+      "mapping": {
+        "X": "COMMUNICATION",
+        "Y": "KNOWLEDGE",
+        "Z": "BELIEF"
+      },
+      "predicted": "COMMUNICATION",
+      "correct": true,
+      "tokens": 201,
+      "seconds": 5.13,
+      "logits": {
+        "X": 27.819,
+        "Y": 24.637,
+        "Z": 21.391
+      }
+    }
+  ]
+}

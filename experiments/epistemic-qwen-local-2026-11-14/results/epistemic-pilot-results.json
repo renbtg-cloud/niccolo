@@ -1,0 +1,319 @@
+{
+  "description": "Experimental local Qwen3 1.7B epistemic formalization micro-pilot; no hidden test set, no empirical quality claim",
+  "model": "Qwen3 1.7B",
+  "model_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+  "oracle": "Factive knowledge closure; explicit negation; no closed-world or temporal persistence",
+  "methods": "Uncalibrated first-token letter logits; greedy choice; non-thinking assistant prefix; research-only non-reference GGUF runtime",
+  "cases": [
+    {
+      "id": "E01",
+      "form": "prose",
+      "gold": "A",
+      "prediction": "A",
+      "correct": true,
+      "token_count": 186,
+      "seconds": 6.005,
+      "logits": {
+        "A": 40.4792,
+        "B": 17.9569,
+        "C": 23.3982
+      },
+      "scenario": "At t0, Cheng knows that the audit is active. At t0, does Cheng know that the audit is active?"
+    },
+    {
+      "id": "E01",
+      "form": "formal",
+      "gold": "A",
+      "prediction": "A",
+      "correct": true,
+      "token_count": 188,
+      "seconds": 4.426,
+      "logits": {
+        "A": 43.447,
+        "B": 20.0742,
+        "C": 23.9655
+      },
+      "scenario": "Facts: K(Cheng, audit_active@t0). Query: K(Cheng, audit_active@t0)?"
+    },
+    {
+      "id": "E02",
+      "form": "prose",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 190,
+      "seconds": 4.059,
+      "logits": {
+        "A": 25.8503,
+        "B": 14.5202,
+        "C": 21.6513
+      },
+      "scenario": "At t0, Cheng believes the audit is active, but no information about its actual status is given. Is the audit active at t0?"
+    },
+    {
+      "id": "E02",
+      "form": "formal",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 183,
+      "seconds": 5.119,
+      "logits": {
+        "A": 31.1726,
+        "B": 16.8553,
+        "C": 20.4983
+      },
+      "scenario": "Facts: B(Cheng, audit_active@t0). Query: audit_active@t0?"
+    },
+    {
+      "id": "E03",
+      "form": "prose",
+      "gold": "A",
+      "prediction": "A",
+      "correct": true,
+      "token_count": 186,
+      "seconds": 4.035,
+      "logits": {
+        "A": 27.4816,
+        "B": 12.9774,
+        "C": 19.8951
+      },
+      "scenario": "At t0, Maria knows that Cheng knows the audit is active. Does Cheng know the audit is active at t0?"
+    },
+    {
+      "id": "E03",
+      "form": "formal",
+      "gold": "A",
+      "prediction": "A",
+      "correct": true,
+      "token_count": 192,
+      "seconds": 4.652,
+      "logits": {
+        "A": 38.8779,
+        "B": 17.7334,
+        "C": 21.7719
+      },
+      "scenario": "Facts: K(Maria, K(Cheng, audit_active@t0)). Query: K(Cheng, audit_active@t0)?"
+    },
+    {
+      "id": "E04",
+      "form": "prose",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 194,
+      "seconds": 4.806,
+      "logits": {
+        "A": 23.9717,
+        "B": 13.86,
+        "C": 20.1916
+      },
+      "scenario": "At t0, Maria believes that Cheng knows the audit is active, but nothing else about Cheng is stated. Does Cheng know the audit is active at t0?"
+    },
+    {
+      "id": "E04",
+      "form": "formal",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 192,
+      "seconds": 5.074,
+      "logits": {
+        "A": 34.5898,
+        "B": 17.1572,
+        "C": 22.9159
+      },
+      "scenario": "Facts: B(Maria, K(Cheng, audit_active@t0)). Query: K(Cheng, audit_active@t0)?"
+    },
+    {
+      "id": "E05",
+      "form": "prose",
+      "gold": "B",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 186,
+      "seconds": 4.142,
+      "logits": {
+        "A": 26.1628,
+        "B": 13.8367,
+        "C": 19.7528
+      },
+      "scenario": "At t0, the audit is NOT active. Cheng nevertheless believes it is active. Is the audit active at t0?"
+    },
+    {
+      "id": "E05",
+      "form": "formal",
+      "gold": "B",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 191,
+      "seconds": 4.67,
+      "logits": {
+        "A": 28.0139,
+        "B": 17.2192,
+        "C": 21.8415
+      },
+      "scenario": "Facts: NOT(audit_active@t0); B(Cheng, audit_active@t0). Query: audit_active@t0?"
+    },
+    {
+      "id": "E06",
+      "form": "prose",
+      "gold": "A",
+      "prediction": "A",
+      "correct": true,
+      "token_count": 189,
+      "seconds": 4.106,
+      "logits": {
+        "A": 26.2649,
+        "B": 14.1668,
+        "C": 20.9059
+      },
+      "scenario": "At t0, Maria knows that Cheng believes the audit is active. Is it true that Cheng believes the audit is active at t0?"
+    },
+    {
+      "id": "E06",
+      "form": "formal",
+      "gold": "A",
+      "prediction": "A",
+      "correct": true,
+      "token_count": 192,
+      "seconds": 4.997,
+      "logits": {
+        "A": 32.9682,
+        "B": 19.0384,
+        "C": 26.2082
+      },
+      "scenario": "Facts: K(Maria, B(Cheng, audit_active@t0)). Query: B(Cheng, audit_active@t0)?"
+    },
+    {
+      "id": "E07",
+      "form": "prose",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 197,
+      "seconds": 4.364,
+      "logits": {
+        "A": 23.5018,
+        "B": 14.9093,
+        "C": 20.291
+      },
+      "scenario": "At t0, Maria knows that Cheng BELIEVES the audit is active. No claim is made that Cheng knows it. Does Cheng KNOW the audit is active at t0?"
+    },
+    {
+      "id": "E07",
+      "form": "formal",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 192,
+      "seconds": 4.8,
+      "logits": {
+        "A": 34.6448,
+        "B": 16.9518,
+        "C": 22.4501
+      },
+      "scenario": "Facts: K(Maria, B(Cheng, audit_active@t0)). Query: K(Cheng, audit_active@t0)?"
+    },
+    {
+      "id": "E08",
+      "form": "prose",
+      "gold": "B",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 194,
+      "seconds": 4.393,
+      "logits": {
+        "A": 24.6839,
+        "B": 14.9104,
+        "C": 19.6983
+      },
+      "scenario": "At t0, Cheng does NOT know that the audit is active. Maria mistakenly believes that Cheng knows. Does Cheng know at t0 that the audit is active?"
+    },
+    {
+      "id": "E08",
+      "form": "formal",
+      "gold": "B",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 204,
+      "seconds": 4.899,
+      "logits": {
+        "A": 27.4266,
+        "B": 15.7816,
+        "C": 19.1363
+      },
+      "scenario": "Facts: NOT(K(Cheng, audit_active@t0)); B(Maria, K(Cheng, audit_active@t0)). Query: K(Cheng, audit_active@t0)?"
+    },
+    {
+      "id": "E09",
+      "form": "prose",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 191,
+      "seconds": 4.042,
+      "logits": {
+        "A": 28.2632,
+        "B": 12.8998,
+        "C": 24.0201
+      },
+      "scenario": "At t0, Cheng knows the audit is active. No facts about t1 are provided. Does Cheng know the audit is active at t1?"
+    },
+    {
+      "id": "E09",
+      "form": "formal",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 194,
+      "seconds": 6.033,
+      "logits": {
+        "A": 26.4244,
+        "B": 14.5453,
+        "C": 23.4575
+      },
+      "scenario": "Facts: K(Cheng, audit_active@t0). No time-persistence rule. Query: K(Cheng, audit_active@t1)?"
+    },
+    {
+      "id": "E10",
+      "form": "prose",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 199,
+      "seconds": 5.528,
+      "logits": {
+        "A": 23.6193,
+        "B": 14.1717,
+        "C": 19.5768
+      },
+      "scenario": "At t1, Maria knows that Cheng knows the audit is active at t1. No earlier facts are supplied. At t0, did Maria know that Cheng knew it at t0?"
+    },
+    {
+      "id": "E10",
+      "form": "formal",
+      "gold": "C",
+      "prediction": "A",
+      "correct": false,
+      "token_count": 209,
+      "seconds": 5.51,
+      "logits": {
+        "A": 25.6149,
+        "B": 16.1493,
+        "C": 23.8272
+      },
+      "scenario": "Facts: K(Maria, K(Cheng, audit_active@t1), t1). No retroactive-knowledge rule. Query: K(Maria, K(Cheng, audit_active@t0), t0)?"
+    }
+  ],
+  "scores": {
+    "prose": {
+      "pass": 3,
+      "n": 10
+    },
+    "formal": {
+      "pass": 3,
+      "n": 10
+    }
+  }
+}

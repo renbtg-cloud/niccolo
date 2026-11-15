@@ -1,0 +1,398 @@
+{
+  "experiment": "epistemic-first-token-v2",
+  "model_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+  "method": "system-role instructions; per-case counterbalanced A/B/C label semantics; experimental local GGUF runner",
+  "oracle": "knowledge closure factivity + explicit negation; no temporal persistence, no default closed world",
+  "results": [
+    {
+      "case": "E01",
+      "form": "prose",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 178,
+      "duration_seconds": 5.27,
+      "logits": {
+        "A": 53.346,
+        "B": 22.215,
+        "C": 25.494
+      }
+    },
+    {
+      "case": "E01",
+      "form": "formal",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 180,
+      "duration_seconds": 4.88,
+      "logits": {
+        "A": 49.197,
+        "B": 18.665,
+        "C": 20.784
+      }
+    },
+    {
+      "case": "E02",
+      "form": "prose",
+      "assignment": {
+        "A": "NO",
+        "B": "UNKNOWN",
+        "C": "YES"
+      },
+      "gold": "B",
+      "predicted": "B",
+      "correct": true,
+      "token_count": 182,
+      "duration_seconds": 4.19,
+      "logits": {
+        "A": 30.615,
+        "B": 39.527,
+        "C": 30.337
+      }
+    },
+    {
+      "case": "E02",
+      "form": "formal",
+      "assignment": {
+        "A": "NO",
+        "B": "UNKNOWN",
+        "C": "YES"
+      },
+      "gold": "B",
+      "predicted": "C",
+      "correct": false,
+      "token_count": 175,
+      "duration_seconds": 5.11,
+      "logits": {
+        "A": 33.355,
+        "B": 32.26,
+        "C": 34.527
+      }
+    },
+    {
+      "case": "E03",
+      "form": "prose",
+      "assignment": {
+        "A": "UNKNOWN",
+        "B": "YES",
+        "C": "NO"
+      },
+      "gold": "B",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 178,
+      "duration_seconds": 4.09,
+      "logits": {
+        "A": 26.261,
+        "B": 17.771,
+        "C": 24.797
+      }
+    },
+    {
+      "case": "E03",
+      "form": "formal",
+      "assignment": {
+        "A": "UNKNOWN",
+        "B": "YES",
+        "C": "NO"
+      },
+      "gold": "B",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 184,
+      "duration_seconds": 4.61,
+      "logits": {
+        "A": 35.47,
+        "B": 21.759,
+        "C": 26.665
+      }
+    },
+    {
+      "case": "E04",
+      "form": "prose",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "C",
+      "predicted": "B",
+      "correct": false,
+      "token_count": 186,
+      "duration_seconds": 4.18,
+      "logits": {
+        "A": 29.771,
+        "B": 30.959,
+        "C": 30.706
+      }
+    },
+    {
+      "case": "E04",
+      "form": "formal",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "C",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 184,
+      "duration_seconds": 4.95,
+      "logits": {
+        "A": 47.94,
+        "B": 32.088,
+        "C": 32.323
+      }
+    },
+    {
+      "case": "E05",
+      "form": "prose",
+      "assignment": {
+        "A": "NO",
+        "B": "UNKNOWN",
+        "C": "YES"
+      },
+      "gold": "A",
+      "predicted": "B",
+      "correct": false,
+      "token_count": 178,
+      "duration_seconds": 4.0,
+      "logits": {
+        "A": 31.706,
+        "B": 35.922,
+        "C": 31.47
+      }
+    },
+    {
+      "case": "E05",
+      "form": "formal",
+      "assignment": {
+        "A": "NO",
+        "B": "UNKNOWN",
+        "C": "YES"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 183,
+      "duration_seconds": 4.84,
+      "logits": {
+        "A": 35.335,
+        "B": 28.999,
+        "C": 30.858
+      }
+    },
+    {
+      "case": "E06",
+      "form": "prose",
+      "assignment": {
+        "A": "UNKNOWN",
+        "B": "YES",
+        "C": "NO"
+      },
+      "gold": "B",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 181,
+      "duration_seconds": 3.8,
+      "logits": {
+        "A": 21.692,
+        "B": 14.673,
+        "C": 19.955
+      }
+    },
+    {
+      "case": "E06",
+      "form": "formal",
+      "assignment": {
+        "A": "UNKNOWN",
+        "B": "YES",
+        "C": "NO"
+      },
+      "gold": "B",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 184,
+      "duration_seconds": 4.72,
+      "logits": {
+        "A": 35.015,
+        "B": 26.056,
+        "C": 27.472
+      }
+    },
+    {
+      "case": "E07",
+      "form": "prose",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "C",
+      "predicted": "C",
+      "correct": true,
+      "token_count": 189,
+      "duration_seconds": 4.28,
+      "logits": {
+        "A": 27.679,
+        "B": 19.028,
+        "C": 28.098
+      }
+    },
+    {
+      "case": "E07",
+      "form": "formal",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "C",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 184,
+      "duration_seconds": 4.79,
+      "logits": {
+        "A": 37.847,
+        "B": 26.303,
+        "C": 30.04
+      }
+    },
+    {
+      "case": "E08",
+      "form": "prose",
+      "assignment": {
+        "A": "NO",
+        "B": "UNKNOWN",
+        "C": "YES"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 186,
+      "duration_seconds": 4.01,
+      "logits": {
+        "A": 30.034,
+        "B": 18.958,
+        "C": 26.066
+      }
+    },
+    {
+      "case": "E08",
+      "form": "formal",
+      "assignment": {
+        "A": "NO",
+        "B": "UNKNOWN",
+        "C": "YES"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 196,
+      "duration_seconds": 4.95,
+      "logits": {
+        "A": 40.223,
+        "B": 33.827,
+        "C": 32.388
+      }
+    },
+    {
+      "case": "E09",
+      "form": "prose",
+      "assignment": {
+        "A": "UNKNOWN",
+        "B": "YES",
+        "C": "NO"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 183,
+      "duration_seconds": 4.09,
+      "logits": {
+        "A": 30.88,
+        "B": 17.138,
+        "C": 24.842
+      }
+    },
+    {
+      "case": "E09",
+      "form": "formal",
+      "assignment": {
+        "A": "UNKNOWN",
+        "B": "YES",
+        "C": "NO"
+      },
+      "gold": "A",
+      "predicted": "A",
+      "correct": true,
+      "token_count": 186,
+      "duration_seconds": 5.18,
+      "logits": {
+        "A": 35.478,
+        "B": 18.795,
+        "C": 22.484
+      }
+    },
+    {
+      "case": "E10",
+      "form": "prose",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "C",
+      "predicted": "A",
+      "correct": false,
+      "token_count": 191,
+      "duration_seconds": 4.34,
+      "logits": {
+        "A": 22.686,
+        "B": 14.413,
+        "C": 20.378
+      }
+    },
+    {
+      "case": "E10",
+      "form": "formal",
+      "assignment": {
+        "A": "YES",
+        "B": "NO",
+        "C": "UNKNOWN"
+      },
+      "gold": "C",
+      "predicted": "C",
+      "correct": true,
+      "token_count": 201,
+      "duration_seconds": 5.03,
+      "logits": {
+        "A": 32.979,
+        "B": 26.603,
+        "C": 36.254
+      }
+    }
+  ],
+  "by_form": {
+    "prose": {
+      "passed": 5,
+      "total": 10
+    },
+    "formal": {
+      "passed": 5,
+      "total": 10
+    }
+  }
+}
