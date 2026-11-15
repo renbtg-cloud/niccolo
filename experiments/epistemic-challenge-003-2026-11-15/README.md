@@ -55,3 +55,65 @@ OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 python run.py \
 
 Model SHA-256 is checked; every individual call and completed row is atomically persisted.
 Do not commit weights or converted tensor caches.
+
+## Completed results
+
+All 40 cases evaluated across the six specified conditions (240 case-condition
+outcomes), using **59 actual Qwen forward passes**: 40 direct and 19 routed
+semantic classifications. The stable-only and budget-matched conditions reuse
+observations under the frozen rules. See [observations](results/observations.json)
+and [audit](results/audit.json). Seven protocol/result tests passed, including
+rejection of tampered prompts and verdicts.
+
+| Condition | Correct / 40 | Both revisions correct / 20 | False certainty / 20 | Explicit verdict abstentions | Model calls | Input tokens | Forward seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Direct Qwen | 9 | 2 | 11 | 0 | 40 | 8,343 | 116.722 |
+| Old lexical | 26 | 13 | 6 | 0 | 0 | 0 | 0 |
+| Anchored lexical | 24 | 12 | 5 | 0 | 0 | 0 | 0 |
+| Gated | 26 | 13 | 4 | 0 | 19 | 2,256 | 41.192 |
+| Gated stable-only | 13 | 5 | 0 | 27 | 19 | 2,256 | 41.192 |
+| Budget-matched direct | 23 | 9 | 4 | 0 | 10 | 2,076 | 29.491 |
+
+The predeclared primary comparison was a modest **+5 percentage points**
+over anchored lexical (two corrections, zero regressions), not a reproduction
+of Challenge 002's exploratory 84% accuracy. Gated matched the old lexical
+baseline's 65% accuracy while reducing its false-certainty count from six to
+four. Against direct Qwen, gated improved accuracy by 42.5 points with 73.0%
+fewer input tokens and 64.7% less measured forward time. The token-budget
+matched direct policy scored 23/40 with slightly fewer input tokens than gated.
+These are descriptive results for this controlled sample, not independently
+replicated generalization or end-to-end latency measurements.
+
+The model parser was correct on only **5/19** routed records, including three
+of four deliberately ambiguous records. It abstained on 13/19. Of six
+knowledge records and two explicit absence-of-knowledge records, it correctly
+classified only one of each. This conservative classifier
+mostly fails by withholding useful premises. The modest accuracy improvement
+was confined to the nested family. Of six unchanged-gold pairs, direct Qwen
+changed its answer on four; both lexical and gated changed on none.
+
+The exhaustive sensitivity policy delivered 13 verdicts, all correct here,
+and abstained on 27/40. This follows from the constructed candidate space
+containing the stipulated gold and from correct anchored lexical recognitions
+in these fixtures. It does not guarantee safety against incorrect lexical
+recognition, missed entities, missing relations, or bad rules in real inputs.
+The conservative policy is useful as a flag for clarification or selective
+escalation rather than necessarily suppressing every uncertain result.
+
+## Interpretation and next research step
+
+The new run supports decomposition and selective model expenditure versus
+direct use of this tiny model on bounded records. It does not establish that
+the tiny-model fallback is materially superior to a reasonable deterministic
+baseline. Relation extraction remains the bottleneck. Do not promote the
+experimental parser to production. Preserve the two deterministic baselines
+and the sensitivity flag, then test a more capable parser (including DeepSeek
+when authorized) and compare against a stronger lexical front end on fresh,
+less structured cases. Keep the pseudonymization TODO non-blocking.
+
+Re-audit without inference:
+
+```bash
+python audit_results.py --report results/observations.json --out results/audit.json
+python -m unittest -v test_protocol.py test_results.py
+```
