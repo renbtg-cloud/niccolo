@@ -27,6 +27,15 @@ example is replacing a real name such as John Doe with an invented, natural-
 looking alias such as Cornelius Stevenson, rather than deleting the reference.
 This is a user-proposed design hypothesis, not a finalized specification.
 
+**Product scope: optional MVP TODO, not a release blocker.** Favor the
+low-hanging fruit: consistent aliases for readily recognized identifiers,
+with minimal cost and loss of reasoning utility. For example, Chen may become
+Tang rather than receiving an alias that introduces unrelated cultural cues.
+Exhaustive coverage and perfect anonymization are not acceptance criteria.
+Research priority is independent of the MVP release schedule: implementation
+may be partial or deferred entirely without blocking the MVP. See the
+[planning TODO](../../dev-flow/planning/README.md#optional-mvp-todo-pragmatic-pervasive-pseudonymization).
+
 Potential scope includes people, organizations, projects, locations, unique
 identifiers, filenames, email addresses, domains, quoted passages, document
 metadata, model prompts and outputs, and text-bearing derived artifacts. The
