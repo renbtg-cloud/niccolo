@@ -1,0 +1,2905 @@
+[
+  {
+    "case_id": "context-01-r1",
+    "pair_id": "context-01",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Ada | is aware as a fact | aggressive_high_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_aggressive_high_stakes",
+      "!anomaly_relative_to_personal_baseline_aggressive_high_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "aggressive_high_stakes",
+          "personal_baseline_expects_other_behavior_aggressive_high_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_aggressive_high_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_aggressive_high_stakes",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "K",
+      "Y": "B",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "hypothesis-02-r0",
+    "pair_id": "hypothesis-02",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Leo | takes it to be true | trust_building_signal",
+    "givens": [
+      "human_approved_discriminator_trust_building_signal"
+    ],
+    "rules": [
+      {
+        "if": [
+          "trust_building_signal",
+          "human_approved_discriminator_trust_building_signal"
+        ],
+        "then": "support_for_explanation_trust_building_signal"
+      }
+    ],
+    "query": "support_for_explanation_trust_building_signal",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "K",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "context-08-r1",
+    "pair_id": "context-08",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Ada | has yet to find out | direct_refusal",
+    "givens": [
+      "personal_baseline_expects_other_behavior_direct_refusal",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "direct_refusal",
+          "personal_baseline_expects_other_behavior_direct_refusal"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_direct_refusal"
+      }
+    ],
+    "query": "K(Ada,t1,direct_refusal)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-10-r1",
+    "pair_id": "hypothesis-10",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Omar | takes it to be true | approval_pending",
+    "givens": [
+      "human_approved_discriminator_approval_pending",
+      "unrelated_note",
+      "!unrelated_note",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "approval_pending",
+          "human_approved_discriminator_approval_pending"
+        ],
+        "then": "support_for_explanation_approval_pending"
+      }
+    ],
+    "query": "support_for_explanation_approval_pending",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "context-05-r0",
+    "pair_id": "context-05",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Leo | established beyond doubt | rushed_high_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_rushed_high_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "rushed_high_stakes",
+          "personal_baseline_expects_other_behavior_rushed_high_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_rushed_high_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_rushed_high_stakes",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-06-r1",
+    "pair_id": "temporal-06",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Nia | would bet | K(Priya,t0,team_informed)",
+    "givens": [
+      "!B(Nia,t1,K(Priya,t0,team_informed))"
+    ],
+    "rules": [],
+    "query": "B(Nia,t1,K(Priya,t0,team_informed))",
+    "gold_relation": "B",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "hypothesis-07-r0",
+    "pair_id": "hypothesis-07",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Iris | told the team | competing_offer",
+    "givens": [
+      "human_approved_discriminator_competing_offer"
+    ],
+    "rules": [
+      {
+        "if": [
+          "competing_offer",
+          "human_approved_discriminator_competing_offer"
+        ],
+        "then": "support_for_explanation_competing_offer"
+      }
+    ],
+    "query": "R(Iris,t1,competing_offer)",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "hypothesis-01-r1",
+    "pair_id": "hypothesis-01",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Tess | established beyond doubt | deadline_binding",
+    "givens": [
+      "human_approved_discriminator_deadline_binding",
+      "!support_for_explanation_deadline_binding"
+    ],
+    "rules": [
+      {
+        "if": [
+          "deadline_binding",
+          "human_approved_discriminator_deadline_binding"
+        ],
+        "then": "support_for_explanation_deadline_binding"
+      }
+    ],
+    "query": "support_for_explanation_deadline_binding",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-04-r0",
+    "pair_id": "contradiction-04",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Ada | does not know | approval_given",
+    "givens": [],
+    "rules": [],
+    "query": "K(Ada,t1,approval_given)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "K",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "nested-04-r0",
+    "pair_id": "nested-04",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Mara | has yet to find out | K(Nia,t0,key_revoked)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Mara,t1,K(Nia,t0,key_revoked))",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "K",
+      "Y": "B",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "hypothesis-09-r1",
+    "pair_id": "hypothesis-09",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Cheng | has direct evidence and now knows | !support_for_explanation_schedule_conflict",
+    "givens": [
+      "human_approved_discriminator_schedule_conflict",
+      "support_for_explanation_schedule_conflict"
+    ],
+    "rules": [
+      {
+        "if": [
+          "schedule_conflict",
+          "human_approved_discriminator_schedule_conflict"
+        ],
+        "then": "support_for_explanation_schedule_conflict"
+      }
+    ],
+    "query": "support_for_explanation_schedule_conflict",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-02-r0",
+    "pair_id": "temporal-02",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Cheng | is leaning toward | K(Sam,t0,access_enabled)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Sam,t0,access_enabled)",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-05-r1",
+    "pair_id": "contradiction-05",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Cheng | is aware as a fact | meeting_held",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "meeting_held",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "N",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-02-r0",
+    "pair_id": "nested-02",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Sam | would bet | K(Omar,t0,draft_changed)",
+    "givens": [],
+    "rules": [],
+    "query": "draft_changed",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "temporal-09-r1",
+    "pair_id": "temporal-09",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Leo | saw proof | !K(Ada,t0,notice_sent)",
+    "givens": [
+      "K(Ada,t0,notice_sent)"
+    ],
+    "rules": [],
+    "query": "K(Ada,t0,notice_sent)",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "N",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "contradiction-10-r0",
+    "pair_id": "contradiction-10",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Mara | is under the impression | file_received",
+    "givens": [
+      "unrelated_note",
+      "!unrelated_note"
+    ],
+    "rules": [],
+    "query": "file_received",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "temporal-04-r0",
+    "pair_id": "temporal-04",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Leo | is explicitly ignorant of the fact | K(Mara,t0,offer_received)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Leo,t1,K(Mara,t0,offer_received))",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "nested-07-r0",
+    "pair_id": "nested-07",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Cheng | repeated the account | K(Omar,t0,folder_moved)",
+    "givens": [],
+    "rules": [],
+    "query": "R(Cheng,t1,K(Omar,t0,folder_moved))",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "context-04-r0",
+    "pair_id": "context-04",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Ada | has no knowledge | unusually_formal_call",
+    "givens": [
+      "personal_baseline_expects_other_behavior_unusually_formal_call"
+    ],
+    "rules": [
+      {
+        "if": [
+          "unusually_formal_call",
+          "personal_baseline_expects_other_behavior_unusually_formal_call"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_unusually_formal_call"
+      }
+    ],
+    "query": "K(Ada,t1,unusually_formal_call)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-05-r0",
+    "pair_id": "contradiction-05",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Cheng | is aware as a fact | meeting_held",
+    "givens": [],
+    "rules": [],
+    "query": "meeting_held",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "N",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "contradiction-09-r1",
+    "pair_id": "contradiction-09",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Cheng | has firsthand confirmation | !vote_counted",
+    "givens": [
+      "vote_counted"
+    ],
+    "rules": [],
+    "query": "vote_counted",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "N",
+      "Y": "K",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "contradiction-01-r1",
+    "pair_id": "contradiction-01",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Nia | verified | access_revoked",
+    "givens": [
+      "!access_revoked"
+    ],
+    "rules": [],
+    "query": "access_revoked",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "B",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "temporal-09-r0",
+    "pair_id": "temporal-09",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Leo | saw proof | !K(Ada,t0,notice_sent)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Ada,t0,notice_sent)",
+    "gold_relation": "K",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "N",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "contradiction-01-r0",
+    "pair_id": "contradiction-01",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Nia | verified | access_revoked",
+    "givens": [],
+    "rules": [],
+    "query": "access_revoked",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "B",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "context-03-r0",
+    "pair_id": "context-03",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Tess | said | abrupt_low_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_abrupt_low_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "abrupt_low_stakes",
+          "personal_baseline_expects_other_behavior_abrupt_low_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_abrupt_low_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_abrupt_low_stakes",
+    "gold_relation": "R",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "context-02-r1",
+    "pair_id": "context-02",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Omar | believes | delayed_high_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_delayed_high_stakes",
+      "anomaly_relative_to_personal_baseline_delayed_high_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "delayed_high_stakes",
+          "personal_baseline_expects_other_behavior_delayed_high_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_delayed_high_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_delayed_high_stakes",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "temporal-03-r1",
+    "pair_id": "temporal-03",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Omar | told the team | K(Tess,t0,decision_made)",
+    "givens": [
+      "!K(Tess,t0,decision_made)"
+    ],
+    "rules": [],
+    "query": "K(Tess,t0,decision_made)",
+    "gold_relation": "R",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "hypothesis-04-r1",
+    "pair_id": "hypothesis-04",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Sam | has not learned | delegated_decision",
+    "givens": [
+      "human_approved_discriminator_delegated_decision",
+      "K(Sam,t1,delegated_decision)"
+    ],
+    "rules": [
+      {
+        "if": [
+          "delegated_decision",
+          "human_approved_discriminator_delegated_decision"
+        ],
+        "then": "support_for_explanation_delegated_decision"
+      }
+    ],
+    "query": "K(Sam,t1,delegated_decision)",
+    "gold_relation": "N",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "N",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "nested-01-r0",
+    "pair_id": "nested-01",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Cheng | saw proof | K(Omar,t0,audit_opened)",
+    "givens": [],
+    "rules": [],
+    "query": "audit_opened",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "K",
+      "Y": "B",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "context-07-r0",
+    "pair_id": "context-07",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Omar | reported | silence_after_offer",
+    "givens": [
+      "personal_baseline_expects_other_behavior_silence_after_offer"
+    ],
+    "rules": [
+      {
+        "if": [
+          "silence_after_offer",
+          "personal_baseline_expects_other_behavior_silence_after_offer"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_silence_after_offer"
+      }
+    ],
+    "query": "R(Omar,t1,silence_after_offer)",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-01-r0",
+    "pair_id": "temporal-01",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Leo | verified | K(Omar,t0,investigation_opened)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Omar,t0,investigation_opened)",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "B",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "contradiction-07-r1",
+    "pair_id": "contradiction-07",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Priya | reported | report_sent",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "R(Priya,t1,report_sent)",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "nested-02-r1",
+    "pair_id": "nested-02",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Sam | would bet | K(Omar,t0,draft_changed)",
+    "givens": [
+      "draft_changed"
+    ],
+    "rules": [],
+    "query": "draft_changed",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-06-r1",
+    "pair_id": "nested-06",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Leo | is leaning toward | K(Ada,t0,notice_delivered)",
+    "givens": [
+      "!B(Leo,t1,K(Ada,t0,notice_delivered))"
+    ],
+    "rules": [],
+    "query": "B(Leo,t1,K(Ada,t0,notice_delivered))",
+    "gold_relation": "B",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "N",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "temporal-05-r1",
+    "pair_id": "temporal-05",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Nia | has firsthand confirmation | K(Mara,t0,evidence_seen)",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "K(Mara,t0,evidence_seen)",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "N",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-09-r1",
+    "pair_id": "nested-09",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Tess | knows | !contract_signed",
+    "givens": [
+      "contract_signed"
+    ],
+    "rules": [],
+    "query": "contract_signed",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "hypothesis-07-r1",
+    "pair_id": "hypothesis-07",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Iris | told the team | competing_offer",
+    "givens": [
+      "human_approved_discriminator_competing_offer",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "competing_offer",
+          "human_approved_discriminator_competing_offer"
+        ],
+        "then": "support_for_explanation_competing_offer"
+      }
+    ],
+    "query": "R(Iris,t1,competing_offer)",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "hypothesis-08-r1",
+    "pair_id": "hypothesis-08",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Iris | remains in the dark | budget_freeze",
+    "givens": [
+      "human_approved_discriminator_budget_freeze",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "budget_freeze",
+          "human_approved_discriminator_budget_freeze"
+        ],
+        "then": "support_for_explanation_budget_freeze"
+      }
+    ],
+    "query": "K(Iris,t1,budget_freeze)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "R",
+      "Y": "N",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-06-r1",
+    "pair_id": "contradiction-06",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Omar | suspects | offer_rejected",
+    "givens": [
+      "!B(Omar,t1,offer_rejected)"
+    ],
+    "rules": [],
+    "query": "B(Omar,t1,offer_rejected)",
+    "gold_relation": "B",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "B",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "contradiction-08-r1",
+    "pair_id": "contradiction-08",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Sam | is unaware | receipt_found",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "K(Sam,t1,receipt_found)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "B",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "hypothesis-03-r1",
+    "pair_id": "hypothesis-03",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Ada | relayed | resource_shortage",
+    "givens": [
+      "human_approved_discriminator_resource_shortage",
+      "!support_for_explanation_resource_shortage"
+    ],
+    "rules": [
+      {
+        "if": [
+          "resource_shortage",
+          "human_approved_discriminator_resource_shortage"
+        ],
+        "then": "support_for_explanation_resource_shortage"
+      }
+    ],
+    "query": "support_for_explanation_resource_shortage",
+    "gold_relation": "R",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "temporal-03-r0",
+    "pair_id": "temporal-03",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Omar | told the team | K(Tess,t0,decision_made)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Tess,t0,decision_made)",
+    "gold_relation": "R",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-01-r1",
+    "pair_id": "nested-01",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Cheng | saw proof | K(Omar,t0,audit_opened)",
+    "givens": [
+      "!audit_opened"
+    ],
+    "rules": [],
+    "query": "audit_opened",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "K",
+      "Y": "B",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "nested-06-r0",
+    "pair_id": "nested-06",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Leo | is leaning toward | K(Ada,t0,notice_delivered)",
+    "givens": [],
+    "rules": [],
+    "query": "B(Leo,t1,K(Ada,t0,notice_delivered))",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "N",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "contradiction-02-r1",
+    "pair_id": "contradiction-02",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Mara | believes | payment_posted",
+    "givens": [
+      "payment_posted"
+    ],
+    "rules": [],
+    "query": "payment_posted",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "context-06-r0",
+    "pair_id": "context-06",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Sam | suspects | unscheduled_escalation",
+    "givens": [
+      "personal_baseline_expects_other_behavior_unscheduled_escalation"
+    ],
+    "rules": [
+      {
+        "if": [
+          "unscheduled_escalation",
+          "personal_baseline_expects_other_behavior_unscheduled_escalation"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_unscheduled_escalation"
+      }
+    ],
+    "query": "B(Sam,t1,unscheduled_escalation)",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "R",
+      "Y": "N",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-10-r1",
+    "pair_id": "contradiction-10",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Mara | is under the impression | file_received",
+    "givens": [
+      "unrelated_note",
+      "!unrelated_note",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "file_received",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "context-03-r1",
+    "pair_id": "context-03",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Tess | said | abrupt_low_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_abrupt_low_stakes",
+      "!anomaly_relative_to_personal_baseline_abrupt_low_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "abrupt_low_stakes",
+          "personal_baseline_expects_other_behavior_abrupt_low_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_abrupt_low_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_abrupt_low_stakes",
+    "gold_relation": "R",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-10-r0",
+    "pair_id": "hypothesis-10",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Omar | takes it to be true | approval_pending",
+    "givens": [
+      "human_approved_discriminator_approval_pending",
+      "unrelated_note",
+      "!unrelated_note"
+    ],
+    "rules": [
+      {
+        "if": [
+          "approval_pending",
+          "human_approved_discriminator_approval_pending"
+        ],
+        "then": "support_for_explanation_approval_pending"
+      }
+    ],
+    "query": "support_for_explanation_approval_pending",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-04-r1",
+    "pair_id": "temporal-04",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Leo | is explicitly ignorant of the fact | K(Mara,t0,offer_received)",
+    "givens": [
+      "K(Leo,t1,K(Mara,t0,offer_received))"
+    ],
+    "rules": [],
+    "query": "K(Leo,t1,K(Mara,t0,offer_received))",
+    "gold_relation": "N",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "nested-05-r0",
+    "pair_id": "nested-05",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Mara | has direct evidence and now knows | K(Tess,t0,invoice_paid)",
+    "givens": [],
+    "rules": [],
+    "query": "invoice_paid",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "B",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "hypothesis-04-r0",
+    "pair_id": "hypothesis-04",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Sam | has not learned | delegated_decision",
+    "givens": [
+      "human_approved_discriminator_delegated_decision"
+    ],
+    "rules": [
+      {
+        "if": [
+          "delegated_decision",
+          "human_approved_discriminator_delegated_decision"
+        ],
+        "then": "support_for_explanation_delegated_decision"
+      }
+    ],
+    "query": "K(Sam,t1,delegated_decision)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "N",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "nested-03-r1",
+    "pair_id": "nested-03",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Priya | put the allegation into circulation | K(Nia,t0,meeting_cancelled)",
+    "givens": [
+      "!meeting_cancelled"
+    ],
+    "rules": [],
+    "query": "meeting_cancelled",
+    "gold_relation": "R",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "R",
+      "Y": "N",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-05-r0",
+    "pair_id": "hypothesis-05",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Cheng | saw proof | policy_constraint",
+    "givens": [
+      "human_approved_discriminator_policy_constraint"
+    ],
+    "rules": [
+      {
+        "if": [
+          "policy_constraint",
+          "human_approved_discriminator_policy_constraint"
+        ],
+        "then": "support_for_explanation_policy_constraint"
+      }
+    ],
+    "query": "support_for_explanation_policy_constraint",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-08-r0",
+    "pair_id": "hypothesis-08",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Iris | remains in the dark | budget_freeze",
+    "givens": [
+      "human_approved_discriminator_budget_freeze"
+    ],
+    "rules": [
+      {
+        "if": [
+          "budget_freeze",
+          "human_approved_discriminator_budget_freeze"
+        ],
+        "then": "support_for_explanation_budget_freeze"
+      }
+    ],
+    "query": "K(Iris,t1,budget_freeze)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "R",
+      "Y": "N",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "context-04-r1",
+    "pair_id": "context-04",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Ada | has no knowledge | unusually_formal_call",
+    "givens": [
+      "personal_baseline_expects_other_behavior_unusually_formal_call",
+      "K(Ada,t1,unusually_formal_call)"
+    ],
+    "rules": [
+      {
+        "if": [
+          "unusually_formal_call",
+          "personal_baseline_expects_other_behavior_unusually_formal_call"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_unusually_formal_call"
+      }
+    ],
+    "query": "K(Ada,t1,unusually_formal_call)",
+    "gold_relation": "N",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-01-r1",
+    "pair_id": "temporal-01",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Leo | verified | K(Omar,t0,investigation_opened)",
+    "givens": [
+      "!K(Omar,t0,investigation_opened)"
+    ],
+    "rules": [],
+    "query": "K(Omar,t0,investigation_opened)",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "B",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "contradiction-02-r0",
+    "pair_id": "contradiction-02",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Mara | believes | payment_posted",
+    "givens": [],
+    "rules": [],
+    "query": "payment_posted",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-06-r0",
+    "pair_id": "temporal-06",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Nia | would bet | K(Priya,t0,team_informed)",
+    "givens": [],
+    "rules": [],
+    "query": "B(Nia,t1,K(Priya,t0,team_informed))",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-04-r1",
+    "pair_id": "nested-04",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Mara | has yet to find out | K(Nia,t0,key_revoked)",
+    "givens": [
+      "K(Mara,t1,K(Nia,t0,key_revoked))"
+    ],
+    "rules": [],
+    "query": "K(Mara,t1,K(Nia,t0,key_revoked))",
+    "gold_relation": "N",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "K",
+      "Y": "B",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "context-09-r1",
+    "pair_id": "context-09",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Priya | knows | !anomaly_relative_to_personal_baseline_aggressive_routine",
+    "givens": [
+      "personal_baseline_expects_other_behavior_aggressive_routine",
+      "anomaly_relative_to_personal_baseline_aggressive_routine"
+    ],
+    "rules": [
+      {
+        "if": [
+          "aggressive_routine",
+          "personal_baseline_expects_other_behavior_aggressive_routine"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_aggressive_routine"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_aggressive_routine",
+    "gold_relation": "K",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "context-02-r0",
+    "pair_id": "context-02",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Omar | believes | delayed_high_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_delayed_high_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "delayed_high_stakes",
+          "personal_baseline_expects_other_behavior_delayed_high_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_delayed_high_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_delayed_high_stakes",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "context-07-r1",
+    "pair_id": "context-07",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Omar | reported | silence_after_offer",
+    "givens": [
+      "personal_baseline_expects_other_behavior_silence_after_offer",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "silence_after_offer",
+          "personal_baseline_expects_other_behavior_silence_after_offer"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_silence_after_offer"
+      }
+    ],
+    "query": "R(Omar,t1,silence_after_offer)",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-07-r0",
+    "pair_id": "temporal-07",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Nia | relayed | K(Mara,t0,contract_drafted)",
+    "givens": [],
+    "rules": [],
+    "query": "R(Nia,t1,K(Mara,t0,contract_drafted))",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "N",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "temporal-08-r1",
+    "pair_id": "temporal-08",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Mara | has not learned | K(Cheng,t0,meeting_confirmed)",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "K(Mara,t1,K(Cheng,t0,meeting_confirmed))",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-05-r1",
+    "pair_id": "hypothesis-05",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Cheng | saw proof | policy_constraint",
+    "givens": [
+      "human_approved_discriminator_policy_constraint",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "policy_constraint",
+          "human_approved_discriminator_policy_constraint"
+        ],
+        "then": "support_for_explanation_policy_constraint"
+      }
+    ],
+    "query": "support_for_explanation_policy_constraint",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-02-r1",
+    "pair_id": "temporal-02",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Cheng | is leaning toward | K(Sam,t0,access_enabled)",
+    "givens": [
+      "K(Sam,t0,access_enabled)"
+    ],
+    "rules": [],
+    "query": "K(Sam,t0,access_enabled)",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-10-r0",
+    "pair_id": "temporal-10",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Mara | is under the impression | K(Leo,t0,request_seen)",
+    "givens": [
+      "unrelated_note",
+      "!unrelated_note"
+    ],
+    "rules": [],
+    "query": "K(Leo,t2,request_seen)",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "B",
+      "Y": "K",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "context-06-r1",
+    "pair_id": "context-06",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Sam | suspects | unscheduled_escalation",
+    "givens": [
+      "personal_baseline_expects_other_behavior_unscheduled_escalation",
+      "!B(Sam,t1,unscheduled_escalation)"
+    ],
+    "rules": [
+      {
+        "if": [
+          "unscheduled_escalation",
+          "personal_baseline_expects_other_behavior_unscheduled_escalation"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_unscheduled_escalation"
+      }
+    ],
+    "query": "B(Sam,t1,unscheduled_escalation)",
+    "gold_relation": "B",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "R",
+      "Y": "N",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-07-r0",
+    "pair_id": "contradiction-07",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Priya | reported | report_sent",
+    "givens": [],
+    "rules": [],
+    "query": "R(Priya,t1,report_sent)",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-06-r1",
+    "pair_id": "hypothesis-06",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Tess | has a hunch | legal_review_pending",
+    "givens": [
+      "human_approved_discriminator_legal_review_pending",
+      "!B(Tess,t1,legal_review_pending)"
+    ],
+    "rules": [
+      {
+        "if": [
+          "legal_review_pending",
+          "human_approved_discriminator_legal_review_pending"
+        ],
+        "then": "support_for_explanation_legal_review_pending"
+      }
+    ],
+    "query": "B(Tess,t1,legal_review_pending)",
+    "gold_relation": "B",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "nested-08-r0",
+    "pair_id": "nested-08",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Cheng | is explicitly ignorant of the fact | K(Tess,t0,offer_expired)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Cheng,t1,K(Tess,t0,offer_expired))",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "temporal-10-r1",
+    "pair_id": "temporal-10",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Mara | is under the impression | K(Leo,t0,request_seen)",
+    "givens": [
+      "unrelated_note",
+      "!unrelated_note",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "K(Leo,t2,request_seen)",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "B",
+      "Y": "K",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "hypothesis-01-r0",
+    "pair_id": "hypothesis-01",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Tess | established beyond doubt | deadline_binding",
+    "givens": [
+      "human_approved_discriminator_deadline_binding"
+    ],
+    "rules": [
+      {
+        "if": [
+          "deadline_binding",
+          "human_approved_discriminator_deadline_binding"
+        ],
+        "then": "support_for_explanation_deadline_binding"
+      }
+    ],
+    "query": "support_for_explanation_deadline_binding",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "nested-10-r1",
+    "pair_id": "nested-10",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Sam | has a hunch | K(Leo,t0,shipment_arrived)",
+    "givens": [
+      "unrelated_note",
+      "!unrelated_note",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "shipment_arrived",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "N",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "context-08-r0",
+    "pair_id": "context-08",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Ada | has yet to find out | direct_refusal",
+    "givens": [
+      "personal_baseline_expects_other_behavior_direct_refusal"
+    ],
+    "rules": [
+      {
+        "if": [
+          "direct_refusal",
+          "personal_baseline_expects_other_behavior_direct_refusal"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_direct_refusal"
+      }
+    ],
+    "query": "K(Ada,t1,direct_refusal)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "N",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "hypothesis-06-r0",
+    "pair_id": "hypothesis-06",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Tess | has a hunch | legal_review_pending",
+    "givens": [
+      "human_approved_discriminator_legal_review_pending"
+    ],
+    "rules": [
+      {
+        "if": [
+          "legal_review_pending",
+          "human_approved_discriminator_legal_review_pending"
+        ],
+        "then": "support_for_explanation_legal_review_pending"
+      }
+    ],
+    "query": "B(Tess,t1,legal_review_pending)",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "nested-08-r1",
+    "pair_id": "nested-08",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Cheng | is explicitly ignorant of the fact | K(Tess,t0,offer_expired)",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "K(Cheng,t1,K(Tess,t0,offer_expired))",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "hypothesis-09-r0",
+    "pair_id": "hypothesis-09",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Cheng | has direct evidence and now knows | !support_for_explanation_schedule_conflict",
+    "givens": [
+      "human_approved_discriminator_schedule_conflict"
+    ],
+    "rules": [
+      {
+        "if": [
+          "schedule_conflict",
+          "human_approved_discriminator_schedule_conflict"
+        ],
+        "then": "support_for_explanation_schedule_conflict"
+      }
+    ],
+    "query": "support_for_explanation_schedule_conflict",
+    "gold_relation": "K",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "temporal-08-r0",
+    "pair_id": "temporal-08",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Mara | has not learned | K(Cheng,t0,meeting_confirmed)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Mara,t1,K(Cheng,t0,meeting_confirmed))",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "nested-07-r1",
+    "pair_id": "nested-07",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Cheng | repeated the account | K(Omar,t0,folder_moved)",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "R(Cheng,t1,K(Omar,t0,folder_moved))",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "nested-10-r0",
+    "pair_id": "nested-10",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Sam | has a hunch | K(Leo,t0,shipment_arrived)",
+    "givens": [
+      "unrelated_note",
+      "!unrelated_note"
+    ],
+    "rules": [],
+    "query": "shipment_arrived",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "N",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "hypothesis-02-r1",
+    "pair_id": "hypothesis-02",
+    "family": "hypothesis",
+    "phase": 1,
+    "record": "t1 | Leo | takes it to be true | trust_building_signal",
+    "givens": [
+      "human_approved_discriminator_trust_building_signal",
+      "support_for_explanation_trust_building_signal"
+    ],
+    "rules": [
+      {
+        "if": [
+          "trust_building_signal",
+          "human_approved_discriminator_trust_building_signal"
+        ],
+        "then": "support_for_explanation_trust_building_signal"
+      }
+    ],
+    "query": "support_for_explanation_trust_building_signal",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "K",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "contradiction-03-r0",
+    "pair_id": "contradiction-03",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Tess | passed along the assertion | record_deleted",
+    "givens": [],
+    "rules": [],
+    "query": "record_deleted",
+    "gold_relation": "R",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "N",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "temporal-07-r1",
+    "pair_id": "temporal-07",
+    "family": "temporal",
+    "phase": 1,
+    "record": "t1 | Nia | relayed | K(Mara,t0,contract_drafted)",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "R(Nia,t1,K(Mara,t0,contract_drafted))",
+    "gold_relation": "R",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "N",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "contradiction-03-r1",
+    "pair_id": "contradiction-03",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Tess | passed along the assertion | record_deleted",
+    "givens": [
+      "!record_deleted"
+    ],
+    "rules": [],
+    "query": "record_deleted",
+    "gold_relation": "R",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "N",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "context-05-r1",
+    "pair_id": "context-05",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Leo | established beyond doubt | rushed_high_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_rushed_high_stakes",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "rushed_high_stakes",
+          "personal_baseline_expects_other_behavior_rushed_high_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_rushed_high_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_rushed_high_stakes",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "K",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "context-01-r0",
+    "pair_id": "context-01",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Ada | is aware as a fact | aggressive_high_stakes",
+    "givens": [
+      "personal_baseline_expects_other_behavior_aggressive_high_stakes"
+    ],
+    "rules": [
+      {
+        "if": [
+          "aggressive_high_stakes",
+          "personal_baseline_expects_other_behavior_aggressive_high_stakes"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_aggressive_high_stakes"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_aggressive_high_stakes",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "K",
+      "Y": "B",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "hypothesis-03-r0",
+    "pair_id": "hypothesis-03",
+    "family": "hypothesis",
+    "phase": 0,
+    "record": "t1 | Ada | relayed | resource_shortage",
+    "givens": [
+      "human_approved_discriminator_resource_shortage"
+    ],
+    "rules": [
+      {
+        "if": [
+          "resource_shortage",
+          "human_approved_discriminator_resource_shortage"
+        ],
+        "then": "support_for_explanation_resource_shortage"
+      }
+    ],
+    "query": "support_for_explanation_resource_shortage",
+    "gold_relation": "R",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "K",
+      "Y": "B",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "context-09-r0",
+    "pair_id": "context-09",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Priya | knows | !anomaly_relative_to_personal_baseline_aggressive_routine",
+    "givens": [
+      "personal_baseline_expects_other_behavior_aggressive_routine"
+    ],
+    "rules": [
+      {
+        "if": [
+          "aggressive_routine",
+          "personal_baseline_expects_other_behavior_aggressive_routine"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_aggressive_routine"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_aggressive_routine",
+    "gold_relation": "K",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "N",
+      "Y": "R",
+      "Z": "B"
+    }
+  },
+  {
+    "case_id": "contradiction-06-r0",
+    "pair_id": "contradiction-06",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Omar | suspects | offer_rejected",
+    "givens": [],
+    "rules": [],
+    "query": "B(Omar,t1,offer_rejected)",
+    "gold_relation": "B",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "R",
+      "Y": "B",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "nested-09-r0",
+    "pair_id": "nested-09",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Tess | knows | !contract_signed",
+    "givens": [],
+    "rules": [],
+    "query": "contract_signed",
+    "gold_relation": "K",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "contradiction-08-r0",
+    "pair_id": "contradiction-08",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Sam | is unaware | receipt_found",
+    "givens": [],
+    "rules": [],
+    "query": "K(Sam,t1,receipt_found)",
+    "gold_relation": "N",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "B",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "context-10-r0",
+    "pair_id": "context-10",
+    "family": "context",
+    "phase": 0,
+    "record": "t1 | Cheng | is under the impression | shortened_negotiation",
+    "givens": [
+      "personal_baseline_expects_other_behavior_shortened_negotiation",
+      "unrelated_note",
+      "!unrelated_note"
+    ],
+    "rules": [
+      {
+        "if": [
+          "shortened_negotiation",
+          "personal_baseline_expects_other_behavior_shortened_negotiation"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_shortened_negotiation"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_shortened_negotiation",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "contradiction-04-r1",
+    "pair_id": "contradiction-04",
+    "family": "contradiction",
+    "phase": 1,
+    "record": "t1 | Ada | does not know | approval_given",
+    "givens": [
+      "K(Ada,t1,approval_given)"
+    ],
+    "rules": [],
+    "query": "K(Ada,t1,approval_given)",
+    "gold_relation": "N",
+    "expected": "CONFLICT",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "R",
+      "X": "B",
+      "Y": "K",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "temporal-05-r0",
+    "pair_id": "temporal-05",
+    "family": "temporal",
+    "phase": 0,
+    "record": "t1 | Nia | has firsthand confirmation | K(Mara,t0,evidence_seen)",
+    "givens": [],
+    "rules": [],
+    "query": "K(Mara,t0,evidence_seen)",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "B",
+      "Y": "N",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-05-r1",
+    "pair_id": "nested-05",
+    "family": "nested",
+    "phase": 1,
+    "record": "t1 | Mara | has direct evidence and now knows | K(Tess,t0,invoice_paid)",
+    "givens": [
+      "unrelated_receipt_archived"
+    ],
+    "rules": [],
+    "query": "invoice_paid",
+    "gold_relation": "K",
+    "expected": "SUPPORTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "N",
+      "X": "B",
+      "Y": "R",
+      "Z": "K"
+    }
+  },
+  {
+    "case_id": "context-10-r1",
+    "pair_id": "context-10",
+    "family": "context",
+    "phase": 1,
+    "record": "t1 | Cheng | is under the impression | shortened_negotiation",
+    "givens": [
+      "personal_baseline_expects_other_behavior_shortened_negotiation",
+      "unrelated_note",
+      "!unrelated_note",
+      "unrelated_receipt_archived"
+    ],
+    "rules": [
+      {
+        "if": [
+          "shortened_negotiation",
+          "personal_baseline_expects_other_behavior_shortened_negotiation"
+        ],
+        "then": "anomaly_relative_to_personal_baseline_shortened_negotiation"
+      }
+    ],
+    "query": "anomaly_relative_to_personal_baseline_shortened_negotiation",
+    "gold_relation": "B",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "K",
+      "Y": "R",
+      "Z": "N"
+    }
+  },
+  {
+    "case_id": "contradiction-09-r0",
+    "pair_id": "contradiction-09",
+    "family": "contradiction",
+    "phase": 0,
+    "record": "t1 | Cheng | has firsthand confirmation | !vote_counted",
+    "givens": [],
+    "rules": [],
+    "query": "vote_counted",
+    "gold_relation": "K",
+    "expected": "REFUTED",
+    "answer_mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "B",
+      "X": "N",
+      "Y": "K",
+      "Z": "R"
+    }
+  },
+  {
+    "case_id": "nested-03-r0",
+    "pair_id": "nested-03",
+    "family": "nested",
+    "phase": 0,
+    "record": "t1 | Priya | put the allegation into circulation | K(Nia,t0,meeting_cancelled)",
+    "givens": [],
+    "rules": [],
+    "query": "meeting_cancelled",
+    "gold_relation": "R",
+    "expected": "UNRESOLVED",
+    "answer_mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    },
+    "parse_mapping": {
+      "W": "K",
+      "X": "R",
+      "Y": "N",
+      "Z": "B"
+    }
+  }
+]
