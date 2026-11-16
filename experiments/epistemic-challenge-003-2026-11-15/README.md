@@ -117,3 +117,26 @@ Re-audit without inference:
 python audit_results.py --report results/observations.json --out results/audit.json
 python -m unittest -v test_protocol.py test_results.py
 ```
+
+
+## Post-Qwen extension: DeepSeek API
+
+The frozen Qwen run above remains unchanged. A separate DeepSeek runner was
+added afterward so the same frozen cases and deterministic verifier can be
+tested with a stronger external model without loading Qwen on the user's
+machine.
+
+Use:
+
+- [`run_deepseek_challenge003.py`](run_deepseek_challenge003.py) for the API run.
+- [`LOCAL_DEEPSEEK_RUN.md`](LOCAL_DEEPSEEK_RUN.md) for the Windows/Git Bash procedure.
+
+The first DeepSeek condition is intentionally economical: `deepseek-flash`,
+thinking disabled, temperature 0. The Qwen comparison uses the already-versioned
+`results/observations.json`; Qwen does not need to be rerun locally.
+
+Any authenticated DeepSeek observations are experimental artifacts and must be
+committed to this branch, normally as
+`results/deepseek-observations.json`. Keep raw observations intact and clearly
+separate later V4 Pro or thinking-enabled conditions rather than overwriting the
+first run.
