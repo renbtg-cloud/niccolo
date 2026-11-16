@@ -290,6 +290,63 @@ mod tests {
         assert_eq!(evaluate(p, None, &rows).unwrap().net_points, -40);
     }
     #[test]
+    fn weaker_copies_from_a_known_origin_cannot_manufacture_corroboration() {
+        let baseline = vec![
+            obs(1, Some(5), Stance::Supports, 80),
+            obs(2, Some(5), Stance::Contradicts, 65),
+        ];
+        let original = evaluate(WeightPolicy::default(), None, &baseline).unwrap();
+        let mut copied = baseline;
+        for (id, stance, strength) in [
+            (3, Stance::Supports, 70),
+            (4, Stance::Supports, 70),
+            (5, Stance::Contradicts, 60),
+            (6, Stance::ContextOnly, 100),
+        ] {
+            copied.push(obs(id, Some(5), stance, strength));
+        }
+        let report = evaluate(WeightPolicy::default(), Some(99), &copied).unwrap();
+        assert_eq!(report.support_points, original.support_points);
+        assert_eq!(report.counter_points, original.counter_points);
+        assert_eq!(report.net_points, original.net_points);
+        assert_eq!(report.origins[0].item_count, 6);
+        assert!(!report.independence_established);
+        assert!(!report.human_confidence_is_documentary_evidence);
+        assert!(!report.establishes_fact);
+    }
+
+    #[test]
+    fn evidence_input_permutation_cannot_change_explainable_balance() {
+        let rows = vec![
+            obs(1, Some(17), Stance::Supports, 87),
+            obs(2, Some(17), Stance::Contradicts, 62),
+            obs(3, None, Stance::Supports, 50),
+            obs(4, None, Stance::ContextOnly, 90),
+            obs(5, Some(31), Stance::Contradicts, 33),
+        ];
+        let policy = WeightPolicy {
+            support_multiplier_pct: 140,
+            counter_multiplier_pct: 75,
+            per_origin_cap: 85,
+        };
+        let reference = evaluate(policy, Some(23), &rows).unwrap();
+        for offset in 0..rows.len() {
+            let mut permutation = rows.clone();
+            permutation.rotate_left(offset);
+            if offset % 2 == 1 {
+                permutation.reverse();
+            }
+            let score = evaluate(policy, Some(23), &permutation).unwrap();
+            assert_eq!(
+                score, reference,
+                "input ordering changed the score at rotation {offset}"
+            );
+        }
+        assert!(!reference.score_is_probability_of_truth);
+        assert!(!reference.independence_established);
+    }
+
+    #[test]
     fn context_is_not_evidence() {
         let rows = vec![obs(1, Some(5), Stance::ContextOnly, 100)];
         assert_eq!(
