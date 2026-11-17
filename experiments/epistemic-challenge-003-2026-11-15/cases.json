@@ -1,0 +1,1978 @@
+[
+  {
+    "case_id": "hyp-4-r1",
+    "pair_id": "hyp-4",
+    "phase": 1,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Quin | cannot determine whether the source establishes | delay_for_review",
+        "gold": "A",
+        "mapping": {
+          "V": "R",
+          "W": "A",
+          "X": "B",
+          "Y": "N",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Rosa | relayed | delay_for_bargaining",
+        "gold": "R",
+        "mapping": {
+          "V": "R",
+          "W": "N",
+          "X": "A",
+          "Y": "B",
+          "Z": "K"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [
+      "delay_for_review"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "prov-3-r1",
+    "pair_id": "prov-3",
+    "phase": 1,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Pia | put forward an unverified version of | late_delivery",
+        "gold": "R",
+        "mapping": {
+          "V": "N",
+          "W": "B",
+          "X": "R",
+          "Y": "A",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Rui | read the source itself and verified | late_delivery",
+        "gold": "K",
+        "mapping": {
+          "V": "A",
+          "W": "R",
+          "X": "K",
+          "Y": "N",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "corroborated",
+    "rules": [
+      {
+        "if": [
+          "late_delivery",
+          "R(Pia,t1,late_delivery)"
+        ],
+        "then": "corroborated"
+      }
+    ],
+    "givens": [
+      "!irrelevant_receipt"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "and-2-r0",
+    "pair_id": "and-2",
+    "phase": 0,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Uma | has a hunch | approval_exists",
+        "gold": "B",
+        "mapping": {
+          "V": "N",
+          "W": "K",
+          "X": "R",
+          "Y": "B",
+          "Z": "A"
+        }
+      },
+      {
+        "text": "t1 | Zed | verified | funds_reserved",
+        "gold": "K",
+        "mapping": {
+          "V": "B",
+          "W": "N",
+          "X": "R",
+          "Y": "A",
+          "Z": "K"
+        }
+      }
+    ],
+    "query": "ready",
+    "rules": [
+      {
+        "if": [
+          "approval_exists",
+          "funds_reserved"
+        ],
+        "then": "ready"
+      }
+    ],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "prov-4-r1",
+    "pair_id": "prov-4",
+    "phase": 1,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Sana | believes | key_changed",
+        "gold": "B",
+        "mapping": {
+          "V": "N",
+          "W": "B",
+          "X": "A",
+          "Y": "K",
+          "Z": "R"
+        }
+      },
+      {
+        "text": "t1 | Vik | could be quoting or confirming; no distinction is stated about | key_changed",
+        "gold": "A",
+        "mapping": {
+          "V": "B",
+          "W": "R",
+          "X": "N",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "key_changed",
+    "rules": [],
+    "givens": [
+      "R(Sana,t2,key_changed)"
+    ],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "nest-3-r1",
+    "pair_id": "nest-3",
+    "phase": 1,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Gio | has not been made privy to | plan_changed",
+        "gold": "N",
+        "mapping": {
+          "V": "A",
+          "W": "R",
+          "X": "B",
+          "Y": "N",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Hana | confirmed | plan_changed",
+        "gold": "K",
+        "mapping": {
+          "V": "B",
+          "W": "N",
+          "X": "R",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "K(Gio,t1,plan_changed)",
+    "rules": [],
+    "givens": [
+      "K(Gio,t1,plan_changed)"
+    ],
+    "expected": "CONFLICT",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "and-3-r1",
+    "pair_id": "and-3",
+    "phase": 1,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Tao | circulated somebody else's assertion about | permit_received",
+        "gold": "R",
+        "mapping": {
+          "V": "K",
+          "W": "B",
+          "X": "A",
+          "Y": "R",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t1 | Mira | has no knowledge | insurance_live",
+        "gold": "N",
+        "mapping": {
+          "V": "A",
+          "W": "K",
+          "X": "N",
+          "Y": "R",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "dispatch_ready",
+    "rules": [
+      {
+        "if": [
+          "permit_received",
+          "insurance_live"
+        ],
+        "then": "dispatch_ready"
+      }
+    ],
+    "givens": [
+      "!dispatch_ready"
+    ],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "nest-1-r1",
+    "pair_id": "nest-1",
+    "phase": 1,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Anu | saw incontrovertible evidence of | K(Bela,t0,audit_started)",
+        "gold": "K",
+        "mapping": {
+          "V": "K",
+          "W": "A",
+          "X": "R",
+          "Y": "B",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t1 | Cai | suspects | !audit_started",
+        "gold": "B",
+        "mapping": {
+          "V": "B",
+          "W": "K",
+          "X": "A",
+          "Y": "N",
+          "Z": "R"
+        }
+      }
+    ],
+    "query": "audit_started",
+    "rules": [],
+    "givens": [
+      "!audit_started"
+    ],
+    "expected": "CONFLICT",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "prov-2-r0",
+    "pair_id": "prov-2",
+    "phase": 0,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Dara | authenticated the original log and established | entry_present",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "A",
+          "Y": "N",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Hugo | reported | entry_present",
+        "gold": "R",
+        "mapping": {
+          "V": "B",
+          "W": "R",
+          "X": "N",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "entry_present",
+    "rules": [],
+    "givens": [],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "time-3-r1",
+    "pair_id": "time-3",
+    "phase": 1,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t1 | Nia | remains without access to the information about | offer_changed",
+        "gold": "N",
+        "mapping": {
+          "V": "B",
+          "W": "N",
+          "X": "A",
+          "Y": "R",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t2 | Nia | confirmed | offer_changed",
+        "gold": "K",
+        "mapping": {
+          "V": "A",
+          "W": "B",
+          "X": "N",
+          "Y": "K",
+          "Z": "R"
+        }
+      }
+    ],
+    "query": "K(Nia,t1,offer_changed)",
+    "rules": [],
+    "givens": [
+      "unrelated_message"
+    ],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "hyp-2-r1",
+    "pair_id": "hyp-2",
+    "phase": 1,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Mina | claimed | delay_for_review",
+        "gold": "R",
+        "mapping": {
+          "V": "K",
+          "W": "B",
+          "X": "N",
+          "Y": "A",
+          "Z": "R"
+        }
+      },
+      {
+        "text": "t1 | Niko | personally checked and ascertained | delay_for_bargaining",
+        "gold": "K",
+        "mapping": {
+          "V": "N",
+          "W": "A",
+          "X": "B",
+          "Y": "R",
+          "Z": "K"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [
+      "delay_for_review"
+    ],
+    "expected": "CONFLICT",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "hyp-4-r0",
+    "pair_id": "hyp-4",
+    "phase": 0,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Quin | cannot determine whether the source establishes | delay_for_review",
+        "gold": "A",
+        "mapping": {
+          "V": "R",
+          "W": "A",
+          "X": "B",
+          "Y": "N",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Rosa | relayed | delay_for_bargaining",
+        "gold": "R",
+        "mapping": {
+          "V": "R",
+          "W": "N",
+          "X": "A",
+          "Y": "B",
+          "Z": "K"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "nest-2-r1",
+    "pair_id": "nest-2",
+    "phase": 1,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Ema | verified | B(Dino,t0,deal_closed)",
+        "gold": "K",
+        "mapping": {
+          "V": "K",
+          "W": "N",
+          "X": "R",
+          "Y": "A",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Fay | is repeating another person's statement about | deal_closed",
+        "gold": "R",
+        "mapping": {
+          "V": "B",
+          "W": "A",
+          "X": "K",
+          "Y": "R",
+          "Z": "N"
+        }
+      }
+    ],
+    "query": "deal_closed",
+    "rules": [],
+    "givens": [
+      "deal_closed"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "time-1-r1",
+    "pair_id": "time-1",
+    "phase": 1,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t0 | Kai | verified | delayed_offer",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "A",
+          "X": "K",
+          "Y": "B",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t2 | Kai | has established by personal inspection | quick_offer",
+        "gold": "K",
+        "mapping": {
+          "V": "B",
+          "W": "K",
+          "X": "A",
+          "Y": "N",
+          "Z": "R"
+        }
+      }
+    ],
+    "query": "anomaly",
+    "rules": [
+      {
+        "if": [
+          "K(Kai,t2,quick_offer)",
+          "personal_high_stakes_expects_delay"
+        ],
+        "then": "anomaly"
+      }
+    ],
+    "givens": [
+      "personal_high_stakes_expects_delay",
+      "routine_call"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "and-4-r1",
+    "pair_id": "and-4",
+    "phase": 1,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Eli | cannot tell whether she knows | report_valid",
+        "gold": "A",
+        "mapping": {
+          "V": "K",
+          "W": "R",
+          "X": "A",
+          "Y": "N",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Sia | confirmed | signature_valid",
+        "gold": "K",
+        "mapping": {
+          "V": "K",
+          "W": "A",
+          "X": "R",
+          "Y": "B",
+          "Z": "N"
+        }
+      }
+    ],
+    "query": "archive_ready",
+    "rules": [
+      {
+        "if": [
+          "report_valid",
+          "signature_valid"
+        ],
+        "then": "archive_ready"
+      }
+    ],
+    "givens": [
+      "unrelated_note"
+    ],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "hyp-1-r1",
+    "pair_id": "hyp-1",
+    "phase": 1,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Lian | knows | delay_for_review",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "N",
+          "Y": "B",
+          "Z": "A"
+        }
+      },
+      {
+        "text": "t1 | Ari | would put money on | delay_for_bargaining",
+        "gold": "B",
+        "mapping": {
+          "V": "A",
+          "W": "K",
+          "X": "R",
+          "Y": "N",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [
+      "delay_for_bargaining"
+    ],
+    "expected": "CONFLICT",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "hyp-2-r0",
+    "pair_id": "hyp-2",
+    "phase": 0,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Mina | claimed | delay_for_review",
+        "gold": "R",
+        "mapping": {
+          "V": "K",
+          "W": "B",
+          "X": "N",
+          "Y": "A",
+          "Z": "R"
+        }
+      },
+      {
+        "text": "t1 | Niko | personally checked and ascertained | delay_for_bargaining",
+        "gold": "K",
+        "mapping": {
+          "V": "N",
+          "W": "A",
+          "X": "B",
+          "Y": "R",
+          "Z": "K"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "prov-2-r1",
+    "pair_id": "prov-2",
+    "phase": 1,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Dara | authenticated the original log and established | entry_present",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "A",
+          "Y": "N",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Hugo | reported | entry_present",
+        "gold": "R",
+        "mapping": {
+          "V": "B",
+          "W": "R",
+          "X": "N",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "entry_present",
+    "rules": [],
+    "givens": [
+      "!entry_present"
+    ],
+    "expected": "CONFLICT",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "hyp-3-r1",
+    "pair_id": "hyp-3",
+    "phase": 1,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Orla | has a working theory that | delay_for_review",
+        "gold": "B",
+        "mapping": {
+          "V": "B",
+          "W": "R",
+          "X": "A",
+          "Y": "N",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Paco | is unaware | delay_for_bargaining",
+        "gold": "N",
+        "mapping": {
+          "V": "N",
+          "W": "B",
+          "X": "R",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [
+      "!delay_for_bargaining"
+    ],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "CONFLICT",
+      "Y": "SUPPORTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "hyp-1-r0",
+    "pair_id": "hyp-1",
+    "phase": 0,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Lian | knows | delay_for_review",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "N",
+          "Y": "B",
+          "Z": "A"
+        }
+      },
+      {
+        "text": "t1 | Ari | would put money on | delay_for_bargaining",
+        "gold": "B",
+        "mapping": {
+          "V": "A",
+          "W": "K",
+          "X": "R",
+          "Y": "N",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "nest-1-r0",
+    "pair_id": "nest-1",
+    "phase": 0,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Anu | saw incontrovertible evidence of | K(Bela,t0,audit_started)",
+        "gold": "K",
+        "mapping": {
+          "V": "K",
+          "W": "A",
+          "X": "R",
+          "Y": "B",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t1 | Cai | suspects | !audit_started",
+        "gold": "B",
+        "mapping": {
+          "V": "B",
+          "W": "K",
+          "X": "A",
+          "Y": "N",
+          "Z": "R"
+        }
+      }
+    ],
+    "query": "audit_started",
+    "rules": [],
+    "givens": [],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "prov-3-r0",
+    "pair_id": "prov-3",
+    "phase": 0,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Pia | put forward an unverified version of | late_delivery",
+        "gold": "R",
+        "mapping": {
+          "V": "N",
+          "W": "B",
+          "X": "R",
+          "Y": "A",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Rui | read the source itself and verified | late_delivery",
+        "gold": "K",
+        "mapping": {
+          "V": "A",
+          "W": "R",
+          "X": "K",
+          "Y": "N",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "corroborated",
+    "rules": [
+      {
+        "if": [
+          "late_delivery",
+          "R(Pia,t1,late_delivery)"
+        ],
+        "then": "corroborated"
+      }
+    ],
+    "givens": [],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "UNRESOLVED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "time-4-r0",
+    "pair_id": "time-4",
+    "phase": 0,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t1 | Oli | reported | hard_bargaining",
+        "gold": "R",
+        "mapping": {
+          "V": "A",
+          "W": "B",
+          "X": "R",
+          "Y": "K",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t1 | Paz | has direct evidence | high_stakes",
+        "gold": "K",
+        "mapping": {
+          "V": "A",
+          "W": "R",
+          "X": "N",
+          "Y": "K",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "anomaly",
+    "rules": [
+      {
+        "if": [
+          "hard_bargaining",
+          "high_stakes",
+          "personal_baseline_expects_trust"
+        ],
+        "then": "anomaly"
+      }
+    ],
+    "givens": [
+      "personal_baseline_expects_trust"
+    ],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "time-4-r1",
+    "pair_id": "time-4",
+    "phase": 1,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t1 | Oli | reported | hard_bargaining",
+        "gold": "R",
+        "mapping": {
+          "V": "A",
+          "W": "B",
+          "X": "R",
+          "Y": "K",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t1 | Paz | has direct evidence | high_stakes",
+        "gold": "K",
+        "mapping": {
+          "V": "A",
+          "W": "R",
+          "X": "N",
+          "Y": "K",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "anomaly",
+    "rules": [
+      {
+        "if": [
+          "hard_bargaining",
+          "high_stakes",
+          "personal_baseline_expects_trust"
+        ],
+        "then": "anomaly"
+      }
+    ],
+    "givens": [
+      "personal_baseline_expects_trust",
+      "hard_bargaining"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "SUPPORTED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "and-1-r0",
+    "pair_id": "and-1",
+    "phase": 0,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Ela | confirmed | seal_intact",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "A",
+          "X": "K",
+          "Y": "N",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Noah | checked the actual receipt and can vouch for | fee_paid",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "N",
+          "X": "K",
+          "Y": "B",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "release_ready",
+    "rules": [
+      {
+        "if": [
+          "seal_intact",
+          "fee_paid"
+        ],
+        "then": "release_ready"
+      }
+    ],
+    "givens": [],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "nest-4-r0",
+    "pair_id": "nest-4",
+    "phase": 0,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Ina | is known to have expressed either knowledge or doubt about | contract_signed",
+        "gold": "A",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "N",
+          "Y": "A",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Jai | thinks | contract_signed",
+        "gold": "B",
+        "mapping": {
+          "V": "A",
+          "W": "B",
+          "X": "R",
+          "Y": "K",
+          "Z": "N"
+        }
+      }
+    ],
+    "query": "contract_signed",
+    "rules": [],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "nest-4-r1",
+    "pair_id": "nest-4",
+    "phase": 1,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Ina | is known to have expressed either knowledge or doubt about | contract_signed",
+        "gold": "A",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "N",
+          "Y": "A",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Jai | thinks | contract_signed",
+        "gold": "B",
+        "mapping": {
+          "V": "A",
+          "W": "B",
+          "X": "R",
+          "Y": "K",
+          "Z": "N"
+        }
+      }
+    ],
+    "query": "contract_signed",
+    "rules": [],
+    "givens": [
+      "!contract_signed"
+    ],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "and-3-r0",
+    "pair_id": "and-3",
+    "phase": 0,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Tao | circulated somebody else's assertion about | permit_received",
+        "gold": "R",
+        "mapping": {
+          "V": "K",
+          "W": "B",
+          "X": "A",
+          "Y": "R",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t1 | Mira | has no knowledge | insurance_live",
+        "gold": "N",
+        "mapping": {
+          "V": "A",
+          "W": "K",
+          "X": "N",
+          "Y": "R",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "dispatch_ready",
+    "rules": [
+      {
+        "if": [
+          "permit_received",
+          "insurance_live"
+        ],
+        "then": "dispatch_ready"
+      }
+    ],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "prov-1-r0",
+    "pair_id": "prov-1",
+    "phase": 0,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Ivo | reported | invoice_missing",
+        "gold": "R",
+        "mapping": {
+          "V": "N",
+          "W": "A",
+          "X": "B",
+          "Y": "K",
+          "Z": "R"
+        }
+      },
+      {
+        "text": "t1 | Nora | forwarded an identical allegation about | invoice_missing",
+        "gold": "R",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "N",
+          "Y": "A",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "independent_corroboration",
+    "rules": [
+      {
+        "if": [
+          "independent_register_confirms",
+          "R(Ivo,t1,invoice_missing)"
+        ],
+        "then": "independent_corroboration"
+      }
+    ],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "REFUTED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "nest-2-r0",
+    "pair_id": "nest-2",
+    "phase": 0,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Ema | verified | B(Dino,t0,deal_closed)",
+        "gold": "K",
+        "mapping": {
+          "V": "K",
+          "W": "N",
+          "X": "R",
+          "Y": "A",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Fay | is repeating another person's statement about | deal_closed",
+        "gold": "R",
+        "mapping": {
+          "V": "B",
+          "W": "A",
+          "X": "K",
+          "Y": "R",
+          "Z": "N"
+        }
+      }
+    ],
+    "query": "deal_closed",
+    "rules": [],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "hyp-3-r0",
+    "pair_id": "hyp-3",
+    "phase": 0,
+    "family": "competition",
+    "records": [
+      {
+        "text": "t1 | Orla | has a working theory that | delay_for_review",
+        "gold": "B",
+        "mapping": {
+          "V": "B",
+          "W": "R",
+          "X": "A",
+          "Y": "N",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Paco | is unaware | delay_for_bargaining",
+        "gold": "N",
+        "mapping": {
+          "V": "N",
+          "W": "B",
+          "X": "R",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "prefer_review",
+    "rules": [
+      {
+        "if": [
+          "delay_for_review"
+        ],
+        "then": "support_review"
+      },
+      {
+        "if": [
+          "delay_for_bargaining"
+        ],
+        "then": "support_bargaining"
+      },
+      {
+        "if": [
+          "support_review"
+        ],
+        "then": "prefer_review"
+      },
+      {
+        "if": [
+          "support_bargaining"
+        ],
+        "then": "!prefer_review"
+      }
+    ],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "and-4-r0",
+    "pair_id": "and-4",
+    "phase": 0,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Eli | cannot tell whether she knows | report_valid",
+        "gold": "A",
+        "mapping": {
+          "V": "K",
+          "W": "R",
+          "X": "A",
+          "Y": "N",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Sia | confirmed | signature_valid",
+        "gold": "K",
+        "mapping": {
+          "V": "K",
+          "W": "A",
+          "X": "R",
+          "Y": "B",
+          "Z": "N"
+        }
+      }
+    ],
+    "query": "archive_ready",
+    "rules": [
+      {
+        "if": [
+          "report_valid",
+          "signature_valid"
+        ],
+        "then": "archive_ready"
+      }
+    ],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "UNRESOLVED",
+      "X": "SUPPORTED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "time-3-r0",
+    "pair_id": "time-3",
+    "phase": 0,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t1 | Nia | remains without access to the information about | offer_changed",
+        "gold": "N",
+        "mapping": {
+          "V": "B",
+          "W": "N",
+          "X": "A",
+          "Y": "R",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t2 | Nia | confirmed | offer_changed",
+        "gold": "K",
+        "mapping": {
+          "V": "A",
+          "W": "B",
+          "X": "N",
+          "Y": "K",
+          "Z": "R"
+        }
+      }
+    ],
+    "query": "K(Nia,t1,offer_changed)",
+    "rules": [],
+    "givens": [],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "time-2-r1",
+    "pair_id": "time-2",
+    "phase": 1,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t0 | Lea | knows | decision_open",
+        "gold": "K",
+        "mapping": {
+          "V": "N",
+          "W": "R",
+          "X": "B",
+          "Y": "A",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t2 | Max | reckons it likely that | decision_open",
+        "gold": "B",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "B",
+          "Y": "N",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "K(Lea,t2,decision_open)",
+    "rules": [],
+    "givens": [
+      "!K(Lea,t2,decision_open)"
+    ],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "time-2-r0",
+    "pair_id": "time-2",
+    "phase": 0,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t0 | Lea | knows | decision_open",
+        "gold": "K",
+        "mapping": {
+          "V": "N",
+          "W": "R",
+          "X": "B",
+          "Y": "A",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t2 | Max | reckons it likely that | decision_open",
+        "gold": "B",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "B",
+          "Y": "N",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "K(Lea,t2,decision_open)",
+    "rules": [],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "CONFLICT",
+      "Y": "UNRESOLVED",
+      "Z": "REFUTED"
+    }
+  },
+  {
+    "case_id": "and-2-r1",
+    "pair_id": "and-2",
+    "phase": 1,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Uma | has a hunch | approval_exists",
+        "gold": "B",
+        "mapping": {
+          "V": "N",
+          "W": "K",
+          "X": "R",
+          "Y": "B",
+          "Z": "A"
+        }
+      },
+      {
+        "text": "t1 | Zed | verified | funds_reserved",
+        "gold": "K",
+        "mapping": {
+          "V": "B",
+          "W": "N",
+          "X": "R",
+          "Y": "A",
+          "Z": "K"
+        }
+      }
+    ],
+    "query": "ready",
+    "rules": [
+      {
+        "if": [
+          "approval_exists",
+          "funds_reserved"
+        ],
+        "then": "ready"
+      }
+    ],
+    "givens": [
+      "approval_exists"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "CONFLICT",
+      "Z": "UNRESOLVED"
+    }
+  },
+  {
+    "case_id": "prov-4-r0",
+    "pair_id": "prov-4",
+    "phase": 0,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Sana | believes | key_changed",
+        "gold": "B",
+        "mapping": {
+          "V": "N",
+          "W": "B",
+          "X": "A",
+          "Y": "K",
+          "Z": "R"
+        }
+      },
+      {
+        "text": "t1 | Vik | could be quoting or confirming; no distinction is stated about | key_changed",
+        "gold": "A",
+        "mapping": {
+          "V": "B",
+          "W": "R",
+          "X": "N",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "key_changed",
+    "rules": [],
+    "givens": [],
+    "expected": "UNRESOLVED",
+    "mapping": {
+      "W": "UNRESOLVED",
+      "X": "CONFLICT",
+      "Y": "REFUTED",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "and-1-r1",
+    "pair_id": "and-1",
+    "phase": 1,
+    "family": "conjunction",
+    "records": [
+      {
+        "text": "t1 | Ela | confirmed | seal_intact",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "A",
+          "X": "K",
+          "Y": "N",
+          "Z": "B"
+        }
+      },
+      {
+        "text": "t1 | Noah | checked the actual receipt and can vouch for | fee_paid",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "N",
+          "X": "K",
+          "Y": "B",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "release_ready",
+    "rules": [
+      {
+        "if": [
+          "seal_intact",
+          "fee_paid"
+        ],
+        "then": "release_ready"
+      }
+    ],
+    "givens": [
+      "!release_ready"
+    ],
+    "expected": "CONFLICT",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "prov-1-r1",
+    "pair_id": "prov-1",
+    "phase": 1,
+    "family": "provenance",
+    "records": [
+      {
+        "text": "t1 | Ivo | reported | invoice_missing",
+        "gold": "R",
+        "mapping": {
+          "V": "N",
+          "W": "A",
+          "X": "B",
+          "Y": "K",
+          "Z": "R"
+        }
+      },
+      {
+        "text": "t1 | Nora | forwarded an identical allegation about | invoice_missing",
+        "gold": "R",
+        "mapping": {
+          "V": "R",
+          "W": "K",
+          "X": "N",
+          "Y": "A",
+          "Z": "B"
+        }
+      }
+    ],
+    "query": "independent_corroboration",
+    "rules": [
+      {
+        "if": [
+          "independent_register_confirms",
+          "R(Ivo,t1,invoice_missing)"
+        ],
+        "then": "independent_corroboration"
+      }
+    ],
+    "givens": [
+      "independent_register_confirms"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "REFUTED",
+      "X": "UNRESOLVED",
+      "Y": "CONFLICT",
+      "Z": "SUPPORTED"
+    }
+  },
+  {
+    "case_id": "time-1-r0",
+    "pair_id": "time-1",
+    "phase": 0,
+    "family": "temporal_context",
+    "records": [
+      {
+        "text": "t0 | Kai | verified | delayed_offer",
+        "gold": "K",
+        "mapping": {
+          "V": "R",
+          "W": "A",
+          "X": "K",
+          "Y": "B",
+          "Z": "N"
+        }
+      },
+      {
+        "text": "t2 | Kai | has established by personal inspection | quick_offer",
+        "gold": "K",
+        "mapping": {
+          "V": "B",
+          "W": "K",
+          "X": "A",
+          "Y": "N",
+          "Z": "R"
+        }
+      }
+    ],
+    "query": "anomaly",
+    "rules": [
+      {
+        "if": [
+          "K(Kai,t2,quick_offer)",
+          "personal_high_stakes_expects_delay"
+        ],
+        "then": "anomaly"
+      }
+    ],
+    "givens": [
+      "personal_high_stakes_expects_delay"
+    ],
+    "expected": "SUPPORTED",
+    "mapping": {
+      "W": "SUPPORTED",
+      "X": "REFUTED",
+      "Y": "UNRESOLVED",
+      "Z": "CONFLICT"
+    }
+  },
+  {
+    "case_id": "nest-3-r0",
+    "pair_id": "nest-3",
+    "phase": 0,
+    "family": "nested",
+    "records": [
+      {
+        "text": "t1 | Gio | has not been made privy to | plan_changed",
+        "gold": "N",
+        "mapping": {
+          "V": "A",
+          "W": "R",
+          "X": "B",
+          "Y": "N",
+          "Z": "K"
+        }
+      },
+      {
+        "text": "t1 | Hana | confirmed | plan_changed",
+        "gold": "K",
+        "mapping": {
+          "V": "B",
+          "W": "N",
+          "X": "R",
+          "Y": "K",
+          "Z": "A"
+        }
+      }
+    ],
+    "query": "K(Gio,t1,plan_changed)",
+    "rules": [],
+    "givens": [],
+    "expected": "REFUTED",
+    "mapping": {
+      "W": "CONFLICT",
+      "X": "SUPPORTED",
+      "Y": "REFUTED",
+      "Z": "UNRESOLVED"
+    }
+  }
+]

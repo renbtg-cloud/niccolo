@@ -1,0 +1,511 @@
+{
+  "summary": {
+    "treatments": {
+      "direct": {
+        "n": 100,
+        "correct": 29,
+        "false_certainty": 14,
+        "false_certainty_eligible": 40,
+        "unresolved_or_conflict": 54,
+        "pairs_complete": 50,
+        "pairs_both_correct": 5,
+        "changed_gold_pairs": 30,
+        "changed_pairs_both_correct": 3,
+        "unchanged_gold_pairs": 20,
+        "unchanged_pairs_both_correct": 2,
+        "spurious_revisions": 17,
+        "inference_calls": 100,
+        "model_seconds": 306.691,
+        "model_tokens": 21171,
+        "parse_correct": 0,
+        "parse_abstentions": 0,
+        "by_family": {
+          "context": {
+            "n": 20,
+            "correct": 9
+          },
+          "contradiction": {
+            "n": 20,
+            "correct": 8
+          },
+          "hypothesis": {
+            "n": 20,
+            "correct": 5
+          },
+          "nested": {
+            "n": 20,
+            "correct": 3
+          },
+          "temporal": {
+            "n": 20,
+            "correct": 4
+          }
+        },
+        "confusion": {
+          "SUPPORTED": {
+            "CONFLICT": 9,
+            "REFUTED": 9,
+            "UNRESOLVED": 7,
+            "SUPPORTED": 10
+          },
+          "REFUTED": {
+            "REFUTED": 7,
+            "CONFLICT": 10,
+            "UNRESOLVED": 2,
+            "SUPPORTED": 6
+          },
+          "UNRESOLVED": {
+            "UNRESOLVED": 6,
+            "CONFLICT": 6,
+            "REFUTED": 4,
+            "SUPPORTED": 4
+          },
+          "CONFLICT": {
+            "CONFLICT": 6,
+            "UNRESOLVED": 8,
+            "SUPPORTED": 3,
+            "REFUTED": 3
+          }
+        }
+      },
+      "lexical": {
+        "n": 100,
+        "correct": 68,
+        "false_certainty": 9,
+        "false_certainty_eligible": 40,
+        "unresolved_or_conflict": 54,
+        "pairs_complete": 50,
+        "pairs_both_correct": 34,
+        "changed_gold_pairs": 30,
+        "changed_pairs_both_correct": 21,
+        "unchanged_gold_pairs": 20,
+        "unchanged_pairs_both_correct": 13,
+        "spurious_revisions": 0,
+        "inference_calls": 0,
+        "model_seconds": 0,
+        "model_tokens": 0,
+        "parse_correct": 48,
+        "parse_abstentions": 52,
+        "by_family": {
+          "context": {
+            "n": 20,
+            "correct": 16
+          },
+          "contradiction": {
+            "n": 20,
+            "correct": 16
+          },
+          "hypothesis": {
+            "n": 20,
+            "correct": 14
+          },
+          "nested": {
+            "n": 20,
+            "correct": 10
+          },
+          "temporal": {
+            "n": 20,
+            "correct": 12
+          }
+        },
+        "confusion": {
+          "SUPPORTED": {
+            "SUPPORTED": 22,
+            "UNRESOLVED": 13
+          },
+          "REFUTED": {
+            "UNRESOLVED": 10,
+            "REFUTED": 15
+          },
+          "UNRESOLVED": {
+            "UNRESOLVED": 20
+          },
+          "CONFLICT": {
+            "REFUTED": 5,
+            "CONFLICT": 11,
+            "SUPPORTED": 4
+          }
+        }
+      },
+      "hybrid": {
+        "n": 100,
+        "correct": 57,
+        "false_certainty": 18,
+        "false_certainty_eligible": 40,
+        "unresolved_or_conflict": 44,
+        "pairs_complete": 50,
+        "pairs_both_correct": 28,
+        "changed_gold_pairs": 30,
+        "changed_pairs_both_correct": 14,
+        "unchanged_gold_pairs": 20,
+        "unchanged_pairs_both_correct": 14,
+        "spurious_revisions": 0,
+        "inference_calls": 50,
+        "model_seconds": 110.173,
+        "model_tokens": 6230,
+        "parse_correct": 34,
+        "parse_abstentions": 0,
+        "by_family": {
+          "context": {
+            "n": 20,
+            "correct": 11
+          },
+          "contradiction": {
+            "n": 20,
+            "correct": 10
+          },
+          "hypothesis": {
+            "n": 20,
+            "correct": 12
+          },
+          "nested": {
+            "n": 20,
+            "correct": 14
+          },
+          "temporal": {
+            "n": 20,
+            "correct": 10
+          }
+        },
+        "confusion": {
+          "SUPPORTED": {
+            "SUPPORTED": 18,
+            "UNRESOLVED": 17
+          },
+          "REFUTED": {
+            "REFUTED": 17,
+            "SUPPORTED": 3,
+            "UNRESOLVED": 3,
+            "CONFLICT": 2
+          },
+          "UNRESOLVED": {
+            "UNRESOLVED": 15,
+            "SUPPORTED": 5
+          },
+          "CONFLICT": {
+            "CONFLICT": 7,
+            "REFUTED": 9,
+            "SUPPORTED": 4
+          }
+        }
+      },
+      "hybrid_challenge": {
+        "n": 100,
+        "correct": 38,
+        "false_certainty": 22,
+        "false_certainty_eligible": 40,
+        "unresolved_or_conflict": 52,
+        "pairs_complete": 50,
+        "pairs_both_correct": 17,
+        "changed_gold_pairs": 30,
+        "changed_pairs_both_correct": 10,
+        "unchanged_gold_pairs": 20,
+        "unchanged_pairs_both_correct": 7,
+        "spurious_revisions": 0,
+        "inference_calls": 50,
+        "model_seconds": 137.114,
+        "model_tokens": 9030,
+        "parse_correct": 22,
+        "parse_abstentions": 0,
+        "by_family": {
+          "context": {
+            "n": 20,
+            "correct": 7
+          },
+          "contradiction": {
+            "n": 20,
+            "correct": 7
+          },
+          "hypothesis": {
+            "n": 20,
+            "correct": 5
+          },
+          "nested": {
+            "n": 20,
+            "correct": 12
+          },
+          "temporal": {
+            "n": 20,
+            "correct": 7
+          }
+        },
+        "confusion": {
+          "SUPPORTED": {
+            "SUPPORTED": 12,
+            "UNRESOLVED": 23
+          },
+          "REFUTED": {
+            "SUPPORTED": 6,
+            "UNRESOLVED": 8,
+            "REFUTED": 8,
+            "CONFLICT": 3
+          },
+          "UNRESOLVED": {
+            "SUPPORTED": 9,
+            "UNRESOLVED": 11
+          },
+          "CONFLICT": {
+            "CONFLICT": 7,
+            "REFUTED": 7,
+            "SUPPORTED": 6
+          }
+        }
+      }
+    },
+    "comparisons": {
+      "hybrid_vs_direct": {
+        "matched_cases": 100,
+        "b_correct_a_wrong": 40,
+        "a_correct_b_wrong": 12,
+        "cluster_bootstrap_interval_descriptive": [
+          0.12,
+          0.44
+        ]
+      },
+      "hybrid_vs_lexical": {
+        "matched_cases": 100,
+        "b_correct_a_wrong": 18,
+        "a_correct_b_wrong": 29,
+        "cluster_bootstrap_interval_descriptive": [
+          -0.29,
+          0.08
+        ]
+      },
+      "hybrid_challenge_vs_hybrid": {
+        "matched_cases": 100,
+        "b_correct_a_wrong": 8,
+        "a_correct_b_wrong": 27,
+        "cluster_bootstrap_interval_descriptive": [
+          -0.34,
+          -0.04
+        ]
+      }
+    }
+  },
+  "parser_audit": {
+    "lexical": {
+      "unique_records": 50,
+      "unique_relation_correct": 24,
+      "relation_confusion": {
+        "K": {
+          "ABSTAIN": 7,
+          "K": 8
+        },
+        "B": {
+          "ABSTAIN": 11,
+          "B": 4
+        },
+        "R": {
+          "R": 7,
+          "ABSTAIN": 3
+        },
+        "N": {
+          "ABSTAIN": 5,
+          "N": 5
+        }
+      },
+      "wrong_or_missing_parse_correct_verdict": 20,
+      "wrong_or_missing_parse_wrong_verdict": 32,
+      "correct_parse_wrong_verdict": 0
+    },
+    "hybrid": {
+      "unique_records": 50,
+      "unique_relation_correct": 17,
+      "relation_confusion": {
+        "K": {
+          "K": 7,
+          "N": 6,
+          "B": 1,
+          "R": 1
+        },
+        "B": {
+          "R": 3,
+          "N": 6,
+          "K": 6
+        },
+        "R": {
+          "R": 2,
+          "N": 4,
+          "K": 4
+        },
+        "N": {
+          "N": 8,
+          "K": 2
+        }
+      },
+      "wrong_or_missing_parse_correct_verdict": 23,
+      "wrong_or_missing_parse_wrong_verdict": 43,
+      "correct_parse_wrong_verdict": 0
+    },
+    "hybrid_challenge": {
+      "unique_records": 50,
+      "unique_relation_correct": 11,
+      "relation_confusion": {
+        "K": {
+          "K": 7,
+          "N": 5,
+          "B": 1,
+          "R": 2
+        },
+        "B": {
+          "K": 7,
+          "N": 6,
+          "R": 2
+        },
+        "R": {
+          "N": 1,
+          "B": 3,
+          "K": 4,
+          "R": 2
+        },
+        "N": {
+          "K": 4,
+          "B": 3,
+          "N": 2,
+          "R": 1
+        }
+      },
+      "wrong_or_missing_parse_correct_verdict": 16,
+      "wrong_or_missing_parse_wrong_verdict": 62,
+      "correct_parse_wrong_verdict": 0
+    }
+  },
+  "distinct_verdicts_across_four_parses": {
+    "2": 78,
+    "3": 15,
+    "1": 7
+  },
+  "exploratory_gated_routes": {
+    "lexical_then_hybrid": {
+      "n": 100,
+      "correct": 84,
+      "false_certainty": 7,
+      "false_certainty_eligible": 40,
+      "unresolved_or_conflict": 42,
+      "pairs_complete": 50,
+      "pairs_both_correct": 42,
+      "changed_gold_pairs": 30,
+      "changed_pairs_both_correct": 25,
+      "unchanged_gold_pairs": 20,
+      "unchanged_pairs_both_correct": 17,
+      "spurious_revisions": 0,
+      "inference_calls": 26,
+      "model_seconds": 56.909,
+      "model_tokens": 3273,
+      "parse_correct": 66,
+      "parse_abstentions": 0,
+      "by_family": {
+        "context": {
+          "n": 20,
+          "correct": 18
+        },
+        "contradiction": {
+          "n": 20,
+          "correct": 20
+        },
+        "hypothesis": {
+          "n": 20,
+          "correct": 18
+        },
+        "nested": {
+          "n": 20,
+          "correct": 14
+        },
+        "temporal": {
+          "n": 20,
+          "correct": 14
+        }
+      },
+      "confusion": {
+        "SUPPORTED": {
+          "SUPPORTED": 27,
+          "UNRESOLVED": 8
+        },
+        "REFUTED": {
+          "REFUTED": 24,
+          "UNRESOLVED": 1
+        },
+        "UNRESOLVED": {
+          "UNRESOLVED": 18,
+          "SUPPORTED": 2
+        },
+        "CONFLICT": {
+          "CONFLICT": 15,
+          "REFUTED": 4,
+          "SUPPORTED": 1
+        }
+      },
+      "route_counts_cases": {
+        "hybrid": 52,
+        "lexical": 48
+      },
+      "status": "post_hoc_exploratory_recombination_of_existing_observations"
+    },
+    "lexical_then_hybrid_challenge": {
+      "n": 100,
+      "correct": 76,
+      "false_certainty": 8,
+      "false_certainty_eligible": 40,
+      "unresolved_or_conflict": 45,
+      "pairs_complete": 50,
+      "pairs_both_correct": 37,
+      "changed_gold_pairs": 30,
+      "changed_pairs_both_correct": 24,
+      "unchanged_gold_pairs": 20,
+      "unchanged_pairs_both_correct": 13,
+      "spurious_revisions": 0,
+      "inference_calls": 26,
+      "model_seconds": 71.416,
+      "model_tokens": 4729,
+      "parse_correct": 62,
+      "parse_abstentions": 0,
+      "by_family": {
+        "context": {
+          "n": 20,
+          "correct": 16
+        },
+        "contradiction": {
+          "n": 20,
+          "correct": 18
+        },
+        "hypothesis": {
+          "n": 20,
+          "correct": 13
+        },
+        "nested": {
+          "n": 20,
+          "correct": 14
+        },
+        "temporal": {
+          "n": 20,
+          "correct": 15
+        }
+      },
+      "confusion": {
+        "SUPPORTED": {
+          "SUPPORTED": 24,
+          "UNRESOLVED": 11
+        },
+        "REFUTED": {
+          "SUPPORTED": 3,
+          "REFUTED": 20,
+          "UNRESOLVED": 2
+        },
+        "UNRESOLVED": {
+          "SUPPORTED": 4,
+          "UNRESOLVED": 16
+        },
+        "CONFLICT": {
+          "CONFLICT": 16,
+          "REFUTED": 3,
+          "SUPPORTED": 1
+        }
+      },
+      "route_counts_cases": {
+        "hybrid_challenge": 52,
+        "lexical": 48
+      },
+      "status": "post_hoc_exploratory_recombination_of_existing_observations"
+    }
+  }
+}

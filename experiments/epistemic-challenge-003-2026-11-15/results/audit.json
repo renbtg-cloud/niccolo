@@ -1,0 +1,248 @@
+{
+  "validated_rows": 40,
+  "validated_calls": 59,
+  "summary": {
+    "direct": {
+      "correct": 9,
+      "n": 40,
+      "false_certainty": 11,
+      "false_certainty_eligible": 20,
+      "abstain": 0,
+      "pairs_both_correct": 2,
+      "model_calls": 40,
+      "input_tokens": 8343,
+      "model_seconds": 116.722,
+      "by_family": {
+        "competition": {
+          "correct": 3,
+          "n": 8
+        },
+        "conjunction": {
+          "correct": 1,
+          "n": 8
+        },
+        "nested": {
+          "correct": 3,
+          "n": 8
+        },
+        "provenance": {
+          "correct": 2,
+          "n": 8
+        },
+        "temporal_context": {
+          "correct": 0,
+          "n": 8
+        }
+      }
+    },
+    "lexical": {
+      "correct": 24,
+      "n": 40,
+      "false_certainty": 5,
+      "false_certainty_eligible": 20,
+      "abstain": 0,
+      "pairs_both_correct": 12,
+      "model_calls": 0,
+      "input_tokens": 0,
+      "model_seconds": 0,
+      "by_family": {
+        "competition": {
+          "correct": 6,
+          "n": 8
+        },
+        "conjunction": {
+          "correct": 6,
+          "n": 8
+        },
+        "nested": {
+          "correct": 4,
+          "n": 8
+        },
+        "provenance": {
+          "correct": 4,
+          "n": 8
+        },
+        "temporal_context": {
+          "correct": 4,
+          "n": 8
+        }
+      }
+    },
+    "old_lexical": {
+      "correct": 26,
+      "n": 40,
+      "false_certainty": 6,
+      "false_certainty_eligible": 20,
+      "abstain": 0,
+      "pairs_both_correct": 13,
+      "model_calls": 0,
+      "input_tokens": 0,
+      "model_seconds": 0,
+      "by_family": {
+        "competition": {
+          "correct": 6,
+          "n": 8
+        },
+        "conjunction": {
+          "correct": 4,
+          "n": 8
+        },
+        "nested": {
+          "correct": 4,
+          "n": 8
+        },
+        "provenance": {
+          "correct": 6,
+          "n": 8
+        },
+        "temporal_context": {
+          "correct": 6,
+          "n": 8
+        }
+      }
+    },
+    "gated": {
+      "correct": 26,
+      "n": 40,
+      "false_certainty": 4,
+      "false_certainty_eligible": 20,
+      "abstain": 0,
+      "pairs_both_correct": 13,
+      "model_calls": 19,
+      "input_tokens": 2256,
+      "model_seconds": 41.192,
+      "by_family": {
+        "competition": {
+          "correct": 6,
+          "n": 8
+        },
+        "conjunction": {
+          "correct": 6,
+          "n": 8
+        },
+        "nested": {
+          "correct": 6,
+          "n": 8
+        },
+        "provenance": {
+          "correct": 4,
+          "n": 8
+        },
+        "temporal_context": {
+          "correct": 4,
+          "n": 8
+        }
+      }
+    },
+    "gated_stable_only": {
+      "correct": 13,
+      "n": 40,
+      "false_certainty": 0,
+      "false_certainty_eligible": 20,
+      "abstain": 27,
+      "pairs_both_correct": 5,
+      "model_calls": 19,
+      "input_tokens": 2256,
+      "model_seconds": 41.192,
+      "by_family": {
+        "competition": {
+          "correct": 2,
+          "n": 8
+        },
+        "conjunction": {
+          "correct": 4,
+          "n": 8
+        },
+        "nested": {
+          "correct": 1,
+          "n": 8
+        },
+        "provenance": {
+          "correct": 2,
+          "n": 8
+        },
+        "temporal_context": {
+          "correct": 4,
+          "n": 8
+        }
+      }
+    },
+    "budget_matched_direct": {
+      "correct": 23,
+      "n": 40,
+      "false_certainty": 4,
+      "false_certainty_eligible": 20,
+      "abstain": 0,
+      "pairs_both_correct": 9,
+      "model_calls": 10,
+      "input_tokens": 2076,
+      "model_seconds": 29.491,
+      "by_family": {
+        "competition": {
+          "correct": 5,
+          "n": 8
+        },
+        "conjunction": {
+          "correct": 5,
+          "n": 8
+        },
+        "nested": {
+          "correct": 5,
+          "n": 8
+        },
+        "provenance": {
+          "correct": 4,
+          "n": 8
+        },
+        "temporal_context": {
+          "correct": 4,
+          "n": 8
+        }
+      }
+    },
+    "sensitivity": {
+      "stable": 13,
+      "unstable": 27
+    },
+    "paired_gate_vs_lexical": {
+      "corrected": 2,
+      "regressed": 0
+    }
+  },
+  "routed_parser": {
+    "n": 19,
+    "correct": 5,
+    "abstained": 13,
+    "gold_ambiguous": 4,
+    "confusion": {
+      "A": {
+        "N": 1,
+        "A": 3
+      },
+      "B": {
+        "R": 1,
+        "A": 2
+      },
+      "K": {
+        "K": 1,
+        "B": 1,
+        "A": 3,
+        "R": 1
+      },
+      "N": {
+        "N": 1,
+        "A": 1
+      },
+      "R": {
+        "A": 4
+      }
+    }
+  },
+  "unchanged_gold_pairs": 6,
+  "spurious_revisions": {
+    "direct": 4,
+    "lexical": 0,
+    "gated": 0,
+    "gated_stable_only": 0
+  }
+}
