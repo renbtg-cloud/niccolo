@@ -42,8 +42,9 @@ SHARED = (
 
 
 def digest(path: Path) -> str:
-    with path.open("rb") as f:
-        return hashlib.file_digest(f, "sha256").hexdigest()
+    """Canonical text hash: repository LF and Windows CRLF represent the same experiment source."""
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def save_atomic(path: Path, report: dict) -> None:
