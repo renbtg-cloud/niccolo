@@ -5,16 +5,24 @@ import argparse
 import json
 from collections import Counter
 from pathlib import Path
+import hashlib
 
 from protocol import HERE, interpret, lexical, parse_visible, previous, sensitivity
-from run import MODEL_SHA, digest, direct_prompt, parser_prompt, summarize
+from run import MODEL_SHA, direct_prompt, parser_prompt, summarize
+
+
+def canonical_text_digest(path):
+    """Hash repository text canonically so LF/CRLF checkout policy does not alter evidence identity."""
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def audit(report):
     cases = json.loads((HERE / "cases.json").read_text())
-    assert report["fingerprint"] == {"cases_sha256": digest(HERE / "cases.json"),
-                                     "protocol_sha256": digest(HERE / "protocol.py"),
-                                     "runner_sha256": digest(HERE / "run.py"), "model_sha256": MODEL_SHA}
+    assert report["fingerprint"] == {"cases_sha256": canonical_text_digest(HERE / "cases.json"),
+                                     "protocol_sha256": canonical_text_digest(HERE / "protocol.py"),
+                                     "runner_sha256": canonical_text_digest(HERE / "run.py"),
+                                     "model_sha256": MODEL_SHA}
     assert [r["case_id"] for r in report["rows"]] == [c["case_id"] for c in cases]
     used = set()
     parser_gold, parser_pred = {}, {}
