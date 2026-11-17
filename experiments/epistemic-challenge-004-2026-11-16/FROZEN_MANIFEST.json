@@ -1,0 +1,35 @@
+{
+  "experiment": "epistemic-challenge-004-2026-11-16",
+  "seed": 2026111604,
+  "base_situations": 250,
+  "revisions_per_base": 4,
+  "cases": 1000,
+  "holdout_bases": 50,
+  "holdout_cases": 200,
+  "label_counts": {
+    "SUPPORTED": 250,
+    "REFUTED": 250,
+    "UNRESOLVED": 250,
+    "CONFLICT": 250
+  },
+  "family_counts": {
+    "long_chain": 100,
+    "conjunction": 100,
+    "nested": 100,
+    "provenance": 100,
+    "competition": 100,
+    "temporal": 100,
+    "context_shift": 100,
+    "noise": 100,
+    "parser_trap": 100,
+    "mixed": 100
+  },
+  "deterministic_abstention_cases": 914,
+  "parser_trap_cases": 38,
+  "high_cases": 200,
+  "max_cases": 30,
+  "corpus_sha256": "a64ec7643f234a11c5549b0a81bc4a969dbb6e9f53724bdd93146b8af4ad4f53",
+  "high_ids_sha256": "43d5ed35d9c50432a61c7f42eda740ccea847759c7cc67237135ccced87c868c",
+  "max_ids_sha256": "53487d297c66bcf6bf04db15bd0e3ecfa95d867df680f1a8d44f8d775bd52e5a",
+  "note": "The committed generator, seed and these hashes define the frozen 1,000-case corpus before authenticated DeepSeek inference. cases.generated.json is reproducible and need not be committed."
+}
