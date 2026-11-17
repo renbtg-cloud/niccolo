@@ -1,5 +1,6 @@
 # Product and evaluation
 
+- [MVP roadmap](MVP_ROADMAP.md)
 - [Competitive evaluation and benchmarking](COMPETITIVE_EVALUATION.md)
 - [MVP portability, budgets and user-owned exports](MVP_PORTABILITY_AND_ADAPTIVE_RUNTIME.md)
 
