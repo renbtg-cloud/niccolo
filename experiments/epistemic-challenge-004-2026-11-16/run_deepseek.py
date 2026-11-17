@@ -310,7 +310,7 @@ def main() -> None:
                 raise BudgetStop(f"max-new-calls reached: {args.max_new_calls}")
             spent = accumulated_peak_cost(report["calls"], args.input_price_per_million, args.output_price_per_million)
             if spent >= args.budget_usd:
-                raise BudgetStop(f"budget reached: estimated peak cost $${spent:.4f} >= $${args.budget_usd:.4f}")
+                raise BudgetStop(f"budget reached: estimated peak cost ${spent:.4f} >= ${args.budget_usd:.4f}")
             cap = {"normal": NORMAL_MAX_TOKENS, "high": HIGH_MAX_TOKENS, "max": MAX_MAX_TOKENS}[effort]
             report["calls"][key] = api_call(api_key, messages, mapping, effort, args.timeout, args.retries, cap)
             new_calls += 1
@@ -380,7 +380,7 @@ def main() -> None:
             if len(report["rows"]) % 10 == 0 or len(report["rows"]) == len(cases):
                 print(
                     f"{len(report['rows'])}/{len(cases)} "
-                    f"cost<=$${report['summary']['usage']['peak_price_estimate_usd']:.4f} "
+                    f"cost<=${report['summary']['usage']['peak_price_estimate_usd']:.4f} "
                     f"direct={report['summary']['direct_normal']['accuracy']} "
                     f"gated={report['summary']['gated_normal']['accuracy']} "
                     f"adaptive={report['summary']['gated_adaptive_max']['accuracy']}",
