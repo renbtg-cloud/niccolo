@@ -1,0 +1,3798 @@
+{
+  "fingerprint": {
+    "cases_sha256": "7ba926fb2cb87885583d20f7ba1987defddbc85d1d85c430d5d2693fbfdee0ab",
+    "protocol_sha256": "c5925acb82acca40743b9c0b72dd042a0e475227b479959f10e094648ee90a8d",
+    "runner_sha256": "d58d63742662f0df150f360799b71944d79200b62d222ad37bf3712102ee987d",
+    "model_requested": "deepseek-flash",
+    "thinking": "disabled"
+  },
+  "provider": "DeepSeek API",
+  "api_url": "https://api.deepseek.com/chat/completions",
+  "calls": {
+    "hyp-4:parse:0": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.1288,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 1,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 107
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Quin | cannot determine whether the source establishes | delay_for_review\nV: report of a claim, not necessarily true\nW: ambiguous: cannot clearly identify the relation\nX: belief, guess or suspicion\nY: explicit lack of knowledge\nZ: knowledge or verified fact\nChoose one letter only."
+        }
+      ],
+      "value": "B"
+    },
+    "hyp-4-r1:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.96445,
+      "usage": {
+        "prompt_tokens": 233,
+        "completion_tokens": 1,
+        "total_tokens": 234,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 233
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Quin | cannot determine whether the source establishes | delay_for_review\nt1 | Rosa | relayed | delay_for_bargaining\nStipulated facts: delay_for_review\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: CONFLICT\nX: REFUTED\nY: SUPPORTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "prov-3:parse:0": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.04099,
+      "usage": {
+        "prompt_tokens": 109,
+        "completion_tokens": 1,
+        "total_tokens": 110,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 109
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Pia | put forward an unverified version of | late_delivery\nV: explicit lack of knowledge\nW: belief, guess or suspicion\nX: report of a claim, not necessarily true\nY: ambiguous: cannot clearly identify the relation\nZ: knowledge or verified fact\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "prov-3:parse:1": {
+      "selected": "V",
+      "raw_content": "V",
+      "seconds": 0.76159,
+      "usage": {
+        "prompt_tokens": 108,
+        "completion_tokens": 1,
+        "total_tokens": 109,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 108
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Rui | read the source itself and verified | late_delivery\nV: ambiguous: cannot clearly identify the relation\nW: report of a claim, not necessarily true\nX: knowledge or verified fact\nY: explicit lack of knowledge\nZ: belief, guess or suspicion\nChoose one letter only."
+        }
+      ],
+      "value": "A"
+    },
+    "prov-3-r1:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.12293,
+      "usage": {
+        "prompt_tokens": 218,
+        "completion_tokens": 1,
+        "total_tokens": 219,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 218
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Pia | put forward an unverified version of | late_delivery\nt1 | Rui | read the source itself and verified | late_delivery\nStipulated facts: !irrelevant_receipt\nRules:\nIF late_delivery AND R(Pia,t1,late_delivery) THEN corroborated\nQuery: corroborated\nW: CONFLICT\nX: UNRESOLVED\nY: SUPPORTED\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "and-2-r0:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.04102,
+      "usage": {
+        "prompt_tokens": 189,
+        "completion_tokens": 1,
+        "total_tokens": 190,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 189
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Uma | has a hunch | approval_exists\nt1 | Zed | verified | funds_reserved\nStipulated facts: (none)\nRules:\nIF approval_exists AND funds_reserved THEN ready\nQuery: ready\nW: REFUTED\nX: UNRESOLVED\nY: CONFLICT\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "prov-4:parse:1": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.98507,
+      "usage": {
+        "prompt_tokens": 111,
+        "completion_tokens": 1,
+        "total_tokens": 112,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 111
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Vik | could be quoting or confirming; no distinction is stated about | key_changed\nV: belief, guess or suspicion\nW: report of a claim, not necessarily true\nX: explicit lack of knowledge\nY: knowledge or verified fact\nZ: ambiguous: cannot clearly identify the relation\nChoose one letter only."
+        }
+      ],
+      "value": "A"
+    },
+    "prov-4-r1:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.68046,
+      "usage": {
+        "prompt_tokens": 200,
+        "completion_tokens": 1,
+        "total_tokens": 201,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 200
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Sana | believes | key_changed\nt1 | Vik | could be quoting or confirming; no distinction is stated about | key_changed\nStipulated facts: R(Sana,t2,key_changed)\nRules:\n(none)\nQuery: key_changed\nW: SUPPORTED\nX: CONFLICT\nY: UNRESOLVED\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-3:parse:0": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 1.14248,
+      "usage": {
+        "prompt_tokens": 108,
+        "completion_tokens": 1,
+        "total_tokens": 109,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 108
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Gio | has not been made privy to | plan_changed\nV: ambiguous: cannot clearly identify the relation\nW: report of a claim, not necessarily true\nX: belief, guess or suspicion\nY: explicit lack of knowledge\nZ: knowledge or verified fact\nChoose one letter only."
+        }
+      ],
+      "value": "N"
+    },
+    "nest-3-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.89269,
+      "usage": {
+        "prompt_tokens": 203,
+        "completion_tokens": 1,
+        "total_tokens": 204,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 203
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Gio | has not been made privy to | plan_changed\nt1 | Hana | confirmed | plan_changed\nStipulated facts: K(Gio,t1,plan_changed)\nRules:\n(none)\nQuery: K(Gio,t1,plan_changed)\nW: CONFLICT\nX: REFUTED\nY: UNRESOLVED\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "and-3:parse:0": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 1.00293,
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 1,
+        "total_tokens": 107,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 106
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Tao | circulated somebody else's assertion about | permit_received\nV: knowledge or verified fact\nW: belief, guess or suspicion\nX: ambiguous: cannot clearly identify the relation\nY: report of a claim, not necessarily true\nZ: explicit lack of knowledge\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "and-3-r1:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.94974,
+      "usage": {
+        "prompt_tokens": 201,
+        "completion_tokens": 1,
+        "total_tokens": 202,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 201
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Tao | circulated somebody else's assertion about | permit_received\nt1 | Mira | has no knowledge | insurance_live\nStipulated facts: !dispatch_ready\nRules:\nIF permit_received AND insurance_live THEN dispatch_ready\nQuery: dispatch_ready\nW: REFUTED\nX: UNRESOLVED\nY: SUPPORTED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-1:parse:0": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.99861,
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 1,
+        "total_tokens": 116,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 115
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Anu | saw incontrovertible evidence of | K(Bela,t0,audit_started)\nV: knowledge or verified fact\nW: ambiguous: cannot clearly identify the relation\nX: report of a claim, not necessarily true\nY: belief, guess or suspicion\nZ: explicit lack of knowledge\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "nest-1-r1:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.84286,
+      "usage": {
+        "prompt_tokens": 201,
+        "completion_tokens": 1,
+        "total_tokens": 202,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 201
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Anu | saw incontrovertible evidence of | K(Bela,t0,audit_started)\nt1 | Cai | suspects | !audit_started\nStipulated facts: !audit_started\nRules:\n(none)\nQuery: audit_started\nW: SUPPORTED\nX: CONFLICT\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    },
+    "prov-2:parse:0": {
+      "selected": "V",
+      "raw_content": "V",
+      "seconds": 0.81876,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 1,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 107
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Dara | authenticated the original log and established | entry_present\nV: report of a claim, not necessarily true\nW: knowledge or verified fact\nX: ambiguous: cannot clearly identify the relation\nY: explicit lack of knowledge\nZ: belief, guess or suspicion\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "prov-2-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.00831,
+      "usage": {
+        "prompt_tokens": 188,
+        "completion_tokens": 1,
+        "total_tokens": 189,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 188
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Dara | authenticated the original log and established | entry_present\nt1 | Hugo | reported | entry_present\nStipulated facts: (none)\nRules:\n(none)\nQuery: entry_present\nW: CONFLICT\nX: SUPPORTED\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "time-3:parse:0": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.19183,
+      "usage": {
+        "prompt_tokens": 108,
+        "completion_tokens": 1,
+        "total_tokens": 109,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 108
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Nia | remains without access to the information about | offer_changed\nV: belief, guess or suspicion\nW: explicit lack of knowledge\nX: ambiguous: cannot clearly identify the relation\nY: report of a claim, not necessarily true\nZ: knowledge or verified fact\nChoose one letter only."
+        }
+      ],
+      "value": "A"
+    },
+    "time-3-r1:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.75655,
+      "usage": {
+        "prompt_tokens": 196,
+        "completion_tokens": 1,
+        "total_tokens": 197,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 196
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Nia | remains without access to the information about | offer_changed\nt2 | Nia | confirmed | offer_changed\nStipulated facts: unrelated_message\nRules:\n(none)\nQuery: K(Nia,t1,offer_changed)\nW: REFUTED\nX: UNRESOLVED\nY: SUPPORTED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "hyp-2:parse:1": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.90134,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 1,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 107
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Niko | personally checked and ascertained | delay_for_bargaining\nV: explicit lack of knowledge\nW: ambiguous: cannot clearly identify the relation\nX: belief, guess or suspicion\nY: report of a claim, not necessarily true\nZ: knowledge or verified fact\nChoose one letter only."
+        }
+      ],
+      "value": "K"
+    },
+    "hyp-2-r1:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.72043,
+      "usage": {
+        "prompt_tokens": 231,
+        "completion_tokens": 1,
+        "total_tokens": 232,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 231
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Mina | claimed | delay_for_review\nt1 | Niko | personally checked and ascertained | delay_for_bargaining\nStipulated facts: delay_for_review\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: REFUTED\nX: SUPPORTED\nY: UNRESOLVED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "hyp-4-r0:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.83063,
+      "usage": {
+        "prompt_tokens": 231,
+        "completion_tokens": 1,
+        "total_tokens": 232,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 231
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Quin | cannot determine whether the source establishes | delay_for_review\nt1 | Rosa | relayed | delay_for_bargaining\nStipulated facts: (none)\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: SUPPORTED\nX: REFUTED\nY: CONFLICT\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-2:parse:1": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.98333,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 1,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 107
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Fay | is repeating another person's statement about | deal_closed\nV: belief, guess or suspicion\nW: ambiguous: cannot clearly identify the relation\nX: knowledge or verified fact\nY: report of a claim, not necessarily true\nZ: explicit lack of knowledge\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "nest-2-r1:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.35415,
+      "usage": {
+        "prompt_tokens": 196,
+        "completion_tokens": 1,
+        "total_tokens": 197,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 196
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ema | verified | B(Dino,t0,deal_closed)\nt1 | Fay | is repeating another person's statement about | deal_closed\nStipulated facts: deal_closed\nRules:\n(none)\nQuery: deal_closed\nW: REFUTED\nX: SUPPORTED\nY: UNRESOLVED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "time-1:parse:1": {
+      "selected": "W",
+      "raw_content": "W",
+      "seconds": 1.01761,
+      "usage": {
+        "prompt_tokens": 105,
+        "completion_tokens": 1,
+        "total_tokens": 106,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 105
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t2 | Kai | has established by personal inspection | quick_offer\nV: belief, guess or suspicion\nW: knowledge or verified fact\nX: ambiguous: cannot clearly identify the relation\nY: explicit lack of knowledge\nZ: report of a claim, not necessarily true\nChoose one letter only."
+        }
+      ],
+      "value": "K"
+    },
+    "time-1-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.18078,
+      "usage": {
+        "prompt_tokens": 217,
+        "completion_tokens": 1,
+        "total_tokens": 218,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 217
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt0 | Kai | verified | delayed_offer\nt2 | Kai | has established by personal inspection | quick_offer\nStipulated facts: personal_high_stakes_expects_delay, routine_call\nRules:\nIF K(Kai,t2,quick_offer) AND personal_high_stakes_expects_delay THEN anomaly\nQuery: anomaly\nW: CONFLICT\nX: REFUTED\nY: UNRESOLVED\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "and-4:parse:0": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.98422,
+      "usage": {
+        "prompt_tokens": 104,
+        "completion_tokens": 1,
+        "total_tokens": 105,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 104
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Eli | cannot tell whether she knows | report_valid\nV: knowledge or verified fact\nW: report of a claim, not necessarily true\nX: ambiguous: cannot clearly identify the relation\nY: explicit lack of knowledge\nZ: belief, guess or suspicion\nChoose one letter only."
+        }
+      ],
+      "value": "N"
+    },
+    "and-4-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.22535,
+      "usage": {
+        "prompt_tokens": 194,
+        "completion_tokens": 1,
+        "total_tokens": 195,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 194
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Eli | cannot tell whether she knows | report_valid\nt1 | Sia | confirmed | signature_valid\nStipulated facts: unrelated_note\nRules:\nIF report_valid AND signature_valid THEN archive_ready\nQuery: archive_ready\nW: UNRESOLVED\nX: REFUTED\nY: CONFLICT\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "hyp-1:parse:1": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.19954,
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 1,
+        "total_tokens": 107,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 106
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Ari | would put money on | delay_for_bargaining\nV: ambiguous: cannot clearly identify the relation\nW: knowledge or verified fact\nX: report of a claim, not necessarily true\nY: explicit lack of knowledge\nZ: belief, guess or suspicion\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "hyp-1-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.11727,
+      "usage": {
+        "prompt_tokens": 232,
+        "completion_tokens": 1,
+        "total_tokens": 233,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 232
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Lian | knows | delay_for_review\nt1 | Ari | would put money on | delay_for_bargaining\nStipulated facts: delay_for_bargaining\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: SUPPORTED\nX: CONFLICT\nY: UNRESOLVED\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    },
+    "hyp-2-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.08533,
+      "usage": {
+        "prompt_tokens": 229,
+        "completion_tokens": 1,
+        "total_tokens": 230,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 229
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Mina | claimed | delay_for_review\nt1 | Niko | personally checked and ascertained | delay_for_bargaining\nStipulated facts: (none)\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: UNRESOLVED\nX: REFUTED\nY: SUPPORTED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    },
+    "prov-2-r1:direct": {
+      "selected": "W",
+      "raw_content": "W",
+      "seconds": 0.82614,
+      "usage": {
+        "prompt_tokens": 190,
+        "completion_tokens": 1,
+        "total_tokens": 191,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 190
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Dara | authenticated the original log and established | entry_present\nt1 | Hugo | reported | entry_present\nStipulated facts: !entry_present\nRules:\n(none)\nQuery: entry_present\nW: REFUTED\nX: SUPPORTED\nY: UNRESOLVED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    },
+    "hyp-3:parse:0": {
+      "selected": "V",
+      "raw_content": "V",
+      "seconds": 0.86004,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 1,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 107
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Orla | has a working theory that | delay_for_review\nV: belief, guess or suspicion\nW: report of a claim, not necessarily true\nX: ambiguous: cannot clearly identify the relation\nY: explicit lack of knowledge\nZ: knowledge or verified fact\nChoose one letter only."
+        }
+      ],
+      "value": "B"
+    },
+    "hyp-3-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.90534,
+      "usage": {
+        "prompt_tokens": 236,
+        "completion_tokens": 1,
+        "total_tokens": 237,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 236
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Orla | has a working theory that | delay_for_review\nt1 | Paco | is unaware | delay_for_bargaining\nStipulated facts: !delay_for_bargaining\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: REFUTED\nX: CONFLICT\nY: SUPPORTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "hyp-1-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.86011,
+      "usage": {
+        "prompt_tokens": 229,
+        "completion_tokens": 1,
+        "total_tokens": 230,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 229
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Lian | knows | delay_for_review\nt1 | Ari | would put money on | delay_for_bargaining\nStipulated facts: (none)\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: CONFLICT\nX: SUPPORTED\nY: UNRESOLVED\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "nest-1-r0:direct": {
+      "selected": "W",
+      "raw_content": "W",
+      "seconds": 1.37341,
+      "usage": {
+        "prompt_tokens": 198,
+        "completion_tokens": 1,
+        "total_tokens": 199,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 198
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Anu | saw incontrovertible evidence of | K(Bela,t0,audit_started)\nt1 | Cai | suspects | !audit_started\nStipulated facts: (none)\nRules:\n(none)\nQuery: audit_started\nW: UNRESOLVED\nX: SUPPORTED\nY: REFUTED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "prov-3-r0:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.12936,
+      "usage": {
+        "prompt_tokens": 214,
+        "completion_tokens": 1,
+        "total_tokens": 215,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 214
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Pia | put forward an unverified version of | late_delivery\nt1 | Rui | read the source itself and verified | late_delivery\nStipulated facts: (none)\nRules:\nIF late_delivery AND R(Pia,t1,late_delivery) THEN corroborated\nQuery: corroborated\nW: UNRESOLVED\nX: REFUTED\nY: CONFLICT\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "time-4-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.06744,
+      "usage": {
+        "prompt_tokens": 210,
+        "completion_tokens": 1,
+        "total_tokens": 211,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 210
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Oli | reported | hard_bargaining\nt1 | Paz | has direct evidence | high_stakes\nStipulated facts: personal_baseline_expects_trust\nRules:\nIF hard_bargaining AND high_stakes AND personal_baseline_expects_trust THEN anomaly\nQuery: anomaly\nW: CONFLICT\nX: SUPPORTED\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "time-4-r1:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 1.13003,
+      "usage": {
+        "prompt_tokens": 215,
+        "completion_tokens": 1,
+        "total_tokens": 216,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 215
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Oli | reported | hard_bargaining\nt1 | Paz | has direct evidence | high_stakes\nStipulated facts: personal_baseline_expects_trust, hard_bargaining\nRules:\nIF hard_bargaining AND high_stakes AND personal_baseline_expects_trust THEN anomaly\nQuery: anomaly\nW: REFUTED\nX: UNRESOLVED\nY: SUPPORTED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "and-1:parse:1": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.8319,
+      "usage": {
+        "prompt_tokens": 109,
+        "completion_tokens": 1,
+        "total_tokens": 110,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 109
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Noah | checked the actual receipt and can vouch for | fee_paid\nV: report of a claim, not necessarily true\nW: explicit lack of knowledge\nX: knowledge or verified fact\nY: belief, guess or suspicion\nZ: ambiguous: cannot clearly identify the relation\nChoose one letter only."
+        }
+      ],
+      "value": "K"
+    },
+    "and-1-r0:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.30557,
+      "usage": {
+        "prompt_tokens": 201,
+        "completion_tokens": 1,
+        "total_tokens": 202,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 201
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ela | confirmed | seal_intact\nt1 | Noah | checked the actual receipt and can vouch for | fee_paid\nStipulated facts: (none)\nRules:\nIF seal_intact AND fee_paid THEN release_ready\nQuery: release_ready\nW: SUPPORTED\nX: CONFLICT\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-4:parse:0": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.68597,
+      "usage": {
+        "prompt_tokens": 111,
+        "completion_tokens": 1,
+        "total_tokens": 112,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 111
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Ina | is known to have expressed either knowledge or doubt about | contract_signed\nV: report of a claim, not necessarily true\nW: knowledge or verified fact\nX: explicit lack of knowledge\nY: ambiguous: cannot clearly identify the relation\nZ: belief, guess or suspicion\nChoose one letter only."
+        }
+      ],
+      "value": "N"
+    },
+    "nest-4-r0:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.89959,
+      "usage": {
+        "prompt_tokens": 193,
+        "completion_tokens": 1,
+        "total_tokens": 194,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 193
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ina | is known to have expressed either knowledge or doubt about | contract_signed\nt1 | Jai | thinks | contract_signed\nStipulated facts: (none)\nRules:\n(none)\nQuery: contract_signed\nW: CONFLICT\nX: SUPPORTED\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-4-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.18605,
+      "usage": {
+        "prompt_tokens": 195,
+        "completion_tokens": 1,
+        "total_tokens": 196,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 195
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ina | is known to have expressed either knowledge or doubt about | contract_signed\nt1 | Jai | thinks | contract_signed\nStipulated facts: !contract_signed\nRules:\n(none)\nQuery: contract_signed\nW: CONFLICT\nX: SUPPORTED\nY: UNRESOLVED\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    },
+    "and-3-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.96483,
+      "usage": {
+        "prompt_tokens": 199,
+        "completion_tokens": 1,
+        "total_tokens": 200,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 199
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Tao | circulated somebody else's assertion about | permit_received\nt1 | Mira | has no knowledge | insurance_live\nStipulated facts: (none)\nRules:\nIF permit_received AND insurance_live THEN dispatch_ready\nQuery: dispatch_ready\nW: SUPPORTED\nX: UNRESOLVED\nY: CONFLICT\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "prov-1:parse:1": {
+      "selected": "V",
+      "raw_content": "V",
+      "seconds": 0.8873,
+      "usage": {
+        "prompt_tokens": 105,
+        "completion_tokens": 1,
+        "total_tokens": 106,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 105
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t1 | Nora | forwarded an identical allegation about | invoice_missing\nV: report of a claim, not necessarily true\nW: knowledge or verified fact\nX: explicit lack of knowledge\nY: ambiguous: cannot clearly identify the relation\nZ: belief, guess or suspicion\nChoose one letter only."
+        }
+      ],
+      "value": "R"
+    },
+    "prov-1-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.77788,
+      "usage": {
+        "prompt_tokens": 210,
+        "completion_tokens": 1,
+        "total_tokens": 211,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 210
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ivo | reported | invoice_missing\nt1 | Nora | forwarded an identical allegation about | invoice_missing\nStipulated facts: (none)\nRules:\nIF independent_register_confirms AND R(Ivo,t1,invoice_missing) THEN independent_corroboration\nQuery: independent_corroboration\nW: SUPPORTED\nX: UNRESOLVED\nY: REFUTED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-2-r0:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 1.14595,
+      "usage": {
+        "prompt_tokens": 195,
+        "completion_tokens": 1,
+        "total_tokens": 196,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 195
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ema | verified | B(Dino,t0,deal_closed)\nt1 | Fay | is repeating another person's statement about | deal_closed\nStipulated facts: (none)\nRules:\n(none)\nQuery: deal_closed\nW: SUPPORTED\nX: REFUTED\nY: UNRESOLVED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "hyp-3-r0:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.94074,
+      "usage": {
+        "prompt_tokens": 232,
+        "completion_tokens": 1,
+        "total_tokens": 233,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 232
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Orla | has a working theory that | delay_for_review\nt1 | Paco | is unaware | delay_for_bargaining\nStipulated facts: (none)\nRules:\nIF delay_for_review THEN support_review\nIF delay_for_bargaining THEN support_bargaining\nIF support_review THEN prefer_review\nIF support_bargaining THEN !prefer_review\nQuery: prefer_review\nW: SUPPORTED\nX: REFUTED\nY: UNRESOLVED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "and-4-r0:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.85518,
+      "usage": {
+        "prompt_tokens": 193,
+        "completion_tokens": 1,
+        "total_tokens": 194,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 193
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Eli | cannot tell whether she knows | report_valid\nt1 | Sia | confirmed | signature_valid\nStipulated facts: (none)\nRules:\nIF report_valid AND signature_valid THEN archive_ready\nQuery: archive_ready\nW: UNRESOLVED\nX: SUPPORTED\nY: CONFLICT\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "time-3-r0:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.22565,
+      "usage": {
+        "prompt_tokens": 196,
+        "completion_tokens": 1,
+        "total_tokens": 197,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 196
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Nia | remains without access to the information about | offer_changed\nt2 | Nia | confirmed | offer_changed\nStipulated facts: (none)\nRules:\n(none)\nQuery: K(Nia,t1,offer_changed)\nW: CONFLICT\nX: SUPPORTED\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "time-2:parse:1": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 0.95192,
+      "usage": {
+        "prompt_tokens": 104,
+        "completion_tokens": 1,
+        "total_tokens": 105,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 104
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify only the outer relation expressed by the wording in time | person | wording | content. Do not infer truth from a report or belief. If wording is ambiguous, abstain."
+        },
+        {
+          "role": "user",
+          "content": "t2 | Max | reckons it likely that | decision_open\nV: report of a claim, not necessarily true\nW: knowledge or verified fact\nX: belief, guess or suspicion\nY: explicit lack of knowledge\nZ: ambiguous: cannot clearly identify the relation\nChoose one letter only."
+        }
+      ],
+      "value": "B"
+    },
+    "time-2-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.85838,
+      "usage": {
+        "prompt_tokens": 198,
+        "completion_tokens": 1,
+        "total_tokens": 199,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 198
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt0 | Lea | knows | decision_open\nt2 | Max | reckons it likely that | decision_open\nStipulated facts: !K(Lea,t2,decision_open)\nRules:\n(none)\nQuery: K(Lea,t2,decision_open)\nW: SUPPORTED\nX: UNRESOLVED\nY: CONFLICT\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    },
+    "time-2-r0:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 0.88434,
+      "usage": {
+        "prompt_tokens": 190,
+        "completion_tokens": 1,
+        "total_tokens": 191,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 190
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt0 | Lea | knows | decision_open\nt2 | Max | reckons it likely that | decision_open\nStipulated facts: (none)\nRules:\n(none)\nQuery: K(Lea,t2,decision_open)\nW: SUPPORTED\nX: CONFLICT\nY: UNRESOLVED\nZ: REFUTED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "and-2-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 1.10929,
+      "usage": {
+        "prompt_tokens": 189,
+        "completion_tokens": 1,
+        "total_tokens": 190,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 189
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Uma | has a hunch | approval_exists\nt1 | Zed | verified | funds_reserved\nStipulated facts: approval_exists\nRules:\nIF approval_exists AND funds_reserved THEN ready\nQuery: ready\nW: SUPPORTED\nX: REFUTED\nY: CONFLICT\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "prov-4-r0:direct": {
+      "selected": "W",
+      "raw_content": "W",
+      "seconds": 0.92502,
+      "usage": {
+        "prompt_tokens": 193,
+        "completion_tokens": 1,
+        "total_tokens": 194,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 193
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Sana | believes | key_changed\nt1 | Vik | could be quoting or confirming; no distinction is stated about | key_changed\nStipulated facts: (none)\nRules:\n(none)\nQuery: key_changed\nW: UNRESOLVED\nX: CONFLICT\nY: REFUTED\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "and-1-r1:direct": {
+      "selected": "X",
+      "raw_content": "X",
+      "seconds": 1.01634,
+      "usage": {
+        "prompt_tokens": 203,
+        "completion_tokens": 1,
+        "total_tokens": 204,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 203
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ela | confirmed | seal_intact\nt1 | Noah | checked the actual receipt and can vouch for | fee_paid\nStipulated facts: !release_ready\nRules:\nIF seal_intact AND fee_paid THEN release_ready\nQuery: release_ready\nW: REFUTED\nX: UNRESOLVED\nY: CONFLICT\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "prov-1-r1:direct": {
+      "selected": "Z",
+      "raw_content": "Z",
+      "seconds": 0.81522,
+      "usage": {
+        "prompt_tokens": 213,
+        "completion_tokens": 1,
+        "total_tokens": 214,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 213
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Ivo | reported | invoice_missing\nt1 | Nora | forwarded an identical allegation about | invoice_missing\nStipulated facts: independent_register_confirms\nRules:\nIF independent_register_confirms AND R(Ivo,t1,invoice_missing) THEN independent_corroboration\nQuery: independent_corroboration\nW: REFUTED\nX: UNRESOLVED\nY: CONFLICT\nZ: SUPPORTED\nChoose one letter only."
+        }
+      ],
+      "value": "SUPPORTED"
+    },
+    "time-1-r0:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 1.13291,
+      "usage": {
+        "prompt_tokens": 214,
+        "completion_tokens": 1,
+        "total_tokens": 215,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 214
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt0 | Kai | verified | delayed_offer\nt2 | Kai | has established by personal inspection | quick_offer\nStipulated facts: personal_high_stakes_expects_delay\nRules:\nIF K(Kai,t2,quick_offer) AND personal_high_stakes_expects_delay THEN anomaly\nQuery: anomaly\nW: SUPPORTED\nX: REFUTED\nY: UNRESOLVED\nZ: CONFLICT\nChoose one letter only."
+        }
+      ],
+      "value": "UNRESOLVED"
+    },
+    "nest-3-r0:direct": {
+      "selected": "Y",
+      "raw_content": "Y",
+      "seconds": 1.20234,
+      "usage": {
+        "prompt_tokens": 196,
+        "completion_tokens": 1,
+        "total_tokens": 197,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 196
+      },
+      "model_returned": "deepseek-flash",
+      "finish_reason": "stop",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Synthetic records. K(person,time,p) means knows p and entails p, including nested content. B is belief, R is report; neither entails p. Explicit lack of knowledge means !K, not !p. Ambiguous records supply no premise. ! negates. Apply only forward IF rules; no time persistence, no closed world, no inference from unrelated contradiction. SUPPORTED if q only, REFUTED if !q only, CONFLICT if both, UNRESOLVED if neither."
+        },
+        {
+          "role": "user",
+          "content": "Records:\nt1 | Gio | has not been made privy to | plan_changed\nt1 | Hana | confirmed | plan_changed\nStipulated facts: (none)\nRules:\n(none)\nQuery: K(Gio,t1,plan_changed)\nW: CONFLICT\nX: SUPPORTED\nY: REFUTED\nZ: UNRESOLVED\nChoose one letter only."
+        }
+      ],
+      "value": "REFUTED"
+    }
+  },
+  "rows": [
+    {
+      "case_id": "hyp-4-r1",
+      "expected": "SUPPORTED",
+      "lexical": "SUPPORTED",
+      "gated": "SUPPORTED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "SUPPORTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "hyp-4:parse:0"
+      ],
+      "direct_call": "hyp-4-r1:direct",
+      "lexical_relations": [
+        "A",
+        "R"
+      ],
+      "gated_relations": [
+        "B",
+        "R"
+      ],
+      "gold_relations": [
+        "A",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "delay_for_review"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Quin,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Rosa,t1,delay_for_bargaining)"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_review"
+          ],
+          "conclusion": "support_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_review"
+          ],
+          "conclusion": "prefer_review"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-3-r1",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "prov-3:parse:0",
+        "prov-3:parse:1"
+      ],
+      "direct_call": "prov-3-r1:direct",
+      "lexical_relations": [
+        "A",
+        "A"
+      ],
+      "gated_relations": [
+        "R",
+        "A"
+      ],
+      "gold_relations": [
+        "R",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!irrelevant_receipt"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Pia,t1,late_delivery)"
+        }
+      ]
+    },
+    {
+      "case_id": "and-2-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "UNRESOLVED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "UNRESOLVED"
+        ],
+        "stable": true,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [],
+      "direct_call": "and-2-r0:direct",
+      "lexical_relations": [
+        "B",
+        "K"
+      ],
+      "gated_relations": [
+        "B",
+        "K"
+      ],
+      "gold_relations": [
+        "B",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Uma,t1,approval_exists)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Zed,t1,funds_reserved)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Zed,t1,funds_reserved)"
+          ],
+          "conclusion": "funds_reserved"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-4-r1",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "prov-4:parse:1"
+      ],
+      "direct_call": "prov-4-r1:direct",
+      "lexical_relations": [
+        "B",
+        "A"
+      ],
+      "gated_relations": [
+        "B",
+        "A"
+      ],
+      "gold_relations": [
+        "B",
+        "A"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Sana,t2,key_changed)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Sana,t1,key_changed)"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-3-r1",
+      "expected": "CONFLICT",
+      "lexical": "SUPPORTED",
+      "gated": "CONFLICT",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "SUPPORTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "CONFLICT"
+      },
+      "gate_calls": [
+        "nest-3:parse:0"
+      ],
+      "direct_call": "nest-3-r1:direct",
+      "lexical_relations": [
+        "A",
+        "K"
+      ],
+      "gated_relations": [
+        "N",
+        "K"
+      ],
+      "gold_relations": [
+        "N",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Gio,t1,plan_changed)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Gio,t1,plan_changed)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Hana,t1,plan_changed)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Gio,t1,plan_changed)"
+          ],
+          "conclusion": "plan_changed"
+        }
+      ]
+    },
+    {
+      "case_id": "and-3-r1",
+      "expected": "REFUTED",
+      "lexical": "REFUTED",
+      "gated": "REFUTED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "REFUTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "REFUTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "and-3:parse:0"
+      ],
+      "direct_call": "and-3-r1:direct",
+      "lexical_relations": [
+        "A",
+        "N"
+      ],
+      "gated_relations": [
+        "R",
+        "N"
+      ],
+      "gold_relations": [
+        "R",
+        "N"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!dispatch_ready"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Tao,t1,permit_received)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Mira,t1,insurance_live)"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-1-r1",
+      "expected": "CONFLICT",
+      "lexical": "REFUTED",
+      "gated": "REFUTED",
+      "direct": "REFUTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "REFUTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "nest-1:parse:0"
+      ],
+      "direct_call": "nest-1-r1:direct",
+      "lexical_relations": [
+        "A",
+        "B"
+      ],
+      "gated_relations": [
+        "R",
+        "B"
+      ],
+      "gold_relations": [
+        "K",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!audit_started"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Anu,t1,K(Bela,t0,audit_started))"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Cai,t1,!audit_started)"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-2-r0",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "prov-2:parse:0"
+      ],
+      "direct_call": "prov-2-r0:direct",
+      "lexical_relations": [
+        "A",
+        "R"
+      ],
+      "gated_relations": [
+        "R",
+        "R"
+      ],
+      "gold_relations": [
+        "K",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Dara,t1,entry_present)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Hugo,t1,entry_present)"
+        }
+      ]
+    },
+    {
+      "case_id": "time-3-r1",
+      "expected": "REFUTED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "REFUTED",
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "time-3:parse:0"
+      ],
+      "direct_call": "time-3-r1:direct",
+      "lexical_relations": [
+        "A",
+        "K"
+      ],
+      "gated_relations": [
+        "A",
+        "K"
+      ],
+      "gold_relations": [
+        "N",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "unrelated_message"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Nia,t2,offer_changed)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Nia,t2,offer_changed)"
+          ],
+          "conclusion": "offer_changed"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-2-r1",
+      "expected": "CONFLICT",
+      "lexical": "SUPPORTED",
+      "gated": "CONFLICT",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "SUPPORTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "CONFLICT"
+      },
+      "gate_calls": [
+        "hyp-2:parse:1"
+      ],
+      "direct_call": "hyp-2-r1:direct",
+      "lexical_relations": [
+        "R",
+        "A"
+      ],
+      "gated_relations": [
+        "R",
+        "K"
+      ],
+      "gold_relations": [
+        "R",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "delay_for_review"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Mina,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Niko,t1,delay_for_bargaining)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Niko,t1,delay_for_bargaining)"
+          ],
+          "conclusion": "delay_for_bargaining"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_review"
+          ],
+          "conclusion": "support_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_bargaining"
+          ],
+          "conclusion": "support_bargaining"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_review"
+          ],
+          "conclusion": "prefer_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_bargaining"
+          ],
+          "conclusion": "!prefer_review"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-4-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "hyp-4:parse:0"
+      ],
+      "direct_call": "hyp-4-r0:direct",
+      "lexical_relations": [
+        "A",
+        "R"
+      ],
+      "gated_relations": [
+        "B",
+        "R"
+      ],
+      "gold_relations": [
+        "A",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Quin,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Rosa,t1,delay_for_bargaining)"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-2-r1",
+      "expected": "SUPPORTED",
+      "lexical": "SUPPORTED",
+      "gated": "SUPPORTED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "SUPPORTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "nest-2:parse:1"
+      ],
+      "direct_call": "nest-2-r1:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "R"
+      ],
+      "gold_relations": [
+        "K",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "deal_closed"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Ema,t1,B(Dino,t0,deal_closed))"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Fay,t1,deal_closed)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Ema,t1,B(Dino,t0,deal_closed))"
+          ],
+          "conclusion": "B(Dino,t0,deal_closed)"
+        }
+      ]
+    },
+    {
+      "case_id": "time-1-r1",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "SUPPORTED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "time-1:parse:1"
+      ],
+      "direct_call": "time-1-r1:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "K"
+      ],
+      "gold_relations": [
+        "K",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "personal_high_stakes_expects_delay"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "routine_call"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Kai,t0,delayed_offer)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Kai,t2,quick_offer)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Kai,t0,delayed_offer)"
+          ],
+          "conclusion": "delayed_offer"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Kai,t2,quick_offer)"
+          ],
+          "conclusion": "quick_offer"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "K(Kai,t2,quick_offer)",
+            "personal_high_stakes_expects_delay"
+          ],
+          "conclusion": "anomaly"
+        }
+      ]
+    },
+    {
+      "case_id": "and-4-r1",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "and-4:parse:0"
+      ],
+      "direct_call": "and-4-r1:direct",
+      "lexical_relations": [
+        "A",
+        "K"
+      ],
+      "gated_relations": [
+        "N",
+        "K"
+      ],
+      "gold_relations": [
+        "A",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "unrelated_note"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Eli,t1,report_valid)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Sia,t1,signature_valid)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Sia,t1,signature_valid)"
+          ],
+          "conclusion": "signature_valid"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-1-r1",
+      "expected": "CONFLICT",
+      "lexical": "CONFLICT",
+      "gated": "CONFLICT",
+      "direct": "REFUTED",
+      "gated_stable_only": "CONFLICT",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT"
+        ],
+        "stable": true,
+        "chosen_verdict": "CONFLICT"
+      },
+      "gate_calls": [
+        "hyp-1:parse:1"
+      ],
+      "direct_call": "hyp-1-r1:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "R"
+      ],
+      "gold_relations": [
+        "K",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "delay_for_bargaining"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Lian,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Ari,t1,delay_for_bargaining)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Lian,t1,delay_for_review)"
+          ],
+          "conclusion": "delay_for_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_bargaining"
+          ],
+          "conclusion": "support_bargaining"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_review"
+          ],
+          "conclusion": "support_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_bargaining"
+          ],
+          "conclusion": "!prefer_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_review"
+          ],
+          "conclusion": "prefer_review"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-2-r0",
+      "expected": "REFUTED",
+      "lexical": "UNRESOLVED",
+      "gated": "REFUTED",
+      "direct": "REFUTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "REFUTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "hyp-2:parse:1"
+      ],
+      "direct_call": "hyp-2-r0:direct",
+      "lexical_relations": [
+        "R",
+        "A"
+      ],
+      "gated_relations": [
+        "R",
+        "K"
+      ],
+      "gold_relations": [
+        "R",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Mina,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Niko,t1,delay_for_bargaining)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Niko,t1,delay_for_bargaining)"
+          ],
+          "conclusion": "delay_for_bargaining"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_bargaining"
+          ],
+          "conclusion": "support_bargaining"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_bargaining"
+          ],
+          "conclusion": "!prefer_review"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-2-r1",
+      "expected": "CONFLICT",
+      "lexical": "REFUTED",
+      "gated": "REFUTED",
+      "direct": "REFUTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "REFUTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "prov-2:parse:0"
+      ],
+      "direct_call": "prov-2-r1:direct",
+      "lexical_relations": [
+        "A",
+        "R"
+      ],
+      "gated_relations": [
+        "R",
+        "R"
+      ],
+      "gold_relations": [
+        "K",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!entry_present"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Dara,t1,entry_present)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Hugo,t1,entry_present)"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-3-r1",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "hyp-3:parse:0"
+      ],
+      "direct_call": "hyp-3-r1:direct",
+      "lexical_relations": [
+        "A",
+        "N"
+      ],
+      "gated_relations": [
+        "B",
+        "N"
+      ],
+      "gold_relations": [
+        "B",
+        "N"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!delay_for_bargaining"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Orla,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Paco,t1,delay_for_bargaining)"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-1-r0",
+      "expected": "SUPPORTED",
+      "lexical": "SUPPORTED",
+      "gated": "SUPPORTED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "SUPPORTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "hyp-1:parse:1"
+      ],
+      "direct_call": "hyp-1-r0:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "R"
+      ],
+      "gold_relations": [
+        "K",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Lian,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Ari,t1,delay_for_bargaining)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Lian,t1,delay_for_review)"
+          ],
+          "conclusion": "delay_for_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "delay_for_review"
+          ],
+          "conclusion": "support_review"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "support_review"
+          ],
+          "conclusion": "prefer_review"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-1-r0",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "nest-1:parse:0"
+      ],
+      "direct_call": "nest-1-r0:direct",
+      "lexical_relations": [
+        "A",
+        "B"
+      ],
+      "gated_relations": [
+        "R",
+        "B"
+      ],
+      "gold_relations": [
+        "K",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Anu,t1,K(Bela,t0,audit_started))"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Cai,t1,!audit_started)"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-3-r0",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "prov-3:parse:0",
+        "prov-3:parse:1"
+      ],
+      "direct_call": "prov-3-r0:direct",
+      "lexical_relations": [
+        "A",
+        "A"
+      ],
+      "gated_relations": [
+        "R",
+        "A"
+      ],
+      "gold_relations": [
+        "R",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Pia,t1,late_delivery)"
+        }
+      ]
+    },
+    {
+      "case_id": "time-4-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "UNRESOLVED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "UNRESOLVED"
+        ],
+        "stable": true,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [],
+      "direct_call": "time-4-r0:direct",
+      "lexical_relations": [
+        "R",
+        "K"
+      ],
+      "gated_relations": [
+        "R",
+        "K"
+      ],
+      "gold_relations": [
+        "R",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "personal_baseline_expects_trust"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Oli,t1,hard_bargaining)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Paz,t1,high_stakes)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Paz,t1,high_stakes)"
+          ],
+          "conclusion": "high_stakes"
+        }
+      ]
+    },
+    {
+      "case_id": "time-4-r1",
+      "expected": "SUPPORTED",
+      "lexical": "SUPPORTED",
+      "gated": "SUPPORTED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "SUPPORTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [],
+      "direct_call": "time-4-r1:direct",
+      "lexical_relations": [
+        "R",
+        "K"
+      ],
+      "gated_relations": [
+        "R",
+        "K"
+      ],
+      "gold_relations": [
+        "R",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "personal_baseline_expects_trust"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "hard_bargaining"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Oli,t1,hard_bargaining)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Paz,t1,high_stakes)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Paz,t1,high_stakes)"
+          ],
+          "conclusion": "high_stakes"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "hard_bargaining",
+            "high_stakes",
+            "personal_baseline_expects_trust"
+          ],
+          "conclusion": "anomaly"
+        }
+      ]
+    },
+    {
+      "case_id": "and-1-r0",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "SUPPORTED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "and-1:parse:1"
+      ],
+      "direct_call": "and-1-r0:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "K"
+      ],
+      "gold_relations": [
+        "K",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Ela,t1,seal_intact)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Noah,t1,fee_paid)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Ela,t1,seal_intact)"
+          ],
+          "conclusion": "seal_intact"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Noah,t1,fee_paid)"
+          ],
+          "conclusion": "fee_paid"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "seal_intact",
+            "fee_paid"
+          ],
+          "conclusion": "release_ready"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-4-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "nest-4:parse:0"
+      ],
+      "direct_call": "nest-4-r0:direct",
+      "lexical_relations": [
+        "A",
+        "B"
+      ],
+      "gated_relations": [
+        "N",
+        "B"
+      ],
+      "gold_relations": [
+        "A",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Ina,t1,contract_signed)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Jai,t1,contract_signed)"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-4-r1",
+      "expected": "REFUTED",
+      "lexical": "REFUTED",
+      "gated": "REFUTED",
+      "direct": "REFUTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "REFUTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "nest-4:parse:0"
+      ],
+      "direct_call": "nest-4-r1:direct",
+      "lexical_relations": [
+        "A",
+        "B"
+      ],
+      "gated_relations": [
+        "N",
+        "B"
+      ],
+      "gold_relations": [
+        "A",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!contract_signed"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Ina,t1,contract_signed)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Jai,t1,contract_signed)"
+        }
+      ]
+    },
+    {
+      "case_id": "and-3-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "UNRESOLVED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "UNRESOLVED"
+        ],
+        "stable": true,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "and-3:parse:0"
+      ],
+      "direct_call": "and-3-r0:direct",
+      "lexical_relations": [
+        "A",
+        "N"
+      ],
+      "gated_relations": [
+        "R",
+        "N"
+      ],
+      "gold_relations": [
+        "R",
+        "N"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Tao,t1,permit_received)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Mira,t1,insurance_live)"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-1-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "UNRESOLVED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "UNRESOLVED"
+        ],
+        "stable": true,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "prov-1:parse:1"
+      ],
+      "direct_call": "prov-1-r0:direct",
+      "lexical_relations": [
+        "R",
+        "A"
+      ],
+      "gated_relations": [
+        "R",
+        "R"
+      ],
+      "gold_relations": [
+        "R",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Ivo,t1,invoice_missing)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Nora,t1,invoice_missing)"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-2-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "nest-2:parse:1"
+      ],
+      "direct_call": "nest-2-r0:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "R"
+      ],
+      "gold_relations": [
+        "K",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Ema,t1,B(Dino,t0,deal_closed))"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Fay,t1,deal_closed)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Ema,t1,B(Dino,t0,deal_closed))"
+          ],
+          "conclusion": "B(Dino,t0,deal_closed)"
+        }
+      ]
+    },
+    {
+      "case_id": "hyp-3-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "hyp-3:parse:0"
+      ],
+      "direct_call": "hyp-3-r0:direct",
+      "lexical_relations": [
+        "A",
+        "N"
+      ],
+      "gated_relations": [
+        "B",
+        "N"
+      ],
+      "gold_relations": [
+        "B",
+        "N"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Orla,t1,delay_for_review)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Paco,t1,delay_for_bargaining)"
+        }
+      ]
+    },
+    {
+      "case_id": "and-4-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "and-4:parse:0"
+      ],
+      "direct_call": "and-4-r0:direct",
+      "lexical_relations": [
+        "A",
+        "K"
+      ],
+      "gated_relations": [
+        "N",
+        "K"
+      ],
+      "gold_relations": [
+        "A",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Eli,t1,report_valid)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Sia,t1,signature_valid)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Sia,t1,signature_valid)"
+          ],
+          "conclusion": "signature_valid"
+        }
+      ]
+    },
+    {
+      "case_id": "time-3-r0",
+      "expected": "REFUTED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "REFUTED",
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "time-3:parse:0"
+      ],
+      "direct_call": "time-3-r0:direct",
+      "lexical_relations": [
+        "A",
+        "K"
+      ],
+      "gated_relations": [
+        "A",
+        "K"
+      ],
+      "gold_relations": [
+        "N",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Nia,t2,offer_changed)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Nia,t2,offer_changed)"
+          ],
+          "conclusion": "offer_changed"
+        }
+      ]
+    },
+    {
+      "case_id": "time-2-r1",
+      "expected": "REFUTED",
+      "lexical": "REFUTED",
+      "gated": "REFUTED",
+      "direct": "REFUTED",
+      "gated_stable_only": "REFUTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "REFUTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "time-2:parse:1"
+      ],
+      "direct_call": "time-2-r1:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "B"
+      ],
+      "gold_relations": [
+        "K",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Lea,t2,decision_open)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Lea,t0,decision_open)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Max,t2,decision_open)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Lea,t0,decision_open)"
+          ],
+          "conclusion": "decision_open"
+        }
+      ]
+    },
+    {
+      "case_id": "time-2-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "UNRESOLVED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "UNRESOLVED"
+        ],
+        "stable": true,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "time-2:parse:1"
+      ],
+      "direct_call": "time-2-r0:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "B"
+      ],
+      "gold_relations": [
+        "K",
+        "B"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Lea,t0,decision_open)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Max,t2,decision_open)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Lea,t0,decision_open)"
+          ],
+          "conclusion": "decision_open"
+        }
+      ]
+    },
+    {
+      "case_id": "and-2-r1",
+      "expected": "SUPPORTED",
+      "lexical": "SUPPORTED",
+      "gated": "SUPPORTED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "SUPPORTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [],
+      "direct_call": "and-2-r1:direct",
+      "lexical_relations": [
+        "B",
+        "K"
+      ],
+      "gated_relations": [
+        "B",
+        "K"
+      ],
+      "gold_relations": [
+        "B",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "approval_exists"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Uma,t1,approval_exists)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Zed,t1,funds_reserved)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Zed,t1,funds_reserved)"
+          ],
+          "conclusion": "funds_reserved"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "approval_exists",
+            "funds_reserved"
+          ],
+          "conclusion": "ready"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-4-r0",
+      "expected": "UNRESOLVED",
+      "lexical": "UNRESOLVED",
+      "gated": "UNRESOLVED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "UNRESOLVED"
+      },
+      "gate_calls": [
+        "prov-4:parse:1"
+      ],
+      "direct_call": "prov-4-r0:direct",
+      "lexical_relations": [
+        "B",
+        "A"
+      ],
+      "gated_relations": [
+        "B",
+        "A"
+      ],
+      "gold_relations": [
+        "B",
+        "A"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "B(Sana,t1,key_changed)"
+        }
+      ]
+    },
+    {
+      "case_id": "and-1-r1",
+      "expected": "CONFLICT",
+      "lexical": "REFUTED",
+      "gated": "CONFLICT",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "CONFLICT",
+          "REFUTED"
+        ],
+        "stable": false,
+        "chosen_verdict": "CONFLICT"
+      },
+      "gate_calls": [
+        "and-1:parse:1"
+      ],
+      "direct_call": "and-1-r1:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "K"
+      ],
+      "gold_relations": [
+        "K",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!release_ready"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Ela,t1,seal_intact)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Noah,t1,fee_paid)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Ela,t1,seal_intact)"
+          ],
+          "conclusion": "seal_intact"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Noah,t1,fee_paid)"
+          ],
+          "conclusion": "fee_paid"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "seal_intact",
+            "fee_paid"
+          ],
+          "conclusion": "release_ready"
+        }
+      ]
+    },
+    {
+      "case_id": "prov-1-r1",
+      "expected": "SUPPORTED",
+      "lexical": "SUPPORTED",
+      "gated": "SUPPORTED",
+      "direct": "SUPPORTED",
+      "gated_stable_only": "SUPPORTED",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED"
+        ],
+        "stable": true,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "prov-1:parse:1"
+      ],
+      "direct_call": "prov-1-r1:direct",
+      "lexical_relations": [
+        "R",
+        "A"
+      ],
+      "gated_relations": [
+        "R",
+        "R"
+      ],
+      "gold_relations": [
+        "R",
+        "R"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "independent_register_confirms"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Ivo,t1,invoice_missing)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "R(Nora,t1,invoice_missing)"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "independent_register_confirms",
+            "R(Ivo,t1,invoice_missing)"
+          ],
+          "conclusion": "independent_corroboration"
+        }
+      ]
+    },
+    {
+      "case_id": "time-1-r0",
+      "expected": "SUPPORTED",
+      "lexical": "UNRESOLVED",
+      "gated": "SUPPORTED",
+      "direct": "UNRESOLVED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "SUPPORTED"
+      },
+      "gate_calls": [
+        "time-1:parse:1"
+      ],
+      "direct_call": "time-1-r0:direct",
+      "lexical_relations": [
+        "K",
+        "A"
+      ],
+      "gated_relations": [
+        "K",
+        "K"
+      ],
+      "gold_relations": [
+        "K",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "personal_high_stakes_expects_delay"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Kai,t0,delayed_offer)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Kai,t2,quick_offer)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Kai,t0,delayed_offer)"
+          ],
+          "conclusion": "delayed_offer"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Kai,t2,quick_offer)"
+          ],
+          "conclusion": "quick_offer"
+        },
+        {
+          "rule": "explicit_rule",
+          "premises": [
+            "K(Kai,t2,quick_offer)",
+            "personal_high_stakes_expects_delay"
+          ],
+          "conclusion": "anomaly"
+        }
+      ]
+    },
+    {
+      "case_id": "nest-3-r0",
+      "expected": "REFUTED",
+      "lexical": "UNRESOLVED",
+      "gated": "REFUTED",
+      "direct": "REFUTED",
+      "gated_stable_only": "ABSTAIN",
+      "sensitivity": {
+        "possible_verdicts": [
+          "REFUTED",
+          "SUPPORTED",
+          "UNRESOLVED"
+        ],
+        "stable": false,
+        "chosen_verdict": "REFUTED"
+      },
+      "gate_calls": [
+        "nest-3:parse:0"
+      ],
+      "direct_call": "nest-3-r0:direct",
+      "lexical_relations": [
+        "A",
+        "K"
+      ],
+      "gated_relations": [
+        "N",
+        "K"
+      ],
+      "gold_relations": [
+        "N",
+        "K"
+      ],
+      "gated_trace": [
+        {
+          "rule": "stipulated",
+          "conclusion": "!K(Gio,t1,plan_changed)"
+        },
+        {
+          "rule": "stipulated",
+          "conclusion": "K(Hana,t1,plan_changed)"
+        },
+        {
+          "rule": "factivity",
+          "premises": [
+            "K(Hana,t1,plan_changed)"
+          ],
+          "conclusion": "plan_changed"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "direct": {
+      "correct": 22,
+      "n": 40,
+      "accuracy": 0.55,
+      "false_certainty": 9,
+      "abstain": 0,
+      "pairs_both_correct": 7,
+      "model_calls": 40,
+      "prompt_tokens": 8261,
+      "completion_tokens": 40,
+      "total_tokens": 8301,
+      "api_seconds": 40.31
+    },
+    "lexical": {
+      "correct": 24,
+      "n": 40,
+      "accuracy": 0.6,
+      "false_certainty": 5,
+      "abstain": 0,
+      "pairs_both_correct": 12,
+      "model_calls": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "api_seconds": 0
+    },
+    "gated": {
+      "correct": 32,
+      "n": 40,
+      "accuracy": 0.8,
+      "false_certainty": 2,
+      "abstain": 0,
+      "pairs_both_correct": 16,
+      "model_calls": 19,
+      "prompt_tokens": 2044,
+      "completion_tokens": 19,
+      "total_tokens": 2063,
+      "api_seconds": 18.374
+    },
+    "gated_stable_only": {
+      "correct": 13,
+      "n": 40,
+      "accuracy": 0.325,
+      "false_certainty": 0,
+      "abstain": 27,
+      "pairs_both_correct": 5,
+      "model_calls": 19,
+      "prompt_tokens": 2044,
+      "completion_tokens": 19,
+      "total_tokens": 2063,
+      "api_seconds": 18.374
+    },
+    "paired_gate_vs_lexical": {
+      "corrected": 8,
+      "regressed": 0
+    }
+  }
+}
