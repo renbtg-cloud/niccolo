@@ -285,6 +285,9 @@ def build_cases() -> list[dict]:
             records = list(stale_records) + current
             stale_records = (stale_records + current[:2])[-6:]
 
+            for item in current:
+                item["mapping"] = _mapping(rng, item["gold"], RELATIONS, LETTERS_REL)
+
             case = {
                 "case_id": f"{base_id}-r{phase}", "base_id": base_id, "phase": phase,
                 "family": family, "holdout": base_id in holdout,
@@ -299,8 +302,6 @@ def build_cases() -> list[dict]:
                     "parser_trap": trap_phase == phase,
                 },
             }
-            for item in case["records"]:
-                item["mapping"] = _mapping(rng, item["gold"], RELATIONS, LETTERS_REL)
             case["mapping"] = _mapping(rng, desired, LABELS, LETTERS_VERDICT)
             cases.append(case)
 
