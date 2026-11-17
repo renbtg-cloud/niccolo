@@ -6,6 +6,7 @@
 
 Read this with:
 
+- [Domain model checkpoint — 2026-11-17](DOMAIN_MODEL_CHECKPOINT_2026-11-17.md)
 - [MVP composite evidence and human-guided circumstances](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md)
 - [Qualified temporal actor state](TEMPORAL_ACTOR_STATE_MVP.md)
 - [Independent interdisciplinary epistemic-domain review (66 sources)](EPISTEMIC_DOMAIN_INTERDISCIPLINARY_REVIEW_V1.md)
