@@ -289,6 +289,7 @@ The direction is not a roadmap guarantee or a claim that all these integrations 
 
 ## Further reading
 
+- [MVP roadmap](docs/product/MVP_ROADMAP.md) — required MVP product scope, including multi-instance collaborative investigation and selective disclosure.
 - [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md) — domain, BFF, controller and frontend architecture.
 - [HTTP_AUTH_V007.md](docs/reference/HTTP_AUTH_V007.md) — local API authorization model and development provisioning.
 - [SITUATIONS_V016.md](docs/reference/SITUATIONS_V016.md) — Situation state and immutable revisions.
