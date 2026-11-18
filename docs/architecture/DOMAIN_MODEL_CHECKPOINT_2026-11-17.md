@@ -1,8 +1,8 @@
 # Domain model checkpoint — 2026-11-17
 
 **Status:** exploratory domain-model checkpoint. This captures the current design
-position before continuing into explicit hypothesis support/attack relations and,
-after that, Question / Unknown / InformationGap.
+position through Hypothesis support/attack and multidimensional assessment,
+immediately before continuing into Question / Unknown / InformationGap.
 
 It is intentionally stronger than loose brainstorming but is **not yet a frozen
 implementation contract**. Future implementation work may complete, correct,
@@ -478,7 +478,229 @@ Hypothesis with lineage.
 This preserves the intellectual history of an investigation: later we can ask
 not only what is currently suspected, but how that hypothesis emerged.
 
-## 13. Layers currently emerging
+## 13. Support, attack, mentions and assessment
+
+Support and attack must not collapse into scalar fields on Hypothesis.
+
+> **Support and attack are explicit, addressable, epistemically qualified
+> relations between parts of the model.**
+
+A relation may itself become the target of later reasoning. For example, an
+Observation may support a Hypothesis, another item may undercut that support
+relation, and a later Hypothesis may question why the undercut exists.
+
+### 13.1 Distinguish kinds of attack
+
+A single generic `ATTACKS` relation is insufficient for reasoning.
+
+At minimum, the model must preserve distinctions such as:
+
+- **rebuttal** — attacks what a proposition/hypothesis asserts;
+- **undermining** — attacks a premise, basis or source used to support it;
+- **undercutting** — attacks the inferential link from basis to conclusion.
+
+Example:
+
+```text
+O1: Jane handed over the keys.
+R1: O1 supports "Jane voluntarily cooperated".
+O2: a rifle was pointed at Jane.
+
+O2 undercuts R1.
+```
+
+The observation that Jane handed over the keys remains. The coercion evidence
+does not have to refute that observation; it may instead weaken the inference
+from the observation to voluntariness.
+
+Relations such as `mitigates`, `qualifies`, `aggravates`, `explains` and
+other semantically distinct effects should not be forced into support/attack when
+their meaning is different.
+
+### 13.2 Basis may be composite
+
+A support/attack relation may depend on a set of Addressables rather than one
+source item.
+
+The basis may be:
+
+- joint — all members are needed together;
+- independently corroborative;
+- cumulative;
+- alternative.
+
+Several copied reports must not be treated as several independent supports.
+Provenance and source dependence therefore matter before counting quantity.
+
+### 13.3 Partial targets
+
+A relation may concern a whole Hypothesis or one proposition/component within a
+compound Hypothesis.
+
+This allows one component to remain strongly supported while another is weak or
+attacked, without destroying the entire candidate explanation.
+
+### 13.4 Actor-directed attack is first-class
+
+Actors themselves may be targets of attack.
+
+An attack on an Actor is not automatically an attack on every Claim associated
+with that Actor.
+
+> **Any effect of an Actor-directed attack on a Claim, Hypothesis or other
+> epistemic object must be represented through an explicit additional relation.**
+
+This prevents the model from silently implementing:
+
+```text
+Actor judged bad -> all Claims by Actor judged bad
+```
+
+Source criticism may still be legitimate when it is scoped and relevant. For
+example, evidence that a witness could not observe an Event may undermine that
+witness's claimed firsthand access without becoming a global credibility score.
+
+Actor-directed attacks are themselves observable acts in the epistemic
+environment. Patterns of attacks may become investigative material in their own
+right.
+
+A cluster of attacks against a key witness may increase investigative attention
+without increasing that witness's credibility or the truth of their Claims.
+
+### 13.5 Generic positive / negative / neutral / mixed mentions
+
+Before interpreting a communication as attack, praise, defense, propaganda or
+another richer act, the domain should permit a deliberately coarse
+classification.
+
+Current working names:
+
+```text
+GENERIC_POSITIVE_MENTION
+GENERIC_NEGATIVE_MENTION
+GENERIC_NEUTRAL_MENTION
+GENERIC_MIXED_MENTION
+GENERIC_UNKNOWN_MENTION
+```
+
+The `GENERIC_` prefix is intentional: it signals that the classification is
+coarse and should not be over-interpreted.
+
+A negative mention does not imply attack. A positive mention does not imply
+praise, defense or endorsement.
+
+`GENERIC_MIXED_MENTION` is a legitimate stable classification. An
+investigator must not be forced to split one continuous statement into separate
+positive and negative mentions merely because the system could decompose it.
+
+For example:
+
+> "Joe is brilliant at his job, but I would not trust him with money."
+
+may remain one mixed mention. Later decomposition into more specific derived
+mentions is optional and must preserve provenance to the original material.
+
+### 13.6 Patterns around an Actor
+
+Mentions, attacks, defenses, shielding, praise and other directed communicative
+or behavioral acts may form patterns around an Actor.
+
+Those patterns can motivate new Hypotheses such as:
+
+- coordinated discrediting;
+- common-source rumor propagation;
+- coordinated protection;
+- spontaneous independent reactions;
+- aligned incentives;
+- coincidence.
+
+The pattern must not automatically determine the truth or credibility of the
+target Actor's Claims.
+
+### 13.7 Weighting must preserve argumentative structure
+
+Do not reduce a network of support and attack to arithmetic such as:
+
+```text
+12 supports - 5 attacks = 7
+```
+
+Assessment must consider the structure first:
+
+- relation type;
+- relevance;
+- directness;
+- specificity;
+- source independence;
+- provenance quality;
+- temporal fit;
+- inferential strength;
+- unresolved challenges;
+- active defeaters;
+- shared dependencies.
+
+An undercut should normally weaken the support relation it targets rather than
+blindly subtracting confidence from the Hypothesis as a whole.
+
+Compound Hypotheses must also respect their logical/semantic composition. A weak
+component in an `AND` structure behaves differently from a weak branch in an
+`OR` structure.
+
+### 13.8 HypothesisAssessment is multidimensional
+
+`HypothesisAssessment` should be an Addressable historical reasoning artifact
+bound to a particular Situation revision / input state.
+
+It should preserve multiple dimensions rather than compress them prematurely
+into one number.
+
+Candidate dimensions include:
+
+- support strength;
+- attack strength;
+- contestation;
+- source independence/diversity;
+- coverage;
+- unresolved critical assumptions;
+- active defeaters;
+- stability;
+- investigative priority;
+- consequence / importance if true.
+
+A summary such as `STRONGLY_SUPPORTED_BUT_HIGHLY_CONTESTED` may be a useful
+projection. A single scalar or ordinal may also be useful at a UI or decision
+boundary.
+
+But those are projections over the richer assessment, not the primary internal
+representation.
+
+> **Preserve epistemic richness internally; constrain, rank or summarize only
+> where a concrete decision or interface requires it.**
+
+Two hypotheses that receive the same final score may have radically different
+epistemic structures. Niccolò must preserve that difference.
+
+### 13.9 Human reasoning is the thing being extended
+
+The intended users are intelligent and capable reasoners.
+
+Niccolò is an extender, organizer and explainer of human reasoning capacity, not
+a substitute for it.
+
+Therefore:
+
+- complexity should not be collapsed merely to make the user easier to manage;
+- explanations are part of the reasoning product, not cosmetic post-processing;
+- summaries should remain reversible into the underlying argument structure;
+- ambiguity, contradiction and multidimensional assessments may legitimately be
+  shown to the user;
+- user judgment may disagree with Niccolò's weighting or prioritization.
+
+A useful product principle is:
+
+> **Niccolò should think with the user and make the thinking navigable.**
+
+## 14. Layers currently emerging
 
 A useful conceptual separation is:
 
@@ -507,26 +729,27 @@ This is not a demand for two runtime engines. It is a semantic distinction
 between representing the material/situation and representing reasoning about
 that material.
 
-## 14. Immediate next design work
+## 15. Immediate next design work
 
 Resume from here in this order:
 
-1. **Hypothesis support / attack**
-   - model support and attack as explicit typed relations rather than one score;
-   - determine eligible source/target kinds;
-   - preserve provenance, independence, scope and defeaters;
-   - allow support/attack relations themselves to be questioned when needed.
-
-2. **Question / Unknown / InformationGap**
+1. **Question / Unknown / InformationGap**
    - determine whether these are distinct abstractions;
    - connect them to discriminators and hypothesis competition;
    - distinguish "not known", "not asked", "missing from available sources",
-     "known inaccessible", and "worth investigating".
+     "known inaccessible", and "worth investigating";
+   - decide when an Unknown deserves first-class identity versus remaining the
+     indeterminate state of a Proposition.
+
+2. **Discriminator**
+   - refine the distinction between something that would discriminate competing
+     hypotheses and the concrete Questions or InvestigationActions used to
+     obtain that information.
 
 3. Continue through the remaining base/reasoning abstractions before freezing
    implementation representation.
 
-## 15. Non-goals of this checkpoint
+## 16. Non-goals of this checkpoint
 
 This document does not yet freeze:
 
