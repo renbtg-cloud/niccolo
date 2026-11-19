@@ -267,3 +267,57 @@ Do not freeze existing abstractions merely because the MVP is underway.
 When the review identifies a concrete improvement, evaluate whether now is the technically opportune moment under the rules already established in [MVP composite evidence and human-guided circumstances](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md).
 
 The intended outcome is not the largest ontology. It is the smallest sufficiently expressive epistemic architecture that continues to behave coherently when difficult human situations make the graph, the evidence and the reasoning messy.
+
+
+## 13. Discussion checkpoint — investigative questions, gaps, responses and claims
+
+**Status:** Product-owner-confirmed conceptual directions below; not yet a normative schema or implementation claim. This checkpoint records the discussion so it can be resumed without reconstructing it from chat. The review/reconciliation method above still applies. Names, example enum values and persistence choices are illustrative unless explicitly promoted into a contract.
+
+### Agreed conceptual directions
+
+#### Unknown, InformationGap and Question
+
+- UNKNOWN is an epistemic state of something already represented, not a mandatory first-class Unknown entity.
+- InformationGap is a first-class contextual absence of information relevant to an investigation, hypothesis, objective or decision. Its identity concerns the missing semantic aspect, not the wording of a question. The existence of a prior relationship and the nature of that relationship are distinct gaps.
+- Question is a first-class formulated investigative problem. No mandatory UNKNOWN → InformationGap → Question pipeline: questions may arise independently, gaps may exist without questions, and associations may be discovered retrospectively.
+- A gap can matter to multiple objects without duplicating the gap. Refining the missing semantic aspect can create a new gap with its own identity and genealogical relationship, rather than overwriting the original.
+- Distinguish the semantic Question from QuestionAct (a concrete occurrence of asking it, including actor, recipient, time and context); repeated asking does not necessarily create a new semantic question. Different formulations may express the same question. The exact first-class status and representation of QuestionFormulation remain open.
+
+#### Relevance
+
+- relevant_to is contextual and graded, not merely Boolean. An object may be highly relevant to one hypothesis and scarcely relevant to another.
+- Distinguish degree of relevance, rationale and confidence in the relevance assessment. Relevance may change as an investigation evolves even when the endpoints do not.
+- Preserve attribution, grounding and history of relevance assessments; the exact ordinal vocabulary, comparison semantics and whether every assessment needs independent identity are design details. Illustrative degrees: negligible, low, moderate, high, critical.
+
+#### Resolution and investigative lifecycle
+
+- Separate epistemic resolution (unresolved, partially resolved, resolved) from operational investigation status (active, suspended, closed). Neither entails the other.
+- ResolutionAssessment is attributable, contextual, grounded and versionable rather than a sovereign status asserted by Niccolò. Different investigators may disagree.
+- Assess coverage, evidence/inferences/assumptions, confidence, remaining contradictions and sufficiency for the investigative purpose. No universal threshold; the investigator may choose criteria appropriate to the particular gap.
+- New evidence can motivate a new assessment without erasing prior assessments. Reactivating investigation is a separate operational decision.
+- Partial resolution identifies clarified versus unresolved aspects rather than requiring a numeric percentage. Remaining aspects may become distinct genealogically related gaps; decomposition is optional.
+- Question lifecycle separates investigative status, answerability and received responses. Multiple responses can conflict; receipt of an answer does not close the question or resolve a linked gap.
+- Even a sole investigator with full operational authority sees that *they* made the closure or assessment. Authority is not epistemic infallibility. Preserve authorship, rationale and past decisions.
+- Multi-investigator collaboration should accommodate autonomous investigative lines and proposed incorporation by an authorized lead, including partial adoption, rejection and simultaneous competing assessments. The Git pull-request analogy is illustrative only; it is not a requirement to implement literal branches or PRs. Rejected proposals must not silently erase intellectual provenance.
+
+#### Response, Claim and Interpretation
+
+- Response is an identifiable communicative event; distinguish its source content from derived claims and interpretations. Preserve original content and ambiguity. No mandatory extraction of claims from every response.
+- A Response may address several Questions, including ones formulated later. Receiving a Response is not proof of epistemic resolution.
+- Response–Claim associations are many-to-many: a response may yield zero or more claims; multiple responses may relate to one claim; claims may arise independently of responses.
+- Distinguish extracted_from (provenance of a claim extraction) from evidentiary supported_by / contradicted_by relationships. These are different semantic assertions; one must not automatically imply the other.
+- Preserve who made each extraction or evidentiary association, when, and the rationale. Such associations are contestable.
+- The fact that Jane declared that she never spoke to Joe is distinct from the proposition that she never spoke to Joe. Evidence of a declaration does not establish the truth of its contents.
+- Interpretations can compete and should remain attributable, grounded and independently assessable. Preserve the distinction between what someone said and what another actor understood.
+
+### Pending decisions and reconciliation
+
+- [ ] **Next discussion:** semantic identity of Claim: when apparently equivalent statements from different sources refer to the same semantic claim versus when distinct claims or occurrences must remain separate. Consider scope, time, modality, attribution, precision, source independence and contested equivalence without presupposing a deduplication algorithm.
+- [ ] Refine semantic identity, equivalence, formulation and genealogy rules across Question, InformationGap and Claim; separate semantic identity from occurrence and representation where justified.
+- [ ] Clarify Response/QuestionAct/communicative-act relationships and original content locators, including responses that address several questions or no previously formulated question.
+- [ ] Refine Interpretation identity and its relationships to claims, content, communicative acts and other objects; clarify overlap with existing hypothesis/assessment abstractions.
+- [ ] Refine relevance scales, rationale, confidence, temporal applicability and contestability; clarify exact representation rather than freezing example labels.
+- [ ] Define lifecycle transition semantics, assessment revision/supersession and how authorized operational decisions are projected for single- and multi-investigator situations.
+- [ ] Compare these directions against existing domain code, schema, contracts and tests before naming actual implementation gaps or deciding MVP slices. Identify adversarial cross-abstraction tests and migration precautions.
+
+This checklist is non-exhaustive and records unresolved design work, not a mandate to implement everything immediately. Continue the epistemic review and improve the technical abstractions where evidence warrants it. Preserve confirmed semantic distinctions and human authority; do not silently convert open questions into settled requirements.
