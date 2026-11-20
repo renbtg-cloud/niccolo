@@ -4,6 +4,44 @@
 
 **A product and conceptual architecture overview.** This document describes Niccolò's approved epistemological design and MVP target. The model is not a claim that every capability already exists in the shipping software. The architecture review, conceptual adversarial cases and implementation evidence remain separately traceable.
 
+## Executive perspective
+
+**What if an impeccably documented investigation was designed never to discover the truth?** What if an apparent leak was actually independent discovery? What if a witness was honest, every quotation accurate, and the resulting narrative nevertheless misleading?
+
+Niccolò is designed for precisely these circumstances. Its purpose is to give investigators, intelligence analysts, executives, legal teams and independent reviewers an explicit, revisable model of reality as they encounter it through information.
+
+- **Counterintelligence:** examine compromised information, hidden loyalties, coercion, misleading appearances and the possible compromise of counterintelligence itself.
+- **Independent oversight and police internal affairs:** investigate the investigators, their choices, their sources, their dependencies and the integrity of the oversight process.
+- **Corporate and legal investigations:** separate actual evidence from repeated allegations, reconstruct who knew what and when, preserve competing arguments and reassess conclusions when their foundations change.
+- **Strategic judgment:** investigate power, influence, dependence and human relationships; identify discriminating questions and recommend proportionate actions under explicit uncertainty.
+
+The distinguishing proposition is that deception, human knowledge and investigative integrity are not exceptional modules. They permeate the same epistemological universe. A finding is not a terminal answer: it can become the subject of another investigation, be challenged, be revised or contribute to a recommendation without losing its original foundations.
+
+The intended capability goes beyond document retrieval and fluent synthesis. Niccolò must preserve the semantics of the relationships among information, reasoning and human activity, including the circumstances in which apparently convincing evidence or reasoning becomes unreliable. Its target is a thinking companion that can disagree with the investigator, without appropriating the investigator's authority.
+
+```text
+              A: Information and provenance
+                       |           |
+                       v           v
+              B: Investigation <--> D: Human dynamics
+                       |           |
+                       v           v
+                C: Reasoning and revision
+                       |
+                       v
+                 E: Recommendations
+                       |
+                       v
+              Human decision / new information
+                       |                  
+                       +----> A, B, C, D
+
+    F: Integrity and governance constrain every layer.
+    Deception and uncertainty can occur in every layer.
+```
+
+The diagram summarizes dependencies and feedback, not a mandatory processing sequence. Section 14 describes the six slices in more detail. The same core makes it possible to investigate a board decision, a compromised source and the integrity of an oversight body.
+
 ## 1. Reality does not submit a clean dataset
 
 A company president says something. A subordinate remembers only part of it. A witness has a reason to omit a name. A police officer has access to evidence that another officer cannot see. A respected expert is wrong. A junior analyst notices an inconsistency that everyone else has learned not to question. An investigator closes a line of inquiry because a superior wants it closed, not because the question has been answered.
@@ -72,6 +110,10 @@ The most useful information is not always the information that produces the most
 Niccolò is designed to examine whether proposed evidence would change a hypothesis assessment; which explanations could survive either answer; whether a question is answerable; what assumptions it embeds; what alternative questions would be more informative; and where the observed material suggests possibilities not yet formulated. A poorly structured inquiry can collect an enormous quantity of information and learn almost nothing about the issue that matters.
 
 This is particularly important when reviewing another investigator's work. The questions that were never asked, the alternatives that were never entertained, and the investigative choices that prevented discovery can be as important as the answers that appear in the file.
+
+**A rigorous investigation can be incapable of discovering its own subject.** Consider a hypothetical inquiry into the disappearance of a forensic record. The team verifies every recorded transfer and interviews every officer named on those records. The unexplored alternative is that the recording process itself was incomplete. A perfectly consistent chain of recorded transfers does not establish that all relevant transfers were recorded. The discriminating gap concerns the completeness of the record, rather than the accuracy of its entries. This is a different investigative question, not just another request for more of the same evidence.
+
+Niccolò's intended contribution is to keep that distinction explicit: describe the scope of observation, identify the assumption on which the original inference depends, propose alternative hypotheses and questions, and preserve the investigator's decision about whether to pursue them. It must also be able to recognize when a proposed question cannot discriminate, or when the available material warrants no further conclusion.
 
 ### Closure is an operational act
 
@@ -308,6 +350,8 @@ The integrity of oversight is particularly important because the same institutio
 
 Niccolò is designed to expose coverage and dependency problems, hidden premises, self-confirming inquiry, missed alternatives, suppressed dissent, unsupported closure and gaps in actual autonomy to disagree. It preserves original material, contested assessments and decision genealogy for authorized review. The limitations of a computational process are not discoveries about the world: a resource-limited search returning no result does not prove absence.
 
+**Example of the interaction:** An oversight reviewer receives three reports alleging an officer's misconduct. Two reports descend from the same interview; the third is a genuinely independent observation. A later discovery compromises the interview's accuracy. The reviewer must not count its two descendants as independent corroboration, nor automatically discard the independent observation. A recommendation for independent review of the recording procedure may stand on separate grounds. The original decision to close the case, the evidence then available, and any rejected investigative alternatives remain inspectable. This compact hypothetical combines provenance, deception, selective revision, responsibility, investigative integrity and recommendation in one operation.
+
 ## 11. From analysis to action recommendation
 
 The model is not confined to describing the past. An **ActionRecommendation** is a grounded, reviewable proposal to an authorized human decision maker. It is distinct from a decision, authorization, implementation or prediction of success.
@@ -401,6 +445,8 @@ The conceptual architecture has undergone a first round of 25 adversarial desk c
 
 The next engineering obligation is to reconcile the approved model with the existing implementation, determine its concrete delta, and derive executable regression and contract tests. See the [epistemic architecture review](../architecture/EPISTEMIC_ARCHITECTURE_REVAMP_IN_PROGRESS.md) for the detailed conceptual decisions, relationship semantics, validation cases and technical reconciliation work. See the [repository README](../../README.md) for verified implementation status.
 
+Meaningful validation should evaluate behavior across the interactions, not merely the presence of abstractions in a schema. Representative acceptance targets include preserving independent sources after consolidation, rejecting circular corroboration, keeping hypothetical scenarios separate from actual-world evidence, displaying both supporting and opposing grounds, recognizing hidden presuppositions, and reassessing only affected dependencies. Recommendations should expose their conditions and survive the loss of a suspicion when independently justified. Resource-limited results and compartment-limited views must not be represented as comprehensive knowledge. These are testable targets for the upcoming implementation reconciliation, not reported benchmark results.
+
 ## 16. The point
 
 For Niccolò, information about an investigation is information. Information about the integrity of its investigators is information. The way a source came to believe an assertion, the influence behind a decision, the false impression created by a true statement, the fear that explains an omission, the provenance of a conclusion, the fact that an investigation has been closed without resolving its central question — all belong to the same universe.
@@ -408,3 +454,36 @@ For Niccolò, information about an investigation is information. Information abo
 The aim is not omniscience. It is to make human reasoning in difficult, adversarial circumstances more explicit, discriminating, revisable and accountable — to investigate reality without surrendering to the authority, reputation, volume or confidence with which a version of it is presented.
 
 **Insolence to authority. Humility to evidence.**
+
+## Appendix. Selected research foundations
+
+Niccolò's conceptual design draws on an interdisciplinary examination of epistemology, human behavior, strategic communication, argumentation, evidence and professional investigations. The following works are a selected reading path from the [66-source annotated interdisciplinary review](../architecture/EPISTEMIC_DOMAIN_INTERDISCIPLINARY_REVIEW_V1.md), which records inspection levels, competing findings, limitations and design implications. These references inform distinctions in the design; they do not establish the validity, accuracy or operational maturity of Niccolò itself, nor imply that it implements any particular published formalism.
+
+### Knowledge, testimony and human relationships
+
+- Sperber et al. (2010), [*Epistemic Vigilance*](https://doi.org/10.1111/j.1468-0017.2010.01394.x). Evaluation of information and communicators.
+- Fricker (2007), [*Epistemic Injustice*](https://academic.oup.com/book/32817). Credibility attribution, power and interpretation.
+- Perner & Wimmer (1985), [*John Thinks That Mary Thinks That…*](https://www.sciencedirect.com/science/article/pii/0022096585900517). Second-order belief representation.
+- Wellman & Liu (2004), [*Scaling of Theory-of-Mind Tasks*](https://pubmed.ncbi.nlm.nih.gov/15056204/). Distinctions involving knowledge access, desires and beliefs.
+
+### Deception, strategic communication and human judgment
+
+- Crawford & Sobel (1982), [*Strategic Information Transmission*](https://www.jstor.org/stable/1913390). Communication under divergent preferences.
+- Kuran (1995), [*Private Truths, Public Lies*](https://sites.duke.edu/timurkuran/research/books/private-truths-public-lies-the-social-consequences-of-preference-falsification/). Private preferences and publicly expressed positions.
+- DePaulo et al. (2003), [*Cues to Deception*](https://pubmed.ncbi.nlm.nih.gov/12555795/), and Bond & DePaulo (2006), [*Accuracy of Deception Judgments*](https://pubmed.ncbi.nlm.nih.gov/16859438/). Evidence and limitations of deception judgments.
+- Tversky & Kahneman (1974), [*Judgment Under Uncertainty*](https://doi.org/10.1126/science.185.4157.1124), and Gigerenzer & Gaissmaier (2011), [*Heuristic Decision Making*](https://doi.org/10.1146/annurev-psych-120709-145346). Complementary perspectives on judgment and heuristics.
+
+### Reasoning, provenance and institutional authority
+
+- Prakken (2010), [*An Abstract Framework for Argumentation with Structured Arguments*](https://journals.sagepub.com/doi/10.1080/19462160903564592). Distinct targets of argumentative challenges.
+- Alchourrón, Gärdenfors & Makinson (1985), [*On the Logic of Theory Change*](https://doi.org/10.2307/2274239). Belief revision and contraction.
+- de Kleer (1986), [*An Assumption-Based TMS*](https://doi.org/10.1016/0004-3702(86)90080-9). Assumption contexts and dependencies.
+- W3C (2013), [*PROV-O: The PROV Ontology*](https://www.w3.org/TR/prov-o/). Provenance of entities, activities and agents.
+- Jones & Sergot (1996), [*A Formal Characterisation of Institutionalised Power*](https://doi.org/10.1093/jigpal/4.3.427). Institutional power and authorization.
+
+### Professional investigation and investigative integrity
+
+- Heuer (1999), [*Psychology of Intelligence Analysis*](https://www.cia.gov/resources/csi/books-monographs/psychology-of-intelligence-analysis-2/). Competing hypotheses and analytic bias.
+- National Academies (2014), [*Identifying the Culprit: Assessing Eyewitness Identification*](https://www.nationalacademies.org/read/18891/chapter/2). Witness memory and investigative procedures.
+- Cooper & Meterko (2019), [*Cognitive Bias Research in Forensic Science: A Systematic Review*](https://doi.org/10.1016/j.forsciint.2019.01.016). Bias, prior exposure and forensic practice.
+- Rubin (1976), [*Inference and Missing Data*](https://doi.org/10.1093/biomet/63.3.581). Missing information and the mechanism producing its absence.
