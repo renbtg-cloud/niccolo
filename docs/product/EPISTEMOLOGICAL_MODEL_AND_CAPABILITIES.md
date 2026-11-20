@@ -26,7 +26,7 @@ That is the product.
 
 Niccolò is designed for precisely these circumstances.
 
-Its purpose is to give investigators, intelligence analysts, executives, legal teams, auditors, independent reviewers and ordinary people an explicit, revisable model of reality as they encounter it through information.
+Its purpose is to give investigators, intelligence analysts, executives, legal teams, auditors and independent reviewers an explicit, revisable model of reality as they encounter it through information.
 
 It is intended to help with problems such as:
 
@@ -131,6 +131,8 @@ History is fundamentally append-oriented:
 - rejection of a hypothesis does not erase its historical influence;
 - consolidation does not destroy original identities, provenance or genealogy;
 - disagreement between investigators does not require one globally privileged epistemic version.
+
+Append-oriented semantics do **not** mean that personal or legally regulated content must be retained physically forever. A lawful erasure, controlled redaction, anonymization or pseudonymization operation may remove or transform protected content while preserving, where legally permitted and operationally necessary, a tombstone describing that an object existed, what kind of legal/governance action occurred, which dependencies were affected, and what must be reassessed. A tombstone must never retain the very content the erasure obligation requires the system to remove.
 
 ### 2.2 Proposition is not occurrence
 
@@ -448,7 +450,32 @@ Niccolò distinguishes the material being reasoned about, the meaning assigned t
 
 An **Interpretation** assigns contextual meaning to material or to another interpretation.
 
-Competing interpretations can coexist. The original material survives. A later preferred interpretation does not rewrite the historical artifact.
+For human language, understanding is not exhausted by dictionary meaning. Niccolò may need to distinguish:
+
+- local lexical and compositional meaning;
+- reference and scope - who or what pronouns, time expressions and qualifiers concern;
+- pragmatic meaning - accusation, praise, irony, exaggeration, insult, in-group language, warning, justification or another discourse act;
+- the situational content the speaker or user intended to communicate.
+
+The original utterance remains primary evidence of what was said. A derived interpretation remains attributable and revisable.
+
+In the MVP, a human statement that Niccolò has interpreted but the user has not yet confirmed as correctly understood remains explicitly marked as **unconfirmed understanding** in both the reasoning state and the user interface. Niccolò may reason from that current interpretation when useful, but every downstream dependency must retain the fact that the interpretation is provisional so that later clarification can trigger selective reassessment.
+
+For example:
+
+> "He was an asshole."
+
+safely supports an initial understanding such as "the speaker expresses a strongly negative evaluation of him". It does not, without context, establish that he humiliated subordinates, complained loudly, acted selfishly or behaved in any other specific way.
+
+Likewise:
+
+> "He's a fag."
+
+can support the local referential understanding that the speaker used a strongly context-dependent label referring to him as a queer person, while leaving pragmatic meaning open. Depending on speaker, audience, relationship and context, the utterance may function as hostility, derogation, reclaimed in-group language, teasing, affection, solidarity or something else.
+
+User confirmation means **"yes, that is what I meant / that is how the utterance should be understood"**. It does not mean that the proposition expressed by the user or speaker is true.
+
+Competing interpretations can coexist. The original material survives. A later preferred interpretation does not rewrite the historical artifact. Revision of an interpretation must preserve its history and identify consequential downstream reasoning that may need review.
 
 ### 5.2 Hypothesis
 
@@ -2241,6 +2268,8 @@ Three rules are essential:
 
 Qualitative representation should preserve context, author, rationale, evidence and time so later calibration can be introduced without rewriting semantic history.
 
+Rejecting false universal precision does not mean rejecting quantitative evidence. Amounts, timestamps, durations, access frequencies, measured error rates, statistical estimates, laboratory measurements and other genuinely quantitative observations should preserve their numeric values, units, methods, populations/samples, uncertainty and provenance where applicable. The prohibition is against pretending that qualitative human judgments become scientifically meaningful merely because software assigns them a universal number.
+
 ### 26.1 Relationship families have different contracts
 
 A generic graph edge is not enough.
@@ -2324,6 +2353,22 @@ Consequential conclusions expose what they depend on, including alternatives and
 
 Historical state survives later correction.
 
+### Interpretation state
+
+The original human utterance, current interpretation, confirmation status, interpreter, rationale, history and consequential downstream dependencies remain distinguishable. Confirmation of meaning does not confirm truth.
+
+### Progressive formalization
+
+The complete epistemological model must be representable without requiring every item to be eagerly decomposed into its richest possible form. Niccolò formalizes more deeply when conflict, consequence, ambiguity, revision or investigative purpose makes the distinction useful. Unknown is preferable to unsupported completion.
+
+### Human interaction
+
+The ontology is an internal representation, not the investigator's data-entry model. Internal representational complexity must not become interaction complexity. Investigators should normally work with evidence, people, timelines, questions, explanations, findings, risks and actions rather than manually populating dozens of epistemic abstractions.
+
+### AI proposal boundary
+
+A language model may propose an interpretation, relationship, hypothesis, hidden premise or other structure. Proposal is not canonical epistemic fact. Proposed structure should be materialized only when it preserves a necessary distinction or has identifiable investigative value; plausible but operationally useless elaboration is epistemic spam.
+
 ### Uncertainty
 
 Uncertain material is not automatically promoted into fact because it was repeated or institutionally adopted.
@@ -2334,7 +2379,7 @@ Adoption, authorization and institutional endorsement do not create truth.
 
 ### Confidentiality
 
-Retention of information does not confer permission to access it.
+Retention of information does not confer permission to access it. Conversely, append-oriented epistemic history does not override lawful erasure, redaction, anonymization or retention limits; controlled tombstones may preserve revision semantics without preserving prohibited content.
 
 ### Human authority
 
@@ -2531,6 +2576,38 @@ Representability does not mean the software is authorized to perform, facilitate
 
 Information supplied by users about images or video can participate as evidence. Autonomous image and video understanding remains outside the initial product scope.
 
+### 30.5 MVP language boundary: English only
+
+The MVP epistemic interpretation layer operates in **English only**.
+
+Non-English material may be stored as source evidence or attached as an opaque artifact, but Niccolò does not claim to understand it semantically in the MVP. Material that must participate in structured reasoning must first be supplied in English. Translation is outside the MVP epistemic contract and must not be silently performed as though linguistic ambiguity had disappeared.
+
+This boundary is deliberate. Slang, idiom, regional usage, cultural references and pragmatic meaning can change the event or intent represented by a sentence. Restricting the MVP to English narrows the semantic validation problem rather than hiding multilingual uncertainty behind a generic translation call.
+
+### 30.6 Complete model, progressive formalization
+
+"Complete model in the MVP" means **complete semantic capability**, not eager maximal decomposition of every sentence, person or relationship.
+
+A statement may initially remain shallow. Niccolò expands it only when a distinction becomes useful to reasoning - for example, when a question depends on whether document receipt implied examination, comprehension or belief. The richer distinction must be available when needed, but absent evidence must remain absent rather than being filled with plausible detail.
+
+The graph is a data structure, not the primary user interface. The ontology is a compiler target for reasoning, not a form the investigator is expected to populate manually.
+
+### 30.7 Conservative AI proposals and human clarification
+
+LLMs may help parse English, extract candidate structure and suggest interpretations. They do not silently promote ambiguous language into canonical fact.
+
+The preferred behavior is:
+
+- preserve the original utterance;
+- derive the strongest interpretation justified by language and context, no stronger;
+- mark that interpretation unconfirmed until the user confirms or corrects the understanding;
+- preserve material ambiguity;
+- prefer inexpensive clarification over speculative formalization when clarification matters;
+- retain downstream dependency on provisional interpretations;
+- suppress low-value speculative structure before it becomes a human curation burden.
+
+A rich ontology must not become a larger surface for hallucination. Unknown is a legitimate and often superior state.
+
 ---
 
 ## 31. Implementation stance: preserve engineering, not old shortcuts
@@ -2584,7 +2661,7 @@ Extensibility should follow semantic boundaries rather than dictate them. Where 
 
 ---
 
-## 32. Twenty-five adversarial cases used to attack the model
+## 32. Twenty-six adversarial cases used to attack the model
 
 The architecture was deliberately tested with difficult conceptual cases. These are not benchmark results and do not prove completeness. Their purpose is to expose contradictions, missing distinctions and unsafe propagation rules.
 
@@ -2688,7 +2765,11 @@ Evidence establishes access and acquaintance but not disclosure. Expected behavi
 
 A complex case combines shared source origin, misinterpreted authentic evidence, fear-driven omission, hidden loyalty, compartmented favorable evidence, pressure for closure and an independent structural vulnerability. Expected behavior: preserve all distinctions simultaneously, resist premature guilt, respect confidentiality, retain dissent and still recommend proportionate structural protection where independently justified.
 
-The combined case did not demonstrate a need for a separate new epistemic engine. The approved abstractions appear composable, which is exactly the architectural objective.
+### AT-26 - Weaponized formalism
+
+An interested actor continuously injects marginally plausible alternative hypotheses, low-value provenance objections and formally valid challenges in order to consume investigative attention, delay closure beyond a deadline or prescription period, and create the appearance that nothing can ever be concluded. Expected behavior: preserve legitimate objections without granting veto power merely because an objection is formally representable; assess novelty, grounding, relevance, discriminatory value, cost, deadline impact and whether the challenge can materially change a consequential conclusion. Human attention is a scarce investigative resource.
+
+The combined cases did not demonstrate a need for a separate new epistemic engine. The approved abstractions appear composable, which is exactly the architectural objective.
 
 ---
 
@@ -2768,7 +2849,7 @@ This appendix condenses the approved model for readers who need the vocabulary w
 
 ### Reasoning core
 
-- Interpretation
+- Interpretation / interpretation confirmation state / revision history
 - Premise
 - PremiseAdoption
 - Scenario
@@ -2837,6 +2918,7 @@ This appendix condenses the approved model for readers who need the vocabulary w
 ### Governance and action core
 
 - Compartmentalization
+- lawful erasure / controlled redaction / tombstone
 - InvestigationIntegrity
 - ActionRecommendation
 - alternative actions including inaction/delay

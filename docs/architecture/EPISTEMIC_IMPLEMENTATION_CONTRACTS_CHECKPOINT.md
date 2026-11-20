@@ -39,6 +39,8 @@ History is fundamentally append-oriented:
 - consolidation does not destroy original identities, provenance or genealogy;
 - disagreement between investigators does not require a single globally current epistemic version.
 
+This is a semantic/history contract, not an instruction to retain personal content forever. The implementation must permit lawful erasure, controlled redaction, anonymization or pseudonymization while preserving, where lawful, a content-free tombstone sufficient to identify affected dependencies and trigger selective reassessment. A tombstone must not preserve prohibited content indirectly.
+
 ## 3. Semantic proposition versus occurrence
 
 The same semantic proposition may be asserted in several independent or non-independent occurrences.
@@ -209,6 +211,22 @@ A response is a communicative occurrence. It may contain assertions, refusals, u
 “Actor said ‘I do not know’” is not equivalent to “actor does not know”.
 
 Receiving an answer does not automatically resolve the underlying gap. A gap may remain open, partially addressed, supported, contested, unresolved or effectively unresolvable depending on the available grounding.
+
+For human-language input, preserve separately:
+
+- the original utterance;
+- the current derived interpretation;
+- whether the user has confirmed that Niccolò understood the intended meaning;
+- who or what produced the interpretation;
+- rationale/context where material;
+- interpretation revision history;
+- downstream reasoning that depends on the interpretation.
+
+Niccolò may reason from an unconfirmed interpretation, but it must remain explicitly provisional in persistence and UI. Later clarification must be able to trigger selective reassessment.
+
+User confirmation of an interpretation means that the meaning was understood correctly. It does **not** establish the truth of the resulting proposition.
+
+Interpretation should be conservative. Parse what was said and what the context supports; do not complete an implied chain such as received -> read -> understood -> believed without evidence. Unknown is preferable to unsupported semantic completion.
 
 ## 11. Choosing the next investigative step
 
@@ -490,7 +508,14 @@ The working implementation stance is:
 - PostgreSQL for durable relational persistence, referential integrity, history and efficient projections;
 - no graph database required merely because the domain is graph-shaped;
 - no heavyweight ontology engine required merely because relationships are rich;
-- LLMs may propose interpretations/relations but do not bypass deterministic contracts;
+- the MVP semantic interpretation boundary is English-only;
+- a conservative English parser/intermediate representation may structure ordinary statements before richer epistemic materialization; the exact parser/LLM split must be reconciled with the current code rather than assumed;
+- LLM output is proposal state, not canonical epistemic fact, and never bypasses deterministic contracts;
+- progressive formalization is demand-driven: the complete ontology is representable, but rich decomposition occurs when conflict, consequence, ambiguity or investigative purpose justifies it;
+- the ontology is not the investigator's data-entry model, and the graph is not required to be the primary UI;
+- low-value speculative LLM proposals should be suppressed rather than creating a human curation queue;
+- consequential conclusions require stronger explicit grounding than exploratory material;
+- genuinely quantitative evidence preserves numbers, units, method, uncertainty and provenance; the rejection of universal epistemic scores does not discard quantitative evidence;
 - access control remains deterministic product security;
 - sophisticated algorithms are justified where necessary for the approved epistemic capabilities;
 - avoid unjustified universal numerical scoring, probability or autonomous optimization.
@@ -520,7 +545,7 @@ Prioritize shared semantic substrate before proliferating feature-specific objec
 
 Then reconcile the six functional slices already defined in the main architecture review.
 
-The AT-01 through AT-25 adversarial cases remain candidates for executable contract, invariant, property and integration tests.
+The AT-01 through AT-26 adversarial cases remain candidates for executable contract, invariant, property and integration tests. AT-26 specifically tests weaponized formalism: formally valid but low-value objections must remain representable without acquiring automatic veto power over investigation progress.
 
 ---
 

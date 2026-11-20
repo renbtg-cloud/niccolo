@@ -859,9 +859,9 @@ A supports B and D; both inform C; C informs E; F constrains and enriches them a
 - Order enum values only where semantics justify it. Ordinality does not imply equal intervals, ratio properties, additive scores, normalized probabilities or globally comparable values. Preserve context, author, rationale, evidence and time so later metric calibration/quantification can be added without rewriting semantic history.
 - Bounded processing, simple UI projections, and simpler operational compartment structures are acceptable if they preserve semantic distinctions and don't mislead users or leak protected content. If existing MVP security contracts impose stronger requirements, preserve them. Full representability is not authorization to execute every modeled act. Existing exclusions of autonomous image/video understanding remain.
 - Compare the complete model with real code, schema, contracts and executable tests before naming implementation gaps. Identify what can be preserved, refined, added, shared or simplified while maintaining full epistemic capability. Implement/refactor at technically opportune points; do not impose a giant rewrite or wait for an almost finished MVP. For any proposed delay or narrowing of an approved core capability, explicitly surface rationale, affected invariants, interim behavior, dependencies and migration precautions for owner review. Do not silently defer core model coverage.
-- Product claims should differentiate approved scope/target behavior from verified implemented behavior. The 25 desk tests and consolidation are conceptual design material, not assurance of current implementation or empirical accuracy.
+- Product claims should differentiate approved scope/target behavior from verified implemented behavior. The 26 desk tests and consolidation are conceptual design material, not assurance of current implementation or empirical accuracy.
 
-Next: reconcile the approved model and semantic contracts with the actual Niccolò architecture, identify the concrete delta, review planned implementation sequencing and derive executable regression/contract tests from AT-01–AT-25. The architecture review is evolvable and non-exhaustive; improve it where evidence warrants it.
+Next: reconcile the approved model and semantic contracts with the actual Niccolò architecture, identify the concrete delta, review planned implementation sequencing and derive executable regression/contract tests from AT-01–AT-26. The architecture review is evolvable and non-exhaustive; improve it where evidence warrants it.
 
 ## 27. Pre-code implementation contracts checkpoint
 
@@ -872,3 +872,78 @@ That checkpoint makes explicit the agreed direction for persistent epistemic ide
 It also records the owner clarification that **ego protection** is a distinct explicit personal motive (self-image, status, face, competence, humiliation/recognition), while **identity protection** remains a broader and separate social/professional/group-identity mechanism.
 
 The next step is implementation reconciliation: map the current Rust, PostgreSQL, APIs, frontend contracts and tests to **preserve / generalize / replace / create** before modifying code.
+
+## 28. Owner decisions after execution-risk review: progressive formalization, interpretation and curation
+
+**Status:** Product-owner-approved direction recorded before implementation reconciliation. These decisions refine how the complete MVP model is populated and presented; they do not add a parallel epistemic engine.
+
+### 28.1 Complete semantics does not mean eager maximal structure
+
+The complete approved epistemological model remains in MVP, but representation is **progressively formalized**. A shallow statement can remain shallow until a consequential question, ambiguity, conflict, revision or investigative objective makes a richer distinction useful.
+
+Example: evidence that an actor received a document does not require Niccolò to fabricate or eagerly instantiate reading, attention, comprehension, retention and belief. Those distinctions must be representable when the investigation needs them; unknown states must remain unknown until grounded.
+
+This resolves an important product tension: semantic completeness is an internal capability, not an obligation to make investigators navigate or populate the entire ontology.
+
+> **Internal representational complexity must not become human interaction complexity.**
+
+The ontology is an internal reasoning representation, not the investigator's data-entry model. The graph is a data structure, not a requirement for the primary UI.
+
+### 28.2 MVP language boundary: English only
+
+The MVP semantic interpretation layer understands **English only**. Non-English material may be retained as opaque source evidence, but it does not enter structured epistemic reasoning until an English representation is supplied outside the MVP language contract.
+
+This is deliberate risk reduction. Translation of slang, idiom, regional usage and pragmatic meaning can change the represented event or intention. Multilingual interpretation is not to be hidden behind a generic translation call during MVP.
+
+### 28.3 Human statements carry an interpretation state
+
+For a human-language statement, preserve the original utterance separately from Niccolò's current understanding.
+
+Understanding can include local lexical/compositional meaning, reference and scope, pragmatic force, and the situational content intended by the speaker or user. It is not merely synonym substitution.
+
+Until the user confirms that Niccolò understood a relevant statement correctly, the derived interpretation remains visibly and persistently **unconfirmed**. Niccolò may reason from it, but downstream reasoning must retain that dependency and be selectively revisable if the interpretation changes.
+
+Examples:
+
+- "He was an asshole." safely supports a strong negative evaluation, but not a specific behavior such as public humiliation or loud complaining without additional context.
+- "He's a fag." can support the local referential interpretation that the speaker used a context-dependent label referring to the person as queer while leaving pragmatic force open; it may be hostile, derogatory, reclaimed in-group usage, teasing, affectionate, solidaristic or something else depending on context.
+
+User confirmation confirms **meaning**, not **truth**. "Yes, that is what I meant" does not establish that the proposition itself is factually correct.
+
+### 28.4 Conservative parsing and AI proposal parsimony
+
+A conservative English semantic parser/intermediate representation is a desirable boundary between ordinary language and the richer canonical model. Deterministic parsing should handle what can be handled safely; LLM assistance may be used for genuinely useful unresolved ambiguity.
+
+Regardless of implementation mechanism:
+
+- preserve original text;
+- parse the strongest meaning justified by the utterance and context, no stronger;
+- do not infer motive, comprehension, deception, loyalty or other rich states merely because they are plausible;
+- prefer clarification over speculative formalization when the distinction matters;
+- distinguish proposal state from accepted/canonical state;
+- do not require investigators to review a flood of low-value proposals.
+
+A candidate structure should normally be persisted or surfaced only when it preserves a necessary distinction, affects a live hypothesis, explains a conflict, identifies a material gap, affects a consequential finding/recommendation, or has comparable investigative value. Plausibility alone is insufficient.
+
+This is an anti-hallucination contract: a richer ontology must not become a larger surface for structured persistent bullshit.
+
+### 28.5 Append-oriented history and lawful erasure
+
+Append-oriented epistemic revision does not supersede legal or contractual deletion duties. The architecture must support controlled erasure, redaction, anonymization and pseudonymization while preserving, where lawful, minimal tombstones and dependency effects needed to explain why downstream reasoning became unsupported or requires review.
+
+The system must not retain prohibited content inside the tombstone, embeddings, summaries, caches, hidden metadata or derived structures merely to preserve a perfect historical graph.
+
+### 28.6 Selective grounding intensity and quantitative evidence
+
+Detailed dependency structure is especially important for consequential nodes: findings, recommendations, formal accusations, high-impact risk assessments and disputed inferences. Exploratory material may remain lighter until it becomes consequential or contested.
+
+The rejection of universal truth/confidence arithmetic does not prohibit genuine quantitative evidence. Financial amounts, log frequencies, measured durations, statistical estimates, laboratory measurements and similar evidence retain their quantitative semantics, units, methods, uncertainty and provenance.
+
+### 28.7 AT-26 — Weaponized Formalism
+
+Add a new adversarial case: a strategically interested actor floods an investigation with marginally plausible alternatives, formal challenges and provenance objections to consume attention, delay a deadline or create paralysis by analysis.
+
+Expected behavior: legitimate objections remain representable, but formal representability does not grant veto power. Triage may consider grounding, novelty, relevance, discriminatory value, cost, deadline impact and whether resolving the objection could materially change a consequential conclusion. Human attention is a scarce investigative resource.
+
+This refinement changes the adversarial corpus from AT-01–AT-25 to **AT-01–AT-26**.
+
