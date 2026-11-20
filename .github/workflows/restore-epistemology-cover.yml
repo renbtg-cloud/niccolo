@@ -1,0 +1,111 @@
+name: Restore epistemology Machiavelli cover
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/restore-epistemology-cover.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deterministic PDF dependency
+        run: python -m pip install --disable-pip-version-check PyMuPDF==1.26.7
+
+      - name: Replace page 1 with the existing Machiavelli cover
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum README-cover-image.png | awk '{print $1}')" = "cc4f842c3edde56dfa99f2eb9c2c8fc6acf59a8ec531b9098f1b2703713c412b"
+          python - <<'PY'
+          import fitz
+          import hashlib
+          import os
+
+          src = "docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.pdf"
+          img = "README-cover-image.png"
+          tmp = src + ".tmp.pdf"
+
+          doc = fitz.open(src)
+          metadata = dict(doc.metadata)
+          toc = doc.get_toc(simple=True)
+
+          assert doc.page_count == 50, doc.page_count
+          assert len(toc) == 39, len(toc)
+
+          w, h = doc[0].rect.width, doc[0].rect.height
+
+          cover = fitz.open()
+          page = cover.new_page(width=w, height=h)
+          page.draw_rect(
+              page.rect,
+              color=(0.03, 0.025, 0.02),
+              fill=(0.03, 0.025, 0.02),
+              overlay=True,
+          )
+
+          pix = fitz.Pixmap(img)
+          scale = min(w / pix.width, h / pix.height)
+          iw, ih = pix.width * scale, pix.height * scale
+          rect = fitz.Rect(
+              (w - iw) / 2,
+              (h - ih) / 2,
+              (w + iw) / 2,
+              (h + ih) / 2,
+          )
+          page.insert_image(rect, filename=img, keep_proportion=True, overlay=True)
+
+          cover_bytes = cover.tobytes(garbage=4, deflate=True)
+          cover.close()
+
+          cover_doc = fitz.open(stream=cover_bytes, filetype="pdf")
+          doc.delete_page(0)
+          doc.insert_pdf(cover_doc, from_page=0, to_page=0, start_at=0)
+          cover_doc.close()
+
+          doc.set_toc(toc)
+          metadata["title"] = "Niccolò: An Epistemology for the Real World"
+          metadata["subject"] = "Product and conceptual architecture overview"
+          doc.set_metadata(metadata)
+          doc.save(tmp, garbage=4, deflate=True, clean=True)
+          doc.close()
+
+          os.replace(tmp, src)
+
+          check = fitz.open(src)
+          assert check.page_count == 50, check.page_count
+          assert len(check.get_toc()) == 39, len(check.get_toc())
+          assert round(check[0].rect.width, 3) == round(check[1].rect.width, 3)
+          assert round(check[0].rect.height, 3) == round(check[1].rect.height, 3)
+          check.close()
+
+          digest = hashlib.sha256(open(src, "rb").read()).hexdigest()
+          expected = "561c73f57795f4cf33158f20de50f99e79379c368f86b635bc46e1cfe7ed0d36"
+          assert digest == expected, (digest, expected)
+          print("verified", digest)
+          PY
+
+      - name: Commit the restored PDF and remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/restore-epistemology-cover.yml
+          git add docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.pdf
+          git commit -m "docs(product): restore Machiavelli epistemology cover"
+          git push origin HEAD:main
