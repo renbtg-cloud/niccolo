@@ -522,6 +522,8 @@ The working implementation stance is:
 
 ## 25. Reconciliation gate before code changes
 
+The first repository-level reconciliation is recorded in [Epistemic implementation reconciliation — V1](EPISTEMIC_IMPLEMENTATION_RECONCILIATION_V1.md). It classifies the actual Rust/PostgreSQL substrate before implementation changes.
+
 Before implementing this checkpoint, inspect the current Rust, PostgreSQL schema/migrations, APIs, frontend contracts and executable tests.
 
 Classify each relevant existing construct as:
