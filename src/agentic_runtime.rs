@@ -3,8 +3,9 @@
 use crate::bff_operations::OperationScope;
 use crate::{
     adversarial_challenge, agentic_controller, agentic_policy, analysis_coverage, analysis_quality,
-    bff_operations, model_adapter, model_artifacts, operation_budget, reasoning_handoff,
-    reasoning_packet, reasoning_updates, observation_retrieval, observation_query_ledger,
+    bff_operations, model_adapter, model_artifacts, observation_query_ledger,
+    observation_retrieval, operation_budget, reasoning_handoff, reasoning_packet,
+    reasoning_proposals, reasoning_updates,
 };
 use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,8 @@ pub enum RuntimeError {
     Artifact(#[from] model_artifacts::ArtifactError),
     #[error("reasoning update invalid: {0}")]
     Update(#[from] reasoning_updates::UpdateError),
+    #[error("reasoning proposal invalid: {0}")]
+    Proposal(#[from] reasoning_proposals::ProposalError),
     #[error("analysis quality unavailable: {0}")]
     Quality(#[from] analysis_quality::QualityError),
     #[error("adversarial challenge invalid: {0}")]
@@ -229,7 +232,23 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                         if step.kind != "CHECK_ALTERNATIVES" && !update.source_queries.is_empty() {
                             return Err(reasoning_updates::UpdateError::Invalid.into());
                         }
+                        reasoning_proposals::stage(
+                            pool,
+                            analysis_scope,
+                            actor,
+                            step.step_id,
+                            &step.kind,
+                            &update,
+                        )
+                        .await?;
                         reasoning_updates::apply(pool, analysis_scope, actor, &update).await?;
+                        reasoning_proposals::mark_all_promoted(
+                            pool,
+                            analysis_scope,
+                            actor,
+                            step.step_id,
+                        )
+                        .await?;
                         if step.kind == "CHECK_ALTERNATIVES" {
                             // Model intents stay bounded by this operation's
                             // frozen analysis and the workspace's RLS boundary.
@@ -295,15 +314,8 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         };
         // A SQL failure may prevent this update too, but never suppress the
         // original error. The enclosing BFF independently fails its operation.
-        let _ = agentic_controller::finish_step(
-            pool,
-            scope,
-            step.step_id,
-            actor,
-            "FAILED",
-            reason,
-        )
-        .await;
+        let _ = agentic_controller::finish_step(pool, scope, step.step_id, actor, "FAILED", reason)
+            .await;
     }
     result
 }

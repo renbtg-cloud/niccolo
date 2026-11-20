@@ -462,6 +462,7 @@ pub mod openai_compatible;
 pub mod agentic_runtime;
 
 pub mod reasoning_packet;
+pub mod reasoning_proposals;
 
 pub mod observation_retrieval;
 

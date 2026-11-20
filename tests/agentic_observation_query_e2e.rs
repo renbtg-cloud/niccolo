@@ -86,7 +86,8 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
     if malformed_synthesis && purpose == "SYNTHESIZE" {
         return (
             purpose.to_owned(),
-            json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{"answer_text":42}}).to_string(),
+            json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{"answer_text":42}})
+                .to_string(),
         );
     }
     let value = match purpose {
@@ -98,7 +99,12 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
                 .pointer("/input/reasoning_packet/observation_queries/0/retrieved_observations/0")
                 .expect("synthesis receives model-proposed source retrieval");
             assert_eq!(retrieved["ordinal"], 299);
-            assert!(retrieved["content"].as_str().unwrap().contains("MENSAGEMDECISIVATARDIA"));
+            assert!(
+                retrieved["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("MENSAGEMDECISIVATARDIA")
+            );
             assert_eq!(
                 request.pointer("/input/reasoning_packet/observation_queries/0/direction"),
                 Some(&json!("COUNTEREVIDENCE"))
@@ -397,15 +403,23 @@ async fn model_query_retrieves_late_evidence_for_next_synthesis() {
 
     let document = Uuid::new_v4();
     let source_path = format!("/v1/workspaces/{}/sources/{document}", h.workspace);
-    let source = (0..300).map(|i| {
-        let (speaker, text) = match i {
-            0 => ("Ana", "I will arrive at noon"),
-            1 => ("Beto", "Fine"),
-            299 => ("Ana", "MENSAGEMDECISIVATARDIA"),
-            _ => ("Ana", "Routine context"),
-        };
-        format!("01/01/2026, 10:{:02} - {}: {} ordinal {}\n", i % 60, speaker, text, i)
-    }).collect::<String>();
+    let source = (0..300)
+        .map(|i| {
+            let (speaker, text) = match i {
+                0 => ("Ana", "I will arrive at noon"),
+                1 => ("Beto", "Fine"),
+                299 => ("Ana", "MENSAGEMDECISIVATARDIA"),
+                _ => ("Ana", "Routine context"),
+            };
+            format!(
+                "01/01/2026, 10:{:02} - {}: {} ordinal {}\n",
+                i % 60,
+                speaker,
+                text,
+                i
+            )
+        })
+        .collect::<String>();
     let source: &'static str = Box::leak(source.into_boxed_str());
     let (status, imported) = invoke(
         h.router.clone(),
@@ -662,6 +676,42 @@ async fn model_query_retrieves_late_evidence_for_next_synthesis() {
     .await
     .unwrap();
     assert_eq!(hit_rank, 1);
+
+    let proposal_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_reasoning_proposals \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(analysis)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(proposal_count, 3);
+    let proposal_item_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_reasoning_proposal_items \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(analysis)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(proposal_item_count, 2);
+    let promoted_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_reasoning_proposal_dispositions \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
+           AND disposition='PROMOTED' AND decision_source='DETERMINISTIC'",
+    )
+    .bind(h.workspace)
+    .bind(h.situation)
+    .bind(analysis)
+    .fetch_one(&h._admin)
+    .await
+    .unwrap();
+    assert_eq!(promoted_count, proposal_item_count);
+
     let wires = h.wires.lock().unwrap().clone();
     assert!(
         wires
