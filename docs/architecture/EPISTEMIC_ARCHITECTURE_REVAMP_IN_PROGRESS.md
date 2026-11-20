@@ -653,3 +653,136 @@ Next:
 - [ ] Produce an architectural delta and incrementally implement/refactor at the most technically opportune point, including early structural work where beneficial, under AGENTS.md and the existing MVP contracts. Record reasons/dependencies/precautions for deferrals. Verify implemented capabilities before representing them as available.
 
 The checklist in section 13 is retained as historical context: its subsequent Claim, Interpretation and interaction discussions have advanced conceptually in sections 14–22; exact implementation decisions and reconciliation remain open. The future implementer is expected to correct, extend and improve the design where evidence warrants rather than follow these examples mechanically.
+
+## 24. Adversarial conceptual validation — first round (25 cases)
+
+**Status:** The following fictional desk tests and proposed refinements were discussed and accepted by the product owner. The user's repeated "E?" explicitly means "I agree; what next?". These cases probe the candidate architecture in sections 13–22; they are neither executed software tests nor proof of code coverage or logical completeness. A refinement may already exist in the real implementation or its specifications. Continue to distinguish conceptual validation from implementation verification.
+
+### AT-01 — False independence of evidence
+**Scenario:** In a corporate fraud inquiry, Antônio alleges that a CFO authorized an irregular payment. Bernardo repeats Antônio, Carlos repeats Bernardo without knowing the origin, Daniela directly observed the authorization but learned the interpretation of fraud from Antônio, and Eduardo has an authentic record of the payment. Alternatives include conscious fraud, legitimate payment, a misled director, misinterpretation and deliberate false accusation.
+**Expected:** Preserve all five occurrences; do not count them as five independent confirmations of fraud. Daniela is observationally independent with respect to authorization but not necessarily interpretatively independent regarding fraud. Eduardo's record establishes a different aspect from illicit intent.
+**Refinement:** Independence is an attributable, contextual assessment of specified informational aspects, observation, observation method, origin, propagation, interpretation, premises and inferential basis; never a global property of a person or source. Distinguish independent observation of the same real-world event from independent corroboration of an allegation.
+
+### AT-02 — Partial contamination of knowledge
+**Scenario:** Three findings rely on an adulterated document: payment occurred (also independently confirmed by a bank record), a director authorized it (partially corroborated by testimony), and the director received a clandestine commission (no other known support).
+**Expected:** Reassess the affected scope without invalidating all findings indiscriminately. The first may remain sufficiently grounded; the second requires review; the third loses its known grounding, which does not make it false.
+**Refinement:** A graph of unqualified dependencies is insufficient. Capture the role of each input in a particular argument/inference: jointly necessary, complementary, independently sufficient alternative or aspect-specific support. Preserve provenance and alternative arguments; propagate reassessment needs, not automatic falsity. Reuse Argument, Inference, Premise, Finding and Assessment.
+
+### AT-03 — Hindsight contamination
+**Scenario:** In January an investigator recommends retaining an employee in a trusted role. In March hidden ties dating from December are discovered. In April a reviewer challenges the January recommendation.
+**Expected:** Separate whether the decision was reasonable given information then available, inadequate given actual circumstances, or negligent given information reasonably obtainable at the time. Bad outcomes do not prove poor original grounding.
+**Refinement:** Preserve event time, actor-specific acquisition/awareness time, system record time, interpretation time and decision time; reconstruct current understanding of past reality separately from contemporaneous knowledge and reasonably obtainable information. Actual and ought-to-know are independently assessed, not inferred from later knowledge.
+
+### AT-04 — Deception without false assertions
+**Scenario:** A report truthfully says a director met a supplier before a tender, the supplier won, and the director authorized the contract. It omits that the director met all suppliers and selection followed independent criteria.
+**Expected:** The three claims can be true while the composite communication suggests a misleading interpretation. Do not infer deceptive intent merely from omission.
+**Refinement:** Distinguish explicitly communicated content, meaning suggested by composition, recipient-specific interpretation, relevant omitted context and possible intent. Assess omitted context against communication purpose and reasonable completeness criteria. Integrity of a communication is not the conjunction of the truth of its parts.
+
+### AT-05 — Mistaken identity contamination
+**Scenario:** Three records concern someone named Roberto: suspicious transfer, confidential meeting and kinship to a subject. Later it becomes evident there are two people with that name.
+**Expected:** Restore original references, separate the mistaken consolidation, trace and reassess affected relationships, inferences, findings and recommendations, preserving historical error and innocent alternatives.
+**Refinement:** Distinguish actor, source reference, identification hypothesis and equivalence assessment. Identity association is a contestable epistemic dependency. Consolidation must be reversible without losing original reference, evidence or genealogy; authentic source records do not establish the association.
+
+### AT-06 — Compartmented knowledge and conflicting findings
+**Scenario:** Antônio sees evidence of a police officer's cooperation with a criminal organization; Bernardo has protected information that the officer is authorized undercover. Antônio is not authorized even to know the operation exists.
+**Expected:** Preserve each evaluation with its own grounds. Do not disclose protected information or existence through a hint, unexplained disqualification, graph, recommendation or other derived output. An appropriately authorized reviewer may compare them.
+**Refinement:** Assessment scope includes accessible information, information actually considered, permissions, context and premises. Distinguish reasonableness under each informational universe from correctness given wider information. No automatic global visibility or omniscient reasoning.
+
+### AT-07 — Investigation creates its own apparent evidence
+**Scenario:** Suspecting an employee's disloyalty, an executive restricts admin rights, excludes the employee from meetings and increases audits. The employee becomes resentful and seeks other work; the executive interprets this as confirming original disloyalty.
+**Expected:** Consider behavior that predated, was induced or intensified by the intervention, or has indeterminate origin. A subsequent reaction is not automatic evidence of an antecedent intention.
+**Refinement:** Trace both acquisition provenance (how information was obtained) and relevant causal provenance of the observed event (whether inquiry/intervention contributed to it). Model feedback between investigative acts, perception, behavior, evidence and revision; do not assert causation merely from sequence.
+
+### AT-08 — Investigative selection bias
+**Scenario:** A police oversight inquiry identifies 30 irregularities in unit A and three in unit B, but A received hundreds of checks and B superficial investigation.
+**Expected:** Raw counts do not establish relative underlying prevalence or integrity; consider coverage, detection opportunities and differences in methods and conditions.
+**Refinement:** InvestigationIntegrity must support attributable coverage assessments: examined and unexamined subjects/aspects, depth, selection criteria, observation opportunities and limitations. Coverage is itself contestable; no universal numeric score is mandatory.
+
+### AT-09 — Apparent contradictions
+**Scenario:** One witness says a director authorized an operation; another says the director never authorized payment; a third says the director did not know the financial terms.
+**Expected:** These can coexist. Clarify scope and meaning before treating them as contradiction or dishonesty.
+**Refinement:** Qualify equivalence and contradiction by referent, proposition aspect, scope, temporal validity, conditions, modality, precision and interpretation. Preserve distinction among actual incompatibility, partial/contextual incompatibility, apparent contradiction and undetermined equivalence. Assessments of contradiction are contestable, and an apparent conflict may indicate an InformationGap.
+
+### AT-10 — Authority versus epistemic resolution
+**Scenario:** Two investigators disagree on an evidentiary hypothesis. An authorized lead closes the case.
+**Expected:** Show closure and official adoption, where applicable, without erasing contrary assessments or claiming epistemic resolution or consensus. Same rules apply when powers reside in one investigator.
+**Refinement:** Precisely identify the target and scope of each institutional decision (close activity, adopt finding, reject recommendation, conclude sufficient for a specific purpose). Operational status, epistemic resolution, institutional adoption and individual agreement are distinct.
+
+### AT-11 — Circular epistemic grounding
+**Scenario:** Antônio's credibility is grounded in Bernardo's evaluation; Bernardo's credibility is grounded in a finding based exclusively on Antônio's declarations.
+**Expected:** Identify circular grounding with no independent anchor; do not create extra confidence merely by traversing a cycle. Cycles may have external support and are not necessarily invalid.
+**Refinement:** Distinguish ordinary relational and causal cycles from epistemic support cycles, including those with independent external grounding. No prohibition of cyclic domain graphs; prevent recursive self-corroboration, repeated support inflation and nonterminating evaluation.
+
+### AT-12 — Hypothetical scenarios contaminate actual-world claims
+**Scenario:** A researcher assumes that Antônio coerces Bernardo for exploratory reasoning. Explanations derived in that scenario are later reused elsewhere as if coercion were an established event.
+**Expected:** Retain conditional nature and original assumptions; assess applicability before reuse.
+**Refinement:** Carry scenario, necessary premises, validity conditions and unverified dependencies with derived results. Validity within a hypothetical scenario does not establish its premises or applicability in another context; avoid epistemic promotion through reuse.
+
+### AT-13 — Nonexclusive and nonexhaustive hypotheses
+**Scenario:** A police officer favors a criminal organization; motives considered are money, coercion and personal loyalty. All may coexist.
+**Expected:** Confirmation of one need not weaken another; unknown alternatives remain possible.
+**Refinement:** Make mutual exclusion, compatibility, complementarity, conditional dependence, overlap and joint causation qualified relations. Distinguish complete partitions from open or overlapping hypothesis sets. Never automatically normalize confidence across arbitrary hypotheses to sum to 100%.
+
+### AT-14 — Attributed knowledge about another's knowledge
+**Scenario:** Antônio believes Bernardo knows compromising information, although Bernardo does not. Antônio changes behavior because he feels exposed. Carlos interprets that reaction as proof Bernardo knows.
+**Expected:** Keep actual knowledge, Antônio's belief about Bernardo's knowledge, Carlos's inference and subsequent effects separate. A mistaken belief can cause real behavioral consequences.
+**Refinement:** MetaEpistemicState retains holder, target/object (including a nested attributed epistemic relation), subject actor, context, grounding and effects. No automatic transfer of support across levels. Real perceived vulnerability or influence may arise without the underlying capability actually existing.
+
+### AT-15 — Self-sealing hypothesis
+**Scenario:** An alleged infiltrator is deemed confirmed by suspicious communications, absence of communications is deemed evidence of competence, and contrary evidence is deemed sophisticated deception.
+**Expected:** Identify inability to discriminate and lack of conditions that would weaken the hypothesis; not automatically declare it false solely because it is hard to test.
+**Refinement:** Contextual testability assessment: expected confirming, disconfirming and inconclusive observations, conditions of observation/detectability, competing hypotheses and auxiliary premises used to explain contrary results. Possibility of deception is not universal proof of deception.
+
+### AT-16 — Niccolò contaminates its own investigation
+**Scenario:** One LLM misinterprets a document, a second derives a hypothesis, a third produces a finding from it, and retrieval returns all three as apparent confirmations.
+**Expected:** Preserve derivation from one error; no independent corroboration merely from output count, repetition, summary or successive inference. Independent models reviewing the same source may help assess the interpretation, not independently verify its real-world contents.
+**Refinement:** Distinguish source provenance, computational processing provenance, observation/extraction, interpretation, inference and human validation. Model-generated material and human adoption remain attributable and inspectable. Evaluate Niccolò-assisted processing with the same integrity principles.
+
+### AT-17 — Recommendation remains appropriate after a suspicion is rejected
+**Scenario:** Recommend removing root privileges due to suspicion of collaboration with a competitor and independently identified excessive privilege concentration. The collaboration suspicion is subsequently ruled out.
+**Expected:** Reevaluate whether structural safeguards remain appropriate; implementation of a measure is not institutional proof of the original suspicion.
+**Refinement:** Apply AT-02 dependency semantics to ActionRecommendation: necessary, complementary and alternative grounds, goals, applicability and suspension conditions. Epistemic correctness and strategic appropriateness are independently evaluated.
+
+### AT-18 — Improper attribution of collective knowledge
+**Scenario:** Legal knows about an irregularity, Finance knows the economic consequences and the CEO knows neither. A review claims the administration was fully aware.
+**Expected:** Do not automatically transfer distributed information to individual actors, or individual knowledge, loyalty, intent or responsibility to an organization or vice versa.
+**Refinement:** Distinguish individual, shared, distributed, institutionally recorded, formally communicated knowledge/information and obligation to acquire it. Formal notice, duty to know and actual comprehension are distinct. A group may hold fragments collectively without any member integrating them.
+
+### AT-19 — Interpretation of silence
+**Scenario:** An executive sends an irregular proposal to five subordinates. One agrees, one dissents, one is silent, one has not read it, and one read it but fears retaliation. The executive claims four agreed.
+**Expected:** Lack of objection is not automatically assent, complicity or disloyalty; silence can have competing interpretations including consent, fear, indifference, lack of comprehension or awareness and deliberate nonresponse.
+**Refinement:** Separate observed absence of a response from actual nonresponse, contextual expectation, ability/opportunity to respond, attributed interpretation and potential motives. Preserve uncertainty and original communications; do not manufacture implicit agreement.
+
+### AT-20 — Conflicting authorizations and obligations
+**Scenario:** A subordinate gives confidential information to a formally authorized auditor despite a supervisor's prohibition, under an institutional policy requiring cooperation and fear of retaliation.
+**Expected:** The same action can be evaluated as hierarchical disobedience, compliance with an institutional obligation, authorized cooperation and loyalty to institution versus apparent disloyalty to supervisor. No automatic collapse into a single moral, legal or institutional classification.
+**Refinement:** Each normative assessment identifies the norm/obligation, issuing authority, scope and applicability, any claimed precedence or exception and assessor's interpretation. Norm conflicts and disputed precedence are themselves investigable. Do not conflate obedience, legality, legitimacy and loyalty.
+
+### AT-21 — Epistemic revision under confidentiality
+**Scenario:** A finding is relied upon for an imminent decision. Another protected investigation discovers the supporting source supplied altered information. The first investigator is not authorized to know this; even an unexpected suspension alert could disclose the secret.
+**Expected:** Do not leak protected information or existence through revision behavior; if authorized, route the need for review to an appropriate authorized reviewer. If no permitted route exists, the system cannot guarantee cross-compartment revision without violating restrictions.
+**Refinement:** Separate epistemic need for review from authorization to conduct it, know its grounds, or communicate its existence/necessity. Derived review signals, routing and notifications are protected as applicable. Respect deterministic access policy; no unilateral LLM exception.
+
+### AT-22 — Computational limits misrepresented as epistemic conclusions
+**Scenario:** User sets 90% of resources to A and 10% to B; many relevant items are found in A while B's budget expires before analysis is complete.
+**Expected:** Do not infer A is more promising merely because it received more processing. Show limitations, coverage and incomplete analysis; optionally recommend resource redistribution, never autonomously redistribute in MVP.
+**Refinement:** Distinguish absence, not yet found, accessible but unexamined, partially processed and resource-truncated analysis. Processing coverage and constraints qualify results and comparisons, reusing general investigative coverage concepts (AT-08).
+
+### AT-23 — Hidden premises in questions
+**Scenario:** A researcher asks why Antônio disclosed restricted information to a competitor although disclosure and participation are not established.
+**Expected:** Flag presuppositions and suggest asking whether a disclosure happened, whether Antônio participated, and only conditionally why.
+**Refinement:** Questions/formulations may carry explicit or implicit premises, established or contested/unverified assumptions, excluded alternatives and links to hypotheses/gaps. Identify and challenge these without erasing original wording or preventing authorized exploratory premise adoption. Assess the question's discriminatory usefulness.
+
+### AT-24 — Improper propagation of epistemic support
+**Scenario:** Evidence shows an employee had information access and personally knew a competitor; neither establishes an actual disclosure.
+**Expected:** Distinguish opportunity or capability from performance of the alleged act; association of true statements does not automatically prove a conclusion.
+**Refinement:** Qualify inferential roles (capability, opportunity, intent, preparation, execution, consequence); support is not generally transitive and necessary conditions are not sufficient conditions. Explicit inference rules, assumptions and competing explanations determine evidentiary force; a role-specific support relationship is not a proof of its target.
+
+### AT-25 — Simultaneous compromise across layers
+**Scenario:** In a leak inquiry three accusations share one origin, an authentic artifact was misinterpreted, an investigator omits information out of fear, another has a hidden loyalty, favorable evidence is compartmented, administration demands rapid closure, and genuine access-control vulnerability exists independently of authorship.
+**Expected:** Simultaneously question independence, preserve competing interpretations and motives, respect information restrictions, distinguish closure from resolution, retain dissent and recommend proportionate structural protection without declaring the accused guilty. Represent loyalty and motive contestably, not as proof of specific misconduct. Review and route any protected dependency concerns only under applicable authority.
+**Result:** No demonstrated need for a new fundamental abstraction in this combined case. The established distinctions appear composable; this is a conceptual assessment, not a verification of completeness or implemented behavior.
+
+### Checkpoint outcome and next step
+
+The first round of 25 conceptual adversarial cases is complete and owner-approved as a direction of refinement. They identified cross-cutting semantic invariants, several relationships needing more precise semantics, and candidate overlap rather than establishing 25 new domain entities. The next step is to consolidate refinements, remove unnecessary duplication, and check tensions/conflicts across tests and sections 13–22. Only after that should the review define coherent minimum slices and reconcile with the actual implementation, schema, specifications and executable tests. Retain all AT identifiers and cases as traceable candidates for subsequent regression tests. Do not infer implementation coverage or claim exhaustive validation from this checkpoint.
