@@ -786,3 +786,78 @@ The checklist in section 13 is retained as historical context: its subsequent Cl
 ### Checkpoint outcome and next step
 
 The first round of 25 conceptual adversarial cases is complete and owner-approved as a direction of refinement. They identified cross-cutting semantic invariants, several relationships needing more precise semantics, and candidate overlap rather than establishing 25 new domain entities. The next step is to consolidate refinements, remove unnecessary duplication, and check tensions/conflicts across tests and sections 13–22. Only after that should the review define coherent minimum slices and reconcile with the actual implementation, schema, specifications and executable tests. Retain all AT identifiers and cases as traceable candidates for subsequent regression tests. Do not infer implementation coverage or claim exhaustive validation from this checkpoint.
+
+## 25. Post-adversarial consolidation: refinement families and relationship semantics
+
+**Status:** Owner-approved direction of conceptual architecture, including explicit product/MVP scope decisions in section 26. The 25 test cases remain individually traceable. This consolidation removes redundant mechanisms, not distinctions necessary for reasoning. It does not claim implementation coverage.
+
+### 25.1 Consolidation of the 25 cases
+
+| Cross-cutting family | Cases |
+| --- | --- |
+| Semantic identity, equivalence, qualified incompatibility and hypothesis relations | AT-05, AT-09, AT-13 |
+| Grounding, provenance, independence and epistemic dependencies | AT-01, AT-02, AT-11, AT-16, AT-24 |
+| Temporal and hypothetical context | AT-03, AT-12 |
+| Communication, interpretation and presupposition | AT-04, AT-19, AT-23 |
+| Individual, collective and attributed epistemic state | AT-14, AT-18 |
+| Coverage, testability and investigation integrity | AT-07, AT-08, AT-15, AT-22 |
+| Compartmentalization and permitted revision | AT-06, AT-21 |
+| Institutional authority and conflicting norms | AT-10, AT-20 |
+| Strategic appropriateness and compound cases | AT-17, AT-25 |
+
+Reuse Assessment for distinct dimensions and relationships (including independence, credibility, relevance, testability, integrity and equivalence); Argument and Inference for the structure of grounding; InvestigationIntegrity for coverage, critical dependencies, bias and processing limitations; ActionRecommendation for separately grounded advice and its revision; MetaEpistemicState for higher-order attribution. Do not build separate epistemic engines per dimension.
+
+Resolve apparent tensions explicitly:
+- Preservation versus confidentiality: retaining provenance and historical dissent does not imply access to them. Protect content and existence, including derived outputs, metadata and review signals. Route cross-compartment review only through currently authorized mechanisms; absence of a permitted route limits the system's ability to intervene.
+- Cyclic graphs versus circular grounding: allow real-world and relational cycles; prevent unanchored recursive corroboration and counting repetition as additional evidence. Traverse with bounded algorithms appropriate to the relation, preserving external grounding.
+- Uncertainty versus action: proportionate protection can be warranted independently of guilt or confirmed hostile intent; implementing a measure is not evidence of the original suspicion. A conclusion may survive loss of one argument if separately supported.
+- Proactivity versus autonomy: offer questions, warnings, recommendations and alternative allocations; do not autonomously reallocate investigative resources in MVP or execute real-world interventions.
+- Expressivity versus complexity: preserve distinctions; do not demand that each become a separate entity, service or heavy edge. The operational representation must nevertheless support meaningful use of the model.
+
+No fundamental incompatibility was identified by this round; this is not an exhaustive proof.
+
+### 25.2 Semantic families of relationships
+
+A generic graph edge is insufficient as a semantic contract. Two objects can participate simultaneously in multiple independently assessable relations. Relation families are extensible; terminology below is illustrative and must be reconciled with existing code.
+
+- **Provenance:** acquisition, extraction, derivation, transformation, transmission, human/computational processing. Distinguish direct derivation from ancestry. Original content, observations, interpretations and processing outputs have their own identity/provenance. Derivation does not establish epistemic support. Causal circumstances that produce the observed event are distinct from acquisition of its record.
+- **Epistemic support:** supports, weakens, challenges a premise, contests inferential applicability, challenges source reliability, offers an alternative. A challenge to grounding need not contradict the conclusion; distinguish rebuttal from weakening an inference. Support is not generally symmetric or transitive; a necessary condition is not generally sufficient.
+- **Dependence:** qualify input roles within an Argument/Inference or recommendation: jointly necessary, alternative independently sufficient grounds, complementary, conditional, aspect-specific. Necessity for a particular argument does not establish necessity for the conclusion itself. A compromised input motivates scoped reassessment; never automatic global falsity or deletion. Compositions may represent n-ary grounding without requiring a specialized hypergraph engine.
+- **Semantics:** exact equivalence, contextual equivalence, more-specific-than, implication, partial overlap, incompatibility or apparent contradiction. Exact equivalence under the same scope is symmetric and transitive; uncertain assessments of equivalence are not established equivalence and may not silently authorize a merge or transitive closure. Logical contradiction is symmetric under matching interpretation and scope, not generally transitive. Hypotheses may overlap, coexist, exclude one another or form incomplete sets; no forced normalization. Original references and genealogy must survive consolidation/separation.
+- **Causality:** causes, contributes, enables, prevents, intensifies, attenuates, jointly contributing factors and conditions. No blanket transitivity, inference from mere sequence, or inference from causation to intent or responsibility.
+- **Contextualization:** relevant_to, applicable_under, scope, time, scenario, adopted premise, actor perspective and purpose. Graded relevance, credibility and confidence are independent; relevance is not generally transitive.
+- **Actor epistemic relations:** belief, knowledge, suspicion, trust, interest, aversion, perception, attention, etc. Preserve holder, object, scope/time, degree, assessor and grounding. Higher-order attributions are separately identified; no transfer of truth or support across nested levels or between individuals and organizations. Trust is not generally symmetric or transitive.
+- **Institutional:** authority, authorization, delegation, obligation, responsibility, adoption, influence. Scope, source, time, conflict, interpretation and exceptions matter. These imply neither truth nor trust, knowledge, loyalty or agreement. Represented real-world relationships cannot grant software permissions.
+- **Genealogy:** refines, supersedes, retracts, consolidates, separates, reinterprets. Revision does not erase previous assessments, decisions, original representations or historical consequences.
+- **Composition:** part_of, composed_of, scoped subsets and alternative groupings. Preserve component identity, relationships and provenance; do not infer truth of a composite from truth of fragments or shared intention from membership.
+
+A relation and an assertion/assessment about that relation are different. For example, A trusts B, C believes that A trusts B, and D challenges C's attribution. Relevant relationships can have identity, author, evidence, context, interval, competing assessments, genealogy and links to other relationships. Lightweight representation is acceptable where those properties are irrelevant; a rich relationship must remain investigable. Logical properties apply to the defined relation under its conditions, not automatically to fallible assessments assigning it. Do not assume closure across uncertain, differently scoped or unauthorized edges.
+
+### 25.3 Core semantic contracts
+
+Identity (reversible, grounded consolidation); provenance (traceable origin and derivation); attribution (distinguish originator/assessor/actor); context (preserve conditions); temporal separation (current reconstruction vs historical actor knowledge); grounding (structure and alternatives, scope); revision (preserve historical state); uncertainty (no automatic promotion); authority (adoption isn't truth); confidentiality (retention doesn't confer access). These are transverse invariants, not separate services.
+
+### 25.4 Coherent functional slices, not a linear pipeline
+
+- A — Investigable universe: actors, identity, events, evidence/artifacts, claims, provenance and qualified relations.
+- B — Directed investigation: InformationGap, Question, Response, Hypothesis, relevance, discriminatory power.
+- C — Reasoning and review: Premise, Interpretation, Argument, Inference, Assessment, Finding, explicit dependency semantics.
+- D — Human dynamics and strategy: situated epistemic relationships and dispositions, intentions, motives, trust, loyalty, power, influence, dependency, coercion and pervasive Deception.
+- E — Proactive advice: Scenario, Vulnerability, ActionRecommendation, Plan, expected outcomes, risks and alternatives.
+- F — Integrity and governance: real permissions, decisions, dissent, history, coverage, compartmentalization and InvestigationIntegrity.
+
+A supports B and D; both inform C; C informs E; F constrains and enriches them all. This is a dependency-oriented decomposition, not a mandatory order of implementation or processing. Individual abstractions may be reused across slices. Counterintelligence, oversight and other verticals emerge from their composition.
+
+## 26. Explicit owner decision: complete epistemological model in the MVP
+
+**This section supersedes any earlier suggestion in this review of simply deferring core epistemic distinctions or capabilities until after MVP.** The owner wants the entire approved epistemological model in the MVP, including all the conceptual families discussed in sections 13–25, because exceptional epistemological capability is essential to Niccolò's product identity. The implementation may be incremental and technically pragmatic, but must not make the model representationally rich while its actual behavior is rudimentary. No core epistemic distinction or capability should be dropped merely for convenience or deferred on the assumption it is a premium feature.
+
+- Use algorithms as sophisticated as necessary for meaningful epistemic behavior. In particular, ancestry and independence, selective review across alternative/partial grounding, pervasive and multi-layer deception, investigative gaps and presuppositions, discriminatory questions and qualified strategic/loyalty/vulnerability reasoning are not to be made rudimentary.
+- Simplify implementation mechanisms only when semantic correctness and useful behavior remain intact. Avoid unnecessary mathematical sophistication (complex probability calibration, autonomous resource optimization, mathematical strategic utility models) unless demonstrable benefit justifies it. Respect user-set investigation-line budgets, human circumstance-domain control, real deterministic access policy and the recommendation boundary, including the ban on kinetic attack recommendations/planning.
+- Initial qualitative scales can be implemented with domain-specific enums: e.g. expertise (novice/basic/intermediate/advanced/expert), relevance (negligible/low/moderate/high/critical), confidence (very_low/low/moderate/high/very_high), interest and dependence with their own meaningful values. Do not conflate expertise in a subject with awareness of a particular event; actor state, degree and assessment confidence are independent. Distinguish unknown, none and not_applicable, including cases where a sentinel is represented outside the ordinal set.
+- Order enum values only where semantics justify it. Ordinality does not imply equal intervals, ratio properties, additive scores, normalized probabilities or globally comparable values. Preserve context, author, rationale, evidence and time so later metric calibration/quantification can be added without rewriting semantic history.
+- Bounded processing, simple UI projections, and simpler operational compartment structures are acceptable if they preserve semantic distinctions and don't mislead users or leak protected content. If existing MVP security contracts impose stronger requirements, preserve them. Full representability is not authorization to execute every modeled act. Existing exclusions of autonomous image/video understanding remain.
+- Compare the complete model with real code, schema, contracts and executable tests before naming implementation gaps. Identify what can be preserved, refined, added, shared or simplified while maintaining full epistemic capability. Implement/refactor at technically opportune points; do not impose a giant rewrite or wait for an almost finished MVP. For any proposed delay or narrowing of an approved core capability, explicitly surface rationale, affected invariants, interim behavior, dependencies and migration precautions for owner review. Do not silently defer core model coverage.
+- Product claims should differentiate approved scope/target behavior from verified implemented behavior. The 25 desk tests and consolidation are conceptual design material, not assurance of current implementation or empirical accuracy.
+
+Next: reconcile the approved model and semantic contracts with the actual Niccolò architecture, identify the concrete delta, review planned implementation sequencing and derive executable regression/contract tests from AT-01–AT-25. The architecture review is evolvable and non-exhaustive; improve it where evidence warrants it. 
