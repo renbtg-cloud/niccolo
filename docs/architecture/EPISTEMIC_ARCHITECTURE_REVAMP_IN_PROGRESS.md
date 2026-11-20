@@ -321,3 +321,335 @@ The intended outcome is not the largest ontology. It is the smallest sufficientl
 - [ ] Compare these directions against existing domain code, schema, contracts and tests before naming actual implementation gaps or deciding MVP slices. Identify adversarial cross-abstraction tests and migration precautions.
 
 This checklist is non-exhaustive and records unresolved design work, not a mandate to implement everything immediately. Continue the epistemic review and improve the technical abstractions where evidence warrants it. Preserve confirmed semantic distinctions and human authority; do not silently convert open questions into settled requirements.
+
+## 14. Discussion checkpoint — semantic reasoning, findings and revision
+
+**Status:** Continuation of the owner-confirmed conceptual review in section 13. Sections 14–23 capture the directions agreed in subsequent discussion, not implemented behavior, a frozen ontology, or a commitment to implement every candidate in the MVP. Where section 13 records a pending discussion, the later sections resolve its conceptual aspects and leave technical representation/reconciliation open. Names are working names unless already contracted elsewhere.
+
+### 14.1 Claim identity and lifecycle
+
+- Distinguish semantic proposition, concrete occurrence, original representation, and attributed interpretation. Repetition does not establish independent evidence; independently originating statements must not disappear through semantic consolidation.
+- Semantic equivalence is itself contestable. Scope, modality, temporal applicability, precision and attribution matter. Relationships may include equivalent_to, more_specific_than, entails, contradicts and partially_overlaps. Preserve the rationale, author, context and uncertainty of these judgments.
+- Consolidation is reversible and must retain original IDs, occurrences, provenance and genealogy. Operational deduplication is not a license to collapse epistemic dependencies.
+- Separate evidentiary support, actor stance, operational adoption and relevance. A claim may be retracted, rejected or superseded without erasing its historical occurrence or influence.
+- Question formulation, original content locators and exact identity/representation mechanisms remain technical design questions; do not infer that every semantic distinction needs its own persistence entity.
+
+### 14.2 Interpretation and Hypothesis
+
+- Interpretation assigns meaning to an object, relationship or another interpretation; preserve the original material, interpreted object, author, context, rationale and alternatives. Its epistemic support, actor stance and operational adoption are separate.
+- A substantial semantic change may warrant a new genealogically related interpretation. Abandoning it does not undo its historical consequences.
+- Hypothesis expresses a proposition or composition to investigate or explain. Interpretation and hypothesis may overlap in semantic roles without requiring duplicate objects.
+- Hypotheses may compete, complement, contradict, depend on, refine or overlap one another. Track support, stance, adoption, investigative status and contextual relevance independently. An improbable hypothesis can be investigated without being endorsed.
+
+### 14.3 Premise, scenario, inference and argument
+
+- Premise is a contextual role. PremiseAdoption records who adopts what, for which purpose/scope/context, under which conditions, with what rationale and duration. Adoption is not a declaration of truth. Different scenarios may adopt incompatible premises.
+- Scenario has identity, purpose, relevant circumstances/evidence, conditions, assumptions, results, provenance and genealogy. It may model a real-world perspective rather than a counterfactual. Results carry their validity conditions when reused.
+- Inference is an attributable reasoning act with available inputs, method/rule, premises, context, outputs and rationale. Distinguish validity, truth of premises, strength and contextual applicability; every dependency may be challenged. Record the reasoning artifacts actually available, not fictional claims of access to hidden model reasoning.
+- Argument is an identifiable, composable grouping of claims, premises, evidence, inferences, conclusions or other arguments. Parts can be reused or challenged specifically. CounterArgument is a contextual argumentative role, not necessarily a separate ontology.
+- Challenge targets an object or particular aspect with author, rationale and context; it need not supply a counterargument. Refutation is an attributable, contestable assessment, not an automatic global truth assignment.
+
+### 14.4 Assessment and Finding
+
+- Assessment is a transversal concept: assessor, object or relationship, assessed dimension, criterion, result, confidence, rationale, scope, time, grounding and genealogy. Different kinds use appropriate scales; no mandatory global score. Confidence in a judgment is not the judgment itself. Assessments themselves can be assessed.
+- Finding is an identifiable formal result of an investigation, including partial or inconclusive results. Preserve source dependencies, supporting and opposing arguments, conditions, divergence, uncertainty and genealogy. Institutional endorsement is not truth.
+- Findings reused in another investigation must retain traceable dependency on their original material and applicable contexts. Summaries or projections are allowed; irreversible compression that removes the ability to trace or reassess the finding is not.
+- Discovery of a forged artifact, contradiction, mistaken identity, deceptive actor or contaminated inference can trigger the same dependency-based review. A potentially compromised dependency creates a need for reassessment, not an automatic conclusion of falsehood. Independent support and the earlier epistemic history remain visible to authorized users.
+
+## 15. Decisions, agency, temporal and institutional reasoning
+
+- Decision, Authorization and Execution are distinct acts/states. Record the responsible decision maker, alternatives, reasons, risks, conditions, scope and genealogy. A decision need not lead to an action.
+- Authority, Authorization and Delegation are distinct. Represent scope, temporal validity, constraints and revocation. Formal authority and practical influence may diverge. Real-world authority represented in an investigation does not automatically confer software privileges.
+- Goal, Intention and Plan are distinct and can have many qualified associations; each can be declared, attributed, inferred or hypothesized. Do not infer an intention merely from an outcome.
+- Event, Action and Outcome: outcome can be a contextual role of an event or change of state. Sequence is not causality. Distinguish action, omission, consequence, responsibility and intent.
+- CausalRelationship is a qualified, contestable relationship where needed: causes, contributes, enables, prevents, necessary/sufficient factor, multiple joint causes, alternatives, context, temporal scope, evidence and attribution. Causation is independent of moral, legal or institutional responsibility.
+- Responsibility, Obligation and Accountability have actor, scope, governing source, time and contestability. Authority, participation and responsibility are not interchangeable.
+- Norm, Policy and Commitment have origin, conditions, exceptions and validity. Existence, formal validity, applicability, compliance, perceived legitimacy and practiced versus stated policy are distinct. Their authors, interpretation and application may themselves be investigated within authorized scope.
+
+## 16. Human relationship with knowledge — a core product differentiator
+
+Belief and Knowledge alone are too strong and too narrow to capture the ways humans relate to information. Use a contextual family (working name ActorEpistemicRelationship) rather than a single binary or universal score.
+
+- Distinguish availability/exposure, actual access, perception, attention, examination, comprehension (partial or mistaken), perceived importance, retention/recall, belief and knowledge.
+- Represent weak or intermediate epistemic stances: suspicion, inclination to believe or disbelieve, doubt, belief, claimed/perceived knowledge and suspended judgment. Do not collapse reluctance to attend into disbelief.
+- Interest may be personal, instrumental, institutional or other; also distinguish indifference and aversion to acquisition of knowledge. Curiosity is a specialization of Interest.
+- Persistent dispositions (e.g. tendencies regarding attention, trust, acceptance criteria, seeking knowledge and revising beliefs) differ from immediate reactions to an information item. Neither should be a global personality diagnosis or ungrounded label.
+- Deliberately deciding to disregard something is an epistemic act with context and possible reasons; distinguish it from inattention, simple lack of interest, incomplete comprehension and aversion to knowing. Other acts include investigating, deepening, deferring, avoiding acquisition, delegating and reconsidering.
+- Actors may desire that other people know, remain unaware, examine or accept something; these desires can motivate sharing, withholding and influence.
+- For every such relation, distinguish self-report, observed manifestation, attribution, inference and hypothesis; capture context, intensity, time, provenance, confidence and alternative interpretations as appropriate. State, transition and explanation of a transition are independent. Motives may be stated or inferred and may themselves be misleading.
+
+## 17. Influence, politics and higher-order knowledge — a core product differentiator
+
+- EpistemicInfluence can concern another actor's attention, interest, curiosity, trust, beliefs, acceptance criteria, investigation of a subject and other epistemic relations. Intention, act, target, actual effect and perceived effect are distinct; influence can be unintentional, indirect, reciprocal, asymmetric or unsuccessful.
+- EpistemicPower (capacity to influence) is distinct from exercise and outcome, formal authority and practical power. Informational intermediaries, alliances, coalitions and dependencies can produce collective convergence, polarization, silencing or circular sources; convergence alone is not coordination.
+- EpistemicAsymmetry may concern information, access, understanding, knowledge about others' knowledge, or influence. Its existence, perception, intentional use and consequences are distinct. An advantage is not proof it was used.
+- EpistemicTrust is directed, contextual and multidimensional (competence, sincerity, accuracy, impartiality, transparency, completeness, etc.). Declared/manifested/attributed trust, dependency, actual support and reliability are distinct.
+- EpistemicReputation is community-dependent. Distinguish individual trust, collective reputation and actual support. Reports may share provenance; reputation does not prove reliability.
+- MetaEpistemicState represents higher-order knowledge, belief, assumptions, attitudes or perceptions about one's own or others' epistemic states or acts. Support relations to other relations/states without fixed semantic depth; bound actual processing by user-defined purpose, relevance and budget.
+- These are subjects of investigation in the modeled reality; representing an actor's influence strategy does not grant Niccolò authority to exercise it. No universal ranking of power, influence, trust or reputation.
+
+## 18. Pervasive Deception — foundational principle of Niccolò
+
+Deception is not a vertical, exceptional event category, or moral presumption. The model must remain open to varying levels and kinds of honesty throughout the epistemic domain. Do not assume honesty or dishonesty as a global default. Describe conduct, possible intention, motivation, context and consequences separately. Legal, institutional and moral assessments, when relevant, are attributable and distinguishable from factual descriptions.
+
+### 18.1 Distinctions and motivations
+
+- Falsity is not intentional deception. True statements, selective omission or truthful fragments may produce a misleading impression; omission can also be accidental, unimportant to the speaker, or a reasonable reaction to context.
+- A junior employee may withhold that a COO convened a problematic meeting for fear of hierarchical retaliation or job loss. Such possible reasons do not automatically establish deception, dishonesty, moral wrongdoing or innocence.
+- Ego is a crucial potential motivation, including saving face, avoiding momentary embarrassment, exaggerating competence or appearing important, independently of money, position or long-term strategy. Distinguish reactive actions from planned strategies.
+- Self-deception is distinct from deceiving others, not necessarily deliberate, and may involve rationalization or a desired/projected self-image (candidate SelfImage / DesiredImage / ProjectedImage roles). Do not diagnose a person's psychology from ambiguous conduct.
+- Separate deceptive intention, attempt, means, target, intended effect, actual effect and perceived success; recipients and effects may differ. Sincere transmission does not imply source accuracy or integrity.
+
+### 18.2 Six pervasive dimensions
+
+1. Composition: true elements can be selected, ordered, associated, generalized or framed such that the whole is misleading; component truth is independent of composite meaning.
+2. Higher-order deception: accusations of deception, claimed motives, knowledge and confidence about deception can themselves be deceptive. Each layer is independently uncertain; computational depth must remain bounded.
+3. Inadvertent propagation: distinguish origin, transmission, transformation and assimilation. Shared ancestry does not provide independent corroboration; the intermediary may be entirely sincere.
+4. Contaminated dependencies: discovery can motivate reassessment of downstream findings, hypotheses, decisions and recommendations. Retain original findings, dependency provenance, independent support, and past reasoning. Do not blanket-invalidate or silently compress findings.
+5. Reflexive investigation: investigations, their diligence, criteria, apparent independence, scope, actors and institutional adoption are themselves subject to deception. Approval does not erase dissent.
+6. Universal representability: actors may misrepresent any relevant epistemic dimension (attention, curiosity, disinterest, suspicion, belief, knowledge, authority, reputation, etc.). Do not duplicate each entity into a specialized deception counterpart or presume every actor deceptive.
+
+### 18.3 Representation and lifecycle
+
+- Deception may be an identifiable composition reusing intentions, acts, omissions, motives, targets, causal links and assessments. Elementary and composite occurrences can have qualified relationships such as part_of, sustains, conceals, derived_from, coordinates_with, reinforces.
+- Preserve each component's provenance and contestability; grouping does not prove shared intent or coordination.
+- Lifecycle is multidimensional: intention, actual execution, effect per recipient, discovery per actor, stance and evaluation. Use the general revision and dependency mechanisms; no separate deception-specific epistemic engine is required.
+- The user is also an actor. Both retrospective and prospective scenario modeling can represent the user's conduct and perceptions; strategic analysis is distinct from execution and subject to product recommendation boundaries. Representation does not imply endorsement or operational authority.
+
+## 19. General strategic relations, information compromise and investigation integrity
+
+- Strategy / StrategicPosition concerns interdependent actors, goals, resources, constraints, power, epistemic states and possible reactions. Strategies depend on perceived circumstances, even when these are mistaken; attribution of another's strategy is contestable. Dynamic revision is required; sophisticated strategic planning is not automatically an MVP requirement.
+- Loyalty is a qualified relation to a person, group, institution, cause or principle; its manifestations, declarations and effective existence may differ. Conflict of interests is independent of misconduct. Loyalty does not imply obedience, honesty, coordination or competence.
+- Cooperation and Coordination are distinct; coordination may be explicit, tacit, centralized or distributed. Distinguish spontaneous convergence from actual coordination; Collusion may be a qualified form of coordination with relevant normative context. Separate communication, agreement, pattern, shared objective, causation and individual intent. Participants need not know the entire group or goal.
+- InformationCompromise is a contextual composition of assessments of confidentiality, integrity, authenticity, availability, reliability and provenance. A genuine original may be false; an authentic, intact artifact can have lost confidentiality. Compromise may be partial, inadvertent or deliberate and is not necessarily deception.
+- InvestigationIntegrity is a multidimensional, contestable assessment/composition, not binary or a single score. Include independence, evidence selection and provenance, reasoning, selective attention/exclusions, criteria and their consistent application, consolidation, dissent, historical traceability and the possibility of review. Integrity is a product differentiator, not a claim of infallibility.
+- Distinguish investigative lines that were not perceived, deemed irrelevant, suspended/abandoned, prevented or rejected; examine their rationale, authority and effects. Separate authorship, applicability, mutability and authority of protocols. Preserve internal dissent and reasons for adoption/rejection subject to access policy. Proactive fragility suggestions are not accusations.
+
+## 20. Interaction review — formation of knowledge and investigation
+
+- Gaps, questions, responses, claims, hypotheses and findings interact without a mandatory linear pipeline. Revisit missing information as the situation changes.
+- Distinguish support for a hypothesis from ability to discriminate among hypotheses; one observation may support several competing explanations equally.
+- Distinguish no evidence, evidence of absence, unavailable evidence and evidence not yet collected.
+- DiscriminatoryPowerAssessment is contextual, compares existing or potential information with competing hypotheses, and distinguishes apparent/actual and potential/realized value. Combinations can discriminate when individual facts cannot. Reliability, information discrimination, priority and confidence are independent. Qualitative judgments are acceptable.
+- Apparent support may reflect unformulated hypotheses. Identify unexplained residues, assumptions shared by all current hypotheses, contrary evidence, alternative perspectives and explanatory failures. Distinguish exploratory questions from discriminating questions; use deterministic structure where possible plus bounded LLM suggestion under human direction.
+- Review not just answers but the questions asked, omitted, poorly framed or lacking discrimination. A reviewer/corregedoria can examine investigative imbalance without assuming bad faith.
+- Investigators are actors whose actions may change the modeled circumstances. Inquiry can alter trust, fear, ego, information exposure, cooperation and deception. Separate preexisting conduct, conduct induced by the investigation and uncertain origin. Investigative reactions do not establish the original suspicion.
+- Formal authority, effective influence, agenda control, dependency, strategic vulnerability and institutional adoption can influence investigation design and reception. The political or institutional environment is part of the modeled reality; do not create a parallel PoliticalInterference engine.
+- Strategy depends on the actor's perceived reality, including false beliefs about other strategies; alternative reactions and outcomes are hypothetical, not guaranteed.
+- **Explicit MVP constraint:** Niccolò must not automatically allocate or dynamically redistribute investigative resources (including tokens, processing effort or attention budgets) among lines. It may identify promising directions and recommend redistribution with reasons. The user determines and may change the allocation; show the current division and actual use intelligibly (e.g. 70% for one line, 30% for another). Use simple predictable defaults where needed; no autonomous optimizer or hidden certainty-based scheduler. Reconsider dynamic allocation only after demonstrating its value and obtaining explicit product direction. Do not let scheduling sophistication delay the MVP.
+
+### 20.1 Informational universe and evidence artifacts
+
+- Niccolò reasons over information, not the physical world directly. Distinguish a real-world referent, its representations/records, their provenance, and assessments about them.
+- The removal of a DNA sample from a physical evidence container is conceptually comparable to removal of a component from a composite digital artifact. Both are known through available information about an artifact, its parts, transformations, custody, availability and integrity.
+- Candidate general EvidenceArtifact concept: identity, composition, origin, custody/collection history, transformations, integrity, representations and availability. No separate physical-evidence management system or blanket PhysicalEvidence abstraction is needed. Physical evidence is represented through supplied records, descriptions and analytical results; digital artifacts may be processed where supported. Preserve explicit MVP media limitations.
+- The processing universe is informational, but the subject of information and the scope of appropriate recommendations can include real-world actions and outcomes.
+
+### 20.2 ActionRecommendation — proactive strategic advice
+
+ActionRecommendation is an identifiable, attributable recommendation with rationale, purpose, context, intended recipient, conditions and expected consequences. It can be requested or proactively proposed by a human or Niccolò; it remains evaluable, contestable, refinable and replaceable. It is not a Decision, Authorization, Plan or Execution.
+
+- Purposes are open and non-exclusive: epistemic (acquire knowledge, test hypotheses, verify claims), protective, preventive, corrective, strategic and exploratory. An action can serve several purposes.
+- It may be grounded in evidence, hypotheses, suspicion, gaps, risk assessments, perceived intentions or scenarios. Confidence in a motivating hypothesis differs from strength of recommendation: reviewing privileged access may be justified by structural risk without concluding that an employee is dishonest. An authorized forensic laboratory analysis of a suspected substance may distinguish claimed from actual composition; Niccolò reasons about the information need and the result rather than physically handling evidence.
+- Include feasibility, likely authorized executors, conditions, expected benefits, primary/secondary and intended/unintended consequences, relevant uncertainties, possible reactions, and effects on other investigations.
+- Consider alternatives, including inaction. Compare cost, urgency, expected value, risk, reversibility, dependencies and discriminatory power. Do not impose a universal score or autonomously choose competing human objectives.
+- Conditional recommendations can depend on another result, confirmation, event or change in context; include delay, suspension and conditional reassessment.
+- Distinguish recommendation, assessment of it, decision, authorization, planning, execution, actual outcome and retrospective evaluation. Preserve their independent provenance and lineage.
+- Interventions change the very circumstances investigated: objective conditions, information distribution, beliefs, relationships, resources, power, incentives, opportunities and investigative evidence. Distinguish spontaneous behavior from behavior potentially induced by an intervention.
+- Actors adapt based on perceived reality, with errors, fear, ego, resentment, self-preservation, changing intentions and possibly simulated adaptation. Do not assume rationality, honesty or predictability.
+- A recommendation may become inappropriate even if all its original supporting facts are still true: circumstances, goals, strategy, opportunity or evidence interpretation can change. Recommend reevaluation, suspension or replacement, including during execution, retaining the original rationale and history. Reuse general dependency and revision mechanisms.
+- Recommendations may complement, depend on, conflict with, interfere with, duplicate or replace one another. Ordering and conditionality matter; use Plan for a proposed composition or sequence rather than create parallel planning machinery. Identify conflicts between objectives (e.g. operational safety, productivity, investigation opportunity, reputation) and let the user decide.
+- MVP: identify and explain material dependencies and alternatives without an autonomous strategic optimizer.
+- **Explicit product boundary including air-gapped deployments:** Niccolò may represent, investigate and analyze kinetic attacks and the consequences of death, injury or incapacitation, including protective and preventive scenarios. It must not recommend or develop operational plans for kinetic attacks against people or installations, directly or through euphemisms such as removal/neutralization of an actor. Apply the restriction semantically in recommendation policy, not by weakening the epistemic ontology. Consequence analysis does not imply permission to advise causing the harm. Human decision and authorization remain separate from system recommendations.
+
+## 21. Counterintelligence — a vertical and stress test of the general epistemic core
+
+The counterintelligence study demonstrates capabilities that should enrich the universal core rather than introduce a parallel subsystem. The following nine areas were explored and approved conceptually. Their boundaries are contextual and many overlap with ordinary investigations.
+
+### 21.1 Informational exposure
+
+- InformationAccess distinguishes formal authorization, practical/technical possibility, indirect access, conditional access and formerly available/revoked access from actual access. Exposure means availability or receipt, not necessarily assimilation.
+- Distinguish receipt, perception, attention, comprehension, appreciation of significance and retention. Revoking access does not erase acquired knowledge.
+- Disclosure distinguishes intended/unintended, authorized/unauthorized, intended/actual recipients and outcomes. Restriction may be legitimate or not. Propagation preserves transformation and provenance.
+- A person may independently infer sensitive information from combined public information, context or specialist understanding without ever accessing the originating artifact. Seemingly harmless facts may become sensitive in combination or after changed circumstances.
+- Separate actual from potential and presumed knowledge; actor expectations regarding secrecy may be wrong. Consider simulated knowledge, ignorance, comprehension or access capability.
+- Confidentiality of an information object and knowledge held by other actors are separate.
+
+### 21.2 Detection of compromise
+
+- Anomaly examples: apparent unexpected knowledge, information in an unexplained context, apparent anticipation of confidential decisions, changes to supposedly preserved information.
+- The reference baseline (roles, privileges, ordinary communication, inference capabilities) is itself contextual, incomplete, contestable and investigable.
+- Distinguish confidentiality, integrity, authenticity, availability and provenance, and assess scope and affected dependencies/actors/decisions separately.
+- Competing explanations include intentional leakage, inadvertent exposure, access-control failure, legitimate access unknown to the investigator, independent inference, coincidence, investigator error and deceptive appearance of compromise.
+- An anomaly invites investigation; it is not proof of compromise. Reasonable protective review can be warranted before confirmation.
+
+### 21.3 Reconstruction of leaks and attribution of origin
+
+- Distinguish originator, earliest known holder, first unauthorized discloser, conscious/unconscious intermediaries, intended and actual recipients, beneficiaries and alleged organizers. These roles do not imply one another.
+- Propagation reconstructions can be incomplete and competing; separate distinct routes, common ancestry, distributed fragments and independent inference. Preserve transformations (simplification, distortion, omission, interpretation, recombination); a later expression need not be identical to the original.
+- A disclosure may occur without awareness of confidentiality, strategic importance, authorization boundaries or the recipient's existing knowledge. Causal participation does not establish intent.
+- Possible motives include finance, hidden loyalty, revenge, ego, recognition, ideology, protection of others, whistleblowing or coercion. Claimed motives are subject to deception.
+- Consider erroneous or deceptive attribution: manipulated evidence, false accusations/confessions, incomplete admissions, apparent use of a channel never used. Investigate the attribution process itself.
+- Separate creation time, acquisition per actor, disclosure, discovery and attribution; a past disclosure may become strategically important later. Finding one leak does not establish its full recipients, content, duration, other routes or consequences.
+- Responsibility dimensions: causal participation, awareness, intent, motive, authorization, institutional responsibility and benefit. Benefit is not proof of participation.
+- Returning information (circularity) is not necessarily bad. A recipient may fail to recognize their own original information and count it as independent confirmation; or recognize it as evidence of intended dissemination/influence; or as possible breach of expected secrecy; or as a signal of transformation, reinterpretation or connections between actors.
+- Distinguish intended, expected, authorized, actual and perceived propagation; the same returned information can be a strategic success for one actor and a compromise for another. A return is an indication, not proof of the full path or effect.
+- Model reconstructions using existing events, causal relationships, hypotheses and assessments; no dedicated leak-specific epistemic engine.
+
+### 21.4 Infiltration and hidden loyalties — core strategic capability
+
+**Loyalty refinement**
+- Objects may include persons, family, groups, organizations, institutions, causes, communities, ideology, religion, principles or relationships. Loyalty to an institution can coexist with opposition to its current leadership.
+- Nature may be affective, ideological, economic, professional, institutional, familial, grateful, reciprocal or dependency-related; types can coexist. Degree, scope, conditions, personal limits, reciprocity and temporal change matter.
+- Loyalty is distinct from obedience, submission, agreement, compliance, cooperation, dependency and aligned interests. One can obey someone one despises or challenge someone one is loyal to.
+- Multiple concurrent loyalties may be compatible, independent, conflicting or latent until a choice becomes necessary. Relative importance is context-specific and may be declared, inferred, unknown to the actor or change with circumstances.
+- Distinguish declared, manifested, perceived, attributed, suspected, hidden, simulated and misattributed loyalty. Reciprocity need not exist and may be wrongly assumed. Trust (including competence and predictability) is independent of loyalty.
+- Loyalty can arise, strengthen, weaken, disappear, recover, transfer or become ambivalent; perception of change may lag. Humiliation, resentment, abandonment, belonging, admiration, recognition, ego or emotional injury may matter independently of economic reward.
+- Self-perceived loyalty can diverge from others' evaluations and one's own past commitments. Avoid diagnosing motives as fact.
+
+**Infiltration refinement**
+- Formal affiliation, actual cooperation, convergent interests, independent conduct and hidden relations are different. No single factor establishes infiltration.
+- Distinguish preexisting intention upon entry from later-developed ties, occasional cooperation, gradual compromise, coercion, opportunism and changes of conviction.
+- Privileged access, legitimate work responsibilities, actual access, influence over access holders, purpose, capability, intent and behavior are independent.
+- Investigable possible purposes include acquisition of knowledge, observation, influencing decisions, protecting interests, informational compromise, interference with investigation and benefit to others. Purpose is a hypothesis, not inferred simply from outcome.
+- Distinguish affinity, spontaneous alignment, cooperation, coordination, subordination, dependency, coercion and external control. An actor may benefit another organization without any contact. Participants may be unaware of ultimate beneficiaries or larger strategy, or misunderstand the purpose of their activity.
+- Dual or conflicting engagements can have different commitments and perceptions per party, changing over time. Infiltration may be authorized (e.g. lawfully authorized undercover investigators); preserve the distinction among apparent membership, actual affiliation, mandate, purpose and authority, without intrinsic moral judgment.
+- Loyalty or disloyalty may be simulated or wrongly perceived. Accusations may arise from investigative error, personal/political disputes, bias, manipulated evidence or intentional deception.
+- An accusation itself has strategic effects independent of truth: trust, exclusion, authority, investigations, alliances and reputation.
+- Divergence, dissent, criticism, noncompliance, conflicting interests, whistleblowing, personal relationships, kinship, professional communications and shared convictions do not establish sabotage, disloyalty or clandestine coordination. Conduct may arise from fear, obligation, incompetence, ego, pressure, interest or coincidence. Independent evidence, common ancestry, and alternative explanations must be traceable.
+- Absence of observed suspicious activity is not automatically proof of a particularly competent infiltrator; identify self-sealing hypotheses that cannot be contradicted. Distinguish insufficient observation from actual counterevidence and consider hypothesis discriminability.
+- Assess competence, trust, loyalty, access, influence, conflict of interests, exposure to coercion and observed behavior separately, contextual and attributable; no global loyalty or suspicion score.
+- Multi-actor hypotheses preserve alternatives concerning actual participation, intermediaries, beneficiaries, organizers, unwitting actors and unjustly implicated people.
+- Protective recommendations may address structural risk with proportionate access review, segregation of duties, evidence preservation, independent review and reduced excessive dependencies without declaring someone an infiltrator.
+- Investigation itself can change loyalty, fear, resentment, solidarity and relationships; distinguish preexisting from induced conduct. Investigators may also have hidden loyalties, dependencies and imperfect knowledge.
+
+Working abstractions: Loyalty (qualified relation), Affiliation (membership or relationship), StrategicAlignment (convergence of goals/interests), Infiltration (investigable composition reusing intentions, access, actions, influence, deception, coordination, loyalty, knowledge and assessments). Exact persistence choices await reconciliation. Sophistication about possible betrayal must never convert distrust into knowledge automatically.
+
+### 21.5 Deception against counterintelligence
+
+- Counterintelligence is itself a potential epistemic target. False confidence in security, false perception of compromise and erroneous extent or timing may occur independently.
+- Distinguish actual participation, appearance, accusation, attributed origin and benefit. Even a detected incident can be misattributed or misunderstood.
+- Agenda compromise: apparently rigorous investigations may pursue wrong questions, overvalue secondary lines, exclude hypotheses or fail to challenge assumptions. Alternative explanations include deception, incompetence, resource limits and legitimate choices.
+- Normality baselines may themselves be incorrect, including normalized misconduct or legitimate behavior interpreted as suspicious. Reassess source trust/reputation, hierarchy-based credibility and information asymmetry.
+- Separate actual, demonstrated and attributed adversary capabilities, knowledge, resources, influence and limits. Distinguish apparent/declared/attributed/actual goals; distinguish coordination from spontaneous patterns.
+- Institutional summaries can misrepresent technically correct findings through omission, decontextualization, selection or exaggerated confidence; preserve provenance. Operational closure may reflect resources, policy or politics rather than epistemic resolution.
+- Self-deception of investigators (ego, attachment to their own hypotheses, resistance to public correction) is investigable, not automatically presumed.
+- Overreaction to an actual or imagined threat may cause greater damage than the original threat; consider introduced risks.
+- Recursive deception (including deception about an allegation of deception) remains representable without mandatory unlimited computation; use purpose, relevance and user budget. Self-sealing arguments (all evidence and counterevidence supposedly confirm the same hypothesis) merit explicit challenge.
+- No CounterintelligenceDeception engine. Investigators, investigations, policies, methods and findings, including work aided by Niccolò, can themselves be investigated within authorized scope.
+
+### 21.6 Integrity of counterintelligence and public or corporate oversight
+
+Counterintelligence integrity is a contextual application/refinement of InvestigationIntegrity, not a separate fundamental abstraction. A specialized intelligence adversary may know investigative methods, possess institutional authority/resources, investigate investigators and adapt to their activity. The complexity of the adversarial environment, not its institutional label, determines the necessary sophistication. A corporate investigation can be more adversarially complex than a formal counterintelligence case.
+
+- An oversight body can accumulate informational, investigative, disciplinary, hierarchical, reputational and career-related power; individuals can appropriate institutional powers and information for private purposes.
+- Knowledge of a person's actual or alleged misconduct can create real or perceived leverage, even absent formal authority or a completed disclosure. Coercion may persist, and subsequent misconduct under pressure can deepen dependence. Identical observed conduct can originate from loyalty, money, fear, coercion, dependence or combinations, with distinct responsibilities.
+- Independence is formal, operational, financial, informational, decisional and perceived; formally independent bodies can depend on those they investigate.
+- Selective oversight can affect subjects, depth, resources, evidence criteria, interpretation, closure or referral. It can arise from legitimate priorities and limitations, interest, discrimination or misconduct; compare context and rationale before concluding wrongdoing.
+- Institutional capture can be partial, temporary or persistent, by individuals or groups, economically, hierarchically or politically driven, recognized or unrecognized. Not every investigator or every case is compromised.
+- Legitimate acquisition of institutional information does not imply legitimacy of subsequent use. Investigate private appropriation, selective enforcement, concealment, coercion, favoritism and protection networks. Such networks can arise from loyalty, reciprocal interests, fear, dependence, convenience or coercion, without centralized coordination or full participant knowledge.
+- Compare allegedly similar cases using relevant differences in conduct, evidence, circumstances, criteria, decisions and rationale; unequal treatment is not automatically unjustified.
+- Handling of a complaint (including non-investigation, superficial examination, misinterpretation, closure or inappropriate disclosure) is itself investigable.
+- Recursively represent investigation of investigators, supervisors, oversight processes and their policies without requiring automatic investigations of every layer. Scope and access remain explicit.
+- Compromise may be localized to an individual, team, phase, source or decision. An honest investigator may reason from contaminated information. Do not propagate negative assessments indiscriminately across individuals, cases or institutions.
+- Examine actual autonomy to disagree, formulate alternatives, preserve assessments, challenge evidence, request review, and refuse improper interference. Formal authority does not guarantee actual autonomy.
+- Preserve original evidence, provenance, dissent, alternative interpretations, decision rationale, changes in scope and conclusion genealogy so an authorized independent reviewer can reassess. A senior investigator's rejection cannot erase the underlying assessment.
+- Protective recommendations include independent review, segregation of responsibilities, reduction of excessive privileges/dependencies, decision audit, record preservation and protection of people who report misconduct; no autonomous execution.
+- These refinements enrich general InvestigationIntegrity. The same mechanisms apply to independent audits, internal corporate investigations, police oversight and other institutions.
+
+#### Universal family of power, vulnerability and dependence
+
+The oversight example exposed a broader family of concepts, all owner-approved as universal rather than specific to police or counterintelligence. Context, intensity, temporal qualification, evidence, assessment authorship, uncertainty, competing perceptions, deception and genealogy apply throughout. Names and exact entity/relationship choices remain working design.
+
+| Working concept | Core distinction |
+| --- | --- |
+| Vulnerability | A contextual exposure to possible adverse consequences, not necessarily a personal deficiency. May be material/economic, professional, institutional/hierarchical, legal, reputational, emotional or informational; actual, potential, perceived, unknown or misattributed; transient, conditional or persistent. |
+| Dependency | Attainment of a goal or maintenance of a condition depends on an actor, resource or circumstance. May be unilateral, reciprocal, asymmetric or distributed; material, affective, professional, informational, institutional or strategic; distinguish real alternatives from alternatives known/perceived to the actor. Voluntary or desired dependency is not intrinsically submission. |
+| Leverage | Capacity for influence or advantage arising from resources, competence, authority, knowledge, dependence or vulnerability (not exclusively a negative vulnerability). Distinguish actual/potential/perceived/simulated capacity, intent to exercise, exercise, perceived exercise and outcome, including resistance or unintended effects. Holding leverage does not establish intent to use it. |
+| Threat | Distinguish a condition threatening an interest from a communicated threat. Separate conditionality, sincerity, actual capability, intent, communication, perceived credibility and consequence. A perceived or simulated threat can produce real effects. |
+| Coercion | Influence that compromises actual or perceived freedom of decision; explicit/implicit, direct/mediated, episodic/recurring/continuing. Distinguish submission, apparent or partial submission, resistance and seeking protection. Consequences may include behavior change, worsened dependency, altered loyalty and diminished autonomy; submission is not consent or loyalty. |
+| Incentive | A condition that encourages/discourages behavior; economic, affective, reputational, professional, ideological, recognition, belonging or ego-related. May arise naturally, institutionally, through deliberate offering or only in the actor's perception. Perception and behavioral effect differ; may be irrelevant or counterproductive. |
+| Pressure | Broader than coercion; hierarchical, social, economic, familial, institutional, psychological or self-imposed, deliberate or incidental, from individuals, groups or circumstances. May be cumulative, intermittent, increasing or decreasing. |
+| Constraint | A real or perceived limitation on alternatives: physical, material, legal, institutional, informational, temporal, moral or voluntarily accepted. Perceived lack of alternatives can differ from actual options. |
+| Autonomy | Contextual actual and perceived ability to decide, act, refuse, obtain knowledge, disagree, exit a dependency or revise commitments. Degrees and scope matter, not a binary or global trait. |
+
+Separate conduct and causal consequences from inferred motives, responsibility and moral/legal judgments. Understand what people believe they can do, what they fear and what they consider impossible to refuse, as well as what they desire. These concepts enable investigation of coercive relationships, protection, governance and risk; representability is not authority to use another person's vulnerabilities for coercion.
+
+### 21.7 Informational and epistemic compartmentalization
+
+- Distinguish compartmentalization in the modeled world from actual Niccolò product access control. Actual software permissions are deterministic security controls, not inferred from modeled authority or delegated to LLM judgment.
+- Any epistemic object may be compartmentalized: source identity, evidence, claims, hypotheses, questions, interpretations, findings, intent, recommendation, investigative lines and even existence of an investigation.
+- Fine-grained access to existence, content, partial content, source identity or origin, conclusion versus rationale; distinguish authorized access, technical possibility, actual access, assimilation and retained knowledge. Revocation does not erase acquired knowledge.
+- Restrictions may protect people, sources, operations, confidentiality, parallel investigations or legal obligations, or reflect improper private interests. Existence of a restriction does not prove legitimacy.
+- Distributed knowledge: different investigators may hold fragments whose combination yields a relevant hypothesis that none can formulate independently. Do not confuse an investigator's limited view with the totality of known or existing information.
+- Distinguish knowing an inaccessible object exists from not knowing of it and incorrectly believing it absent. When existence is itself protected, Niccolò must not leak it indirectly.
+- Changes in rights may be temporal, conditional or role-related; preserve authorization change provenance. Authorization to access does not imply authorization for all uses or disclosures; purpose matters.
+- Derived content, graphs, summaries, metadata, associations, inferences and LLM processing must respect effective authorization, including restrictions on derived outputs. Confidential inputs cannot be exposed through outputs or unjustified existence hints.
+- Compartmentalization can obscure contradictions, source independence, hypotheses, relevant combinations and review, cause duplication or impair discriminatory power. A conclusion may be justified relative to the available subset but inadequate given broader knowledge.
+- The reason and application of a restriction can itself be investigated (legitimate, unnecessary, mistaken, abusive, or deceptively founded). Preservation and authorization are distinct operations: access restriction must not imply evidence destruction or erased dissent.
+- Candidate InformationCompartment represents overlapping, dynamic information groups and access/use/sharing conditions in the epistemic model, reusing authority, authorization, access, knowledge, dependency and assessment. Avoid assuming the MVP must operationally implement all fine-grained variants. Where the product does support protected compartments, enforce actual isolation for users and LLMs deterministically and do not leak through unsupported reasoning paths.
+
+### 21.8 Informational, human and institutional vulnerabilities
+
+- Separate existence of vulnerability, exposure, others' knowledge, incident, actual consequence and discovery. Vulnerability need not imply an adversary or malicious intent.
+- Emergent vulnerabilities arise from combinations (responsibility concentration, dependency, inadequate independent review, excessive confidence, poor recovery) that may be innocuous alone. Relational vulnerabilities reside in asymmetry, conflicting obligations, concentrated authority or lack of alternatives, not necessarily intrinsic personal traits.
+- Individual competence does not guarantee collective competence. Consider conformity, absent challenge, fragmented knowledge, institutional resistance to correction and common-source dependency.
+- Epistemic vulnerabilities include unquestioned premises, interpretation lock-in, mistaken source independence, authority confused with credibility, omitted hypotheses, resistance to revision and confusing absence of evidence with evidence of absence.
+- Success can itself create fragility (excessive confidence, reduced oversight, reputation insulated from challenge, overgeneralized successful methods). Ego/self-deception remain possible explanations rather than diagnoses.
+- Epistemic single points of failure: multiple findings, investigations or decisions depend on one originator, unverified premise, interpretation or unique knowledge holder.
+- Protection and oversight are themselves investigable and may have second-order weaknesses: record verification, source assessment, exceptions, review and reviewer independence.
+- Protection can introduce new vulnerabilities: excessive compartmentalization, centralization, excessive scrutiny, operational dependencies, impaired contradiction detection. Separate residual and introduced risk.
+- Distinguish actual, perceived, attributed, unknown, simulated and mistakenly assumed vulnerability; temporal/contextual variation matters. Severity, likelihood, scope and reversibility are independent rather than a global absolute score.
+- Actual exposure does not establish an adversary's knowledge, capability, interest, resources or intent.
+- Proactive structural warnings can be grounded without alleging wrongdoing, e.g. three seemingly separate findings all depend on a common information origin. Explain basis and uncertainty.
+- Candidate Exposure (conditions in which a vulnerability can have consequences), Mitigation (measures to reduce vulnerability or impact), and Resilience (capacity to absorb events, preserve essentials, recognize compromise, recover information/reasoning/operational ability) are universal concepts. Disambiguate Exposure in a risk context from informational exposure and reconcile naming with existing semantics. Vulnerability and resilience are independent.
+
+### 21.9 Protective and containment recommendations
+
+Reuse general ActionRecommendation, Vulnerability, Mitigation, Resilience, InformationCompromise, InvestigationIntegrity, Assessment, Plan and Scenario; no parallel recommendation engine.
+
+- Objects may include people, sources, identities, information, investigations, infrastructure, resources, decision capacity, autonomy, institutional integrity and continuity of operations.
+- Distinguish prevention (avoid incidents), mitigation (reduce harm), containment (limit ongoing spread/impact), correction (address contributing conditions), recovery (restore capacities), and adaptation (prepare for changed circumstances); actions can serve multiple purposes.
+- Recommend reasonable proportional protective measures based on structural risk even under uncertainty about whether a threat, leak, infiltration, hostile identity or malicious intention exists. State the uncertainty and basis. Do not convert suspicion into accusation.
+- Proportionality involves potential consequences, quality of information, urgency, cost, reversibility, impact on possibly innocent people and legitimate activities. Structural measures such as general privilege review, segregation of duties, independent review, record preservation and reducing excessive dependencies may be preferable to personal confrontation.
+- Source protection distinguishes identity, content, acquisition circumstances, relationships, consequences of identification and disclosure authorization; one exposure can compromise several investigations.
+- Informational containment assesses affected information, potential recipients, channels, downstream decisions/investigations and whether compromise continues. Containment includes consequences, not just circulation.
+- **Epistemic containment:** potentially adulterated evidence or another compromised dependency can prompt recommending a pause on reliance on relevant findings, review of downstream inferences and decision consequences, independent verification and investigation of the extent of contamination. Never blanket-invalidate, delete, or destroy provenance; retain independent support and history. This is a general dependency/revision capability.
+- Preserve investigation capacity, source availability, evidence, independence, review and competing hypotheses; explain conflicts between protection now and continued investigation.
+- Consider technical, material, social and reputational reversibility. Restoring access may be easier than restoring trust after an unjust accusation. Conditions, urgency, duration and review/expiry matter.
+- Other actors may react by changing behavior, perceptions, loyalty, trust, resistance or cooperation; those reactions do not automatically confirm the initial suspicion.
+- Protective measures may themselves conceal wrongdoing, concentrate power, suppress dissent, exclude reviewers, restrict access unfairly or retaliate. Motives, legitimacy and effects remain investigable.
+- Analyze residual and newly introduced risks; a measure can reduce, eliminate, transfer or create risk, or have no material effect. Distinguish intended, implemented, perceived and effective protection. Absence of a subsequent incident is not proof of effectiveness.
+- Epistemic recovery rebuilds capacity for reliable reasoning by identifying still usable material, recovering independent sources, revising affected conclusions, restoring controls, identifying remaining gaps and reassessing integrity. Preserve history throughout.
+- Product supports advice before, during and after compromise even if adversary identity/motive/existence is unknown. Decision, authorization and execution remain human-governed; kinetic attack recommendation/planning prohibition still applies.
+
+## 22. Cross-cutting invariants and MVP boundaries from this checkpoint
+
+These are the principal decisions to carry forward when reviewing scenarios and existing code. They complement the existing MVP contracts and earlier sections; no implication that the implementation already satisfies them.
+
+1. Human-guided circumstance domain; Niccolò and supporting LLMs do not become sovereign arbiters of truth, guilt, loyalty, morality, investigation closure or action. Preserve attribution of consequential decisions, even with a sole all-powerful investigator.
+2. Treat observed conduct, attributed motives, hypotheses, declarations, beliefs, epistemic assessments, operational adoption, authority and actual outcomes as different dimensions. No automatic transition from suspicion, association, anomaly or benefit to culpability or knowledge.
+3. Deception is pervasive and potentially recursive; maintain alternate explanations and attribution without assuming universal dishonesty or confusing sincerity with truth.
+4. Preserve provenance, dependency, source independence, genealogy, dissent and revision. Derived findings and summaries must retain inspectable grounding for authorized review; preservation differs from broad visibility.
+5. Relations can be qualified and investigable; context, time, uncertainty and differing perspectives matter. No fixed semantic depth, but computation has practical and user-controlled bounds.
+6. Counterintelligence is a demanding vertical using and enriching the general core; avoid duplicated epistemic engines for oversight, deception, sources, leaks or protection.
+7. All input and reasoning material is informational; real-world objects are referents of information, not a separate physical evidence management system. Real-world action advice is a distinct permitted output capability, within product boundaries.
+8. Protect against undue informational exposure using actual deterministic authorization and its applicable derived-output constraints; represented organizational authority must not grant software access. Do not send unauthorized information to an LLM. Keep explicit MVP media understanding exclusions.
+9. Proactive suggestions, warnings and ActionRecommendation are welcome and important, not automatic interventions. Keep authority, recommendation, decision, authorization and execution separate. No recommendations or operational plans for kinetic attacks, including in air-gapped variants and disguised by euphemism.
+10. **MVP resource allocation remains explicitly user-controlled, inspectable and predictable**, including investigation-line token/processing budgets. The system can recommend allocation but not autonomously reallocate. Avoid elaborate autonomous strategic optimizers for MVP.
+11. Candidate names, examples, grades/enums and conceptual groupings do not mandate classes, tables, services, algorithms or global scalar scores. Reuse existing semantic mechanisms, identify coherent minimum slices, and defer implementation richness only when safe and technically appropriate.
+
+## 23. Pending work and next checkpoint
+
+The independent conceptual discovery phase, major interaction review and nine-area counterintelligence exploration are complete **for now**. This is an exploratory design checkpoint with owner-confirmed directions; not scientific validation, implementation verification, or a declaration that the ontology is complete. The earlier interdisciplinary review is linked in this document; the current synthesis should not be represented as a source-by-source academically validated result without checking its sources.
+
+Next:
+- [ ] Conduct fictional adversarial conceptual cases (design/desk tests, not builds at this point). Combine ordinary and sophisticated adversaries, truthful yet misleading information, multiple actors, circular/common-source evidence, forged/partially compromised evidence, hidden/conflicting loyalties, coercion and abuse of oversight, investigator dissent, constrained access, misattribution, self-sealing hypotheses, and risky or obsolete recommendations.
+- [ ] Probe for representational failures, undesirable conflation, missing relationships or invalid implications. Check alternatives, attribution, provenance, dependency reassessment, human authority and security constraints. Refine the smallest necessary abstractions; retain useful uncertainties and avoid duplicating engines.
+- [ ] Exercise combined cases of discovery and correction, contamination and recovery, action/reaction feedback, and legitimate restrictions versus abusive concealment. Test whether useful protection advice is possible without treating an unconfirmed suspicion as fact.
+- [ ] Resolve remaining representation questions (including QuestionFormulation, content locators, relation identity, relevance grades and scale semantics, assessment/lifecycle projections, names that overlap e.g. Exposure, and candidate compound conceptual roles) as scenarios and existing code warrant.
+- [ ] Define semantic invariants and coherent minimum slices for MVP, preserving required information/invariants now where later migration would otherwise be costly. Separate conceptual breadth from necessary immediate operational support.
+- [ ] Reconcile against actual specifications, source code, schema, tests and workflows. Identify what already exists, needs refinement, is absent, is already specified, conflicts or should be deferred. Do not assume missing implementation based on the clean-room model.
+- [ ] Produce an architectural delta and incrementally implement/refactor at the most technically opportune point, including early structural work where beneficial, under AGENTS.md and the existing MVP contracts. Record reasons/dependencies/precautions for deferrals. Verify implemented capabilities before representing them as available.
+
+The checklist in section 13 is retained as historical context: its subsequent Claim, Interpretation and interaction discussions have advanced conceptually in sections 14–22; exact implementation decisions and reconciliation remain open. The future implementer is expected to correct, extend and improve the design where evidence warrants rather than follow these examples mechanically.
