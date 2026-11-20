@@ -3,6 +3,7 @@
 These describe components or intended contracts. Source code and tests determine the presently implemented behavior.
 
 - [Epistemic architecture revamp — work in progress](EPISTEMIC_ARCHITECTURE_REVAMP_IN_PROGRESS.md) — exploratory, non-normative review
+- [Epistemic implementation contracts — pre-code checkpoint](EPISTEMIC_IMPLEMENTATION_CONTRACTS_CHECKPOINT.md) — owner-approved implementation-facing semantic commitments recorded before Rust/PostgreSQL reconciliation.
 - [Independent interdisciplinary epistemic-domain review (66-source corpus)](EPISTEMIC_DOMAIN_INTERDISCIPLINARY_REVIEW_V1.md) — research synthesis, not an implementation gap assessment
 - [Local Qwen epistemic inference pilot (research-only)](../../experiments/epistemic-qwen-local-2026-11-14/README.md) — synthetic fixtures, raw outcomes, and runnable offline code
 - [Offline Qwen epistemic test-challenge experiment 001](../../experiments/epistemic-challenge-001-2026-11-15/README.md) — matched direct-vs-test framing, constrained operator parsing, and independent oracle

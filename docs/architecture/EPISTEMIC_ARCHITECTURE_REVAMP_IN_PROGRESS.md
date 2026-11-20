@@ -11,6 +11,7 @@ Read this with:
 - [Independent interdisciplinary epistemic-domain review (66 sources)](EPISTEMIC_DOMAIN_INTERDISCIPLINARY_REVIEW_V1.md)
 - [Epistemic weighting API](EPISTEMIC_WEIGHTING_API.md)
 - [System-integrator boundaries and near-term hardening](SYSTEM_INTEGRATOR_BOUNDARIES_AND_HARDENING.md)
+- [Pre-code epistemic implementation contracts checkpoint](EPISTEMIC_IMPLEMENTATION_CONTRACTS_CHECKPOINT.md)
 - [Architecture index](README.md)
 
 ## 1. Why this review exists
@@ -860,4 +861,14 @@ A supports B and D; both inform C; C informs E; F constrains and enriches them a
 - Compare the complete model with real code, schema, contracts and executable tests before naming implementation gaps. Identify what can be preserved, refined, added, shared or simplified while maintaining full epistemic capability. Implement/refactor at technically opportune points; do not impose a giant rewrite or wait for an almost finished MVP. For any proposed delay or narrowing of an approved core capability, explicitly surface rationale, affected invariants, interim behavior, dependencies and migration precautions for owner review. Do not silently defer core model coverage.
 - Product claims should differentiate approved scope/target behavior from verified implemented behavior. The 25 desk tests and consolidation are conceptual design material, not assurance of current implementation or empirical accuracy.
 
-Next: reconcile the approved model and semantic contracts with the actual Niccolò architecture, identify the concrete delta, review planned implementation sequencing and derive executable regression/contract tests from AT-01–AT-25. The architecture review is evolvable and non-exhaustive; improve it where evidence warrants it. 
+Next: reconcile the approved model and semantic contracts with the actual Niccolò architecture, identify the concrete delta, review planned implementation sequencing and derive executable regression/contract tests from AT-01–AT-25. The architecture review is evolvable and non-exhaustive; improve it where evidence warrants it.
+
+## 27. Pre-code implementation contracts checkpoint
+
+The product-owner-approved implementation-facing semantic contracts derived after the conceptual consolidation are recorded in [Epistemic implementation contracts — pre-code checkpoint](EPISTEMIC_IMPLEMENTATION_CONTRACTS_CHECKPOINT.md).
+
+That checkpoint makes explicit the agreed direction for persistent epistemic identity and revision, proposition-versus-occurrence separation, qualified relationship behavior, transversal assessments, temporal separation, structured grounding and selective revision, directed investigation and discriminatory power, human epistemic state and higher-order knowledge, trust/loyalty/ego and identity protection, dependency/coercion/autonomy, epistemic influence and pervasive deception, investigation integrity, compartmentalization, vulnerability/containment/recovery and the Recommendation -> Decision -> Authorization -> Plan -> Execution boundary.
+
+It also records the owner clarification that **ego protection** is a distinct explicit personal motive (self-image, status, face, competence, humiliation/recognition), while **identity protection** remains a broader and separate social/professional/group-identity mechanism.
+
+The next step is implementation reconciliation: map the current Rust, PostgreSQL, APIs, frontend contracts and tests to **preserve / generalize / replace / create** before modifying code.
