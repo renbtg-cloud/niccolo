@@ -80,6 +80,8 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
     let sit = situation(&f, "Examine a loaded investigative question").await;
     let other = situation(&f, "Another investigation").await;
     let q = node(&f, sit, ExpertNodeKind::Question, "Why did Juan lie?").await;
+    let unlinked = node(&f, sit, ExpertNodeKind::Question, "What happened next?").await;
+    let _other_question = node(&f, other, ExpertNodeKind::Question, "Unrelated inquiry?").await;
     let g1 = node(
         &f,
         sit,
@@ -179,12 +181,128 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
     assert!(snapshot.assessments.is_empty());
     assert!(snapshot.reassessment_impacts.is_empty());
     assert!(snapshot.reasoning_diagnostics.is_empty());
+    assert_eq!(snapshot.question_inquiries.len(), 2);
+    let inquiry = snapshot
+        .question_inquiries
+        .iter()
+        .find(|i| i.question_object_id == q)
+        .unwrap();
+    assert_eq!(inquiry.addressed_gaps.len(), 2);
+    assert_eq!(inquiry.tested_hypotheses.len(), 2);
+    assert_eq!(inquiry.presuppositions.len(), 2);
+    assert!(inquiry.current_discriminatory_power_events.is_empty());
+    for link in inquiry
+        .addressed_gaps
+        .iter()
+        .chain(&inquiry.tested_hypotheses)
+        .chain(&inquiry.presuppositions)
+    {
+        assert!(snapshot.relations.iter().any(
+            |r| r.relation_id == link.relation_id && r.right_object_id == link.target_object_id
+        ));
+    }
+    let blank = snapshot
+        .question_inquiries
+        .iter()
+        .find(|i| i.question_object_id == unlinked)
+        .unwrap();
+    assert!(
+        blank.addressed_gaps.is_empty()
+            && blank.tested_hypotheses.is_empty()
+            && blank.presuppositions.is_empty()
+    );
     assert!(
         snapshot
             .nodes
             .iter()
             .any(|n| n.object_id == q && n.text == "Why did Juan lie?")
     );
+    use epistemic_workbench::assessment::*;
+    let input = AssessmentInput {
+        target: AssessmentTarget::Object { object_id: q },
+        dimension: AssessmentDimension::DiscriminatoryPower,
+        result: AssessmentResult::HighPower,
+        confidence: AssessmentConfidence::Low,
+        criterion: "Distinguishing the candidate explanations".into(),
+        context: "Current inquiry".into(),
+        rationale: "Investigator judgment; not an inferred score".into(),
+        grounds: vec![],
+        revises_event_id: None,
+    };
+    let record = |id, input| {
+        epistemic_workbench::assessment::record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            input,
+        )
+    };
+    let initial = Uuid::new_v4();
+    let revised = Uuid::new_v4();
+    let alternative = Uuid::new_v4();
+    let relevance = Uuid::new_v4();
+    record(initial, input.clone()).await.unwrap();
+    record(
+        revised,
+        AssessmentInput {
+            result: AssessmentResult::LimitedPower,
+            revises_event_id: Some(initial),
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    record(
+        alternative,
+        AssessmentInput {
+            result: AssessmentResult::NoPower,
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    record(
+        relevance,
+        AssessmentInput {
+            dimension: AssessmentDimension::Relevance,
+            result: AssessmentResult::Relevant,
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    record(
+        Uuid::new_v4(),
+        AssessmentInput {
+            target: AssessmentTarget::Object { object_id: h1 },
+            ..input
+        },
+    )
+    .await
+    .unwrap();
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let inquiry = after
+        .question_inquiries
+        .iter()
+        .find(|i| i.question_object_id == q)
+        .unwrap();
+    assert_eq!(inquiry.current_discriminatory_power_events.len(), 2);
+    assert!(
+        inquiry
+            .current_discriminatory_power_events
+            .contains(&revised)
+    );
+    assert!(
+        inquiry
+            .current_discriminatory_power_events
+            .contains(&alternative)
+    );
+    assert_eq!(inquiry.current_relevance_events, vec![relevance]);
+    assert_eq!(after.assessments.len(), 5);
 }
 
 #[tokio::test]

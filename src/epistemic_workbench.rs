@@ -548,6 +548,84 @@ pub struct ConclusionReasoningDiagnostic {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InquiryLink {
+    pub relation_id: Uuid,
+    pub target_object_id: Uuid,
+}
+
+/// A projection of authored links and unrevised judgments, not an answer,
+/// a gap resolution, or a ranking of investigative questions.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionInquiryView {
+    pub question_object_id: Uuid,
+    pub addressed_gaps: Vec<InquiryLink>,
+    pub tested_hypotheses: Vec<InquiryLink>,
+    pub presuppositions: Vec<InquiryLink>,
+    pub current_relevance_events: Vec<Uuid>,
+    pub current_discriminatory_power_events: Vec<Uuid>,
+}
+
+fn question_inquiries(
+    nodes: &[ExpertNode],
+    relations: &[ExpertRelation],
+    assessments: &[assessment::AssessmentEvent],
+) -> Vec<QuestionInquiryView> {
+    let mut questions: BTreeMap<_, _> = nodes
+        .iter()
+        .filter(|n| n.kind == ExpertNodeKind::Question)
+        .map(|n| {
+            (
+                n.object_id,
+                QuestionInquiryView {
+                    question_object_id: n.object_id,
+                    ..Default::default()
+                },
+            )
+        })
+        .collect();
+    for relation in relations {
+        let Some(question) = questions.get_mut(&relation.left_object_id) else {
+            continue;
+        };
+        let links = match relation.kind {
+            RelationKind::AddressesGap => &mut question.addressed_gaps,
+            RelationKind::TestsHypothesis => &mut question.tested_hypotheses,
+            RelationKind::Presupposes => &mut question.presuppositions,
+            _ => continue,
+        };
+        links.push(InquiryLink {
+            relation_id: relation.relation_id,
+            target_object_id: relation.right_object_id,
+        });
+    }
+    let superseded: BTreeSet<_> = assessments
+        .iter()
+        .filter_map(|a| a.input.revises_event_id)
+        .collect();
+    for event in assessments {
+        if superseded.contains(&event.event_id) {
+            continue;
+        }
+        let assessment::AssessmentTarget::Object { object_id } = event.input.target else {
+            continue;
+        };
+        let Some(question) = questions.get_mut(&object_id) else {
+            continue;
+        };
+        match event.input.dimension {
+            assessment::AssessmentDimension::Relevance => {
+                question.current_relevance_events.push(event.event_id)
+            }
+            assessment::AssessmentDimension::DiscriminatoryPower => question
+                .current_discriminatory_power_events
+                .push(event.event_id),
+            _ => {}
+        }
+    }
+    questions.into_values().collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkbenchSnapshot {
     pub situation_id: Uuid,
     pub nodes: Vec<ExpertNode>,
@@ -559,6 +637,7 @@ pub struct WorkbenchSnapshot {
     pub reassessment_impacts: Vec<ReassessmentImpact>,
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
+    pub question_inquiries: Vec<QuestionInquiryView>,
     pub assessments: Vec<assessment::AssessmentEvent>,
     pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
     pub investigator_free_text_compiler_enabled: bool,
@@ -2330,6 +2409,7 @@ pub async fn snapshot(
     )
     .await?;
     tx.commit().await?;
+    let question_inquiries = question_inquiries(&nodes, &relations, &assessments);
     Ok(WorkbenchSnapshot {
         situation_id: situation,
         nodes,
@@ -2341,6 +2421,7 @@ pub async fn snapshot(
         reassessment_impacts,
         grounding_cycles,
         reasoning_diagnostics,
+        question_inquiries,
         assessments,
         assessment_dependencies,
         investigator_free_text_compiler_enabled: false,
@@ -2372,6 +2453,7 @@ mod tests {
             reassessment_impacts: vec![],
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],
+            question_inquiries: vec![],
             assessments: vec![],
             assessment_dependencies: vec![],
             investigator_free_text_compiler_enabled: false,

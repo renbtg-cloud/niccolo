@@ -208,6 +208,19 @@ export function ExpertWorkbenchPage() {
     </div>
 
     <article><h3>Current structured model</h3>
+      {(data.question_inquiries ?? []).length > 0 && <details open><summary>Investigative questions — explicit inquiry map</summary><p>Links record what to investigate, not answers or gap resolution. Testing multiple hypotheses does not establish discriminatory power.</p><ul>{data.question_inquiries.map(inquiry => {
+        const question = data.nodes.find(n => n.object_id === inquiry.question_object_id);
+        const linkGroups = [['Addressed gaps', inquiry.addressed_gaps], ['Tested hypotheses', inquiry.tested_hypotheses], ['Explicit presuppositions', inquiry.presuppositions]];
+        const judgmentGroups = [['Relevance', inquiry.current_relevance_events], ['Discriminatory power', inquiry.current_discriminatory_power_events]];
+        return <li key={inquiry.question_object_id}><strong>{question?.text ?? inquiry.question_object_id}</strong><p>{question?.rationale}</p><small>Authored by {question?.created_by}</small>{linkGroups.map(([label, links]) => <div key={label}><strong>{label}</strong>{links.length === 0 ? <p>No explicit link recorded.</p> : <ul>{links.map(link => {
+          const target = data.nodes.find(n => n.object_id === link.target_object_id);
+          const relation = data.relations.find(r => r.relation_id === link.relation_id);
+          return <li key={link.relation_id}>{target?.kind}: {target?.text ?? link.target_object_id}<br/><small>{relation?.rationale} · recorded by {relation?.recorded_by}</small></li>;
+        })}</ul>}</div>)}{judgmentGroups.map(([label, ids]) => <div key={label}><strong>{label} — current judgments in their own revision chains</strong>{ids.length === 0 ? <p>No explicit assessment recorded.</p> : <ul>{ids.map(id => {
+          const a = assessmentHistory.find(event => event.event_id === id);
+          return <li key={id}>{a ? <>{a.input.result} · confidence {a.input.confidence}<p>{a.input.criterion} · {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {id}</small></> : id}</li>;
+        })}</ul>}</div>)}</li>;
+      })}</ul><small>Unlinked questions remain visible; missing links or judgments are not negative findings. Divergent judgments are not averaged or treated as consensus.</small></details>}
       {assessmentDependencies.some(v => v.downstream_reviews?.length) && <details open><summary>Downstream assessment review obligations</summary><p>Each reachable route has its own review of the exact assessment revision. Retaining one route does not clear another. No disposition establishes truth.</p><ul>{assessmentDependencies.flatMap(view => (view.downstream_reviews ?? []).map(item => {
         const id = view.dependency.dependency_id;
         const route = item.route;

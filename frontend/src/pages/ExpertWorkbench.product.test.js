@@ -13,6 +13,14 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('shows authored inquiry links and unrevised judgments without treating them as findings', () => {
+    expect(page).toContain('data.question_inquiries');
+    expect(page).toContain('inquiry.current_discriminatory_power_events');
+    expect(page).toContain('Testing multiple hypotheses does not establish discriminatory power.');
+    expect(page).toContain('No explicit assessment recorded.');
+    expect(page).toContain('Unlinked questions remain visible');
+    expect(page).toContain('Divergent judgments are not averaged or treated as consensus.');
+  });
   it('records attributed inferential applicability separately from truth', async () => {
     const body = applicabilityRequest('condition', 'NOT_SATISFIED', 'Authentication failed.');
     expect(body).toEqual({condition_object_id:'condition', assessment:'NOT_SATISFIED', rationale:'Authentication failed.'});
