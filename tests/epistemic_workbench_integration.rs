@@ -82,7 +82,7 @@ async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
     let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
     let actor=Uuid::new_v4();
     niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Interviewee").await.unwrap();
-    let input=StateInput {subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::Exposure,judgment:StateJudgment::Indicated,context:"Delivery interview".into(),temporal_scope:"Before the hearing".into(),rationale:"Reported being shown the ledger".into(),basis_evidence_id:None,revises_event_id:None};
+    let input=StateInput {subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::Exposure,judgment:StateJudgment::Indicated,context:"Delivery interview".into(),temporal_scope:"Before the hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported being shown the ledger".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|event,input|actor_state::record(&f.service,f.workspace,sit,f.principal,event,input);
     let exposed=Uuid::new_v4();
     assert!(!record(exposed,input.clone()).await.unwrap().replayed);
@@ -121,7 +121,7 @@ async fn actor_state_basis_and_writer_authority_are_checked_at_the_boundary() {
     let document=Uuid::new_v4();
     let imported=ingest_source(&f.service,f.workspace,document,SourceFormat::WhatsappExport,"fixture://state-basis",b"[02/11/2026, 12:00] Witness: I read the ledger\n").await.unwrap();
     let basis=imported.fragment_ids[0];
-    let input=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::EvidenceSupportedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),rationale:"Explicit source report; not established fact".into(),basis_evidence_id:Some(basis),revises_event_id:None};
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::EvidenceSupportedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Explicit source report; not established fact".into(),basis_evidence_id:Some(basis),revises_event_id:None};
     let id=Uuid::new_v4();
     assert!(matches!(actor_state::record(&f.service,f.workspace,sit,f.principal,id,input.clone()).await,Err(WorkbenchError::Invisible)));
     situation_store::add_source(&f.service,f.workspace,f.principal,sit,document).await.unwrap();
@@ -153,7 +153,7 @@ async fn higher_order_actor_states_pin_exact_prior_events_without_depth_or_truth
     let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
     let a=Uuid::new_v4(); let b=Uuid::new_v4();
     for (actor,label) in [(a,"Actor A"),(b,"Actor B")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,label).await.unwrap();}
-    let base=StateInput{subject_actor_id:a,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::ClaimedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),rationale:"Attributed report".into(),basis_evidence_id:None,revises_event_id:None};
+    let base=StateInput{subject_actor_id:a,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::ClaimedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Attributed report".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|event,input|actor_state::record(&f.service,f.workspace,sit,f.principal,event,input);
     let root=Uuid::new_v4();record(root,base.clone()).await.unwrap();
     let mut previous=root;let mut chain=vec![];
@@ -172,6 +172,33 @@ async fn higher_order_actor_states_pin_exact_prior_events_without_depth_or_truth
     assert!(snapshot.assessments.is_empty() && snapshot.arguments.is_empty());
     let mut tx=f.service.begin().await.unwrap();sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
     let invalid=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$3,'BELIEF','UNKNOWN','context','time','rationale',$5)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(a).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn actor_epistemic_orientations_distinguish_immediate_reactions_from_persistent_dispositions() {
+    use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment,OrientationScope};
+    let f=fixture().await;
+    let sit=situation(&f,"Investigate curiosity and aversion").await;
+    let target=node(&f,sit,ExpertNodeKind::Question,"What did the ledger show?").await;
+    let actor=Uuid::new_v4();niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Interviewee").await.unwrap();
+    let item=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,dimension:StateDimension::Curiosity,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"When asked".into(),orientation_scope:Some(OrientationScope::ImmediateReaction),orientation_goal:Some("Clarify the ledger".into()),rationale:"Asked a follow-up question".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let curiosity=Uuid::new_v4();record(curiosity,item.clone()).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),StateInput{orientation_scope:None,..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{orientation_goal:None,..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::Belief,..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{orientation_scope:Some(OrientationScope::PersistentDisposition),revises_event_id:Some(curiosity),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{orientation_goal:Some("Different goal".into()),revises_event_id:Some(curiosity),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    let aversion=Uuid::new_v4();record(aversion,StateInput{dimension:StateDimension::Aversion,judgment:StateJudgment::Unknown,orientation_scope:Some(OrientationScope::PersistentDisposition),orientation_goal:Some("Avoid further documentation".into()),..item.clone()}).await.unwrap();
+    let revision=Uuid::new_v4();record(revision,StateInput{judgment:StateJudgment::Contested,revises_event_id:Some(curiosity),..item.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),3);
+    assert_eq!(snapshot.actor_epistemic_states[0].input,item);
+    assert_eq!(snapshot.actor_epistemic_states[1].input.orientation_scope,Some(OrientationScope::PersistentDisposition));
+    assert!(snapshot.question_decisions.is_empty() && snapshot.question_responses.is_empty() && snapshot.arguments.is_empty());
+    let mut tx=f.service.begin().await.unwrap();sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'CURIOSITY','INDICATED','context','time','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(actor).bind(target).bind(f.principal).execute(&mut *tx).await.unwrap_err();
     assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));tx.rollback().await.unwrap();
 }
 

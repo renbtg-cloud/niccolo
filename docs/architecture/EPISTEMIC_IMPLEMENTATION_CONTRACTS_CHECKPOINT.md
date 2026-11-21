@@ -336,6 +336,8 @@ Curiosity is not merely “high interest”; it can have an object, goal, contex
 
 Persistent dispositions must be distinguished from immediate reactions. Observed conduct can update hypotheses about dispositions without proving personality traits.
 
+Migration 0120 extends the existing actor-state judgment ledger with independent orientation dimensions (`INTEREST`, `CURIOSITY`, `INDIFFERENCE`, `AVERSION`, `LIMITED_INQUIRY`, `DENIABILITY_PRESERVATION`, `DELEGATED_KNOWING`, `DOCUMENTATION_AVOIDANCE`). These require an explicit attributed goal and either `IMMEDIATE_REACTION` or `PERSISTENT_DISPOSITION`; ordinary epistemic states forbid the orientation fields. The scope and goal are part of the identity preserved by revisions. The investigator may mark a disposition unknown or contested, and no orientation infers a personality trait, executes an act or proves knowledge.
+
 Epistemic acts include investigating, ignoring, deepening, deferring, avoiding acquisition, delegating, reconsidering, challenging and preserving ambiguity.
 
 ## 14. Higher-order epistemic state

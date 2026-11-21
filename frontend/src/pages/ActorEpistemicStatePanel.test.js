@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
-const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
+import {stateDimensions,orientationDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
@@ -33,5 +33,17 @@ describe('independent actor epistemic judgments',()=>{
     expect(()=>request({...next,target_state_event_id:null},[prior])).toThrow();
     expect(()=>request({...next,target_state_event_id:'unknown'},[prior])).toThrow();
     expect(()=>request({...next,revises_event_id:'revised'},[prior,revised])).toThrow();
+  });
+  it('distinguishes orientations from states and requires goal and scope',()=>{
+    expect(orientationDimensions).toHaveLength(8);
+    const curiosity={...draft,dimension:'CURIOSITY',orientation_scope:'IMMEDIATE_REACTION',orientation_goal:' Clarify the ledger '};
+    expect(request(curiosity)).toMatchObject({orientation_scope:'IMMEDIATE_REACTION',orientation_goal:'Clarify the ledger'});
+    expect(request({...curiosity,dimension:'AVERSION',orientation_scope:'PERSISTENT_DISPOSITION',judgment:'UNKNOWN'}).judgment).toBe('UNKNOWN');
+    expect(()=>request({...curiosity,orientation_scope:null})).toThrow();
+    expect(()=>request({...curiosity,orientation_goal:' '})).toThrow();
+    expect(()=>request({...curiosity,dimension:'BELIEF'})).toThrow();
+    const prior={event_id:'curiosity',input:request(curiosity)};
+    expect(()=>request({...curiosity,revises_event_id:'curiosity',orientation_scope:'PERSISTENT_DISPOSITION'},[prior])).toThrow();
+    expect(()=>request({...curiosity,revises_event_id:'curiosity',orientation_goal:'Other goal'},[prior])).toThrow();
   });
 });
