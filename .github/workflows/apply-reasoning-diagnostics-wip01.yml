@@ -1,0 +1,31 @@
+name: Apply reasoning diagnostics WIP 01
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-reasoning-diagnostics-wip01-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: test "$(git rev-parse HEAD)" = "b33790dd3e32b6a66b887166303dc699105d847a"
+      - name: Apply patch
+        run: |
+          echo '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' | base64 -d | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/epistemic_workbench.rs
+          git commit -m "WIP 01: explicit reasoning diagnostics"
+          git push origin HEAD:main
