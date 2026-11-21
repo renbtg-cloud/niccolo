@@ -103,8 +103,25 @@ async fn investigative_selection_criteria_are_attributed_and_question_scoped() {
     }
     let snapshot = epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
     assert_eq!(snapshot.assessments.len(), criteria.len());
+    let inquiry = snapshot.question_inquiries.iter().find(|i| i.question_object_id == q).unwrap();
+    assert_eq!(inquiry.selection_criteria.len(), criteria.len());
+    for criterion in &inquiry.selection_criteria {
+        assert_eq!(criterion.current_events.len(), 1);
+        assert!(snapshot.assessments.iter().any(|a| a.event_id == criterion.current_events[0] && a.input.dimension == criterion.dimension));
+    }
     assert!(snapshot.arguments.is_empty());
     assert!(snapshot.question_responses.is_empty());
+    let initial = snapshot.assessments.iter().find(|a| a.input.dimension == AssessmentDimension::Urgency).unwrap();
+    let revision = Uuid::new_v4();
+    let competing = Uuid::new_v4();
+    for (id,result,revises_event_id) in [(revision,AssessmentResult::Urgent,Some(initial.event_id)),(competing,AssessmentResult::Deferrable,None)] {
+        epistemic_workbench::assessment::record(&f.service,f.workspace,sit,f.principal,id,AssessmentInput {result,revises_event_id,..initial.input.clone()}).await.unwrap();
+    }
+    let after = epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    let urgency = after.question_inquiries.iter().find(|i| i.question_object_id == q).unwrap().selection_criteria.iter().find(|c| c.dimension == AssessmentDimension::Urgency).unwrap();
+    assert_eq!(urgency.current_events.len(),2);
+    assert!(urgency.current_events.contains(&revision) && urgency.current_events.contains(&competing));
+    assert!(!urgency.current_events.contains(&initial.event_id));
     let mut tx = f.service.begin().await.unwrap();
     sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
     let invalid = sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,target_object_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'URGENCY','URGENT','LOW','deadline','context','rationale',$5)")
@@ -230,6 +247,8 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
     assert_eq!(inquiry.tested_hypotheses.len(), 2);
     assert_eq!(inquiry.presuppositions.len(), 2);
     assert!(inquiry.current_discriminatory_power_events.is_empty());
+    assert_eq!(inquiry.selection_criteria.len(), 6);
+    assert!(inquiry.selection_criteria.iter().all(|c| c.current_events.is_empty()));
     for link in inquiry
         .addressed_gaps
         .iter()

@@ -558,6 +558,12 @@ pub struct InquiryLink {
     pub target_object_id: Uuid,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InquiryCriterionView {
+    pub dimension: assessment::AssessmentDimension,
+    pub current_events: Vec<Uuid>,
+}
+
 /// A projection of authored links and unrevised judgments, not an answer,
 /// a gap resolution, or a ranking of investigative questions.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -568,6 +574,7 @@ pub struct QuestionInquiryView {
     pub presuppositions: Vec<InquiryLink>,
     pub current_relevance_events: Vec<Uuid>,
     pub current_discriminatory_power_events: Vec<Uuid>,
+    pub selection_criteria: Vec<InquiryCriterionView>,
 }
 
 fn question_inquiries(
@@ -583,6 +590,8 @@ fn question_inquiries(
                 n.object_id,
                 QuestionInquiryView {
                     question_object_id: n.object_id,
+                    selection_criteria: assessment::AssessmentDimension::QUESTION_SELECTION_CRITERIA
+                        .into_iter().map(|dimension| InquiryCriterionView {dimension, current_events: vec![]}).collect(),
                     ..Default::default()
                 },
             )
@@ -624,6 +633,11 @@ fn question_inquiries(
             assessment::AssessmentDimension::DiscriminatoryPower => question
                 .current_discriminatory_power_events
                 .push(event.event_id),
+            dimension if dimension.is_question_selection_criterion() => {
+                if let Some(criterion) = question.selection_criteria.iter_mut().find(|c| c.dimension == dimension) {
+                    criterion.current_events.push(event.event_id);
+                }
+            }
             _ => {}
         }
     }

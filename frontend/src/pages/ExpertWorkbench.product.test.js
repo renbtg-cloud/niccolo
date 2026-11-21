@@ -71,6 +71,8 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('No explicit assessment recorded.');
     expect(page).toContain('Unlinked questions remain visible');
     expect(page).toContain('Divergent judgments are not averaged or treated as consensus.');
+    expect(page).toContain('inquiry.selection_criteria');
+    expect(page).toContain('Reported authorization is not a permission grant');
   });
   it('records attributed inferential applicability separately from truth', async () => {
     const body = applicabilityRequest('condition', 'NOT_SATISFIED', 'Authentication failed.');

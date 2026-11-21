@@ -8,7 +8,7 @@ import {
   argumentRequest,
   applicabilityAssessments,
   applicabilityRequest,
-  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest, assessmentTargetRevision, assessmentDimensionsForTarget,
+  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest, assessmentTargetRevision, assessmentDimensionsForTarget, selectionCriteria,
   assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest,
   groundingAdequacies,
   groundingEffects,
@@ -217,6 +217,7 @@ export function ExpertWorkbenchPage() {
         }}><option value="">Choose…</option>{assessmentChoices.map(c => <option key={assessmentKey(c.target)} value={assessmentKey(c.target)}>{c.label}</option>)}</select></label>
         <label>Dimension<select disabled={!!assessment.revises_event_id} value={assessment.dimension} onChange={e => setAssessment({...assessment, dimension: e.target.value, result: 'UNKNOWN'})}>{assessmentDimensions.map(x => <option key={x}>{x}</option>)}</select></label>
         {assessment.dimension === 'GAP_RESOLUTION' && <p>Assess the missing aspect independently of questions or answers. PARTIALLY_ADDRESSED and SUPPORTED require an explicit ground other than a question or information gap. The assessment is not a truth verdict.</p>}
+        {selectionCriteria.includes(assessment.dimension) && <p>Record a contextual judgment about this question. Reported authorization is not a permission grant; no judgment authorizes execution, establishes truth, or reallocates resources.</p>}
         <label>Result<select value={assessment.result} onChange={e => setAssessment({...assessment, result: e.target.value})}>{assessmentResults[assessment.dimension].map(x => <option key={x}>{x}</option>)}</select></label>
         <label>Confidence<select value={assessment.confidence} onChange={e => setAssessment({...assessment, confidence: e.target.value})}>{assessmentConfidences.map(x => <option key={x}>{x}</option>)}</select></label>
         <label>Criterion<input disabled={!!assessment.revises_event_id} value={assessment.criterion} maxLength={2048} onChange={e => setAssessment({...assessment, criterion: e.target.value})}/></label>
@@ -258,7 +259,8 @@ export function ExpertWorkbenchPage() {
       {(data.question_inquiries ?? []).length > 0 && <details open><summary>Investigative questions — explicit inquiry map</summary><p>Links record what to investigate, not answers or gap resolution. Testing multiple hypotheses does not establish discriminatory power.</p><ul>{data.question_inquiries.map(inquiry => {
         const question = data.nodes.find(n => n.object_id === inquiry.question_object_id);
         const linkGroups = [['Addressed gaps', inquiry.addressed_gaps], ['Tested hypotheses', inquiry.tested_hypotheses], ['Explicit presuppositions', inquiry.presuppositions]];
-        const judgmentGroups = [['Relevance', inquiry.current_relevance_events], ['Discriminatory power', inquiry.current_discriminatory_power_events]];
+        const criterionLabels = {ACQUISITION_COST:'Acquisition cost',ACCESSIBILITY:'Accessibility',CONTAMINATION_RISK:'Contamination risk',URGENCY:'Urgency',AUTHORIZATION_STATUS:'Reported authorization status (not a permission grant)',INVESTIGATION_COVERAGE:'Investigation coverage'};
+        const judgmentGroups = [['Relevance', inquiry.current_relevance_events], ['Discriminatory power', inquiry.current_discriminatory_power_events], ...(inquiry.selection_criteria ?? []).map(c => [criterionLabels[c.dimension] ?? c.dimension,c.current_events])];
         const responses = (data.question_responses ?? []).filter(r => r.question_id === inquiry.question_object_id);
         return <li key={inquiry.question_object_id}><strong>{question?.text ?? inquiry.question_object_id}</strong><p>{question?.rationale}</p><small>Authored by {question?.created_by}</small><div><strong>Recorded response occurrences — not accepted facts</strong>{responses.length === 0 ? <p>No response recorded.</p> : <ul>{responses.map(r => <li key={r.response_id}><blockquote>{r.utterance.utterance_text}</blockquote><small>Speaker: {actors.data?.find(a => a.actor_id === r.utterance.speaker_actor_id)?.display_label ?? r.utterance.speaker_actor_id ?? 'Unspecified'} · source: {r.utterance.source_evidence_id ?? r.utterance.source_contribution_id ?? 'not explicitly linked'}</small><p>{r.rationale}</p><small>Recorded by {r.recorded_by} · {r.recorded_at} · utterance {r.utterance.utterance_id}</small></li>)}</ul>}</div>{linkGroups.map(([label, links]) => <div key={label}><strong>{label}</strong>{links.length === 0 ? <p>No explicit link recorded.</p> : <ul>{links.map(link => {
           const target = data.nodes.find(n => n.object_id === link.target_object_id);

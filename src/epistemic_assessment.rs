@@ -73,6 +73,10 @@ pub enum AssessmentResult {
 }
 
 impl AssessmentDimension {
+    pub const QUESTION_SELECTION_CRITERIA: [Self; 6] = [
+        Self::AcquisitionCost, Self::Accessibility, Self::ContaminationRisk,
+        Self::Urgency, Self::AuthorizationStatus, Self::InvestigationCoverage,
+    ];
     pub fn accepts(self, result: AssessmentResult) -> bool {
         use AssessmentResult::*;
         matches!(result, Unknown | Contested)
@@ -99,7 +103,7 @@ impl AssessmentDimension {
     }
 
     pub fn is_question_selection_criterion(self) -> bool {
-        matches!(self, Self::AcquisitionCost | Self::Accessibility | Self::ContaminationRisk | Self::Urgency | Self::AuthorizationStatus | Self::InvestigationCoverage)
+        Self::QUESTION_SELECTION_CRITERIA.contains(&self)
     }
 }
 
