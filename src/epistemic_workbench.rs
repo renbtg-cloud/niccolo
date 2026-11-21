@@ -401,12 +401,52 @@ pub struct SharedGroundDiagnostic {
     pub routes: Vec<GroundingRouteRef>,
 }
 
+/// Diagnostic of explicitly authored documentary grounds only. Different
+/// components do not establish independence; object-ground ancestry is not
+/// inferred by this projection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EvidenceLineageStatus {
+    NoDirectEvidence,
+    RecordedLineageResolved,
+    MissingOrInvisible,
+    Withdrawn,
+    Cycle,
+    InvalidOrLimit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceDependenceDiagnostic {
+    pub evidence_ids: Vec<Uuid>,
+    pub routes: Vec<GroundingRouteRef>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectEvidenceLineageDiagnostic {
+    pub status: EvidenceLineageStatus,
+    pub selected_evidence_count: usize,
+    pub components: Vec<EvidenceDependenceDiagnostic>,
+    pub establishes_independence: bool,
+}
+
+impl Default for DirectEvidenceLineageDiagnostic {
+    fn default() -> Self {
+        Self {
+            status: EvidenceLineageStatus::NoDirectEvidence,
+            selected_evidence_count: 0,
+            components: Vec::new(),
+            establishes_independence: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConclusionReasoningDiagnostic {
     pub conclusion_object_id: Uuid,
     pub argument_ids: Vec<Uuid>,
     pub routes: Vec<ReasoningRouteDiagnostic>,
     pub shared_grounds: Vec<SharedGroundDiagnostic>,
+    pub direct_evidence_lineage: DirectEvidenceLineageDiagnostic,
     pub has_supporting_routes: bool,
     pub has_opposing_routes: bool,
     pub has_mixed_directional_grounding: bool,
@@ -1659,6 +1699,7 @@ fn reasoning_diagnostics(
                     },
                 )
                 .collect(),
+            direct_evidence_lineage: DirectEvidenceLineageDiagnostic::default(),
             has_supporting_routes,
             has_opposing_routes,
             has_mixed_directional_grounding: has_supporting_routes && has_opposing_routes,
@@ -1667,6 +1708,82 @@ fn reasoning_diagnostics(
     }
     diagnostics.sort_by_key(|diagnostic| diagnostic.conclusion_object_id);
     diagnostics
+}
+
+async fn direct_evidence_lineage(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    sets: &[GroundingSetView],
+    diagnostics: &mut [ConclusionReasoningDiagnostic],
+) -> Result<(), WorkbenchError> {
+    use crate::grounded_lineage_store::{self, StoredLineageError};
+    use crate::provenance_clusters::ClusterError;
+    let mut by_argument = BTreeMap::<Uuid, Vec<&GroundingSetView>>::new();
+    for set in sets {
+        by_argument.entry(set.argument_id).or_default().push(set);
+    }
+    for diagnostic in diagnostics {
+        let mut by_evidence = BTreeMap::<Uuid, BTreeSet<GroundingRouteRef>>::new();
+        for arg in &diagnostic.argument_ids {
+            for set in by_argument.get(arg).into_iter().flatten() {
+                for member in &set.members {
+                    if member.role == GroundingMemberRole::Evidence
+                        && let Some(id) = member.evidence_id
+                    {
+                        by_evidence
+                            .entry(id)
+                            .or_default()
+                            .insert(GroundingRouteRef {
+                                argument_id: set.argument_id,
+                                grounding_set_id: set.grounding_set_id,
+                            });
+                    }
+                }
+            }
+        }
+        let ids = by_evidence.keys().copied().collect::<Vec<_>>();
+        if ids.is_empty() {
+            continue;
+        }
+        let report = &mut diagnostic.direct_evidence_lineage;
+        report.selected_evidence_count = ids.len();
+        match grounded_lineage_store::from_database(tx, workspace, &ids).await {
+            Ok(clustered) => {
+                report.status = EvidenceLineageStatus::RecordedLineageResolved;
+                report.components = clustered
+                    .clusters
+                    .into_iter()
+                    .map(|cluster| {
+                        let routes = cluster
+                            .selected_evidence_ids
+                            .iter()
+                            .flat_map(|id| by_evidence[id].iter().copied())
+                            .collect::<BTreeSet<_>>();
+                        EvidenceDependenceDiagnostic {
+                            evidence_ids: cluster.selected_evidence_ids,
+                            routes: routes.into_iter().collect(),
+                        }
+                    })
+                    .collect();
+            }
+            Err(StoredLineageError::Database(err)) => return Err(err.into()),
+            Err(err) => {
+                report.status = match err {
+                    StoredLineageError::Cluster(ClusterError::Missing) => {
+                        EvidenceLineageStatus::MissingOrInvisible
+                    }
+                    StoredLineageError::Cluster(ClusterError::Withdrawn) => {
+                        EvidenceLineageStatus::Withdrawn
+                    }
+                    StoredLineageError::Cluster(ClusterError::Cycle) => {
+                        EvidenceLineageStatus::Cycle
+                    }
+                    _ => EvidenceLineageStatus::InvalidOrLimit,
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn snapshot(
@@ -1911,12 +2028,19 @@ pub async fn snapshot(
             .cloned();
     }
     let grounding_cycles = grounding_cycle_diagnostics(&arguments, &grounding_sets);
-    let reasoning_diagnostics = reasoning_diagnostics(
+    let mut reasoning_diagnostics = reasoning_diagnostics(
         &arguments,
         &grounding_sets,
         &reassessment_impacts,
         &grounding_cycles,
     );
+    direct_evidence_lineage(
+        &mut tx,
+        workspace,
+        &grounding_sets,
+        &mut reasoning_diagnostics,
+    )
+    .await?;
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
         situation_id: situation,

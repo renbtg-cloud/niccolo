@@ -64,6 +64,9 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Shared grounds — route reuse is not independent corroboration');
     expect(page).toContain('Inspect authored grounds and rationales');
     expect(page).toContain('Exact identity reuse only; different grounds may still share provenance.');
+    expect(page).toContain('Recorded documentary dependence');
+    expect(page).toContain('Different components do not establish independent corroboration.');
+    expect(page).toContain('Recorded lineage could not be resolved');
   });
 
   it('records explicit reassessment review without silently rewriting the argument', () => {

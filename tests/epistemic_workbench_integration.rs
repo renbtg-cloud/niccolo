@@ -383,6 +383,148 @@ async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
 }
 
 #[tokio::test]
+async fn direct_documentary_routes_group_shared_ancestry_without_claiming_independence() {
+    use epistemic_workbench::EvidenceLineageStatus;
+    let f = fixture().await;
+    let sit = situation(&f, "Compare recorded documentary dependence").await;
+    let finding = node(&f, sit, ExpertNodeKind::Finding, "A transfer was delayed.").await;
+    let mut ids = Vec::new();
+    for (locator, content) in [
+        (
+            "fixture://lineage-a",
+            "[02/11/2026, 12:00] Ana: transfer delayed\n[02/11/2026, 12:01] Ana: still delayed\n",
+        ),
+        (
+            "fixture://lineage-b",
+            "[02/11/2026, 12:02] Bob: transfer delayed\n",
+        ),
+        (
+            "fixture://lineage-c",
+            "[02/11/2026, 12:03] Carol: transfer delayed\n",
+        ),
+    ] {
+        let doc = Uuid::new_v4();
+        let imported = ingest_source(
+            &f.service,
+            f.workspace,
+            doc,
+            SourceFormat::WhatsappExport,
+            locator,
+            content.as_bytes(),
+        )
+        .await
+        .unwrap();
+        situation_store::add_source(&f.service, f.workspace, f.principal, sit, doc)
+            .await
+            .unwrap();
+        ids.extend(imported.fragment_ids);
+    }
+    assert_eq!(ids.len(), 4);
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO niccolo.evidence_derivation(workspace_id,child_id,parent_id,relation) VALUES($1,$2,$3,'COPIED_FROM')")
+        .bind(f.workspace).bind(ids[2]).bind(ids[0]).execute(&admin).await.unwrap();
+    let mut route_refs = Vec::new();
+    for (i, evidence) in ids.iter().enumerate() {
+        let argument = Uuid::new_v4();
+        let set = Uuid::new_v4();
+        epistemic_workbench::create_argument(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            argument,
+            finding,
+            ArgumentMode::Inductive,
+            "Inspect this documentary route.",
+        )
+        .await
+        .unwrap();
+        epistemic_workbench::create_grounding_set(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            argument,
+            set,
+            if i == 3 {
+                GroundingEffect::Challenges
+            } else {
+                GroundingEffect::Supports
+            },
+            GroundingAdequacy::Partial,
+            "An explicitly selected fragment.",
+            &[NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role: GroundingMemberRole::Evidence,
+                ground_object_id: None,
+                evidence_id: Some(*evidence),
+                rationale: "Documentary ground.".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        route_refs.push(epistemic_workbench::GroundingRouteRef {
+            argument_id: argument,
+            grounding_set_id: set,
+        });
+    }
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let diagnostic = &snapshot.reasoning_diagnostics[0];
+    assert!(diagnostic.has_mixed_directional_grounding);
+    assert!(diagnostic.shared_grounds.is_empty());
+    let lineage = &diagnostic.direct_evidence_lineage;
+    assert_eq!(
+        lineage.status,
+        EvidenceLineageStatus::RecordedLineageResolved
+    );
+    assert_eq!(lineage.selected_evidence_count, 4);
+    assert_eq!(lineage.components.len(), 2);
+    assert!(!lineage.establishes_independence);
+    let joined = lineage
+        .components
+        .iter()
+        .find(|c| c.evidence_ids.contains(&ids[0]))
+        .unwrap();
+    assert_eq!(
+        joined
+            .evidence_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>(),
+        ids[..3].iter().copied().collect()
+    );
+    assert_eq!(
+        joined
+            .routes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>(),
+        route_refs[..3].iter().copied().collect()
+    );
+    sqlx::query(
+        "UPDATE niccolo.evidence SET admissible=false WHERE workspace_id=$1 AND evidence_id=$2",
+    )
+    .bind(f.workspace)
+    .bind(ids[0])
+    .execute(&admin)
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let lineage = &snapshot.reasoning_diagnostics[0].direct_evidence_lineage;
+    assert_eq!(lineage.status, EvidenceLineageStatus::Withdrawn);
+    assert!(lineage.components.is_empty());
+    assert_eq!(lineage.selected_evidence_count, 4);
+    assert!(!lineage.establishes_independence);
+}
+
+#[tokio::test]
 async fn persistent_proposition_requires_explicit_situation_membership() {
     let f = fixture().await;
     let sit_a = situation(&f, "Proposition source situation").await;
