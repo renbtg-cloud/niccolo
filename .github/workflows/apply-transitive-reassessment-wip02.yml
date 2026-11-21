@@ -1,0 +1,36 @@
+name: Apply transitive reassessment WIP 02
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-transitive-reassessment-wip02-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "d659345277b033e2a68fbc040eb8b1f273286d86"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          H4sICLMTAWsAA3dpcDAyLXRyYW5zaXRpdmUtcmVhc3Nlc3NtZW50LnBhdGNoAM1YbW/bNhD+rl/BdEBhw7FmJ47TqU3RYGvaYmgWNN32oSgEWjzZXCVSJSk7Rpv/vqNerBfLSNKmW4wgtskj77nnjs9RPlMyJr8c0tH0kEJ4eHQ8Y7MZm47ZdDIas/AQWDBlQFkwhicT8lYKcgkJGR+T0cjL/sjBaDR2znAbj/yRgDh9Q54JqSCJ1i8kfqfcDWT83PmNGvDIJTX75GBMzuUSFx5MyejQm0y8ySEZjPDlXKazfyAwHvlwcfr+19cfyd9vLsjowCNGUaG54UsgGiI0sZ8UUK1B6xiEcRyH8TAkw+GcG0J/NqCN/hkSrg3EPPBXUn2agQgWPhcG5ooaLoWrNJnd2tThgsEVOWLsmMHUdcMnyFo4IePRaDqZOMPh8A5+ncFgcBffL16Q4ZPjo31kyr6Nj48IDlG9FgEJBdGCJnohja9TFdIAtK8gSJVGmnAoSaQy/oqbhUwN7rxEwriY+zYgzBHDr34glZIOsS/LqjJ7vb1gHUTgLqj24cqAEjTyKWKTqv+0aZkbpiKfBbbt3a64dgbO4KcPRn7i0vNs6B+dwSaEejb9FY0+aZ/JldAGJ2J/rmQqmF/iDTiGWAZkZBosbDypUBBhoTGfqnlqN9K9PvniDCzWCAwJyQkJ+ZVJFfT6Ll1Rbp5Ws1hgOI//04z2Xj5jX4/D/erLo/dVMdZBk1BGkVxpIkW0JnCVRDzAHXPkCO9RsUc/f9tyLyOG7oVksMszOq19e3mVIPnnaP87JtLzXq8TaRaguW6AXQChSaLkkkZkYX0oiCkXwAjNj5FZIML5At+BBKmRYejeBFXBkmv4b+DafDMygxAL6y4YY85YBN8F8YxniavjOy2xGR7jFImx3BSnEWachiEKE2LNxCoEVdjciLQq8/tGa9lEFbYyglhtSVKR1TZBsUgjSyvmMpBYzgzw3N4IdXPCfgRSLVMVgIWJgkEQlcE61YRaHlEsaJzsxNdO+0YAEOefKUefAlb+ctLrF8F0SK7nBZgDU61tBOei0i15ADXQoWvX6oQ2Rpuhh26iOMpVQqPaaAvk1kxt4LSweYvsed7pjKXZqW1zV1R7mDNLcp20UlQcGaUsGeXJGhbVu9icwW5mi8+pWCmabLir0azhmxjeaKLd4P+j2XqvDb4qUb3MTrLnXea9S3fZnDL4nNJg7XkXVBne8JufOzxeFb8E/6ioukKCKowSij1DZRlq5m+TjYyUD+ew2vh9C/EMpeVLNZ/Fk436mIZWMvabdkpGeA1rbfbODnoXOaLWgqLvyuxelu1/KWPoYXDtrbEl2MYMmdG5FO2d8rsMtf4zfrZK0FJkqSipmYGdL1qN+8jFG5FsBHT98XY126W0D1wgOoB2zu4UiguJdbZu12St0+xQih11eEtVqMF+2MpwW35/qEK0NPsGhajlDltjEKXaPho8dKHIY/xereiM/abSvQ/B2H6ieJh6sY2za3KnWrwRXdeK8tZlS1HbdNkSrT0zEhlmxH//raIi3Cg+n2OBZohtkr+B7nLtj6O7jbI29a4YOqMxj/DsvwIBNJLzdYdNfhtGDQGFLQ7qKlK0vdoItty2gJSPYbUean95sc//RSflKB73mZ7ydwZMS2cGyvlejfAGz5befhVG3WPba+mTx7jSaPtoXuxes2/8alBY1qY5Pp316v5CHtmhr7np12Jzt51QFCZycrKV5/pOAT7tZz3g2V8QPPOfP9+Azn8V8eHzXq9A5EYgUInIQdOkms9xulSsK2g15S5Qlme7QNe63jYl9PHjclWjpRZLa9psR/u71lZqWyl75XrXKlQIs7Bm49ziun+vcXc07zvH3mzxd46/Wn4jBwe7OGiHqZtbbdVuNkijaKt46/TsnXT0gmITC+Da+RezjLbt8xUAAA==
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/epistemic_workbench_integration.rs
+          git commit -m "WIP 02: transitive selective reassessment"
+          git push origin HEAD:main
