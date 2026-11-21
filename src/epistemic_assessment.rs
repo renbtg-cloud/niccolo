@@ -19,6 +19,12 @@ pub enum AssessmentDimension {
     Independence,
     DiscriminatoryPower,
     GapResolution,
+    AcquisitionCost,
+    Accessibility,
+    ContaminationRisk,
+    Urgency,
+    AuthorizationStatus,
+    InvestigationCoverage,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +50,24 @@ pub enum AssessmentResult {
     Supported,
     Unresolved,
     Unresolvable,
+    LowCost,
+    ModerateCost,
+    HighCost,
+    Accessible,
+    PartiallyAccessible,
+    Inaccessible,
+    LowRisk,
+    ModerateRisk,
+    HighRisk,
+    Urgent,
+    TimeSensitive,
+    Deferrable,
+    AuthorizationReported,
+    AuthorizationRequired,
+    AuthorizationDenied,
+    Unexamined,
+    PartiallyExamined,
+    Examined,
     Unknown,
     Contested,
 }
@@ -65,7 +89,17 @@ impl AssessmentDimension {
                     result,
                     Open | PartiallyAddressed | Supported | Unresolved | Unresolvable
                 ),
+                Self::AcquisitionCost => matches!(result, LowCost | ModerateCost | HighCost),
+                Self::Accessibility => matches!(result, Accessible | PartiallyAccessible | Inaccessible),
+                Self::ContaminationRisk => matches!(result, LowRisk | ModerateRisk | HighRisk),
+                Self::Urgency => matches!(result, Urgent | TimeSensitive | Deferrable),
+                Self::AuthorizationStatus => matches!(result, AuthorizationReported | AuthorizationRequired | AuthorizationDenied),
+                Self::InvestigationCoverage => matches!(result, Unexamined | PartiallyExamined | Examined),
             }
+    }
+
+    pub fn is_question_selection_criterion(self) -> bool {
+        matches!(self, Self::AcquisitionCost | Self::Accessibility | Self::ContaminationRisk | Self::Urgency | Self::AuthorizationStatus | Self::InvestigationCoverage)
     }
 }
 
@@ -805,14 +839,14 @@ pub async fn record(
     if !input.target.visible(&mut tx, workspace, situation).await? {
         return Err(WorkbenchError::Invisible);
     }
-    if input.dimension == AssessmentDimension::GapResolution {
+    if input.dimension == AssessmentDimension::GapResolution || input.dimension.is_question_selection_criterion() {
         let AssessmentTarget::Object { object_id } = input.target else {
             return Err(WorkbenchError::Invalid);
         };
         if object_available_in_situation(&mut tx, workspace, situation, object_id)
             .await?
             .as_deref()
-            != Some("INFORMATION_GAP")
+            != Some(if input.dimension == AssessmentDimension::GapResolution { "INFORMATION_GAP" } else { "QUESTION" })
         {
             return Err(WorkbenchError::Invalid);
         }

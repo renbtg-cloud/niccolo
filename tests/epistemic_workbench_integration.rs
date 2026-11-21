@@ -75,6 +75,45 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn investigative_selection_criteria_are_attributed_and_question_scoped() {
+    use epistemic_workbench::assessment::*;
+    let f = fixture().await;
+    let sit = situation(&f, "Choose an inquiry without granting authority").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Can we inspect the ledger?").await;
+    let p = node(&f, sit, ExpertNodeKind::Proposition, "The ledger exists").await;
+    let other = situation(&f, "Other inquiry").await;
+    let foreign = node(&f, other, ExpertNodeKind::Question, "Other question?").await;
+    let criteria = [
+        (AssessmentDimension::AcquisitionCost, AssessmentResult::LowCost),
+        (AssessmentDimension::Accessibility, AssessmentResult::PartiallyAccessible),
+        (AssessmentDimension::ContaminationRisk, AssessmentResult::HighRisk),
+        (AssessmentDimension::Urgency, AssessmentResult::Deferrable),
+        (AssessmentDimension::AuthorizationStatus, AssessmentResult::AuthorizationReported),
+        (AssessmentDimension::InvestigationCoverage, AssessmentResult::Unexamined),
+    ];
+    for (dimension, result) in criteria {
+        let input = AssessmentInput { target: AssessmentTarget::Object {object_id:q}, dimension, result,
+            confidence: AssessmentConfidence::Low, criterion:"Current selection decision".into(), context:"Available ledger".into(),
+            rationale:"Attributed judgment, not verified permission".into(), grounds:vec![], revises_event_id:None };
+        let record = |input| epistemic_workbench::assessment::record(&f.service,f.workspace,sit,f.principal,Uuid::new_v4(),input);
+        assert_eq!(record(input.clone()).await.unwrap().input, input);
+        assert!(matches!(record(AssessmentInput {target:AssessmentTarget::Object {object_id:p}, ..input.clone()}).await, Err(WorkbenchError::Invalid)));
+        assert!(matches!(record(AssessmentInput {target:AssessmentTarget::Object {object_id:foreign}, ..input.clone()}).await, Err(WorkbenchError::Invisible)));
+        assert!(matches!(record(AssessmentInput {result:AssessmentResult::Credible, ..input}).await, Err(WorkbenchError::Invalid)));
+    }
+    let snapshot = epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.assessments.len(), criteria.len());
+    assert!(snapshot.arguments.is_empty());
+    assert!(snapshot.question_responses.is_empty());
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid = sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,target_object_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'URGENCY','URGENT','LOW','deadline','context','rationale',$5)")
+        .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(p).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(), Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn investigative_links_expose_presuppositions_without_asserting_them_or_resolving_gaps() {
     let f = fixture().await;
     let sit = situation(&f, "Examine a loaded investigative question").await;

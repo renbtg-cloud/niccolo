@@ -10,9 +10,19 @@ describe('contextual assessment request', () => {
     expect(assessmentKey({kind:'ROUTE', argument_id:'a', grounding_set_id:'g'})).toBe('ROUTE:a:g');
   });
   it('prevents cross-dimensional results and duplicate grounds', () => {
-    expect(Object.keys(assessmentResults)).toHaveLength(6);
+    expect(Object.keys(assessmentResults)).toHaveLength(12);
     expect(() => assessmentRequest({...draft, result:'CREDIBLE'}, target, [])).toThrow();
     expect(() => assessmentRequest(draft, target, [ground, ground])).toThrow();
+  });
+  it('keeps question selection criteria separate and restricts them to questions', () => {
+    const q = {kind:'OBJECT',object_id:'q'};
+    const nodes = [{object_id:'q',kind:'QUESTION'},{object_id:'object',kind:'PROPOSITION'}];
+    const authorization = {...draft,dimension:'AUTHORIZATION_STATUS',result:'AUTHORIZATION_REPORTED'};
+    expect(assessmentDimensionsForTarget(q,nodes)).toContain('CONTAMINATION_RISK');
+    expect(assessmentDimensionsForTarget(target,nodes)).not.toContain('CONTAMINATION_RISK');
+    expect(assessmentRequest(authorization,q,[],nodes).result).toBe('AUTHORIZATION_REPORTED');
+    expect(() => assessmentRequest(authorization,target,[],nodes)).toThrow('investigative question');
+    expect(() => assessmentRequest({...authorization,result:'LOW_COST'},q,[],nodes)).toThrow();
   });
   it('restricts gap resolution to gaps and requires non-question grounds for a supported or partially addressed result', () => {
     const nodes = [{object_id:'g',kind:'INFORMATION_GAP'},{object_id:'q',kind:'QUESTION'},{object_id:'p',kind:'PROPOSITION'}];

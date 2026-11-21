@@ -56,10 +56,18 @@ export const assessmentResults = Object.freeze({
   INDEPENDENCE: ['INDEPENDENCE_SUPPORTED', 'DEPENDENCE_INDICATED', 'DEPENDENT', 'UNKNOWN', 'CONTESTED'],
   DISCRIMINATORY_POWER: ['HIGH_POWER', 'LIMITED_POWER', 'NO_POWER', 'UNKNOWN', 'CONTESTED'],
   GAP_RESOLUTION: ['OPEN', 'PARTIALLY_ADDRESSED', 'SUPPORTED', 'CONTESTED', 'UNRESOLVED', 'UNRESOLVABLE', 'UNKNOWN'],
+  ACQUISITION_COST: ['LOW_COST','MODERATE_COST','HIGH_COST','UNKNOWN','CONTESTED'],
+  ACCESSIBILITY: ['ACCESSIBLE','PARTIALLY_ACCESSIBLE','INACCESSIBLE','UNKNOWN','CONTESTED'],
+  CONTAMINATION_RISK: ['LOW_RISK','MODERATE_RISK','HIGH_RISK','UNKNOWN','CONTESTED'],
+  URGENCY: ['URGENT','TIME_SENSITIVE','DEFERRABLE','UNKNOWN','CONTESTED'],
+  AUTHORIZATION_STATUS: ['AUTHORIZATION_REPORTED','AUTHORIZATION_REQUIRED','AUTHORIZATION_DENIED','UNKNOWN','CONTESTED'],
+  INVESTIGATION_COVERAGE: ['UNEXAMINED','PARTIALLY_EXAMINED','EXAMINED','UNKNOWN','CONTESTED'],
 });
+export const selectionCriteria = Object.freeze(['ACQUISITION_COST','ACCESSIBILITY','CONTAMINATION_RISK','URGENCY','AUTHORIZATION_STATUS','INVESTIGATION_COVERAGE']);
 export function assessmentDimensionsForTarget(target, nodes) {
   const isGap = target?.kind === 'OBJECT' && nodes.some(n => n.object_id === target.object_id && n.kind === 'INFORMATION_GAP');
-  return Object.keys(assessmentResults).filter(dimension => dimension !== 'GAP_RESOLUTION' || isGap);
+  const isQuestion = target?.kind === 'OBJECT' && nodes.some(n => n.object_id === target.object_id && n.kind === 'QUESTION');
+  return Object.keys(assessmentResults).filter(dimension => (dimension !== 'GAP_RESOLUTION' || isGap) && (!selectionCriteria.includes(dimension) || isQuestion));
 }
 export const assessmentConfidences = Object.freeze(['LOW', 'MODERATE', 'HIGH', 'UNKNOWN']);
 export function assessmentKey(target) {
@@ -83,6 +91,7 @@ export function assessmentTargetRevision(target, history) {
 export function assessmentRequest(draft, target, grounds, nodes = []) {
   if (!target || !assessmentResults[draft.dimension]?.includes(draft.result) || !assessmentConfidences.includes(draft.confidence)) throw new Error('Choose a target, dimension-specific result and confidence.');
   if (grounds.length > 64 || new Set(grounds.map(assessmentKey)).size !== grounds.length) throw new Error('Choose at most 64 distinct grounds.');
+  if (selectionCriteria.includes(draft.dimension) && !assessmentDimensionsForTarget(target, nodes).includes(draft.dimension)) throw new Error('Selection criteria must target an investigative question.');
   if (draft.dimension === 'GAP_RESOLUTION') {
     if (!assessmentDimensionsForTarget(target, nodes).includes(draft.dimension)) throw new Error('Gap resolution must target an information gap.');
     if (['PARTIALLY_ADDRESSED','SUPPORTED'].includes(draft.result) && !grounds.some(g => g.kind === 'EVIDENCE' || (g.kind === 'OBJECT' && nodes.some(n => n.object_id === g.object_id && !['QUESTION','INFORMATION_GAP'].includes(n.kind))))) throw new Error('Choose an explicit ground other than a question or information gap.');

@@ -286,6 +286,8 @@ Niccolò may recommend next investigative questions/actions by considering, qual
 
 This is not an autonomous universal optimizer. The user controls investigative resource allocation in the MVP. Niccolò may recommend redistribution but must not silently reallocate budgets.
 
+Migration 0115 introduces separate, attributed question-context assessments for acquisition cost, accessibility, contamination risk, urgency, reported authorization status and investigation coverage. The existing relevance and discriminatory-power dimensions remain independent. Each assessment retains its criterion, context, rationale, confidence, grounds and revision chain. Reported authorization is not an authorization grant; no dimension permits an external act, reallocates resources or establishes epistemic resolution. Missing or contested judgments must not be converted into numerical defaults.
+
 Administrative closure remains independent from epistemic resolution. An investigation can legitimately be closed while epistemically unresolved.
 
 ## 12. Human epistemic state is not a boolean
