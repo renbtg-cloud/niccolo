@@ -6,6 +6,7 @@ import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, r
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
 const meaningPanel = readFileSync(new URL('./ResponseInterpretationPanel.jsx', import.meta.url), 'utf8');
+const comparisonPanel = readFileSync(new URL('./InquiryComparisonPanel.jsx', import.meta.url), 'utf8');
 const config = {
   workspace: '11111111-1111-4111-8111-111111111111',
   situation: '22222222-2222-4222-8222-222222222222',
@@ -14,6 +15,17 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('records a human inquiry decision without executing or granting authorization', async () => {
+    const calls=[];
+    const client=new NiccoloClient(config,async(url,options)=>{calls.push({url,options});return response;});
+    const body={question_id:'q',considered_question_ids:['q'],assessment_event_ids:[],disposition:'PURSUE_NEXT',rationale:'Human choice'};
+    await client.recordInquiryDecision('decision',body);
+    expect(calls[0].url).toContain('/epistemic/question-decisions/decision');
+    expect(JSON.parse(calls[0].options.body)).toEqual(body);
+    expect(comparisonPanel).toContain('Record decision only');
+    expect(comparisonPanel).toContain('does not send a question, execute an action, grant permission or close a gap');
+    expect(comparisonPanel).toContain('subsequently revised; original basis retained');
+  });
   it('reviews only affected interpretation routes against the exact changed meaning context', async () => {
     const view={dependency:{input:{argument_id:'a',grounding_set_id:'g'}},meaning_confirmation_changed:true,current_revision_id:'r',current_confirmation_event_id:'c',potential_downstream_routes:[{argument_id:'b',grounding_set_id:'h'}]};
     const body=interpretationReviewRequest(view,view.potential_downstream_routes[0],'RETAINED','Reviewed separately');

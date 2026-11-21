@@ -11,6 +11,8 @@ use uuid::Uuid;
 pub mod assessment;
 #[path = "epistemic_inquiry_response.rs"]
 pub mod inquiry_response;
+#[path = "epistemic_inquiry_decision.rs"]
+pub mod inquiry_decision;
 #[path = "epistemic_interpretation_dependency.rs"]
 pub mod interpretation_dependency;
 
@@ -657,6 +659,7 @@ pub struct WorkbenchSnapshot {
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
     pub question_inquiries: Vec<QuestionInquiryView>,
+    pub question_decisions: Vec<inquiry_decision::InquiryDecision>,
     pub question_responses: Vec<inquiry_response::QuestionResponse>,
     pub response_interpretations: Vec<inquiry_response::ResponseInterpretationView>,
     pub interpretation_dependencies: Vec<interpretation_dependency::InterpretationDependencyView>,
@@ -2307,6 +2310,7 @@ pub async fn snapshot(
     }
     let applicability = latest_route_applicability(&mut tx, workspace, situation).await?;
     let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
+    let question_decisions = inquiry_decision::list_in_snapshot(&mut tx, workspace, situation).await?;
     let question_responses =
         inquiry_response::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     let response_interpretations =
@@ -2498,6 +2502,7 @@ pub async fn snapshot(
         grounding_cycles,
         reasoning_diagnostics,
         question_inquiries,
+        question_decisions,
         question_responses,
         response_interpretations,
         interpretation_dependencies,
@@ -2533,6 +2538,7 @@ mod tests {
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],
             question_inquiries: vec![],
+            question_decisions: vec![],
             question_responses: vec![],
             response_interpretations: vec![],
             interpretation_dependencies: vec![],

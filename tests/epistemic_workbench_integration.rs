@@ -75,6 +75,55 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn inquiry_decision_records_exact_considered_judgments_without_execution() {
+    use axum::{body::Body,http::{Request,StatusCode,header}};
+    use epistemic_workbench::{assessment::{AssessmentInput,AssessmentTarget,AssessmentDimension,AssessmentResult,AssessmentConfidence},inquiry_decision::{InquiryDecisionInput,InquiryDisposition}};
+    use tower::ServiceExt;
+    let f=fixture().await;
+    let sit=situation(&f,"Select an investigative question").await;
+    let a=node(&f,sit,ExpertNodeKind::Question,"Inspect the audit log?").await;
+    let b=node(&f,sit,ExpertNodeKind::Question,"Interview the employee?").await;
+    let c=node(&f,sit,ExpertNodeKind::Question,"Inspect another source?").await;
+    let other=situation(&f,"Another investigation").await;
+    let foreign=node(&f,other,ExpertNodeKind::Question,"Foreign question?").await;
+    let cost=AssessmentInput {target:AssessmentTarget::Object {object_id:b},dimension:AssessmentDimension::AcquisitionCost,result:AssessmentResult::HighCost,confidence:AssessmentConfidence::Low,criterion:"Time".into(),context:"Current inquiry".into(),rationale:"Interview would require travel".into(),grounds:vec![],revises_event_id:None};
+    let old=Uuid::new_v4();
+    epistemic_workbench::assessment::record(&f.service,f.workspace,sit,f.principal,old,cost.clone()).await.unwrap();
+    let input=InquiryDecisionInput {question_id:a,considered_question_ids:vec![a,b],assessment_event_ids:vec![old],disposition:InquiryDisposition::PursueNext,rationale:"Prefer the less intrusive inquiry".into()};
+    let id=Uuid::new_v4();
+    let record=|id,input| epistemic_workbench::inquiry_decision::record(&f.service,f.workspace,sit,f.principal,id,input);
+    assert!(!record(id,input.clone()).await.unwrap().replayed);
+    assert!(record(id,input.clone()).await.unwrap().replayed);
+    assert!(matches!(record(id,InquiryDecisionInput {disposition:InquiryDisposition::Defer,..input.clone()}).await,Err(WorkbenchError::Conflict)));
+    assert!(matches!(record(Uuid::new_v4(),InquiryDecisionInput {considered_question_ids:vec![a,a],..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),InquiryDecisionInput {considered_question_ids:vec![a,foreign],..input.clone()}).await,Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(),InquiryDecisionInput {considered_question_ids:vec![a,c],..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),InquiryDecisionInput {assessment_event_ids:vec![Uuid::new_v4()],..input.clone()}).await,Err(WorkbenchError::Invisible)));
+    let new=Uuid::new_v4();
+    epistemic_workbench::assessment::record(&f.service,f.workspace,sit,f.principal,new,AssessmentInput {result:AssessmentResult::LowCost,revises_event_id:Some(old),..cost}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.question_decisions.len(),1);
+    assert_eq!(snapshot.question_decisions[0].input,input);
+    assert!(snapshot.question_responses.is_empty() && snapshot.arguments.is_empty());
+    assert!(record(id,input.clone()).await.unwrap().replayed);
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.epistemic_question_decisions(workspace_id,situation_id,decision_id,question_id,considered_question_ids,assessment_event_ids,disposition,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,'PURSUE_NEXT','invalid basis',$7)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(a).bind(vec![a,c]).bind(vec![old]).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+    let admin=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let writer=authz::provision_token(&admin,f.principal,f.workspace,true,true,1).await.unwrap();
+    let reader=authz::provision_token(&admin,Uuid::new_v4(),f.workspace,true,false,1).await.unwrap();
+    let secure=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();
+    let router=niccolo_evidence::api::router(secure);
+    let path=format!("/v1/workspaces/{}/situations/{}/epistemic/question-decisions/{}",f.workspace,sit,Uuid::new_v4());
+    let request=|token:&str| Request::builder().method("POST").uri(&path).header(header::AUTHORIZATION,format!("Bearer {token}")).header(header::CONTENT_TYPE,"application/json").body(Body::from(serde_json::to_string(&input).unwrap())).unwrap();
+    assert_eq!(router.clone().oneshot(request(&reader)).await.unwrap().status(),StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&writer)).await.unwrap().status(),StatusCode::CREATED);
+    assert_eq!(router.oneshot(request(&writer)).await.unwrap().status(),StatusCode::OK);
+}
+
+#[tokio::test]
 async fn investigative_selection_criteria_are_attributed_and_question_scoped() {
     use epistemic_workbench::assessment::*;
     let f = fixture().await;

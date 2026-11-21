@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {comparisonQuestions,inquiryCriteria} from './inquiryComparison.js';
+import {comparisonQuestions,inquiryCriteria,inquiryDecisionRequest} from './inquiryComparison.js';
 
 const event=(id,question,dimension,result,revises=null)=>({event_id:id,recorded_by:'actor',input:{target:{kind:'OBJECT',object_id:question},dimension,result,confidence:'LOW',criterion:'criterion',context:'context',rationale:'rationale',revises_event_id:revises}});
 const question=(id,criteria=[])=>({question_object_id:id,current_relevance_events:[],current_discriminatory_power_events:[],selection_criteria:criteria,addressed_gaps:[],tested_hypotheses:[],presuppositions:[]});
@@ -27,5 +27,16 @@ describe('investigator-selected question comparison',()=>{
     const criterion=comparisonQuestions(snapshot,['a'])[0].criteria.find(c=>c.dimension==='URGENCY');
     expect(criterion.projectionIncomplete).toBe(true);
     expect(criterion.judgments.map(e=>e.event_id)).toEqual(['valid']);
+  });
+  it('records an explicit decision with only chosen historical event identities',()=>{
+    const q=question('a',[{dimension:'URGENCY',current_events:['valid']}]);
+    const columns=comparisonQuestions({...base,question_inquiries:[q,question('b')],assessments:[event('valid','a','URGENCY','URGENT')]},['b','a']);
+    const draft={question:'b',disposition:'PURSUE_NEXT',rationale:' Inspect the log first. '};
+    expect(inquiryDecisionRequest(columns,draft,['valid'])).toEqual({question_id:'b',considered_question_ids:['b','a'],assessment_event_ids:['valid'],disposition:'PURSUE_NEXT',rationale:'Inspect the log first.'});
+    expect(inquiryDecisionRequest(columns,draft,[]).assessment_event_ids).toEqual([]);
+    expect(()=>inquiryDecisionRequest(columns,{...draft,question:'foreign'},[])).toThrow();
+    expect(()=>inquiryDecisionRequest(columns,{...draft,disposition:'EXECUTE'},[])).toThrow();
+    expect(()=>inquiryDecisionRequest(columns,draft,['stale'])).toThrow();
+    expect(()=>inquiryDecisionRequest(columns,draft,['valid','valid'])).toThrow();
   });
 });
