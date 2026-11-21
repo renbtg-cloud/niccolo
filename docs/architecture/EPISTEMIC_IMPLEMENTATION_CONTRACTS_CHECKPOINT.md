@@ -508,12 +508,12 @@ The working implementation stance is:
 - PostgreSQL for durable relational persistence, referential integrity, history and efficient projections;
 - no graph database required merely because the domain is graph-shaped;
 - no heavyweight ontology engine required merely because relationships are rich;
-- the MVP semantic interpretation boundary is English-only;
-- a conservative English parser/intermediate representation may structure ordinary statements before richer epistemic materialization; the exact parser/LLM split must be reconciled with the current code rather than assumed;
-- LLM output is proposal state, not canonical epistemic fact, and never bypasses deterministic contracts;
-- progressive formalization is demand-driven: the complete ontology is representable, but rich decomposition occurs when conflict, consequence, ambiguity or investigative purpose justifies it;
-- the ontology is not the investigator's data-entry model, and the graph is not required to be the primary UI;
-- low-value speculative LLM proposals should be suppressed rather than creating a human curation queue;
+- the MVP assumes a cultivated, domain-trained investigator who explicitly authors epistemic abstractions through a structured workbench;
+- free text may be entered inside a semantic role explicitly chosen by the user, but automatic interpretation of investigator free text into ontology objects is post-MVP;
+- core abstractions such as Hypothesis, Assumption, InformationGap, Finding, Argument, typed Relation and Grounding may therefore be intentional UI primitives in the MVP;
+- progressive formalization is human-directed: the complete ontology is representable, while the investigator deepens structure when conflict, consequence, ambiguity, revision or investigative purpose warrants it;
+- model-generated reasoning inside Niccolò remains proposal state, not canonical epistemic fact, and never bypasses deterministic contracts;
+- the system must record observable user actions and provenance without inferring unobserved attention, comprehension or diligence from interaction speed or bulk actions;
 - consequential conclusions require stronger explicit grounding than exploratory material;
 - genuinely quantitative evidence preserves numbers, units, method, uncertainty and provenance; the rejection of universal epistemic scores does not discard quantitative evidence;
 - access control remains deterministic product security;
@@ -523,6 +523,8 @@ The working implementation stance is:
 ## 25. Reconciliation gate before code changes
 
 The first repository-level reconciliation is recorded in [Epistemic implementation reconciliation — V1](EPISTEMIC_IMPLEMENTATION_RECONCILIATION_V1.md). It classifies the actual Rust/PostgreSQL substrate before implementation changes.
+
+The first expert-authoring substrate is now implemented by migration `0100_expert_epistemic_workbench.sql`, `src/epistemic_workbench.rs`, the corresponding API endpoints and the frontend Workbench. This implementation intentionally leaves investigator free-text interpretation out of the MVP.
 
 Before implementing this checkpoint, inspect the current Rust, PostgreSQL schema/migrations, APIs, frontend contracts and executable tests.
 
