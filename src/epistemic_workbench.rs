@@ -298,7 +298,7 @@ pub struct GroundingSetView {
     pub replayed: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReassessmentImpactKind {
     GroundMember,
@@ -315,6 +315,7 @@ pub struct ReassessmentImpact {
     pub grounding_set_id: Option<Uuid>,
     pub conclusion_object_id: Uuid,
     pub impact_kind: ReassessmentImpactKind,
+    pub depth: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -340,7 +341,6 @@ pub struct WorkbenchSnapshot {
 }
 
 type WorkbenchEvidenceRow = (Uuid, Uuid, i32, String, String, String, String, String);
-type ReassessmentImpactRow = (Uuid, String, Uuid, Uuid, Uuid, Option<Uuid>, Uuid, String);
 type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
 type GroundingMemberSnapshotRow = (
     Uuid,
@@ -1120,6 +1120,102 @@ pub async fn search_evidence(
         .collect())
 }
 
+fn selective_reassessment_impacts(
+    relations: &[ExpertRelation],
+    arguments: &[ExpertArgument],
+    grounding_sets: &[GroundingSetView],
+) -> Vec<ReassessmentImpact> {
+    let conclusion_by_argument = arguments
+        .iter()
+        .map(|a| (a.argument_id, a.conclusion_object_id))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut impacts = Vec::new();
+
+    for relation in relations.iter().filter(|r| {
+        r.family == RelationFamily::Genealogy
+            && matches!(
+                r.kind,
+                RelationKind::Supersedes | RelationKind::Retracts | RelationKind::Reinterprets
+            )
+    }) {
+        let mut seen_objects = BTreeSet::new();
+        let mut queue = std::collections::VecDeque::from([(relation.right_object_id, 1u16)]);
+        let mut seen_impacts = BTreeSet::new();
+
+        for argument in arguments
+            .iter()
+            .filter(|a| a.conclusion_object_id == relation.right_object_id)
+        {
+            let key = (
+                argument.argument_id,
+                None,
+                ReassessmentImpactKind::Conclusion,
+            );
+            if seen_impacts.insert(key) {
+                impacts.push(ReassessmentImpact {
+                    trigger_relation_id: relation.relation_id,
+                    relation_kind: relation.kind,
+                    revision_object_id: relation.left_object_id,
+                    prior_object_id: relation.right_object_id,
+                    argument_id: argument.argument_id,
+                    grounding_set_id: None,
+                    conclusion_object_id: argument.conclusion_object_id,
+                    impact_kind: ReassessmentImpactKind::Conclusion,
+                    depth: 0,
+                });
+            }
+        }
+
+        while let Some((changed_object, depth)) = queue.pop_front() {
+            if !seen_objects.insert(changed_object) {
+                continue;
+            }
+            for set in grounding_sets {
+                if !set
+                    .members
+                    .iter()
+                    .any(|member| member.ground_object_id == Some(changed_object))
+                {
+                    continue;
+                }
+                let Some(&conclusion) = conclusion_by_argument.get(&set.argument_id) else {
+                    continue;
+                };
+                let key = (
+                    set.argument_id,
+                    Some(set.grounding_set_id),
+                    ReassessmentImpactKind::GroundMember,
+                );
+                if seen_impacts.insert(key) {
+                    impacts.push(ReassessmentImpact {
+                        trigger_relation_id: relation.relation_id,
+                        relation_kind: relation.kind,
+                        revision_object_id: relation.left_object_id,
+                        prior_object_id: relation.right_object_id,
+                        argument_id: set.argument_id,
+                        grounding_set_id: Some(set.grounding_set_id),
+                        conclusion_object_id: conclusion,
+                        impact_kind: ReassessmentImpactKind::GroundMember,
+                        depth,
+                    });
+                }
+                if !seen_objects.contains(&conclusion) {
+                    queue.push_back((conclusion, depth.saturating_add(1)));
+                }
+            }
+        }
+    }
+    impacts.sort_by_key(|impact| {
+        (
+            impact.trigger_relation_id,
+            impact.depth,
+            impact.argument_id,
+            impact.grounding_set_id,
+        )
+    });
+    impacts
+}
+
 fn grounding_cycle_diagnostics(
     arguments: &[ExpertArgument],
     grounding_sets: &[GroundingSetView],
@@ -1422,60 +1518,8 @@ pub async fn snapshot(
             replayed: false,
         });
     }
-    let impact_rows: Vec<ReassessmentImpactRow> = sqlx::query_as(
-        "SELECT r.relation_id,r.relation_kind,r.left_object_id,r.right_object_id, \
-                a.argument_id,gm.grounding_set_id,a.conclusion_object_id,'GROUND_MEMBER'::text \
-           FROM niccolo.epistemic_relations r \
-           JOIN niccolo.epistemic_grounding_members gm \
-             ON gm.workspace_id=r.workspace_id AND gm.ground_object_id=r.right_object_id \
-           JOIN niccolo.epistemic_arguments a \
-             ON a.workspace_id=gm.workspace_id AND a.argument_id=gm.argument_id \
-          WHERE r.workspace_id=$1 AND r.situation_id=$2 AND a.situation_id=$2 \
-            AND r.relation_family='GENEALOGY' \
-            AND r.relation_kind IN ('SUPERSEDES','RETRACTS','REINTERPRETS') \
-         UNION ALL \
-         SELECT r.relation_id,r.relation_kind,r.left_object_id,r.right_object_id, \
-                a.argument_id,NULL::uuid,a.conclusion_object_id,'CONCLUSION'::text \
-           FROM niccolo.epistemic_relations r \
-           JOIN niccolo.epistemic_arguments a \
-             ON a.workspace_id=r.workspace_id AND a.conclusion_object_id=r.right_object_id \
-          WHERE r.workspace_id=$1 AND r.situation_id=$2 AND a.situation_id=$2 \
-            AND r.relation_family='GENEALOGY' \
-            AND r.relation_kind IN ('SUPERSEDES','RETRACTS','REINTERPRETS') \
-         ORDER BY argument_id,grounding_set_id NULLS LAST,relation_id",
-    )
-    .bind(workspace)
-    .bind(situation)
-    .fetch_all(&mut *tx)
-    .await?;
-    let mut reassessment_impacts = Vec::with_capacity(impact_rows.len());
-    for (
-        trigger_relation_id,
-        relation_kind,
-        revision_object_id,
-        prior_object_id,
-        argument_id,
-        grounding_set_id,
-        conclusion_object_id,
-        impact_kind,
-    ) in impact_rows
-    {
-        reassessment_impacts.push(ReassessmentImpact {
-            trigger_relation_id,
-            relation_kind: relation_kind_from_db(&relation_kind)?,
-            revision_object_id,
-            prior_object_id,
-            argument_id,
-            grounding_set_id,
-            conclusion_object_id,
-            impact_kind: match impact_kind.as_str() {
-                "GROUND_MEMBER" => ReassessmentImpactKind::GroundMember,
-                "CONCLUSION" => ReassessmentImpactKind::Conclusion,
-                _ => return Err(WorkbenchError::Invalid),
-            },
-        });
-    }
-
+    let reassessment_impacts =
+        selective_reassessment_impacts(&relations, &arguments, &grounding_sets);
     let grounding_cycles = grounding_cycle_diagnostics(&arguments, &grounding_sets);
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
@@ -1524,6 +1568,110 @@ mod tests {
             serde_json::Value::Bool(false)
         );
     }
+
+    #[test]
+    fn reassessment_propagates_only_through_explicit_ground_dependencies() {
+        let old = Uuid::from_u128(1);
+        let revised = Uuid::from_u128(2);
+        let middle = Uuid::from_u128(3);
+        let downstream = Uuid::from_u128(4);
+        let unrelated = Uuid::from_u128(5);
+        let arg_middle = Uuid::from_u128(11);
+        let arg_downstream = Uuid::from_u128(12);
+        let arg_unrelated = Uuid::from_u128(13);
+        let relations = vec![ExpertRelation {
+            relation_id: Uuid::from_u128(21),
+            situation_id: Uuid::nil(),
+            family: RelationFamily::Genealogy,
+            kind: RelationKind::Supersedes,
+            left_object_id: revised,
+            right_object_id: old,
+            rationale: "revision".into(),
+            recorded_by: Uuid::nil(),
+            replayed: false,
+        }];
+        let arguments = vec![
+            ExpertArgument {
+                argument_id: arg_middle,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: middle,
+                mode: ArgumentMode::Deductive,
+                rationale: "middle".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+            ExpertArgument {
+                argument_id: arg_downstream,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: downstream,
+                mode: ArgumentMode::Deductive,
+                rationale: "downstream".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+            ExpertArgument {
+                argument_id: arg_unrelated,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: unrelated,
+                mode: ArgumentMode::Deductive,
+                rationale: "unrelated".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+        ];
+        let member = |id, ground| GroundingMemberView {
+            member_id: id,
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(ground),
+            evidence_id: None,
+            rationale: "premise".into(),
+            recorded_by: Uuid::nil(),
+        };
+        let sets = vec![
+            GroundingSetView {
+                argument_id: arg_middle,
+                grounding_set_id: Uuid::from_u128(31),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "old -> middle".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(41), old)],
+                replayed: false,
+            },
+            GroundingSetView {
+                argument_id: arg_downstream,
+                grounding_set_id: Uuid::from_u128(32),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "middle -> downstream".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(42), middle)],
+                replayed: false,
+            },
+            GroundingSetView {
+                argument_id: arg_unrelated,
+                grounding_set_id: Uuid::from_u128(33),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "independent".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(43), revised)],
+                replayed: false,
+            },
+        ];
+        let impacts = selective_reassessment_impacts(&relations, &arguments, &sets);
+        assert_eq!(impacts.len(), 2);
+        assert_eq!(impacts[0].argument_id, arg_middle);
+        assert_eq!(impacts[0].depth, 1);
+        assert_eq!(impacts[1].argument_id, arg_downstream);
+        assert_eq!(impacts[1].depth, 2);
+        assert!(
+            impacts
+                .iter()
+                .all(|impact| impact.argument_id != arg_unrelated)
+        );
+    }
+
     #[test]
     fn support_cycles_are_diagnostic_not_additional_corroboration() {
         let a = Uuid::from_u128(1);

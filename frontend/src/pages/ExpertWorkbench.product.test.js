@@ -56,6 +56,7 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Direct reassessment impacts');
     expect(page).toContain('data.reassessment_impacts');
     expect(page).toContain('review argument');
+    expect(page).toContain('downstream depth');
   });
 
   it('makes directed relation semantics explicit before the investigator selects endpoints', () => {
