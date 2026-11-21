@@ -88,6 +88,7 @@ export class NiccoloClient {
   recordExpertAssessment(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessments/${eventId}`, { body }); }
   recordExpertAssessmentDependency(dependencyId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessment-dependencies/${dependencyId}`, { body }); }
   reviewExpertAssessmentDependency(dependencyId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessment-dependencies/${dependencyId}/reviews/${eventId}`, { body }); }
+  reviewExpertAssessmentDownstream(dependencyId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessment-dependencies/${dependencyId}/downstream-reviews/${eventId}`, { body }); }
   reviewExpertReassessment(triggerRelationId, argumentId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/reassessment/${triggerRelationId}/arguments/${argumentId}/reviews/${eventId}`, { body }); }
 
   reasoningInput(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/reasoning-input`); }

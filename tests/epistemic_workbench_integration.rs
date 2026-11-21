@@ -781,7 +781,43 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
     );
     assert_eq!(
         router
+            .clone()
             .oneshot(request(&writer, &review_path, body))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let downstream_path = format!("{path}/downstream-reviews/{}", Uuid::new_v4());
+    let body = serde_json::to_string(&DownstreamReviewInput {
+        reviewed_assessment_event_id: second,
+        argument_id: routes[2].0,
+        grounding_set_id: routes[2].1,
+        disposition: ReassessmentDisposition::Retained,
+        note: "Checked downstream route independently".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&reader, &downstream_path, body.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&writer, &downstream_path, body.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        router
+            .oneshot(request(&writer, &downstream_path, body))
             .await
             .unwrap()
             .status(),
@@ -795,6 +831,13 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
         .find(|v| v.dependency.dependency_id == http_dependency)
         .unwrap();
     assert!(view.requires_review);
+    assert_eq!(
+        view.downstream_reviews
+            .iter()
+            .filter(|r| r.requires_review)
+            .count(),
+        1
+    );
     assert_eq!(
         view.latest_review.unwrap().input.disposition,
         ReassessmentDisposition::Deferred

@@ -128,3 +128,8 @@ export function assessmentDependencyReviewRequest(view, disposition, note) {
   if (!view.assessment_revised || !reassessmentDispositions.includes(disposition)) throw new Error('Choose a revised assessment and review disposition.');
   return {reviewed_assessment_event_id: view.current_assessment_event_id, disposition, note: requireText(note, 'Review note')};
 }
+
+export function assessmentDownstreamReviewRequest(view, route, disposition, note) {
+  if (!view.potential_downstream_routes.some(r => r.argument_id === route.argument_id && r.grounding_set_id === route.grounding_set_id)) throw new Error('Choose a reachable downstream route.');
+  return {...assessmentDependencyReviewRequest(view, disposition, note), argument_id: route.argument_id, grounding_set_id: route.grounding_set_id};
+}

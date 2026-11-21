@@ -7,7 +7,7 @@ import {
   applicabilityAssessments,
   applicabilityRequest,
   assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest,
-  assessmentDependencyRequest, assessmentDependencyReviewRequest,
+  assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest,
   groundingAdequacies,
   groundingEffects,
   groundingRequest,
@@ -61,7 +61,8 @@ export function ExpertWorkbenchPage() {
   const recordAssessment = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
   const recordDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessmentDependency(crypto.randomUUID(), body));
   const reviewDependency = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDependency(id, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordDependency, reviewDependency];
+  const reviewDownstream = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDownstream(id, crypto.randomUUID(), body));
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordDependency, reviewDependency, reviewDownstream];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -200,6 +201,13 @@ export function ExpertWorkbenchPage() {
     </div>
 
     <article><h3>Current structured model</h3>
+      {assessmentDependencies.some(v => v.downstream_reviews?.length) && <details open><summary>Downstream assessment review obligations</summary><p>Each reachable route has its own review of the exact assessment revision. Retaining one route does not clear another. No disposition establishes truth.</p><ul>{assessmentDependencies.flatMap(view => (view.downstream_reviews ?? []).map(item => {
+        const id = view.dependency.dependency_id;
+        const route = item.route;
+        const key = `${id}:${view.current_assessment_event_id}:${route.argument_id}:${route.grounding_set_id}`;
+        const draft = dependencyReviews[key] ?? {disposition:'DEFERRED',note:''};
+        return <li key={key}><strong>{routeLabel(route)}</strong><p>{item.requires_review ? 'Review required' : 'Retained after review'} · assessment revision {view.current_assessment_event_id} · reliance {id}</p>{item.latest_review && <p>{item.latest_review.input.disposition} — {item.latest_review.input.note}</p>}<div className="reassessment-review"><select aria-label="Downstream review disposition" value={draft.disposition} onChange={e => setDependencyReviews({...dependencyReviews,[key]:{...draft,disposition:e.target.value}})}>{reassessmentDispositions.map(x => <option key={x}>{x}</option>)}</select><input aria-label="Downstream review note" maxLength={4096} value={draft.note} onChange={e => setDependencyReviews({...dependencyReviews,[key]:{...draft,note:e.target.value}})}/><button disabled={busy} type="button" onClick={() => {try {reviewDownstream.mutate({id,body:assessmentDownstreamReviewRequest(view,route,draft.disposition,draft.note)});setError('');} catch(e) {setError(e.message);}}}>Record downstream review</button></div>{item.review_history.length > 0 && <details><summary>Downstream review history</summary><ul>{item.review_history.map(r => <li key={r.review_event_id}>{r.input.disposition} — {r.input.note} · {r.recorded_by} · revision {r.input.reviewed_assessment_event_id}</li>)}</ul></details>}</li>;
+      }))}</ul></details>}
       {assessmentDependencies.length > 0 && <details open><summary>Assessment reliance and selective review</summary><p>Revision of a pinned assessment creates a review obligation, not a revised truth value. Potential downstream routes are not automatically reviewed by retaining this route.</p><ul>{assessmentDependencies.map(view => {
         const d = view.dependency;
         const draftKey = `${d.dependency_id}:${view.current_assessment_event_id}`;
