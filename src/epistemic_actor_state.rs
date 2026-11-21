@@ -45,8 +45,29 @@ pub enum StateDimension {
     AutonomySeekReview,
     AutonomyAcquireInformation,
     AutonomyReviseCommitments,
+    Incentive,
+    Pressure,
+    CommunicatedThreat,
+    AdverseCondition,
+    Coercion,
+    Constraint,
+    Dependency,
+    Leverage,
 }
 impl StateDimension {
+    pub fn is_contextual_pressure(self) -> bool {
+        matches!(
+            self,
+            Self::Incentive
+                | Self::Pressure
+                | Self::CommunicatedThreat
+                | Self::AdverseCondition
+                | Self::Coercion
+                | Self::Constraint
+                | Self::Dependency
+                | Self::Leverage
+        )
+    }
     pub fn is_contextual_autonomy(self) -> bool {
         matches!(
             self,
@@ -233,6 +254,7 @@ pub async fn record(
         || (input.dimension.is_trust() && input.target_actor_id.is_none())
         || (input.dimension.is_protective_motive() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_autonomy() && input.target_object_id.is_none())
+        || (input.dimension.is_contextual_pressure() && input.target_object_id.is_none())
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()
             && input.dimension != StateDimension::Loyalty

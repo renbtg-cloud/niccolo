@@ -1,9 +1,18 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('does not infer coercion from a threat, incentive, constraint or dependency',()=>{
+    expect(contextualPressureDimensions).toHaveLength(8);
+    const threat={...draft,dimension:'COMMUNICATED_THREAT',judgment:'INDICATED'};
+    expect(request(threat).dimension).toBe('COMMUNICATED_THREAT');
+    expect(request({...threat,dimension:'COERCION',judgment:'UNKNOWN'}).judgment).toBe('UNKNOWN');
+    const prior={event_id:'threat',input:request(threat)};
+    expect(()=>request({...threat,dimension:'COERCION',revises_event_id:'threat'},[prior])).toThrow();
+    expect(()=>request({...threat,target_object_id:null,target_state_event_id:'threat'},[prior])).toThrow();
+  });
   it('distinguishes each autonomy capability and does not imply authorization or consent',()=>{
     expect(autonomyDimensions).toHaveLength(7);
     const decide={...draft,dimension:'AUTONOMY_DECIDE'};

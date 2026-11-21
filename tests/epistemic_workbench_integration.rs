@@ -267,6 +267,33 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn contextual_pressure_does_not_establish_coercion_or_consent() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Distinguish incentives, threats and coercion").await;
+    let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The employee was warned about losing a bonus").await;
+    let actor=Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Employee").await.unwrap();
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,dimension:StateDimension::CommunicatedThreat,judgment:StateJudgment::Indicated,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported warning of adverse outcome".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let threat=Uuid::new_v4();record(threat,input.clone()).await.unwrap();
+    for (dimension,judgment) in [(StateDimension::Incentive,StateJudgment::Indicated),(StateDimension::Pressure,StateJudgment::Contested),(StateDimension::AdverseCondition,StateJudgment::Unknown),(StateDimension::Coercion,StateJudgment::Unknown),(StateDimension::Constraint,StateJudgment::Indicated),(StateDimension::Dependency,StateJudgment::Contested),(StateDimension::Leverage,StateJudgment::Unknown)] {
+        record(Uuid::new_v4(),StateInput{dimension,judgment,..input.clone()}).await.unwrap();
+    }
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::Coercion,revises_event_id:Some(threat),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{target_object_id:None,target_state_event_id:Some(threat),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),8);
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::Coercion&&e.input.judgment==StateJudgment::Unknown));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'COERCION','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(actor).bind(threat).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn contextual_autonomy_is_independent_of_consent_and_system_permissions() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;
