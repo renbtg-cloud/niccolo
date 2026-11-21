@@ -88,8 +88,23 @@ pub enum StateDimension {
     DeceptionIntendedEffect,
     DeceptionActualEffect,
     DeceptionPerceivedSuccess,
+    SelfDeception,
+    Rationalization,
+    SelectiveAttention,
+    MotivatedInterpretation,
+    ConflictingEvidenceAvoidance,
 }
 impl StateDimension {
+    pub fn is_self_deception_facet(self) -> bool {
+        matches!(
+            self,
+            Self::SelfDeception
+                | Self::Rationalization
+                | Self::SelectiveAttention
+                | Self::MotivatedInterpretation
+                | Self::ConflictingEvidenceAvoidance
+        )
+    }
     pub fn is_deception_facet(self) -> bool {
         matches!(
             self,
@@ -354,6 +369,7 @@ pub async fn record(
         || (input.dimension.is_epistemic_power() && input.target_object_id.is_none())
         || (input.dimension.is_narrative_means() && input.target_object_id.is_none())
         || (input.dimension.is_deception_facet() && input.target_object_id.is_none())
+        || (input.dimension.is_self_deception_facet() && input.target_object_id.is_none())
         || (input.dimension.requires_deception_audience() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_asymmetry() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_influence() != input.influence_target.is_some())

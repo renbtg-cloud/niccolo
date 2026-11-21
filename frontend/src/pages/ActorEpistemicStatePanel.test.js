@@ -1,9 +1,20 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('keeps possible internal mechanisms separate from self-deception and from directed deception',()=>{
+    expect(selfDeceptionDimensions).toHaveLength(5);
+    for(const dimension of selfDeceptionDimensions){
+      const item={...draft,dimension,judgment:'CONTESTED'};
+      expect(request(item).judgment).toBe('CONTESTED');
+      expect(()=>request({...item,counterparty_actor_id:'b'})).toThrow();
+      expect(()=>request({...item,target_object_id:null,target_state_event_id:'prior'},[{event_id:'prior',input:request(draft)}])).toThrow();
+    }
+    const prior={event_id:'prior',input:request({...draft,dimension:'RATIONALIZATION'})};
+    expect(()=>request({...draft,dimension:'SELF_DECEPTION',revises_event_id:'prior'},[prior])).toThrow();
+  });
   it('keeps intention, attempt, intended and actual audiences and effects independent',()=>{
     expect(deceptionDimensions).toHaveLength(6);
     const attempt={...draft,dimension:'DECEPTION_ATTEMPT',judgment:'INDICATED'};

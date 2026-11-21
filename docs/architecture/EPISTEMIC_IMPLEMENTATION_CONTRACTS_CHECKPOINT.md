@@ -508,6 +508,8 @@ Checkpoint 1.41: Migration 0132 verified in PostgreSQL; 604 Rust tests, 150 fron
 
 Self-deception must remain an attributed hypothesis, not casual psychological diagnosis. Candidate mechanisms include rationalization, selective attention, motivated interpretation, ego protection, identity protection and avoidance of conflicting evidence.
 
+Migration 0133 adds independent attributed contextual judgments for self-deception, rationalization, selective attention, motivated interpretation and avoidance of conflicting evidence. Ego and identity protection retain their existing independent dimensions. A possible mechanism does not establish self-deception, knowledge of a contradiction, or a general psychological disposition. No distinct counterparty is attached; each judgment requires an explicit visible Situation object, time, context and rationale.
+
 ## 19. Investigation-directed deception and integrity
 
 A sophisticated adversary need not alter evidence. They may manipulate:
