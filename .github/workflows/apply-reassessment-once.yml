@@ -1,0 +1,37 @@
+name: Apply selective reassessment patch once
+
+on:
+  push:
+    branches:
+      - tmp/apply-reassessment-20261120
+    paths:
+      - .github/workflows/apply-reassessment-once.yml
+      - .tmp/reassess.patch.gz
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/apply-reassessment-20261120
+          fetch-depth: 0
+      - name: Verify patch
+        run: |
+          echo "bba07082ae629e967236d258672d24a9097041f864420a92fdf928e4125331e9  .tmp/reassess.patch.gz" | sha256sum -c -
+          gzip -t .tmp/reassess.patch.gz
+      - name: Apply patch to clean main and publish feature branch
+        run: |
+          cp .tmp/reassess.patch.gz /tmp/reassess.patch.gz
+          git checkout main
+          git checkout -B tmp/reassessment-code-20261120
+          gzip -dc /tmp/reassess.patch.gz | patch -p1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sql/0101_epistemic_reassessment.sql src/epistemic_reassessment.rs src/lib.rs src/api.rs tests/epistemic_workbench_integration.rs frontend/src/state/expertWorkbench.js frontend/src/api/client.js frontend/src/pages/ExpertWorkbenchPage.jsx frontend/src/pages/ExpertWorkbench.product.test.js
+          git diff --cached --check
+          git commit -m "feat(epistemic): add selective downstream reassessment"
+          git push --force origin HEAD:tmp/reassessment-code-20261120
