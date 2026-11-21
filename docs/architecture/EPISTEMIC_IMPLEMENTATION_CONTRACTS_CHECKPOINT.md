@@ -244,6 +244,8 @@ A response is a communicative occurrence. It may contain assertions, refusals, u
 
 Receiving an answer does not automatically resolve the underlying gap. A gap may remain open, partially addressed, supported, contested, unresolved or effectively unresolvable depending on the available grounding.
 
+Migration 0111 implements gap-resolution judgments as the separate `GAP_RESOLUTION` assessment dimension, restricted to a Situation-visible `INFORMATION_GAP`. Its qualitative results are `OPEN`, `PARTIALLY_ADDRESSED`, `SUPPORTED`, `CONTESTED`, `UNRESOLVED`, `UNRESOLVABLE` and `UNKNOWN`. The API validates the visibility of explicit grounds; both the API and SQL require at least one ground other than a question or information gap for `PARTIALLY_ADDRESSED` or `SUPPORTED`. This is an attributed contextual assessment, not a certified resolution or truth value. The Workbench keeps gaps with no judgment visible, displays competing unrevised judgment chains independently, and preserves exact revision history and grounds. A question link, an utterance or a new proposition does not automatically produce a judgment.
+
 For human-language input, preserve separately:
 
 - the original utterance;
