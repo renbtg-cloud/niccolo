@@ -421,6 +421,8 @@ Checkpoint 1.35 validation: migration 0126, optional and exact counterparty, con
 
 Migration 0127 separately attributes threat capability, intent, perceived credibility and outcome. Capability and intent concern an explicitly identified alleged issuer; perceived credibility and outcome concern the affected actor and may leave the issuer unknown. All share the same visible Situation object addressing the alleged threat, while judgments remain independent, contextual and revisable only within their exact identity. Neither communication, capability nor perceived credibility proves intent, actual outcome, consent or causation.
 
+Checkpoint 1.36 validation: migration 0127, independent communication/capability/intent/perceived credibility/outcome, required issuer, cross-dimension revision refusal and direct SQL qualification verified. Full regression passed (599 Rust, 145 React, 22 Python, 8 standalone JavaScript tests).
+
 Compliance is not consent. Submission is not loyalty.
 
 Autonomy is contextual: ability to decide, refuse, disagree, exit, seek review, acquire information and revise commitments may differ independently.
