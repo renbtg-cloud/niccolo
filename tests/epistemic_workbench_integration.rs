@@ -3,7 +3,8 @@ use niccolo_evidence::{
     authz,
     epistemic_workbench::{
         self, ArgumentMode, ExpertNodeKind, GroundingAdequacy, GroundingEffect,
-        GroundingMemberRole, NewGroundingMember, RelationFamily, RelationKind, WorkbenchError,
+        GroundingMemberRole, NewGroundingMember, ReassessmentDisposition, RelationFamily,
+        RelationKind, WorkbenchError,
     },
     postgres_ingest::ingest_source,
     situation_store,
@@ -1046,4 +1047,163 @@ async fn reassessment_walks_downstream_ground_dependencies_without_touching_unre
             .iter()
             .all(|impact| impact.argument_id != unrelated_argument)
     );
+}
+
+#[tokio::test]
+async fn reassessment_review_is_append_only_and_latest_event_is_visible() {
+    let f = fixture().await;
+    let sit = situation(&f, "Investigator reviews a selective reassessment impact").await;
+    let prior = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The approval hold remained active through the cutoff.",
+    )
+    .await;
+    let revision = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The approval hold ended before the cutoff.",
+    )
+    .await;
+    let finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "Approval timing affected transfer timing.",
+    )
+    .await;
+    let argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument,
+        finding,
+        ArgumentMode::Abductive,
+        "The finding depends on the approval-timing hypothesis.",
+    )
+    .await
+    .unwrap();
+    let grounding = Uuid::new_v4();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument,
+        grounding,
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The prior hypothesis is the explicit premise under review.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(prior),
+            evidence_id: None,
+            rationale: "This is the premise changed by the later genealogy relation.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+    let trigger = Uuid::new_v4();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        trigger,
+        RelationFamily::Genealogy,
+        RelationKind::Supersedes,
+        revision,
+        prior,
+        "The investigator explicitly supersedes the old timing hypothesis.",
+    )
+    .await
+    .unwrap();
+
+    let first_event = Uuid::new_v4();
+    let first = epistemic_workbench::record_reassessment_review(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_event,
+        trigger,
+        argument,
+        Some(grounding),
+        ReassessmentDisposition::RevisionRequired,
+        "The affected grounding route must be revised before relying on this argument.",
+    )
+    .await
+    .unwrap();
+    assert!(!first.replayed);
+
+    let replay = epistemic_workbench::record_reassessment_review(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_event,
+        trigger,
+        argument,
+        Some(grounding),
+        ReassessmentDisposition::RevisionRequired,
+        "The affected grounding route must be revised before relying on this argument.",
+    )
+    .await
+    .unwrap();
+    assert!(replay.replayed);
+
+    let second_event = Uuid::new_v4();
+    epistemic_workbench::record_reassessment_review(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second_event,
+        trigger,
+        argument,
+        Some(grounding),
+        ReassessmentDisposition::Retained,
+        "Independent grounding was checked; the argument remains usable despite this changed premise.",
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let impact = snapshot
+        .reassessment_impacts
+        .iter()
+        .find(|impact| {
+            impact.trigger_relation_id == trigger
+                && impact.argument_id == argument
+                && impact.grounding_set_id == Some(grounding)
+        })
+        .expect("the changed explicit premise remains a visible reassessment impact");
+    let latest = impact
+        .latest_review
+        .as_ref()
+        .expect("latest review is attached");
+    assert_eq!(latest.review_event_id, second_event);
+    assert_eq!(latest.disposition, ReassessmentDisposition::Retained);
+
+    let invalid = epistemic_workbench::record_reassessment_review(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        Uuid::new_v4(),
+        trigger,
+        Uuid::new_v4(),
+        Some(grounding),
+        ReassessmentDisposition::Deferred,
+        "An arbitrary non-impact cannot be reviewed into existence.",
+    )
+    .await;
+    assert!(matches!(invalid, Err(WorkbenchError::Invisible)));
 }
