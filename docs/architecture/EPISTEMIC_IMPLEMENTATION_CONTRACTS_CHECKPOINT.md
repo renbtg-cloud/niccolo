@@ -468,6 +468,8 @@ Epistemic asymmetry can concern information, access, understanding, meta-knowled
 
 Migration 0130 preserves epistemic power and formal authority as independent contextual judgments. Each of the five asymmetries records an attributed comparative advantage of the subject relative to an exact, distinct registered counterparty concerning a visible Situation object. Neither a reverse comparison nor a global ranking is generated; formal authority is not an application permission. Revision retains the exact participants, object, scope and dimension.
 
+Checkpoint 1.39: Migration 0130 applied successfully; 602 Rust tests, 148 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
+
 ## 18. Pervasive deception
 
 Deception is not equivalent to a false statement.
