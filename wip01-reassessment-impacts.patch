@@ -1,0 +1,294 @@
+From dabdf26077ec029a188cb754b2026e64815c8c8a Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Sat, 21 Nov 2026 03:16:56 +0000
+Subject: [PATCH] WIP 01: selective reassessment impacts
+
+---
+ .../src/pages/ExpertWorkbench.product.test.js |   8 +-
+ frontend/src/pages/ExpertWorkbenchPage.jsx    |   3 +-
+ src/epistemic_workbench.rs                    |  67 ++++++++++
+ tests/epistemic_workbench_integration.rs      | 115 ++++++++++++++++++
+ 4 files changed, 191 insertions(+), 2 deletions(-)
+
+diff --git a/frontend/src/pages/ExpertWorkbench.product.test.js b/frontend/src/pages/ExpertWorkbench.product.test.js
+index bf9f937..07191ac 100644
+--- a/frontend/src/pages/ExpertWorkbench.product.test.js
++++ b/frontend/src/pages/ExpertWorkbench.product.test.js
+@@ -10,7 +10,7 @@ const config = {
+   situation: '22222222-2222-4222-8222-222222222222',
+   token: 'test-in-memory-credential',
+ };
+-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] }) };
++const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [] }) };
+ 
+ describe('expert epistemic Workbench — structured MVP authoring', () => {
+   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
+@@ -46,6 +46,12 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+     });
+   });
+ 
++  it('surfaces selective reassessment rather than invalidating the whole Situation', () => {
++    expect(page).toContain('Direct reassessment impacts');
++    expect(page).toContain('data.reassessment_impacts');
++    expect(page).toContain('review argument');
++  });
++
+   it('makes directed relation semantics explicit before the investigator selects endpoints', () => {
+     expect(relationSemantics.SUPERSEDES).toMatchObject({ left: 'Replacement object', right: 'Superseded object' });
+     expect(relationSemantics.CAUSES).toMatchObject({ left: 'Cause', right: 'Effect' });
+diff --git a/frontend/src/pages/ExpertWorkbenchPage.jsx b/frontend/src/pages/ExpertWorkbenchPage.jsx
+index bfffe9e..c07e723 100644
+--- a/frontend/src/pages/ExpertWorkbenchPage.jsx
++++ b/frontend/src/pages/ExpertWorkbenchPage.jsx
+@@ -28,7 +28,7 @@ export function ExpertWorkbenchPage() {
+     enabled: !!client,
+     queryFn: async () => (await client.expertWorkbench()).value,
+   });
+-  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] };
++  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [] };
+   const [error, setError] = useState('');
+   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
+   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
+@@ -134,6 +134,7 @@ export function ExpertWorkbenchPage() {
+       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
+       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}
+       {data.grounding_sets.length > 0 && <details><summary>Grounding</summary><ul>{data.grounding_sets.map((g) => <li key={g.grounding_set_id}>{g.effect}/{g.adequacy}: {g.members.length} joint member(s)</li>)}</ul></details>}
++      {data.reassessment_impacts.length > 0 && <details open><summary>Direct reassessment impacts</summary><ul>{data.reassessment_impacts.map((impact) => <li key={`${impact.trigger_relation_id}:${impact.argument_id}:${impact.grounding_set_id ?? 'conclusion'}`}><strong>{impact.relation_kind}</strong> changed object {impact.prior_object_id}; review argument {impact.argument_id}{impact.grounding_set_id ? ` / grounding set ${impact.grounding_set_id}` : ' / conclusion'}.</li>)}</ul></details>}
+     </article>
+   </section>;
+ }
+diff --git a/src/epistemic_workbench.rs b/src/epistemic_workbench.rs
+index 8471c10..79df54e 100644
+--- a/src/epistemic_workbench.rs
++++ b/src/epistemic_workbench.rs
+@@ -298,6 +298,25 @@ pub struct GroundingSetView {
+     pub replayed: bool,
+ }
+ 
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
++pub enum ReassessmentImpactKind {
++    GroundMember,
++    Conclusion,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct ReassessmentImpact {
++    pub trigger_relation_id: Uuid,
++    pub relation_kind: RelationKind,
++    pub revision_object_id: Uuid,
++    pub prior_object_id: Uuid,
++    pub argument_id: Uuid,
++    pub grounding_set_id: Option<Uuid>,
++    pub conclusion_object_id: Uuid,
++    pub impact_kind: ReassessmentImpactKind,
++}
++
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct WorkbenchSnapshot {
+     pub situation_id: Uuid,
+@@ -307,10 +326,12 @@ pub struct WorkbenchSnapshot {
+     pub relations: Vec<ExpertRelation>,
+     pub arguments: Vec<ExpertArgument>,
+     pub grounding_sets: Vec<GroundingSetView>,
++    pub reassessment_impacts: Vec<ReassessmentImpact>,
+     pub investigator_free_text_compiler_enabled: bool,
+ }
+ 
+ type WorkbenchEvidenceRow = (Uuid, Uuid, i32, String, String, String, String, String);
++type ReassessmentImpactRow = (Uuid, String, Uuid, Uuid, Uuid, Option<Uuid>, Uuid, String);
+ type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
+ type GroundingMemberSnapshotRow = (
+     Uuid,
+@@ -1250,6 +1271,50 @@ pub async fn snapshot(
+             replayed: false,
+         });
+     }
++    let impact_rows: Vec<ReassessmentImpactRow> = sqlx::query_as(
++        "SELECT r.relation_id,r.relation_kind,r.left_object_id,r.right_object_id, \
++                a.argument_id,gm.grounding_set_id,a.conclusion_object_id,'GROUND_MEMBER'::text \
++           FROM niccolo.epistemic_relations r \
++           JOIN niccolo.epistemic_grounding_members gm \
++             ON gm.workspace_id=r.workspace_id AND gm.ground_object_id=r.right_object_id \
++           JOIN niccolo.epistemic_arguments a \
++             ON a.workspace_id=gm.workspace_id AND a.argument_id=gm.argument_id \
++          WHERE r.workspace_id=$1 AND r.situation_id=$2 AND a.situation_id=$2 \
++            AND r.relation_family='GENEALOGY' \
++            AND r.relation_kind IN ('SUPERSEDES','RETRACTS','REINTERPRETS') \
++         UNION ALL \
++         SELECT r.relation_id,r.relation_kind,r.left_object_id,r.right_object_id, \
++                a.argument_id,NULL::uuid,a.conclusion_object_id,'CONCLUSION'::text \
++           FROM niccolo.epistemic_relations r \
++           JOIN niccolo.epistemic_arguments a \
++             ON a.workspace_id=r.workspace_id AND a.conclusion_object_id=r.right_object_id \
++          WHERE r.workspace_id=$1 AND r.situation_id=$2 AND a.situation_id=$2 \
++            AND r.relation_family='GENEALOGY' \
++            AND r.relation_kind IN ('SUPERSEDES','RETRACTS','REINTERPRETS') \
++         ORDER BY argument_id,grounding_set_id NULLS LAST,relation_id",
++    )
++    .bind(workspace)
++    .bind(situation)
++    .fetch_all(&mut *tx)
++    .await?;
++    let mut reassessment_impacts = Vec::with_capacity(impact_rows.len());
++    for (trigger_relation_id, relation_kind, revision_object_id, prior_object_id, argument_id, grounding_set_id, conclusion_object_id, impact_kind) in impact_rows {
++        reassessment_impacts.push(ReassessmentImpact {
++            trigger_relation_id,
++            relation_kind: relation_kind_from_db(&relation_kind)?,
++            revision_object_id,
++            prior_object_id,
++            argument_id,
++            grounding_set_id,
++            conclusion_object_id,
++            impact_kind: match impact_kind.as_str() {
++                "GROUND_MEMBER" => ReassessmentImpactKind::GroundMember,
++                "CONCLUSION" => ReassessmentImpactKind::Conclusion,
++                _ => return Err(WorkbenchError::Invalid),
++            },
++        });
++    }
++
+     tx.commit().await?;
+     Ok(WorkbenchSnapshot {
+         situation_id: situation,
+@@ -1259,6 +1324,7 @@ pub async fn snapshot(
+         relations,
+         arguments,
+         grounding_sets,
++        reassessment_impacts,
+         investigator_free_text_compiler_enabled: false,
+     })
+ }
+@@ -1285,6 +1351,7 @@ mod tests {
+             relations: vec![],
+             arguments: vec![],
+             grounding_sets: vec![],
++            reassessment_impacts: vec![],
+             investigator_free_text_compiler_enabled: false,
+         })
+         .unwrap();
+diff --git a/tests/epistemic_workbench_integration.rs b/tests/epistemic_workbench_integration.rs
+index 35cd180..4860b7b 100644
+--- a/tests/epistemic_workbench_integration.rs
++++ b/tests/epistemic_workbench_integration.rs
+@@ -493,3 +493,118 @@ async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
+     assert_eq!(results[0].evidence_id, imported.fragment_ids[299]);
+     assert!(results[0].content.contains("approval was suspended"));
+ }
++
++
++#[tokio::test]
++async fn superseding_a_ground_surfaces_only_direct_reassessment_impacts() {
++    let f = fixture().await;
++    let sit = situation(&f, "Selective reassessment after a premise changes").await;
++    let prior = node(
++        &f,
++        sit,
++        ExpertNodeKind::Hypothesis,
++        "The payment was delayed because approval was missing.",
++    )
++    .await;
++    let replacement = node(
++        &f,
++        sit,
++        ExpertNodeKind::Hypothesis,
++        "The payment was delayed because approval arrived after the cutoff.",
++    )
++    .await;
++    let finding = node(
++        &f,
++        sit,
++        ExpertNodeKind::Finding,
++        "Approval timing materially affected payment timing.",
++    )
++    .await;
++    let unaffected_finding = node(
++        &f,
++        sit,
++        ExpertNodeKind::Finding,
++        "The source export contains a timestamp.",
++    )
++    .await;
++
++    let impacted_argument = Uuid::new_v4();
++    epistemic_workbench::create_argument(
++        &f.service,
++        f.workspace,
++        sit,
++        f.principal,
++        impacted_argument,
++        finding,
++        ArgumentMode::Abductive,
++        "Compare approval-timing explanations.",
++    )
++    .await
++    .unwrap();
++    let impacted_set = Uuid::new_v4();
++    epistemic_workbench::create_grounding_set(
++        &f.service,
++        f.workspace,
++        sit,
++        f.principal,
++        impacted_argument,
++        impacted_set,
++        GroundingEffect::Supports,
++        GroundingAdequacy::Partial,
++        "The prior hypothesis is an explicit premise.",
++        &[NewGroundingMember {
++            member_id: Uuid::new_v4(),
++            role: GroundingMemberRole::Premise,
++            ground_object_id: Some(prior),
++            evidence_id: None,
++            rationale: "This premise carries the old approval-timing explanation.".into(),
++        }],
++    )
++    .await
++    .unwrap();
++
++    let unaffected_argument = Uuid::new_v4();
++    epistemic_workbench::create_argument(
++        &f.service,
++        f.workspace,
++        sit,
++        f.principal,
++        unaffected_argument,
++        unaffected_finding,
++        ArgumentMode::Inductive,
++        "Timestamp presence does not depend on the timing hypothesis.",
++    )
++    .await
++    .unwrap();
++
++    let trigger_relation = Uuid::new_v4();
++    epistemic_workbench::create_relation(
++        &f.service,
++        f.workspace,
++        sit,
++        f.principal,
++        trigger_relation,
++        RelationFamily::Genealogy,
++        RelationKind::Supersedes,
++        replacement,
++        prior,
++        "The replacement hypothesis incorporates newly established cutoff timing.",
++    )
++    .await
++    .unwrap();
++
++    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
++        .await
++        .unwrap();
++    assert_eq!(snapshot.reassessment_impacts.len(), 1);
++    let impact = &snapshot.reassessment_impacts[0];
++    assert_eq!(impact.trigger_relation_id, trigger_relation);
++    assert_eq!(impact.relation_kind, RelationKind::Supersedes);
++    assert_eq!(impact.revision_object_id, replacement);
++    assert_eq!(impact.prior_object_id, prior);
++    assert_eq!(impact.argument_id, impacted_argument);
++    assert_eq!(impact.grounding_set_id, Some(impacted_set));
++    assert_eq!(impact.conclusion_object_id, finding);
++    assert_eq!(impact.impact_kind, epistemic_workbench::ReassessmentImpactKind::GroundMember);
++    assert_ne!(impact.argument_id, unaffected_argument);
++}
+-- 
+2.47.3
