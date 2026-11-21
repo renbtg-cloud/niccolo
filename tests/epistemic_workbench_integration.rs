@@ -296,6 +296,59 @@ async fn action_decisions_pin_actual_options_without_authorizing_or_executing() 
 }
 
 #[tokio::test]
+async fn intervention_records_preserve_occurrence_and_causality_independently() {
+    use epistemic_workbench::intervention::{self, CausalAssessmentInput, CausalAssessmentKind, Characterization, InterventionInput, RecordKind};
+    let f = fixture().await;
+    let sit = situation(&f, "Assess changes after a privilege review").await;
+    let other = situation(&f, "Unrelated circumstances").await;
+    let record = |id, input| intervention::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let execution = Uuid::new_v4();
+    let event = Uuid::new_v4();
+    let report = InterventionInput { kind: RecordKind::ExecutionOccurrence, linked_decision_id: None, characterization: Characterization::Reported, description: "A manager reports access was restricted".into(), event_temporal_scope: "January".into(), acquisition_temporal_scope: "March interview".into(), basis_evidence_id: None, revises_record_id: None };
+    assert!(!record(execution, report.clone()).await.unwrap().replayed);
+    assert!(record(execution, report.clone()).await.unwrap().replayed);
+    assert!(matches!(record(execution, InterventionInput { description: "Changed".into(), ..report.clone() }).await, Err(WorkbenchError::Conflict)));
+    assert!(matches!(record(Uuid::new_v4(), InterventionInput { characterization: Characterization::Observed, ..report.clone() }).await, Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(), InterventionInput { basis_evidence_id: Some(Uuid::new_v4()), ..report.clone() }).await, Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(), InterventionInput { linked_decision_id: Some(Uuid::new_v4()), ..report.clone() }).await, Err(WorkbenchError::Invisible)));
+    let observation = InterventionInput { kind: RecordKind::EventObservation, description: "Employee reportedly seeks another role".into(), event_temporal_scope: "Unknown start date".into(), ..report.clone() };
+    record(event, observation.clone()).await.unwrap();
+    let (records, assessments) = intervention::list(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(records.len(), 2);
+    assert!(assessments.is_empty());
+    let causal = CausalAssessmentInput { execution_record_id: execution, event_observation_record_id: event, assessment: CausalAssessmentKind::PossiblyInduced, rationale: "Reported behavior may follow the change".into(), alternative_explanations: "Existing career plans".into(), uncertainty: "Onset and cause unknown".into(), basis_evidence_id: None, revises_assessment_id: None };
+    let assess = |id, input| intervention::assess(&f.service, f.workspace, sit, f.principal, id, input);
+    let assessment_id = Uuid::new_v4();
+    assert!(!assess(assessment_id, causal.clone()).await.unwrap().replayed);
+    assert!(assess(assessment_id, causal.clone()).await.unwrap().replayed);
+    assert!(matches!(assess(Uuid::new_v4(), CausalAssessmentInput { execution_record_id: event, event_observation_record_id: execution, ..causal.clone() }).await, Err(WorkbenchError::Invalid)));
+    let foreign = Uuid::new_v4();
+    intervention::record(&f.service, f.workspace, other, f.principal, foreign, observation.clone()).await.unwrap();
+    assert!(matches!(assess(Uuid::new_v4(), CausalAssessmentInput { event_observation_record_id: foreign, ..causal.clone() }).await, Err(WorkbenchError::Invisible)));
+    let revised_event = Uuid::new_v4();
+    record(revised_event, InterventionInput { revises_record_id: Some(event), event_temporal_scope: "December or earlier".into(), ..observation.clone() }).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(), InterventionInput { revises_record_id: Some(event), ..observation.clone() }).await, Err(WorkbenchError::Conflict)));
+    assert!(matches!(record(Uuid::new_v4(), InterventionInput { revises_record_id: Some(execution), ..observation }).await, Err(WorkbenchError::Invalid)));
+    let revision = CausalAssessmentInput { assessment: CausalAssessmentKind::Undetermined, revises_assessment_id: Some(assessment_id), ..causal.clone() };
+    assert!(matches!(assess(Uuid::new_v4(), CausalAssessmentInput { event_observation_record_id: revised_event, ..revision.clone() }).await, Err(WorkbenchError::Invalid)));
+    assess(Uuid::new_v4(), revision.clone()).await.unwrap();
+    assert!(matches!(assess(Uuid::new_v4(), revision).await, Err(WorkbenchError::Conflict)));
+    let (records, assessments) = intervention::list(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(records.len(), 3);
+    assert_eq!(assessments.len(), 2);
+    assert_eq!(assessments[0].input, causal);
+    assert_eq!(assessments[1].input.event_observation_record_id, event);
+    assert!(intervention::list(&f.service, f.workspace, other).await.unwrap().1.is_empty());
+    let separate = fixture().await;
+    assert!(matches!(intervention::list(&separate.service, separate.workspace, sit).await, Err(WorkbenchError::Invisible)));
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_intervention_causal_assessments(workspace_id,situation_id,assessment_id,execution_record_id,event_observation_record_id,assessment,rationale,alternative_explanations,uncertainty,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'UNDETERMINED','Rationale','Alternatives','Unknown',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(event).bind(execution).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn action_decision_api_authenticates_the_decider_and_preserves_pinned_history() {
     use axum::{body::{Body, to_bytes}, http::{Request, StatusCode, header}};
     use epistemic_workbench::{action_decision::{DecisionDisposition, DecisionInput}, action_recommendation};

@@ -658,6 +658,8 @@ An intervention can alter:
 
 Reasoning after intervention must not continue as if the pre-intervention world were unchanged.
 
+Checkpoint 1.58 implements an append-only Situation-scoped ledger of independently attributed authorization reports, existing-plan reports, execution occurrences and event observations. These are descriptions only; none authorizes or performs an action. The decision pin is optional and exact, event time is distinct from acquisition and recording time, and observed characterization requires visible source evidence. A separate causal assessment pins an execution occurrence and an event observation (which may have predated the intervention), preserves alternative explanations and uncertainty, and never arises automatically from temporal order. Revisions preserve attribution and exact pins. Migration 0142 and the Rust store passed 212 unit, 56 Workbench integration and 13 security/readiness tests. HTTP, selective stale-pin projection and UI are still pending.
+
 ## 24. Implementation stance
 
 The approved model does not mandate one Rust type, SQL table or service per conceptual noun.
