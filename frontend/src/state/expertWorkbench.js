@@ -112,6 +112,13 @@ export function interpretationDependencyRequest(route, view, revision, rationale
   return {argument_id:route.argument_id,grounding_set_id:route.grounding_set_id,interpretation_id:view.interpretation_id,revision_id:revision,confirmation_event_id:confirmation?.event_id ?? null,rationale:requireText(rationale,'Interpretation reliance rationale')};
 }
 
+export function interpretationReviewRequest(view, route, disposition, note) {
+  const direct=view?.dependency?.input;
+  const same=r=>r.argument_id===route?.argument_id&&r.grounding_set_id===route?.grounding_set_id;
+  if (!view || !(view.interpretation_revised||view.meaning_confirmation_changed) || !route || !(same(direct)||view.potential_downstream_routes.some(same)) || !reassessmentDispositions.includes(disposition)) throw new Error('Choose an affected route and review disposition.');
+  return {argument_id:route.argument_id,grounding_set_id:route.grounding_set_id,reviewed_revision_id:view.current_revision_id,reviewed_confirmation_event_id:view.current_confirmation_event_id??null,disposition,note:requireText(note,'Review note')};
+}
+
 export function relationRequest(family, kind, leftObjectId, rightObjectId, rationale) {
   if (!relationKinds[family]?.includes(kind)) throw new Error('Relation kind does not belong to the selected family.');
   if (!leftObjectId || !rightObjectId || leftObjectId === rightObjectId) throw new Error('Choose two distinct epistemic objects.');

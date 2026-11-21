@@ -309,7 +309,9 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
 async fn pinned_interpretation_changes_require_only_explicit_route_and_downstream_attention() {
     use epistemic_workbench::{
         inquiry_response::*,
-        interpretation_dependency::{self, InterpretationDependencyInput},
+        interpretation_dependency::{
+            self, InterpretationDependencyInput, InterpretationReviewInput,
+        },
     };
     use niccolo_evidence::epistemic_identity::MeaningConfirmation;
     let f = fixture().await;
@@ -483,6 +485,108 @@ async fn pinned_interpretation_changes_require_only_explicit_route_and_downstrea
         );
         assert_eq!(diag.assessment_reassessment.directly_relying.impacted, 0);
     }
+    let review_input = InterpretationReviewInput {
+        argument_id: routes[0].0,
+        grounding_set_id: routes[0].1,
+        reviewed_revision_id: revision,
+        reviewed_confirmation_event_id: Some(event),
+        disposition: ReassessmentDisposition::Retained,
+        note: "This route still has adequate partial support".into(),
+    };
+    let review_id = Uuid::new_v4();
+    let review = |event, input| {
+        interpretation_dependency::review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            event,
+            input,
+        )
+    };
+    assert!(matches!(
+        review(
+            Uuid::new_v4(),
+            InterpretationReviewInput {
+                argument_id: routes[1].0,
+                grounding_set_id: routes[1].1,
+                ..review_input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        review(
+            Uuid::new_v4(),
+            InterpretationReviewInput {
+                reviewed_confirmation_event_id: None,
+                ..review_input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    assert!(
+        !review(review_id, review_input.clone())
+            .await
+            .unwrap()
+            .replayed
+    );
+    assert!(
+        review(review_id, review_input.clone())
+            .await
+            .unwrap()
+            .replayed
+    );
+    let retained = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let view = &retained.interpretation_dependencies[0];
+    assert!(!view.requires_review && view.downstream_reviews[0].requires_review);
+    assert_eq!(
+        view.latest_review.as_ref().unwrap().input.disposition,
+        ReassessmentDisposition::Retained
+    );
+    let downstream_review = InterpretationReviewInput {
+        argument_id: routes[2].0,
+        grounding_set_id: routes[2].1,
+        disposition: ReassessmentDisposition::Deferred,
+        note: "Inspect this consequence separately".into(),
+        ..review_input.clone()
+    };
+    review(Uuid::new_v4(), downstream_review.clone())
+        .await
+        .unwrap();
+    let deferred = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let view = &deferred.interpretation_dependencies[0];
+    assert!(view.downstream_reviews[0].requires_review);
+    assert_eq!(
+        view.downstream_reviews[0]
+            .latest_review
+            .as_ref()
+            .unwrap()
+            .input
+            .disposition,
+        ReassessmentDisposition::Deferred
+    );
+    review(
+        Uuid::new_v4(),
+        InterpretationReviewInput {
+            disposition: ReassessmentDisposition::Retained,
+            note: "Consequence reviewed".into(),
+            ..downstream_review
+        },
+    )
+    .await
+    .unwrap();
+    let all_retained = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert!(!all_retained.interpretation_dependencies[0].downstream_reviews[0].requires_review);
     let second = Uuid::new_v4();
     record_interpretation(
         &f.service,
@@ -508,6 +612,26 @@ async fn pinned_interpretation_changes_require_only_explicit_route_and_downstrea
         second
     );
     assert!(after.interpretation_dependencies[0].interpretation_revised);
+    assert!(after.interpretation_dependencies[0].requires_review);
+    assert!(after.interpretation_dependencies[0].downstream_reviews[0].requires_review);
+    assert!(after.interpretation_dependencies[0].latest_review.is_none());
+    assert_eq!(after.interpretation_dependencies[0].review_history.len(), 1);
+    assert_eq!(
+        after.interpretation_dependencies[0].downstream_reviews[0]
+            .review_history
+            .len(),
+        2
+    );
+    assert!(
+        review(review_id, review_input.clone())
+            .await
+            .unwrap()
+            .replayed
+    );
+    assert!(matches!(
+        review(Uuid::new_v4(), review_input).await,
+        Err(WorkbenchError::Conflict)
+    ));
     assert_eq!(after.interpretation_dependencies[0].dependency.input, input);
     assert_eq!(after.grounding_sets.len(), 3);
     assert!(after.assessments.is_empty());

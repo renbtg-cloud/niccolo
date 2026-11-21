@@ -2414,7 +2414,7 @@ pub async fn snapshot(
         BTreeMap::<GroundingRouteRef, AssessmentReassessmentAttention>::new();
     for dependency in interpretation_dependencies
         .iter()
-        .filter(|d| d.requires_review)
+        .filter(|d| d.interpretation_revised || d.meaning_confirmation_changed)
     {
         let route = GroundingRouteRef {
             argument_id: dependency.dependency.input.argument_id,
@@ -2424,13 +2424,23 @@ pub async fn snapshot(
             .entry(route)
             .or_default()
             .directly_relying
-            .record(None);
-        for downstream in &dependency.potential_downstream_routes {
+            .record(
+                dependency
+                    .latest_review
+                    .as_ref()
+                    .map(|r| r.input.disposition),
+            );
+        for downstream in &dependency.downstream_reviews {
             interpretation_attention_by_route
-                .entry(*downstream)
+                .entry(downstream.route)
                 .or_default()
                 .downstream
-                .record(None);
+                .record(
+                    downstream
+                        .latest_review
+                        .as_ref()
+                        .map(|r| r.input.disposition),
+                );
         }
     }
     for route in reasoning_diagnostics

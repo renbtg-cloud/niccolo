@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest, questionResponseRequest, interpretationDependencyRequest } from '../state/expertWorkbench.js';
+import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest, questionResponseRequest, interpretationDependencyRequest, interpretationReviewRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -14,6 +14,18 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('reviews only affected interpretation routes against the exact changed meaning context', async () => {
+    const view={dependency:{input:{argument_id:'a',grounding_set_id:'g'}},meaning_confirmation_changed:true,current_revision_id:'r',current_confirmation_event_id:'c',potential_downstream_routes:[{argument_id:'b',grounding_set_id:'h'}]};
+    const body=interpretationReviewRequest(view,view.potential_downstream_routes[0],'RETAINED','Reviewed separately');
+    expect(body).toMatchObject({argument_id:'b',grounding_set_id:'h',reviewed_revision_id:'r',reviewed_confirmation_event_id:'c'});
+    expect(()=>interpretationReviewRequest(view,{argument_id:'x',grounding_set_id:'y'},'RETAINED','No')).toThrow();
+    const calls=[];
+    const client=new NiccoloClient(config,async(url,options)=>{calls.push({url,options});return response;});
+    await client.reviewInterpretationDependency('d','event',body);
+    expect(calls[0].url).toContain('/epistemic/interpretation-dependencies/d/reviews/event');
+    expect(page).toContain('Retaining the directly relying route does not review downstream routes.');
+    expect(page).toContain('view.downstream_reviews');
+  });
   it('pins exact interpretation and confirmation context, not a mutable current meaning', async () => {
     const meaning={interpretation_id:'i',revisions:[{revision_id:'r1'},{revision_id:'r2'}],confirmations:[{revision_id:'r1',event_id:'c1'},{revision_id:'r2',event_id:'c2'}]};
     const body=interpretationDependencyRequest({argument_id:'a',grounding_set_id:'g'},meaning,'r1','Provisional reliance');
