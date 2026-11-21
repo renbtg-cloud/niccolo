@@ -107,6 +107,33 @@ async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
 }
 
 #[tokio::test]
+async fn distributed_actor_records_do_not_create_collective_knowledge() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Review distributed information").await;
+    let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
+    let a=Uuid::new_v4();let b=Uuid::new_v4();let group=Uuid::new_v4();
+    for (id,label) in [(a,"Witness"),(b,"Clerk"),(group,"Organization")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let document=Uuid::new_v4();
+    let sources=ingest_source(&f.service,f.workspace,document,SourceFormat::WhatsappExport,"fixture://distributed",b"[02/11/2026, 12:00] Witness: I saw the envelope\n[02/11/2026, 12:01] Clerk: I saw a receipt\n").await.unwrap();
+    situation_store::add_source(&f.service,f.workspace,f.principal,sit,document).await.unwrap();
+    assert_eq!(sources.fragment_ids.len(),2);
+    let first=StateInput{subject_actor_id:a,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::Exposure,judgment:StateJudgment::Indicated,context:"Delivery review".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Attributed observation of envelope".into(),basis_evidence_id:Some(sources.fragment_ids[0]),revises_event_id:None};
+    let second=StateInput{subject_actor_id:b,dimension:StateDimension::Access,rationale:"Attributed observation of receipt".into(),basis_evidence_id:Some(sources.fragment_ids[1]),..first.clone()};
+    let first_id=Uuid::new_v4();let second_id=Uuid::new_v4();let revised_id=Uuid::new_v4();
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    record(first_id,first.clone()).await.unwrap();record(second_id,second.clone()).await.unwrap();
+    record(revised_id,StateInput{judgment:StateJudgment::Contested,revises_event_id:Some(first_id),..first.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),3);
+    assert_eq!(snapshot.actor_epistemic_states[0].input,first);
+    assert_eq!(snapshot.actor_epistemic_states[1].input,second);
+    assert_eq!(snapshot.actor_epistemic_states[2].input.revises_event_id,Some(first_id));
+    assert!(snapshot.actor_epistemic_states.iter().all(|event|event.input.subject_actor_id!=group&&event.input.dimension!=StateDimension::EvidenceSupportedKnowledge));
+    assert!(snapshot.assessments.is_empty()&&snapshot.arguments.is_empty());
+}
+
+#[tokio::test]
 async fn actor_state_basis_and_writer_authority_are_checked_at_the_boundary() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
     use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment};

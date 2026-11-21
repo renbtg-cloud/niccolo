@@ -26,6 +26,19 @@ const orientationScopes=['IMMEDIATE_REACTION','PERSISTENT_DISPOSITION'];
 const judgments=['INDICATED','NOT_INDICATED','UNKNOWN','CONTESTED'];
 const empty={subject_actor_id:'',target_object_id:'',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'',judgment:'',context:'',temporal_scope:'',orientation_scope:null,orientation_goal:null,rationale:'',basis_evidence_id:'',revises_event_id:null};
 const label=value=>value.replaceAll('_',' ').toLowerCase();
+// Compare only exact visible current records; do not infer a shared actor, state or knowledge.
+export function distributedActorRecords(events) {
+  const revised=new Set(events.map(e=>e.input.revises_event_id));
+  const groups=new Map();
+  for(const event of events){
+    const input=event.input;
+    if(revised.has(event.event_id)||!input.target_object_id)continue;
+    const key=JSON.stringify([input.target_object_id,input.context,input.temporal_scope]);
+    if(!groups.has(key))groups.set(key,{key,target_object_id:input.target_object_id,context:input.context,temporal_scope:input.temporal_scope,records:[]});
+    groups.get(key).records.push(event);
+  }
+  return [...groups.values()].filter(g=>new Set(g.records.map(e=>e.input.subject_actor_id)).size>1);
+}
 export function stateRequest(draft,actors,nodes,evidence,events) {
   if(!actors.some(a=>a.actor_id===draft.subject_actor_id)||[draft.target_object_id,draft.target_state_event_id,draft.target_actor_id].filter(Boolean).length!==1)throw new Error('Select a visible actor and exactly one target.');
   if(draft.target_object_id&&!nodes.some(n=>n.object_id===draft.target_object_id)||draft.target_state_event_id&&!events.some(e=>e.event_id===draft.target_state_event_id)||draft.target_actor_id&&!actors.some(a=>a.actor_id===draft.target_actor_id))throw new Error('Select a visible target.');
@@ -55,6 +68,7 @@ export function ActorEpistemicStatePanel({snapshot,actors,client,onChanged}) {
   const pending=useRef(null);
   const nodes=snapshot.nodes??[], evidence=snapshot.evidence??[], events=snapshot.actor_epistemic_states??[];
   const revised=new Set(events.map(e=>e.input.revises_event_id));
+  const distributed=distributedActorRecords(events);
   const actorById=new Map(actors.map(a=>[a.actor_id,a])),nodeById=new Map(nodes.map(n=>[n.object_id,n])),eventById=new Map(events.map(e=>[e.event_id,e]));
   const actorLabel=id=>actorById.get(id)?.display_label??id;
   const stateLabel=e=>`${actorLabel(e.input.subject_actor_id)} — ${label(e.input.dimension)}: ${label(e.input.judgment)}${e.input.orientation_scope?` · ${label(e.input.orientation_scope)}`:''} (${e.event_id})${revised.has(e.event_id)?' — historically revised':''}`;
@@ -89,6 +103,9 @@ export function ActorEpistemicStatePanel({snapshot,actors,client,onChanged}) {
       <label>Evidence fragment<select value={draft.basis_evidence_id} onChange={e=>change('basis_evidence_id',e.target.value)}><option value="">Not explicitly linked</option>{evidence.map(e=><option key={e.evidence_id} value={e.evidence_id}>{e.speaker_label}: {e.content?.slice(0,120)} ({e.evidence_id})</option>)}</select></label>
       <button type="submit">Record judgment only</button>{locked&&<button type="button" onClick={()=>setDraft(empty)}>Cancel revision</button>}{error&&<p role="alert">{error}</p>}
     </fieldset></form>
+    <h4>Distributed attributed records</h4>
+    <p>Current explicit records with the same object, context and temporal scope but different actors. This comparison neither establishes individual or organizational knowledge nor combines evidence into a new judgment.</p>
+    {!distributed.length?<p>No matching multi-actor records. Missing records do not establish absence of knowledge.</p>:distributed.map(g=><details key={g.key}><summary>{nodeById.get(g.target_object_id)?.text??g.target_object_id} · {g.context} · {g.temporal_scope}</summary><ul>{g.records.map(e=><li key={e.event_id}><strong>{stateLabel(e)}</strong><p>{targetLabel(e.input)} · {e.input.rationale}</p><small>By {e.recorded_by} · basis {e.input.basis_evidence_id??'not explicitly linked'}</small></li>)}</ul></details>)}
     <h4>Attributed state history</h4><p>A reference to another actor's state identifies the exact prior event; later revisions do not silently replace it or imply knowledge.</p>{!events.length?<p>No explicit state judgment recorded. Absence is not unknown or a negative judgment.</p>:<ul>{events.map(e=><li key={e.event_id}><strong>{actorLabel(e.input.subject_actor_id)} — {label(e.input.dimension)}: {label(e.input.judgment)}</strong><p>{targetLabel(e.input)} · {e.input.context} · {e.input.temporal_scope}</p>{e.input.orientation_scope&&<p>{label(e.input.orientation_scope)} · attributed goal: {e.input.orientation_goal}</p>}<p>{e.input.rationale}</p><small>By {e.recorded_by} · {e.recorded_at} · {e.event_id} · basis {e.input.basis_evidence_id??'not explicitly linked'}</small>{revised.has(e.event_id)?<p>Historical — explicitly revised.</p>:<button type="button" disabled={saving} onClick={()=>setDraft({...e.input,basis_evidence_id:e.input.basis_evidence_id??'',revises_event_id:e.event_id})}>Propose revision of this judgment</button>}</li>)}</ul>}
   </details>;
 }

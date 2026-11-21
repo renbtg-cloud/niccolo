@@ -1,9 +1,21 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,modeledSecrecyDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,modeledSecrecyDimensions,stateRequest,distributedActorRecords} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('compares only current exact-context records across distinct actors, without aggregation',()=>{
+    const event=(event_id,extra)=>({event_id,input:{...draft,...extra}});
+    const old=event('old',{dimension:'BELIEF'});
+    const current=event('current',{dimension:'BELIEF',judgment:'CONTESTED',revises_event_id:'old'});
+    const second=event('second',{subject_actor_id:'b',dimension:'ACCESS',basis_evidence_id:'e'});
+    const otherTime=event('other-time',{subject_actor_id:'b',temporal_scope:'After hearing'});
+    const otherContext=event('context',{subject_actor_id:'b',context:'Other interview'});
+    const otherTarget=event('target',{subject_actor_id:'b',target_object_id:'q'});
+    const state=event('state',{subject_actor_id:'b',target_object_id:null,target_state_event_id:'old'});
+    expect(distributedActorRecords([old,current,second,otherTime,otherContext,otherTarget,state])).toEqual([{key:JSON.stringify(['p',draft.context,draft.temporal_scope]),target_object_id:'p',context:draft.context,temporal_scope:draft.temporal_scope,records:[current,second]}]);
+    expect(distributedActorRecords([old,current])).toEqual([]);
+  });
   it('models withholding expectations independently of access and knowledge',()=>{
     expect(modeledSecrecyDimensions).toEqual(['MODELED_SECRECY_EXISTENCE','MODELED_SECRECY_CONTENT','MODELED_SECRECY_SOURCE_IDENTITY','MODELED_SECRECY_ORIGIN','MODELED_SECRECY_RATIONALE','MODELED_SECRECY_CONCLUSIONS','MODELED_SECRECY_PARTIAL_CONTENT']);
     for(const dimension of modeledSecrecyDimensions){

@@ -573,6 +573,8 @@ If existence is protected, indirect signals through graphs, search results, coun
 
 Distributed fragments may permit an authorized Niccolò analysis to formulate a hypothesis no individual actor can formulate. That does not justify saying “the organization knew”.
 
+The actor ledger now offers a read-only comparison of current attributed state records for different actors sharing an exact Situation object, context and temporal scope. It retains each event's distinct dimension, judgment, recorder, rationale and evidence reference; historical superseded events remain in the ledger but not in this comparison. The view performs no cross-context merging, knowledge inference, evidence aggregation or creation of organizational judgments.
+
 ## 21. Vulnerability, containment and recovery
 
 Vulnerability is actor/resource/circumstance/consequence specific and may be actual, potential, perceived, unknown or misattributed.
