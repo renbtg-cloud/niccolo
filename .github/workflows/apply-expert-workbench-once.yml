@@ -6,7 +6,7 @@ on:
       - tmp/apply-expert-workbench-20261120
     paths:
       - .github/workflows/apply-expert-workbench-once.yml
-      - .tmp/expert_code.patch.gz
+      - .tmp/expert_code_patch_b64_*
 
 permissions:
   contents: write
@@ -19,8 +19,11 @@ jobs:
         with:
           ref: tmp/apply-expert-workbench-20261120
           fetch-depth: 0
-      - name: Preserve patch
-        run: cp .tmp/expert_code.patch.gz /tmp/expert_code.patch.gz
+      - name: Reconstruct and verify patch
+        run: |
+          cat .tmp/expert_code_patch_b64_* | base64 -d > /tmp/expert_code.patch.gz
+          echo "49384c8ddec6124c2a64ff04cddda1bee415cdc32e5db6416c449a9e96a61a8a  /tmp/expert_code.patch.gz" | sha256sum -c -
+          gzip -t /tmp/expert_code.patch.gz
       - name: Apply patch to clean main and publish feature branch
         run: |
           git checkout main
@@ -32,4 +35,4 @@ jobs:
           git add sql/0100_expert_epistemic_workbench.sql src/epistemic_workbench.rs src/lib.rs src/api.rs tests/epistemic_workbench_integration.rs frontend/src/state/expertWorkbench.js frontend/src/pages/ExpertWorkbenchPage.jsx frontend/src/pages/ExpertWorkbench.product.test.js frontend/src/api/client.js frontend/src/App.jsx frontend/src/styles.css
           git diff --cached --check
           git commit -m "feat(epistemic): add expert authoring workbench"
-          git push --force-with-lease origin HEAD:tmp/expert-workbench-code-20261120
+          git push --force origin HEAD:tmp/expert-workbench-code-20261120
