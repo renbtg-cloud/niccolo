@@ -75,6 +75,77 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
+    use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Assess awareness without assuming knowledge").await;
+    let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
+    let actor=Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Interviewee").await.unwrap();
+    let input=StateInput {subject_actor_id:actor,target_object_id:target,dimension:StateDimension::Exposure,judgment:StateJudgment::Indicated,context:"Delivery interview".into(),temporal_scope:"Before the hearing".into(),rationale:"Reported being shown the ledger".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|event,input|actor_state::record(&f.service,f.workspace,sit,f.principal,event,input);
+    let exposed=Uuid::new_v4();
+    assert!(!record(exposed,input.clone()).await.unwrap().replayed);
+    assert!(record(exposed,input.clone()).await.unwrap().replayed);
+    assert!(matches!(record(exposed,StateInput{judgment:StateJudgment::Unknown,..input.clone()}).await,Err(WorkbenchError::Conflict)));
+    let belief=Uuid::new_v4();
+    record(belief,StateInput{dimension:StateDimension::Belief,judgment:StateJudgment::Unknown,..input.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::EvidenceSupportedKnowledge,..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::Comprehension,revises_event_id:Some(exposed),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    let other=situation(&f,"Separate investigation").await;
+    let foreign=node(&f,other,ExpertNodeKind::Proposition,"Foreign proposition").await;
+    assert!(matches!(record(Uuid::new_v4(),StateInput{target_object_id:foreign,..input.clone()}).await,Err(WorkbenchError::Invisible)));
+    let revised=Uuid::new_v4();
+    record(revised,StateInput{judgment:StateJudgment::Contested,revises_event_id:Some(exposed),..input.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),3);
+    assert_eq!(snapshot.actor_epistemic_states[0].input,input);
+    assert_eq!(snapshot.actor_epistemic_states[1].event_id,belief);
+    assert_eq!(snapshot.actor_epistemic_states[2].input.revises_event_id,Some(exposed));
+    assert!(snapshot.assessments.is_empty() && snapshot.arguments.is_empty());
+    assert!(epistemic_workbench::snapshot(&f.service,f.workspace,other).await.unwrap().actor_epistemic_states.is_empty());
+}
+
+#[tokio::test]
+async fn actor_state_basis_and_writer_authority_are_checked_at_the_boundary() {
+    use axum::{body::Body,http::{Request,StatusCode,header}};
+    use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment};
+    use tower::ServiceExt;
+    let f=fixture().await;
+    let sit=situation(&f,"Record attributed knowledge evidence").await;
+    let other=situation(&f,"Not this investigation").await;
+    let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
+    let foreign=node(&f,other,ExpertNodeKind::Proposition,"Unrelated ledger").await;
+    let actor=Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Witness").await.unwrap();
+    let document=Uuid::new_v4();
+    let imported=ingest_source(&f.service,f.workspace,document,SourceFormat::WhatsappExport,"fixture://state-basis",b"[02/11/2026, 12:00] Witness: I read the ledger\n").await.unwrap();
+    let basis=imported.fragment_ids[0];
+    let input=StateInput{subject_actor_id:actor,target_object_id:target,dimension:StateDimension::EvidenceSupportedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),rationale:"Explicit source report; not established fact".into(),basis_evidence_id:Some(basis),revises_event_id:None};
+    let id=Uuid::new_v4();
+    assert!(matches!(actor_state::record(&f.service,f.workspace,sit,f.principal,id,input.clone()).await,Err(WorkbenchError::Invisible)));
+    situation_store::add_source(&f.service,f.workspace,f.principal,sit,document).await.unwrap();
+    let admin=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let writer=authz::provision_token(&admin,f.principal,f.workspace,true,true,1).await.unwrap();
+    let reader=authz::provision_token(&admin,Uuid::new_v4(),f.workspace,true,false,1).await.unwrap();
+    let secure=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();
+    let router=niccolo_evidence::api::router(secure);
+    let path=format!("/v1/workspaces/{}/situations/{}/epistemic/actor-states/{}",f.workspace,sit,id);
+    let request=|token:&str|Request::builder().method("POST").uri(&path).header(header::AUTHORIZATION,format!("Bearer {token}")).header(header::CONTENT_TYPE,"application/json").body(Body::from(serde_json::to_string(&input).unwrap())).unwrap();
+    assert_eq!(router.clone().oneshot(request(&reader)).await.unwrap().status(),StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&writer)).await.unwrap().status(),StatusCode::CREATED);
+    assert_eq!(router.oneshot(request(&writer)).await.unwrap().status(),StatusCode::OK);
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states[0].recorded_by,f.principal);
+    assert_eq!(snapshot.actor_epistemic_states[0].input,input);
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'EXPOSURE','INDICATED','context','time','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(actor).bind(foreign).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn inquiry_decision_records_exact_considered_judgments_without_execution() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
     use epistemic_workbench::{assessment::{AssessmentInput,AssessmentTarget,AssessmentDimension,AssessmentResult,AssessmentConfidence},inquiry_decision::{InquiryDecisionInput,InquiryDisposition}};

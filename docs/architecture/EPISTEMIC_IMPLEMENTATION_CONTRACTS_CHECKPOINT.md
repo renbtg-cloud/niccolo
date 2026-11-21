@@ -324,6 +324,8 @@ Relevant distinguishable notions include:
 
 These notions are contextual, temporal, attributable and independently assessable. They do not form one rigid monotonic ladder.
 
+Migration 0118 implements an explicit actor-state judgment ledger over the existing actor registry and Situation-scoped expert objects. Fifteen independent dimensions represent exposure, access, perception, attention, examination, comprehension, recall, suspicion, inclination, doubt, belief, suspended judgment, claimed knowledge, perceived knowledge and evidence-supported knowledge. Each event retains context, temporal scope, judgment (`INDICATED`, `NOT_INDICATED`, `UNKNOWN`, `CONTESTED`), rationale, recorder, and optional exact source fragment; indicating evidence-supported knowledge requires such a fragment, but is still a human judgment, not a system-certified truth. Revisions preserve the dimension, actor, target, context, time and recorder. Independent or competing judgments remain visible, absence is not UNKNOWN, and no dimension implies another or changes an argument. The actor's registered kind does not gate or prove mental states.
+
 ## 13. Interest, curiosity, aversion and epistemic acts
 
 Humans can want to know, not care, prefer not to know, seek only enough knowledge to act, avoid knowledge to preserve deniability, delegate knowing or avoid formal documentation.
