@@ -38,8 +38,27 @@ pub enum StateDimension {
     Loyalty,
     EgoProtection,
     IdentityProtection,
+    AutonomyDecide,
+    AutonomyRefuse,
+    AutonomyDisagree,
+    AutonomyExit,
+    AutonomySeekReview,
+    AutonomyAcquireInformation,
+    AutonomyReviseCommitments,
 }
 impl StateDimension {
+    pub fn is_contextual_autonomy(self) -> bool {
+        matches!(
+            self,
+            Self::AutonomyDecide
+                | Self::AutonomyRefuse
+                | Self::AutonomyDisagree
+                | Self::AutonomyExit
+                | Self::AutonomySeekReview
+                | Self::AutonomyAcquireInformation
+                | Self::AutonomyReviseCommitments
+        )
+    }
     pub fn is_protective_motive(self) -> bool {
         matches!(self, Self::EgoProtection | Self::IdentityProtection)
     }
@@ -213,6 +232,7 @@ pub async fn record(
         || input.target_state_event_id == Some(event)
         || (input.dimension.is_trust() && input.target_actor_id.is_none())
         || (input.dimension.is_protective_motive() && input.target_object_id.is_none())
+        || (input.dimension.is_contextual_autonomy() && input.target_object_id.is_none())
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()
             && input.dimension != StateDimension::Loyalty

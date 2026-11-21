@@ -415,6 +415,8 @@ Compliance is not consent. Submission is not loyalty.
 
 Autonomy is contextual: ability to decide, refuse, disagree, exit, seek review, acquire information and revise commitments may differ independently.
 
+Migration 0124 represents those seven capabilities as independent attributed contextual autonomy judgments about a visible Situation object. Each may be indicated, not indicated, contested or unknown, with its own rationale, time and optional evidence. One capability does not imply another; reporting capacity does not establish consent, execute an act, confer authorization or make a system-level permission change.
+
 Vulnerability is contextual exposure to an adverse consequence, not a personal defect.
 
 ## 17. Epistemic influence and power
