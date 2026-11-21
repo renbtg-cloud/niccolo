@@ -67,6 +67,9 @@ async fn real_loopback_web_and_persistent_situation_smoke() {
     assert!(bundle.contains("epistemic/action-recommendations/"));
     assert!(bundle.contains("Record action decision only"));
     assert!(bundle.contains("epistemic/action-decisions/"));
+    assert!(bundle.contains("Record causal assessment only"));
+    assert!(bundle.contains("epistemic/intervention-records/"));
+    assert!(bundle.contains("epistemic/intervention-causal-assessments/"));
     let s = Uuid::new_v4();
     let base = format!("/v1/workspaces/{w}/situations/{s}");
     let created = raw_http(
