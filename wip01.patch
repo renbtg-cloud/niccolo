@@ -1,0 +1,350 @@
+From 49ab1f36f496f0eb34affe81a5c63b43095c21d2 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Sat, 21 Nov 2026 02:48:53 +0000
+Subject: [PATCH] WIP 01: expert evidence grounding authoring
+
+---
+ .../src/pages/ExpertWorkbench.product.test.js | 13 ++-
+ frontend/src/pages/ExpertWorkbenchPage.jsx    | 17 +++-
+ frontend/src/state/expertWorkbench.js         | 27 ++++--
+ src/epistemic_workbench.rs                    | 49 +++++++++++
+ tests/epistemic_workbench_integration.rs      | 84 +++++++++++++++++++
+ 5 files changed, 174 insertions(+), 16 deletions(-)
+
+diff --git a/frontend/src/pages/ExpertWorkbench.product.test.js b/frontend/src/pages/ExpertWorkbench.product.test.js
+index 4307081..4afb815 100644
+--- a/frontend/src/pages/ExpertWorkbench.product.test.js
++++ b/frontend/src/pages/ExpertWorkbench.product.test.js
+@@ -10,7 +10,7 @@ const config = {
+   situation: '22222222-2222-4222-8222-222222222222',
+   token: 'test-in-memory-credential',
+ };
+-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], relations: [], arguments: [], grounding_sets: [] }) };
++const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] }) };
+ 
+ describe('expert epistemic Workbench — structured MVP authoring', () => {
+   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
+@@ -41,6 +41,12 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+     expect(relationRequest('SEMANTIC', 'CONTRADICTS', 'a', 'b', 'R').kind).toBe('CONTRADICTS');
+   });
+ 
++  it('makes Situation evidence available as an explicit grounding choice', () => {
++    expect(page).toContain('Documentary evidence');
++    expect(page).toContain('EVIDENCE · {item.document_locator}');
++    expect(page).toContain('first 256 admissible source fragments');
++  });
++
+   it('represents multiple selected objects as one joint grounding set', () => {
+     const oldCrypto = globalThis.crypto;
+     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => '77777777-7777-4777-8777-777777777777' } });
+@@ -48,10 +54,11 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+       const body = groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [
+         { object_id: 'a', kind: 'HYPOTHESIS' },
+         { object_id: 'b', kind: 'ASSUMPTION' },
+-      ], {});
+-      expect(body.members).toHaveLength(2);
++      ], {}, [{ evidence_id: 'evidence-1' }]);
++      expect(body.members).toHaveLength(3);
+       expect(body.members[0].role).toBe('PREMISE');
+       expect(body.members[1].role).toBe('ASSUMPTION');
++      expect(body.members[2]).toMatchObject({ role: 'EVIDENCE', ground_object_id: null, evidence_id: 'evidence-1' });
+       expect(body.adequacy).toBe('PARTIAL');
+     } finally {
+       Object.defineProperty(globalThis, 'crypto', { configurable: true, value: oldCrypto });
+diff --git a/frontend/src/pages/ExpertWorkbenchPage.jsx b/frontend/src/pages/ExpertWorkbenchPage.jsx
+index af6c562..b0ee1dc 100644
+--- a/frontend/src/pages/ExpertWorkbenchPage.jsx
++++ b/frontend/src/pages/ExpertWorkbenchPage.jsx
+@@ -27,13 +27,14 @@ export function ExpertWorkbenchPage() {
+     enabled: !!client,
+     queryFn: async () => (await client.expertWorkbench()).value,
+   });
+-  const data = workbench.data ?? { nodes: [], relations: [], arguments: [], grounding_sets: [] };
++  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] };
+   const [error, setError] = useState('');
+   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
+   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
+   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
+   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
+   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
++  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState([]);
+   const [groundRoles, setGroundRoles] = useState({});
+ 
+   const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
+@@ -48,6 +49,10 @@ export function ExpertWorkbenchPage() {
+     () => data.nodes.filter((n) => selectedGroundIds.includes(n.object_id)),
+     [data.nodes, selectedGroundIds],
+   );
++  const selectedGroundEvidence = useMemo(
++    () => data.evidence.filter((item) => selectedEvidenceIds.includes(item.evidence_id)),
++    [data.evidence, selectedEvidenceIds],
++  );
+   const submit = (action) => (event) => {
+     event.preventDefault();
+     setError('');
+@@ -93,7 +98,7 @@ export function ExpertWorkbenchPage() {
+       </form>
+ 
+       <form onSubmit={submit(() => {
+-        const body = groundingRequest(grounding.effect, grounding.adequacy, grounding.rationale, selectedGroundNodes, groundRoles);
++        const body = groundingRequest(grounding.effect, grounding.adequacy, grounding.rationale, selectedGroundNodes, groundRoles, selectedGroundEvidence);
+         if (!grounding.argument) throw new Error('Choose an argument.');
+         createGrounding.mutate({ argumentId: grounding.argument, body });
+       })}>
+@@ -101,14 +106,18 @@ export function ExpertWorkbenchPage() {
+         <label>Argument<select value={grounding.argument} onChange={(e) => setGrounding({ ...grounding, argument: e.target.value })}><option value="">Choose…</option>{data.arguments.map((a) => <option key={a.argument_id} value={a.argument_id}>{a.mode}: conclusion {a.conclusion_object_id}</option>)}</select></label>
+         <label>Effect<select value={grounding.effect} onChange={(e) => setGrounding({ ...grounding, effect: e.target.value })}>{groundingEffects.map((x) => <option key={x}>{x}</option>)}</select></label>
+         <label>Adequacy<select value={grounding.adequacy} onChange={(e) => setGrounding({ ...grounding, adequacy: e.target.value })}>{groundingAdequacies.map((x) => <option key={x}>{x}</option>)}</select></label>
+-        <fieldset><legend>Joint grounds</legend>{data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <select value={groundRoles[n.object_id] ?? (n.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE')} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}><option>PREMISE</option><option>ASSUMPTION</option><option>CONTEXT</option></select>}</div>)}</fieldset>
++        <fieldset><legend>Joint grounds</legend>
++          {data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <select value={groundRoles[n.object_id] ?? (n.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE')} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}><option>PREMISE</option><option>ASSUMPTION</option><option>CONTEXT</option></select>}</div>)}
++          {data.evidence.length > 0 && <><p><strong>Documentary evidence</strong></p>{data.evidence.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label></div>)}</>}
++          {data.evidence_truncated && <small>Showing the first 256 admissible source fragments attached to this Situation. Use source inspection for material outside this bounded Workbench list.</small>}
++        </fieldset>
+         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
+         <button disabled={busy}>Create grounding set</button>
+       </form>
+     </div>
+ 
+     <article><h3>Current structured model</h3>
+-      <p>{data.nodes.length} objects · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
++      <p>{data.nodes.length} objects · {data.evidence.length} visible evidence fragments · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
+       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
+       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}
+       {data.grounding_sets.length > 0 && <details><summary>Grounding</summary><ul>{data.grounding_sets.map((g) => <li key={g.grounding_set_id}>{g.effect}/{g.adequacy}: {g.members.length} joint member(s)</li>)}</ul></details>}
+diff --git a/frontend/src/state/expertWorkbench.js b/frontend/src/state/expertWorkbench.js
+index a9aba87..ab34e6b 100644
+--- a/frontend/src/state/expertWorkbench.js
++++ b/frontend/src/state/expertWorkbench.js
+@@ -38,19 +38,28 @@ export function argumentRequest(conclusionObjectId, mode, rationale) {
+   return { conclusion_object_id: conclusionObjectId, mode, rationale: requireText(rationale, 'Rationale') };
+ }
+ 
+-export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles) {
++export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles, selectedEvidence = []) {
+   if (!groundingEffects.includes(effect) || !groundingAdequacies.includes(adequacy)) throw new Error('Choose grounding semantics.');
+-  if (!selectedNodes.length) throw new Error('Choose at least one joint ground.');
++  if (!selectedNodes.length && !selectedEvidence.length) throw new Error('Choose at least one joint ground.');
+   return {
+     effect,
+     adequacy,
+     rationale: requireText(rationale, 'Rationale'),
+-    members: selectedNodes.map((node) => ({
+-      member_id: crypto.randomUUID(),
+-      role: roles[node.object_id] ?? (node.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE'),
+-      ground_object_id: node.object_id,
+-      evidence_id: null,
+-      rationale: `Explicit ${node.kind.toLowerCase()} selected by the investigator as a grounding member.`,
+-    })),
++    members: [
++      ...selectedNodes.map((node) => ({
++        member_id: crypto.randomUUID(),
++        role: roles[node.object_id] ?? (node.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE'),
++        ground_object_id: node.object_id,
++        evidence_id: null,
++        rationale: `Explicit ${node.kind.toLowerCase()} selected by the investigator as a grounding member.`,
++      })),
++      ...selectedEvidence.map((item) => ({
++        member_id: crypto.randomUUID(),
++        role: 'EVIDENCE',
++        ground_object_id: null,
++        evidence_id: item.evidence_id,
++        rationale: 'Explicit source fragment selected by the investigator as documentary evidence in this grounding set.',
++      })),
++    ],
+   };
+ }
+diff --git a/src/epistemic_workbench.rs b/src/epistemic_workbench.rs
+index f0690f4..9bfbfc8 100644
+--- a/src/epistemic_workbench.rs
++++ b/src/epistemic_workbench.rs
+@@ -147,6 +147,18 @@ impl RelationKind {
+     }
+ }
+ 
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct WorkbenchEvidence {
++    pub evidence_id: Uuid,
++    pub document_id: Uuid,
++    pub ordinal: i32,
++    pub speaker_label: String,
++    pub content: String,
++    pub source_class: String,
++    pub source_locator: String,
++    pub document_locator: String,
++}
++
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct ExpertRelation {
+     pub relation_id: Uuid,
+@@ -288,6 +300,8 @@ pub struct GroundingSetView {
+ pub struct WorkbenchSnapshot {
+     pub situation_id: Uuid,
+     pub nodes: Vec<ExpertNode>,
++    pub evidence: Vec<WorkbenchEvidence>,
++    pub evidence_truncated: bool,
+     pub relations: Vec<ExpertRelation>,
+     pub arguments: Vec<ExpertArgument>,
+     pub grounding_sets: Vec<GroundingSetView>,
+@@ -1002,6 +1016,37 @@ pub async fn snapshot(
+             replayed: false,
+         });
+     }
++    let evidence_rows: Vec<(Uuid, Uuid, i32, String, String, String, String, String)> = sqlx::query_as(
++        "SELECT f.evidence_id,f.document_id,f.ordinal,f.speaker_label,e.content,e.source_class,e.source_locator,d.locator \
++         FROM niccolo.situation_sources ss \
++         JOIN niccolo.source_fragments f ON f.workspace_id=ss.workspace_id AND f.document_id=ss.document_id \
++         JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
++         JOIN niccolo.source_documents d ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id \
++         WHERE ss.workspace_id=$1 AND ss.situation_id=$2 AND e.admissible \
++         ORDER BY d.created_at,f.document_id,f.ordinal LIMIT 257",
++    )
++    .bind(workspace)
++    .bind(situation)
++    .fetch_all(&mut *tx)
++    .await?;
++    let evidence_truncated = evidence_rows.len() > 256;
++    let evidence = evidence_rows
++        .into_iter()
++        .take(256)
++        .map(
++            |(evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator)| WorkbenchEvidence {
++                evidence_id,
++                document_id,
++                ordinal,
++                speaker_label,
++                content,
++                source_class,
++                source_locator,
++                document_locator,
++            },
++        )
++        .collect();
++
+     let relation_rows: Vec<(Uuid, String, String, Uuid, Uuid, String, Uuid)> = sqlx::query_as(
+         "SELECT relation_id,relation_family,relation_kind,left_object_id,right_object_id,rationale,recorded_by_principal_id \
+          FROM niccolo.epistemic_relations WHERE workspace_id=$1 AND situation_id=$2 \
+@@ -1102,6 +1147,8 @@ pub async fn snapshot(
+     Ok(WorkbenchSnapshot {
+         situation_id: situation,
+         nodes,
++        evidence,
++        evidence_truncated,
+         relations,
+         arguments,
+         grounding_sets,
+@@ -1126,6 +1173,8 @@ mod tests {
+         let value = serde_json::to_value(WorkbenchSnapshot {
+             situation_id: Uuid::nil(),
+             nodes: vec![],
++            evidence: vec![],
++            evidence_truncated: false,
+             relations: vec![],
+             arguments: vec![],
+             grounding_sets: vec![],
+diff --git a/tests/epistemic_workbench_integration.rs b/tests/epistemic_workbench_integration.rs
+index 1e5f96c..15ced3e 100644
+--- a/tests/epistemic_workbench_integration.rs
++++ b/tests/epistemic_workbench_integration.rs
+@@ -1,11 +1,13 @@
+ #![cfg(feature = "pg-integration")]
+ use niccolo_evidence::{
+     authz,
++    postgres_ingest::ingest_source,
+     epistemic_workbench::{
+         self, ArgumentMode, ExpertNodeKind, GroundingAdequacy, GroundingEffect,
+         GroundingMemberRole, NewGroundingMember, RelationFamily, RelationKind, WorkbenchError,
+     },
+     situation_store,
++    source_import::SourceFormat,
+ };
+ use sqlx::{PgPool, postgres::PgPoolOptions};
+ use uuid::Uuid;
+@@ -298,3 +300,85 @@ async fn grounding_member_target_and_role_are_not_guessed() {
+     .await;
+     assert!(matches!(invalid, Err(WorkbenchError::Invalid)));
+ }
++
++
++#[tokio::test]
++async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
++    let f = fixture().await;
++    let sit = situation(&f, "Ground a finding in documentary evidence").await;
++    let document_id = Uuid::new_v4();
++    let imported = ingest_source(
++        &f.service,
++        f.workspace,
++        document_id,
++        SourceFormat::WhatsappExport,
++        "fixture://expert-grounding-chat",
++        b"[02/11/2026, 12:00] Ana: approval was placed on hold\n",
++    )
++    .await
++    .unwrap();
++    situation_store::add_source(
++        &f.service,
++        f.workspace,
++        f.principal,
++        sit,
++        document_id,
++    )
++    .await
++    .unwrap();
++
++    let finding = node(
++        &f,
++        sit,
++        ExpertNodeKind::Finding,
++        "A manual approval hold is documented in the supplied chat export.",
++    )
++    .await;
++    let argument_id = Uuid::new_v4();
++    epistemic_workbench::create_argument(
++        &f.service,
++        f.workspace,
++        sit,
++        f.principal,
++        argument_id,
++        finding,
++        ArgumentMode::Inductive,
++        "The finding is grounded in one explicitly selected source fragment.",
++    )
++    .await
++    .unwrap();
++
++    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
++        .await
++        .unwrap();
++    assert_eq!(snapshot.evidence.len(), 1);
++    assert!(!snapshot.evidence_truncated);
++    assert_eq!(snapshot.evidence[0].evidence_id, imported.fragment_ids[0]);
++    assert_eq!(snapshot.evidence[0].document_id, document_id);
++    assert_eq!(snapshot.evidence[0].speaker_label, "Ana");
++    assert!(snapshot.evidence[0].content.contains("approval was placed on hold"));
++
++    let grounding = epistemic_workbench::create_grounding_set(
++        &f.service,
++        f.workspace,
++        sit,
++        f.principal,
++        argument_id,
++        Uuid::new_v4(),
++        GroundingEffect::Supports,
++        GroundingAdequacy::Partial,
++        "The source fragment is an explicit documentary member, not an inferred premise.",
++        &[NewGroundingMember {
++            member_id: Uuid::new_v4(),
++            role: GroundingMemberRole::Evidence,
++            ground_object_id: None,
++            evidence_id: Some(imported.fragment_ids[0]),
++            rationale: "Investigator selected this exact fragment as documentary grounding.".into(),
++        }],
++    )
++    .await
++    .unwrap();
++    assert_eq!(grounding.members.len(), 1);
++    assert_eq!(grounding.members[0].role, GroundingMemberRole::Evidence);
++    assert_eq!(grounding.members[0].evidence_id, Some(imported.fragment_ids[0]));
++}
+-- 
+2.47.3
