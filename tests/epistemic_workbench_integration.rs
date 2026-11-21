@@ -226,6 +226,75 @@ async fn action_recommendation_api_requires_write_and_snapshot_requires_read() {
 }
 
 #[tokio::test]
+async fn action_decisions_pin_actual_options_without_authorizing_or_executing() {
+    use epistemic_workbench::{action_decision::{self, DecisionDisposition, DecisionInput}, action_recommendation};
+    let f = fixture().await;
+    let sit = situation(&f, "Consider a preventive review").await;
+    let other = situation(&f, "Another investigation").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Privileges are broad").await;
+    let foreign_ground = node(&f, other, ExpertNodeKind::Proposition, "Another concern").await;
+    let recipient = Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, recipient, "Reviewer").await.unwrap();
+    let recommendation = Uuid::new_v4();
+    let recommendation_input = recommendation_input(ground, recipient);
+    action_recommendation::record(&f.service, f.workspace, sit, f.principal, recommendation, recommendation_input.clone()).await.unwrap();
+    let foreign_recommendation = Uuid::new_v4();
+    action_recommendation::record(&f.service, f.workspace, other, f.principal, foreign_recommendation, action_recommendation::RecommendationInput { ground_object_ids: vec![foreign_ground], ..recommendation_input.clone() }).await.unwrap();
+    let before = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    let choice = DecisionInput { recommendation_id: recommendation, disposition: DecisionDisposition::SelectAlternative, alternative_index: Some(0), rationale: "Prefer inaction while obtaining more context".into(), revises_decision_id: None };
+    let record = |id, input| action_decision::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let first_id = Uuid::new_v4();
+    let first = record(first_id, choice.clone()).await.unwrap();
+    assert!(!first.replayed);
+    assert_eq!(first.recorded_by, f.principal);
+    assert!(record(first_id, choice.clone()).await.unwrap().replayed);
+    assert!(matches!(record(first_id, DecisionInput { rationale: "Different".into(), ..choice.clone() }).await, Err(WorkbenchError::Conflict)));
+    assert!(matches!(record(Uuid::new_v4(), DecisionInput { alternative_index: Some(1), ..choice.clone() }).await, Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(), DecisionInput { recommendation_id: foreign_recommendation, ..choice.clone() }).await, Err(WorkbenchError::Invisible)));
+
+    let revised_recommendation = Uuid::new_v4();
+    action_recommendation::record(&f.service, f.workspace, sit, f.principal, revised_recommendation, action_recommendation::RecommendationInput { revises_recommendation_id: Some(recommendation), risk: "Changed context".into(), ..recommendation_input }).await.unwrap();
+    let revision = DecisionInput { disposition: DecisionDisposition::Defer, alternative_index: None, revises_decision_id: Some(first_id), rationale: "Reconsider the originally proposed options".into(), ..choice.clone() };
+    assert!(matches!(record(Uuid::new_v4(), DecisionInput { recommendation_id: revised_recommendation, ..revision.clone() }).await, Err(WorkbenchError::Invalid)));
+    let other_principal = Uuid::new_v4();
+    let admin = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    authz::provision_token(&admin, other_principal, f.workspace, true, true, 1).await.unwrap();
+    assert!(matches!(action_decision::record(&f.service, f.workspace, sit, other_principal, Uuid::new_v4(), revision.clone()).await, Err(WorkbenchError::Invalid)));
+    let second_id = Uuid::new_v4();
+    record(second_id, revision.clone()).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(), revision).await, Err(WorkbenchError::Conflict)));
+    // A decision about a new recommendation revision is a new explicit choice, never auto-rebound.
+    let new_choice = DecisionInput { recommendation_id: revised_recommendation, disposition: DecisionDisposition::SelectPrimary, alternative_index: None, rationale: "Consider the changed proposal".into(), revises_decision_id: None };
+    record(Uuid::new_v4(), new_choice).await.unwrap();
+    let history = action_decision::list(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(history.len(), 3);
+    assert_eq!(history[0].input, choice);
+    assert_eq!(history[1].input.recommendation_id, recommendation);
+    assert_eq!(history[2].input.recommendation_id, revised_recommendation);
+    assert!(action_decision::list(&f.service, f.workspace, other).await.unwrap().is_empty());
+    let separate = fixture().await;
+    assert!(matches!(action_decision::list(&separate.service, separate.workspace, sit).await, Err(WorkbenchError::Invisible)));
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(before.nodes, after.nodes);
+    assert_eq!(before.assessments, after.assessments);
+    assert_eq!(before.arguments, after.arguments);
+    assert!(after.question_decisions.is_empty());
+    assert_eq!(after.action_recommendations.len(), 2);
+
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_action_decisions(workspace_id,situation_id,decision_id,recommendation_id,disposition,alternative_index,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'SELECT_ALTERNATIVE',7,'Invalid option',$5)")
+        .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(recommendation).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514"));
+    tx.rollback().await.unwrap();
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let rejected = sqlx::query("UPDATE niccolo.epistemic_action_decisions SET disposition='DECLINE' WHERE decision_id=$1").bind(first_id).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("42501"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
     use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment};
     let f=fixture().await;
