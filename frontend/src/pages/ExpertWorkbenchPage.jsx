@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useClient } from '../hooks/useClient.js';
 import {
@@ -14,6 +14,7 @@ import {
   defaultGroundRole, relationEndpointAllowed,
   nodeKinds,
   nodeRequest,
+  questionResponseRequest,
   relationKinds,
   relationRequest,
   relationSemantics,
@@ -36,6 +37,9 @@ export function ExpertWorkbenchPage() {
     queryFn: async () => (await client.expertWorkbench()).value,
   });
   const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
+  const actors = useQuery({queryKey:['epistemic-response-actors',client?.config.workspace],enabled:!!client,queryFn:async () => (await client.actors()).value.actors});
+  const [responseDraft, setResponseDraft] = useState({question:'',text:'',speaker:'',evidence:'',rationale:''});
+  const pendingResponse = useRef(null);
   const [error, setError] = useState('');
   const [assessment, setAssessment] = useState({ target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: [] });
   const [dependency, setDependency] = useState({route: '', assessment: '', rationale: ''});
@@ -60,10 +64,11 @@ export function ExpertWorkbenchPage() {
   const reviewReassessment = useWorkbenchMutation(client, workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
   const recordApplicability = useWorkbenchMutation(client, workbench, async ({route, body}) => client.recordExpertApplicability(route.argument_id, route.grounding_set_id, crypto.randomUUID(), body));
   const recordAssessment = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
+  const recordResponse = useWorkbenchMutation(client, workbench, async ({questionId,responseId,body}) => client.recordExpertQuestionResponse(questionId,responseId,body));
   const recordDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessmentDependency(crypto.randomUUID(), body));
   const reviewDependency = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDependency(id, crypto.randomUUID(), body));
   const reviewDownstream = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDownstream(id, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordDependency, reviewDependency, reviewDownstream];
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordResponse, recordDependency, reviewDependency, reviewDownstream];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -117,6 +122,20 @@ export function ExpertWorkbenchPage() {
     {mutationError && <p className="error" role="alert">Write failed: {mutationError.message}</p>}
 
     <div className="expert-workbench-grid">
+      {data.nodes.some(n => n.kind === 'QUESTION') && <form onSubmit={submit(() => {
+        const key = JSON.stringify([client.config.workspace, client.config.situation, responseDraft]);
+        if (pendingResponse.current?.key !== key) pendingResponse.current = {key, responseId:crypto.randomUUID(), utteranceId:crypto.randomUUID()};
+        const pending = pendingResponse.current;
+        recordResponse.mutate({questionId:responseDraft.question,responseId:pending.responseId,body:questionResponseRequest(responseDraft,pending.utteranceId)}, {onSuccess:() => {pendingResponse.current=null;setResponseDraft({question:'',text:'',speaker:'',evidence:'',rationale:''});}});
+      })}>
+        <h3>Record a response already received</h3><p>Preserve the original English utterance as a communicative occurrence. Recording does not assert its content, validate its meaning, close a gap or send a new question.</p>
+        <label>Question<select value={responseDraft.question} onChange={e => setResponseDraft({...responseDraft,question:e.target.value})}><option value="">Choose…</option>{data.nodes.filter(n => n.kind === 'QUESTION').map(n => <option key={n.object_id} value={n.object_id}>{n.text}</option>)}</select></label>
+        <label>Original utterance<textarea value={responseDraft.text} maxLength={8192} onChange={e => setResponseDraft({...responseDraft,text:e.target.value})}/></label>
+        <label>Speaker, if identified<select value={responseDraft.speaker} onChange={e => setResponseDraft({...responseDraft,speaker:e.target.value})}><option value="">Unspecified speaker</option>{(actors.data ?? []).map(a => <option key={a.actor_id} value={a.actor_id}>{a.display_label}</option>)}</select></label>{actors.error && <small>Actor registry unavailable; no speaker is inferred.</small>}
+        <label>Source fragment, if recorded<select value={responseDraft.evidence} onChange={e => setResponseDraft({...responseDraft,evidence:e.target.value})}><option value="">No explicit source fragment</option>{evidenceChoices.map(e => <option key={e.evidence_id} value={e.evidence_id}>{e.document_locator} #{e.ordinal}: {e.content}</option>)}</select></label>
+        <label>Why this utterance responds to the question<textarea value={responseDraft.rationale} maxLength={4096} onChange={e => setResponseDraft({...responseDraft,rationale:e.target.value})}/></label>
+        <button disabled={busy}>Record response occurrence</button>
+      </form>}
       <form onSubmit={submit(() => createNode.mutate(nodeRequest(node.kind, node.text, node.rationale)))}>
         <h3>Add abstraction</h3>
         <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x}>{x}</option>)}</select></label>
@@ -223,7 +242,8 @@ export function ExpertWorkbenchPage() {
         const question = data.nodes.find(n => n.object_id === inquiry.question_object_id);
         const linkGroups = [['Addressed gaps', inquiry.addressed_gaps], ['Tested hypotheses', inquiry.tested_hypotheses], ['Explicit presuppositions', inquiry.presuppositions]];
         const judgmentGroups = [['Relevance', inquiry.current_relevance_events], ['Discriminatory power', inquiry.current_discriminatory_power_events]];
-        return <li key={inquiry.question_object_id}><strong>{question?.text ?? inquiry.question_object_id}</strong><p>{question?.rationale}</p><small>Authored by {question?.created_by}</small>{linkGroups.map(([label, links]) => <div key={label}><strong>{label}</strong>{links.length === 0 ? <p>No explicit link recorded.</p> : <ul>{links.map(link => {
+        const responses = (data.question_responses ?? []).filter(r => r.question_id === inquiry.question_object_id);
+        return <li key={inquiry.question_object_id}><strong>{question?.text ?? inquiry.question_object_id}</strong><p>{question?.rationale}</p><small>Authored by {question?.created_by}</small><div><strong>Recorded response occurrences — not accepted facts</strong>{responses.length === 0 ? <p>No response recorded.</p> : <ul>{responses.map(r => <li key={r.response_id}><blockquote>{r.utterance.utterance_text}</blockquote><small>Speaker: {actors.data?.find(a => a.actor_id === r.utterance.speaker_actor_id)?.display_label ?? r.utterance.speaker_actor_id ?? 'Unspecified'} · source: {r.utterance.source_evidence_id ?? r.utterance.source_contribution_id ?? 'not explicitly linked'}</small><p>{r.rationale}</p><small>Recorded by {r.recorded_by} · {r.recorded_at} · utterance {r.utterance.utterance_id}</small></li>)}</ul>}</div>{linkGroups.map(([label, links]) => <div key={label}><strong>{label}</strong>{links.length === 0 ? <p>No explicit link recorded.</p> : <ul>{links.map(link => {
           const target = data.nodes.find(n => n.object_id === link.target_object_id);
           const relation = data.relations.find(r => r.relation_id === link.relation_id);
           return <li key={link.relation_id}>{target?.kind}: {target?.text ?? link.target_object_id}<br/><small>{relation?.rationale} · recorded by {relation?.recorded_by}</small></li>;

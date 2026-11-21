@@ -284,6 +284,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessments/{event}",
             post(record_expert_assessment),
         )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/questions/{question}/responses/{response}",
+            post(record_expert_question_response),
+        )
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}", post(record_expert_assessment_dependency))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/reviews/{event}", post(record_expert_assessment_dependency_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/downstream-reviews/{event}", post(record_expert_assessment_downstream_review))
@@ -3595,6 +3599,31 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn record_expert_question_response(
+    State(state): State<AppState>,
+    Path((workspace, situation, question, response)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::inquiry_response::ResponseInput>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let response = epistemic_workbench::inquiry_response::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        question,
+        response,
+        input,
+    )
+    .await?;
+    let status = if response.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"response": response}), status))
 }
 
 async fn record_expert_assessment(

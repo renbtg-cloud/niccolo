@@ -303,6 +303,18 @@ pub async fn create_utterance(
     actor: Uuid,
     item: NewUtterance<'_>,
 ) -> Result<HumanUtterance, EpistemicIdentityError> {
+    let mut tx = scoped(pool, workspace, false).await?;
+    let result = create_utterance_in_tx(&mut tx, workspace, actor, item).await?;
+    tx.commit().await?;
+    Ok(result)
+}
+
+pub(crate) async fn create_utterance_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    actor: Uuid,
+    item: NewUtterance<'_>,
+) -> Result<HumanUtterance, EpistemicIdentityError> {
     if item.language != "en"
         || !valid_text(item.utterance_text, 8192)
         || (item.source_evidence_id.is_some() && item.source_contribution_id.is_some())
@@ -311,9 +323,8 @@ pub async fn create_utterance(
         return Err(EpistemicIdentityError::Invalid);
     }
     let text = item.utterance_text.trim();
-    let mut tx = scoped(pool, workspace, false).await?;
     let object_inserted =
-        ensure_object(&mut tx, workspace, item.utterance_id, "UTTERANCE", actor).await?;
+        ensure_object(tx, workspace, item.utterance_id, "UTTERANCE", actor).await?;
     let row_inserted = sqlx::query(
         "INSERT INTO niccolo.epistemic_human_utterances \
          (workspace_id,utterance_id,situation_id,utterance_text,language,speaker_actor_id,source_evidence_id,source_contribution_id) \
@@ -326,7 +337,7 @@ pub async fn create_utterance(
     .bind(item.speaker_actor_id)
     .bind(item.source_evidence_id)
     .bind(item.source_contribution_id)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?
     .rows_affected()
         == 1;
@@ -344,7 +355,7 @@ pub async fn create_utterance(
     )
     .bind(workspace)
     .bind(item.utterance_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?;
     let Some((
         situation_id,
@@ -366,7 +377,6 @@ pub async fn create_utterance(
     {
         return Err(EpistemicIdentityError::Conflict);
     }
-    tx.commit().await?;
     Ok(HumanUtterance {
         utterance_id: item.utterance_id,
         situation_id,

@@ -306,6 +306,144 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
 }
 
 #[tokio::test]
+async fn response_occurrences_preserve_original_text_and_do_not_resolve_gaps() {
+    use epistemic_workbench::inquiry_response::*;
+    let f = fixture().await;
+    let sit = situation(&f, "Response is not truth").await;
+    let other = situation(&f, "Other inquiry").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Who approved payment?").await;
+    let g = node(&f, sit, ExpertNodeKind::InformationGap, "Approval identity").await;
+    let foreign = node(&f, other, ExpertNodeKind::Question, "Who signed elsewhere?").await;
+    let q2 = node(
+        &f,
+        sit,
+        ExpertNodeKind::Question,
+        "What does the witness claim to know?",
+    )
+    .await;
+    let response = Uuid::new_v4();
+    let input = ResponseInput {
+        utterance_id: Uuid::new_v4(),
+        utterance_text: "I do not know.".into(),
+        speaker_actor_id: None,
+        source_evidence_id: None,
+        source_contribution_id: None,
+        rationale: "Answer received during interview".into(),
+    };
+    let record = |question, id, input| {
+        epistemic_workbench::inquiry_response::record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            question,
+            id,
+            input,
+        )
+    };
+    assert!(matches!(
+        record(g, response, input.clone()).await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        record(foreign, response, input.clone()).await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(matches!(
+        record(
+            q,
+            response,
+            ResponseInput {
+                source_evidence_id: Some(Uuid::new_v4()),
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    let authored = record(q, response, input.clone()).await.unwrap();
+    assert!(!authored.replayed && !authored.utterance.replayed);
+    assert_eq!(authored.utterance.utterance_text, "I do not know.");
+    assert!(record(q, response, input.clone()).await.unwrap().replayed);
+    assert!(matches!(
+        record(
+            q,
+            response,
+            ResponseInput {
+                utterance_text: "I know.".into(),
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    assert!(matches!(
+        record(q, Uuid::new_v4(), input.clone()).await,
+        Err(WorkbenchError::Conflict)
+    ));
+    let second = record(q2, Uuid::new_v4(), input.clone()).await.unwrap();
+    assert!(!second.replayed && second.utterance.replayed);
+    let independent = record(
+        q,
+        Uuid::new_v4(),
+        ResponseInput {
+            utterance_id: Uuid::new_v4(),
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    assert_ne!(
+        independent.utterance.utterance_id,
+        authored.utterance.utterance_id
+    );
+    let rejected_utterance = Uuid::new_v4();
+    assert!(matches!(
+        record(
+            q,
+            response,
+            ResponseInput {
+                utterance_id: rejected_utterance,
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.question_responses.len(), 3);
+    assert_eq!(snapshot.nodes.len(), 3);
+    assert!(snapshot.assessments.is_empty() && snapshot.arguments.is_empty());
+    assert!(
+        snapshot
+            .question_inquiries
+            .iter()
+            .all(|q| q.current_discriminatory_power_events.is_empty())
+    );
+    assert!(
+        epistemic_workbench::snapshot(&f.service, f.workspace, other)
+            .await
+            .unwrap()
+            .question_responses
+            .is_empty()
+    );
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(f.workspace.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let exists:bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_human_utterances WHERE workspace_id=$1 AND utterance_id=$2)").bind(f.workspace).bind(rejected_utterance).fetch_one(&mut *tx).await.unwrap();
+    assert!(
+        !exists,
+        "conflicting response must roll back the newly inserted utterance"
+    );
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn gap_resolution_is_attributed_revision_not_an_answer_or_question_link() {
     use epistemic_workbench::assessment::*;
     let f = fixture().await;
@@ -726,12 +864,45 @@ async fn question_authoring_respects_authenticated_http_and_workspace_boundaries
     );
     assert_eq!(
         router
+            .clone()
             .oneshot(send(&writer, "Different question?"))
             .await
             .unwrap()
             .status(),
         StatusCode::CONFLICT
     );
+    let response_path = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/questions/{id}/responses/{}",
+        f.workspace,
+        sit,
+        Uuid::new_v4()
+    );
+    let payload = serde_json::json!({"utterance_id":Uuid::new_v4(),"utterance_text":"I do not know.","rationale":"A recorded reply"});
+    let send_response = |token: &str| {
+        Request::builder()
+            .method("POST")
+            .uri(&response_path)
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap()
+    };
+    for (token, status) in [
+        (&reader, StatusCode::FORBIDDEN),
+        (&outsider, StatusCode::FORBIDDEN),
+        (&writer, StatusCode::CREATED),
+        (&writer, StatusCode::OK),
+    ] {
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(send_response(token))
+                .await
+                .unwrap()
+                .status(),
+            status
+        );
+    }
 }
 
 #[tokio::test]

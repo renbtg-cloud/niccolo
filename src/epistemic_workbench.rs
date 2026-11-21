@@ -9,6 +9,8 @@ use uuid::Uuid;
 
 #[path = "epistemic_assessment.rs"]
 pub mod assessment;
+#[path = "epistemic_inquiry_response.rs"]
+pub mod inquiry_response;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WorkbenchError {
@@ -638,6 +640,7 @@ pub struct WorkbenchSnapshot {
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
     pub question_inquiries: Vec<QuestionInquiryView>,
+    pub question_responses: Vec<inquiry_response::QuestionResponse>,
     pub assessments: Vec<assessment::AssessmentEvent>,
     pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
     pub investigator_free_text_compiler_enabled: bool,
@@ -2284,6 +2287,8 @@ pub async fn snapshot(
     }
     let applicability = latest_route_applicability(&mut tx, workspace, situation).await?;
     let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
+    let question_responses =
+        inquiry_response::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     let assessment_dependencies = assessment::dependency_views(
         &mut tx,
         workspace,
@@ -2422,6 +2427,7 @@ pub async fn snapshot(
         grounding_cycles,
         reasoning_diagnostics,
         question_inquiries,
+        question_responses,
         assessments,
         assessment_dependencies,
         investigator_free_text_compiler_enabled: false,
@@ -2454,6 +2460,7 @@ mod tests {
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],
             question_inquiries: vec![],
+            question_responses: vec![],
             assessments: vec![],
             assessment_dependencies: vec![],
             investigator_free_text_compiler_enabled: false,

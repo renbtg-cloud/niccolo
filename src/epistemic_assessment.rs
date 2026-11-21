@@ -621,7 +621,7 @@ fn parse<T: for<'de> Deserialize<'de>>(value: String) -> Result<T, WorkbenchErro
     serde_json::from_value(serde_json::Value::String(value)).map_err(|_| WorkbenchError::Invalid)
 }
 
-async fn evidence_visible(
+pub(super) async fn evidence_visible(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,

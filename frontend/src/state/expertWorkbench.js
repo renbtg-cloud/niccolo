@@ -101,6 +101,11 @@ export function nodeRequest(kind, text, rationale) {
   return { kind, text: requireText(text, 'Statement', 8192), rationale: requireText(rationale, 'Rationale') };
 }
 
+export function questionResponseRequest(draft, utteranceId) {
+  if (!draft.question || !utteranceId) throw new Error('Choose an investigative question.');
+  return {utterance_id: utteranceId, utterance_text: requireText(draft.text, 'Original utterance', 8192), speaker_actor_id: draft.speaker || null, source_evidence_id: draft.evidence || null, source_contribution_id: null, rationale: requireText(draft.rationale, 'Response link rationale')};
+}
+
 export function relationRequest(family, kind, leftObjectId, rightObjectId, rationale) {
   if (!relationKinds[family]?.includes(kind)) throw new Error('Relation kind does not belong to the selected family.');
   if (!leftObjectId || !rightObjectId || leftObjectId === rightObjectId) throw new Error('Choose two distinct epistemic objects.');

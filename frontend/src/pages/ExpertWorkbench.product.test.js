@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest } from '../state/expertWorkbench.js';
+import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest, questionResponseRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -13,6 +13,18 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('records response occurrences with provenance and independent stable identities, never as facts', async () => {
+    const body = questionResponseRequest({question:'q',text:'I do not know.',speaker:'actor',evidence:'source',rationale:'Interview reply'},'utterance');
+    expect(body).toEqual({utterance_id:'utterance',utterance_text:'I do not know.',speaker_actor_id:'actor',source_evidence_id:'source',source_contribution_id:null,rationale:'Interview reply'});
+    const calls=[];
+    const client = new NiccoloClient(config,async (url,options)=>{calls.push({url,options});return response;});
+    await client.recordExpertQuestionResponse('q','response',body);
+    expect(calls[0].url).toContain('/epistemic/questions/q/responses/response');
+    expect(JSON.parse(calls[0].options.body)).toEqual(body);
+    expect(page).toContain('pendingResponse.current?.key !== key');
+    expect(page).toContain('Recorded response occurrences — not accepted facts');
+    expect(page).toContain('Recording does not assert its content, validate its meaning, close a gap or send a new question.');
+  });
   it('shows authored inquiry links and unrevised judgments without treating them as findings', () => {
     expect(page).toContain('data.question_inquiries');
     expect(page).toContain('inquiry.current_discriminatory_power_events');
