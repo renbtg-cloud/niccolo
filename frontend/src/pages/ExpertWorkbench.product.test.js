@@ -55,6 +55,7 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Documentary evidence');
     expect(page).toContain('EVIDENCE · {item.document_locator}');
     expect(page).toContain('first 256 admissible source fragments');
+    expect(page).toContain('Search above to reach material outside this bounded list.');
     expect(page).toContain('Search all attached admissible fragments');
   });
 

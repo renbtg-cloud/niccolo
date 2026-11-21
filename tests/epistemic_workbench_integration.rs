@@ -429,3 +429,67 @@ async fn persistent_proposition_requires_explicit_situation_membership() {
     .await;
     assert!(matches!(relation, Err(WorkbenchError::Invisible)));
 }
+
+
+#[tokio::test]
+async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
+    let f = fixture().await;
+    let sit = situation(&f, "Search documentary evidence beyond the bounded Workbench list").await;
+    let document_id = Uuid::new_v4();
+    let mut body = String::new();
+    for minute in 0..300 {
+        let marker = if minute == 299 {
+            " UNIQUESEARCHMARKER approval was suspended"
+        } else {
+            " routine status update"
+        };
+        body.push_str(&format!(
+            "[02/11/2026, {:02}:{:02}] Ana: message {minute}{marker}\n",
+            12 + (minute / 60),
+            minute % 60,
+        ));
+    }
+    let imported = ingest_source(
+        &f.service,
+        f.workspace,
+        document_id,
+        SourceFormat::WhatsappExport,
+        "fixture://expert-search-chat",
+        body.as_bytes(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(imported.fragment_ids.len(), 300);
+    situation_store::add_source(
+        &f.service,
+        f.workspace,
+        f.principal,
+        sit,
+        document_id,
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.evidence.len(), 256);
+    assert!(snapshot.evidence_truncated);
+    assert!(snapshot
+        .evidence
+        .iter()
+        .all(|item| !item.content.contains("UNIQUESEARCHMARKER")));
+
+    let results = epistemic_workbench::search_evidence(
+        &f.service,
+        f.workspace,
+        sit,
+        "UNIQUESEARCHMARKER",
+        20,
+    )
+    .await
+    .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].evidence_id, imported.fragment_ids[299]);
+    assert!(results[0].content.contains("approval was suspended"));
+}
