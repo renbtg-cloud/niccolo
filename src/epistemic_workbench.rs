@@ -294,6 +294,18 @@ pub struct WorkbenchSnapshot {
     pub investigator_free_text_compiler_enabled: bool,
 }
 
+type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
+type GroundingMemberSnapshotRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    String,
+    Option<Uuid>,
+    Option<Uuid>,
+    String,
+    Uuid,
+);
+
 async fn scoped(
     pool: &PgPool,
     workspace: Uuid,
@@ -441,6 +453,10 @@ async fn object_available_in_situation(
     Ok(available.then_some(kind))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "node identity, scope, semantics and authorship are independent inputs"
+)]
 pub async fn create_node(
     pool: &PgPool,
     workspace: Uuid,
@@ -726,13 +742,12 @@ pub async fn create_grounding_set(
         return Err(WorkbenchError::Invisible);
     }
     for member in members {
-        if let Some(object_id) = member.ground_object_id {
-            if object_available_in_situation(&mut tx, workspace, situation, object_id)
+        if let Some(object_id) = member.ground_object_id
+            && object_available_in_situation(&mut tx, workspace, situation, object_id)
                 .await?
                 .is_none()
-            {
-                return Err(WorkbenchError::Invisible);
-            }
+        {
+            return Err(WorkbenchError::Invisible);
         }
         if let Some(evidence_id) = member.evidence_id {
             let visible: bool = sqlx::query_scalar(
@@ -803,7 +818,7 @@ pub async fn create_grounding_set(
         .bind(actor)
         .execute(&mut *tx)
         .await?;
-        let stored: Option<(String, Option<Uuid>, Option<Uuid>, String, Uuid)> = sqlx::query_as(
+        let stored: Option<StoredGroundingMemberRow> = sqlx::query_as(
             "SELECT member_role,ground_object_id,evidence_id,rationale,recorded_by_principal_id \
              FROM niccolo.epistemic_grounding_members \
              WHERE workspace_id=$1 AND argument_id=$2 AND grounding_set_id=$3 AND member_id=$4",
@@ -1044,8 +1059,7 @@ pub async fn snapshot(
     .bind(situation)
     .fetch_all(&mut *tx)
     .await?;
-    let member_rows: Vec<(Uuid, Uuid, Uuid, String, Option<Uuid>, Option<Uuid>, String, Uuid)> =
-        sqlx::query_as(
+    let member_rows: Vec<GroundingMemberSnapshotRow> = sqlx::query_as(
             "SELECT m.argument_id,m.grounding_set_id,m.member_id,m.member_role,m.ground_object_id,m.evidence_id,m.rationale,m.recorded_by_principal_id \
              FROM niccolo.epistemic_grounding_members m JOIN niccolo.epistemic_arguments a \
                ON a.workspace_id=m.workspace_id AND a.argument_id=m.argument_id \
