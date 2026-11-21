@@ -382,3 +382,50 @@ async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     assert_eq!(grounding.members[0].role, GroundingMemberRole::Evidence);
     assert_eq!(grounding.members[0].evidence_id, Some(imported.fragment_ids[0]));
 }
+
+
+#[tokio::test]
+async fn persistent_proposition_requires_explicit_situation_membership() {
+    let f = fixture().await;
+    let sit_a = situation(&f, "Proposition source situation").await;
+    let sit_b = situation(&f, "Unrelated situation").await;
+    let proposition = node(
+        &f,
+        sit_a,
+        ExpertNodeKind::Proposition,
+        "The transfer occurred after approval.",
+    )
+    .await;
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit_a)
+        .await
+        .unwrap();
+    let stored = snapshot
+        .nodes
+        .iter()
+        .find(|item| item.object_id == proposition)
+        .expect("expert-authored proposition is visible in its Situation");
+    assert_eq!(stored.kind, ExpertNodeKind::Proposition);
+
+    let local_hypothesis = node(
+        &f,
+        sit_b,
+        ExpertNodeKind::Hypothesis,
+        "Approval timing may explain the transfer.",
+    )
+    .await;
+    let relation = epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit_b,
+        f.principal,
+        Uuid::new_v4(),
+        RelationFamily::Semantic,
+        RelationKind::Entails,
+        proposition,
+        local_hypothesis,
+        "A workspace-level proposition cannot leak into another Situation merely because its ID exists.",
+    )
+    .await;
+    assert!(matches!(relation, Err(WorkbenchError::Invisible)));
+}

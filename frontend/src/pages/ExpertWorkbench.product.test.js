@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { groundingRequest, relationRequest } from '../state/expertWorkbench.js';
+import { groundingRequest, nodeRequest, relationRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -34,6 +34,14 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(calls[2].url).toContain('/epistemic/relations/');
     expect(calls[3].url).toContain('/epistemic/arguments/');
     expect(calls[4].url).toContain('/grounding/');
+  });
+
+  it('lets a trained investigator author a proposition explicitly', () => {
+    expect(nodeRequest('PROPOSITION', 'The transfer occurred after approval.', 'A proposition to be tested in this Situation.')).toEqual({
+      kind: 'PROPOSITION',
+      text: 'The transfer occurred after approval.',
+      rationale: 'A proposition to be tested in this Situation.',
+    });
   });
 
   it('keeps relation family semantics explicit instead of guessing them', () => {

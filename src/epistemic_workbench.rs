@@ -24,6 +24,7 @@ pub enum WorkbenchError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ExpertNodeKind {
+    Proposition,
     Hypothesis,
     Assumption,
     InformationGap,
@@ -32,6 +33,7 @@ pub enum ExpertNodeKind {
 impl ExpertNodeKind {
     fn db_value(self) -> &'static str {
         match self {
+            Self::Proposition => "PROPOSITION",
             Self::Hypothesis => "HYPOTHESIS",
             Self::Assumption => "ASSUMPTION",
             Self::InformationGap => "INFORMATION_GAP",
@@ -418,10 +420,15 @@ async fn object_available_in_situation(
     let Some(kind) = kind else {
         return Ok(None);
     };
-    if kind == "PROPOSITION" {
-        return Ok(Some(kind));
-    }
     let available: bool = match kind.as_str() {
+        "PROPOSITION" => sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_situation_propositions WHERE workspace_id=$1 AND situation_id=$2 AND proposition_id=$3)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(object_id)
+        .fetch_one(&mut **tx)
+        .await?,
         "HYPOTHESIS" => sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_hypotheses WHERE workspace_id=$1 AND situation_id=$2 AND hypothesis_id=$3)",
         )
@@ -491,49 +498,97 @@ pub async fn create_node(
         return Err(WorkbenchError::Invisible);
     }
     let object_inserted = ensure_object(&mut tx, workspace, object_id, kind.db_value(), actor).await?;
-    let sql = match kind {
-        ExpertNodeKind::Hypothesis => {
-            "INSERT INTO niccolo.epistemic_hypotheses(workspace_id,hypothesis_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
-        }
-        ExpertNodeKind::Assumption => {
-            "INSERT INTO niccolo.epistemic_assumptions(workspace_id,assumption_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
-        }
-        ExpertNodeKind::InformationGap => {
-            "INSERT INTO niccolo.epistemic_information_gaps(workspace_id,gap_id,situation_id,description,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
-        }
-        ExpertNodeKind::Finding => {
-            "INSERT INTO niccolo.epistemic_findings(workspace_id,finding_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
-        }
-    };
-    sqlx::query(sql)
+    if kind == ExpertNodeKind::Proposition {
+        sqlx::query(
+            "INSERT INTO niccolo.epistemic_propositions(workspace_id,proposition_id,statement_text,language) \
+             VALUES($1,$2,$3,'en') ON CONFLICT DO NOTHING",
+        )
         .bind(workspace)
         .bind(object_id)
-        .bind(situation)
         .bind(text)
-        .bind(rationale)
         .execute(&mut *tx)
         .await?;
-    let query = match kind {
-        ExpertNodeKind::Hypothesis => {
-            "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_hypotheses WHERE workspace_id=$1 AND hypothesis_id=$2"
-        }
-        ExpertNodeKind::Assumption => {
-            "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_assumptions WHERE workspace_id=$1 AND assumption_id=$2"
-        }
-        ExpertNodeKind::InformationGap => {
-            "SELECT situation_id,description,rationale FROM niccolo.epistemic_information_gaps WHERE workspace_id=$1 AND gap_id=$2"
-        }
-        ExpertNodeKind::Finding => {
-            "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_findings WHERE workspace_id=$1 AND finding_id=$2"
-        }
-    };
-    let stored: Option<(Uuid, String, String)> = sqlx::query_as(query)
+        let stored_text: Option<String> = sqlx::query_scalar(
+            "SELECT statement_text FROM niccolo.epistemic_propositions WHERE workspace_id=$1 AND proposition_id=$2",
+        )
         .bind(workspace)
         .bind(object_id)
         .fetch_optional(&mut *tx)
         .await?;
-    if stored != Some((situation, text.to_owned(), rationale.to_owned())) {
-        return Err(WorkbenchError::Conflict);
+        if stored_text.as_deref() != Some(text) {
+            return Err(WorkbenchError::Conflict);
+        }
+        sqlx::query(
+            "INSERT INTO niccolo.epistemic_situation_propositions \
+             (workspace_id,situation_id,proposition_id,rationale,recorded_by_principal_id) \
+             VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(object_id)
+        .bind(rationale)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?;
+        let membership: Option<(String, Uuid)> = sqlx::query_as(
+            "SELECT rationale,recorded_by_principal_id FROM niccolo.epistemic_situation_propositions \
+             WHERE workspace_id=$1 AND situation_id=$2 AND proposition_id=$3",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(object_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if membership != Some((rationale.to_owned(), actor)) {
+            return Err(WorkbenchError::Conflict);
+        }
+    } else {
+        let sql = match kind {
+            ExpertNodeKind::Proposition => unreachable!(),
+            ExpertNodeKind::Hypothesis => {
+                "INSERT INTO niccolo.epistemic_hypotheses(workspace_id,hypothesis_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            }
+            ExpertNodeKind::Assumption => {
+                "INSERT INTO niccolo.epistemic_assumptions(workspace_id,assumption_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            }
+            ExpertNodeKind::InformationGap => {
+                "INSERT INTO niccolo.epistemic_information_gaps(workspace_id,gap_id,situation_id,description,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            }
+            ExpertNodeKind::Finding => {
+                "INSERT INTO niccolo.epistemic_findings(workspace_id,finding_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            }
+        };
+        sqlx::query(sql)
+            .bind(workspace)
+            .bind(object_id)
+            .bind(situation)
+            .bind(text)
+            .bind(rationale)
+            .execute(&mut *tx)
+            .await?;
+        let query = match kind {
+            ExpertNodeKind::Proposition => unreachable!(),
+            ExpertNodeKind::Hypothesis => {
+                "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_hypotheses WHERE workspace_id=$1 AND hypothesis_id=$2"
+            }
+            ExpertNodeKind::Assumption => {
+                "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_assumptions WHERE workspace_id=$1 AND assumption_id=$2"
+            }
+            ExpertNodeKind::InformationGap => {
+                "SELECT situation_id,description,rationale FROM niccolo.epistemic_information_gaps WHERE workspace_id=$1 AND gap_id=$2"
+            }
+            ExpertNodeKind::Finding => {
+                "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_findings WHERE workspace_id=$1 AND finding_id=$2"
+            }
+        };
+        let stored: Option<(Uuid, String, String)> = sqlx::query_as(query)
+            .bind(workspace)
+            .bind(object_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if stored != Some((situation, text.to_owned(), rationale.to_owned())) {
+            return Err(WorkbenchError::Conflict);
+        }
     }
     tx.commit().await?;
     Ok(ExpertNode {
@@ -892,6 +947,7 @@ pub async fn create_grounding_set(
 
 fn node_kind_from_db(value: &str) -> Result<ExpertNodeKind, WorkbenchError> {
     match value {
+        "PROPOSITION" => Ok(ExpertNodeKind::Proposition),
         "HYPOTHESIS" => Ok(ExpertNodeKind::Hypothesis),
         "ASSUMPTION" => Ok(ExpertNodeKind::Assumption),
         "INFORMATION_GAP" => Ok(ExpertNodeKind::InformationGap),
@@ -983,6 +1039,12 @@ pub async fn snapshot(
     }
     let node_rows: Vec<(Uuid, String, String, String, Uuid)> = sqlx::query_as(
         "SELECT object_id,kind,text,rationale,created_by FROM ( \
+           SELECT p.proposition_id AS object_id,'PROPOSITION'::text AS kind,p.statement_text AS text,sp.rationale,o.created_by_principal_id AS created_by,sp.created_at \
+             FROM niccolo.epistemic_situation_propositions sp \
+             JOIN niccolo.epistemic_propositions p ON p.workspace_id=sp.workspace_id AND p.proposition_id=sp.proposition_id \
+             JOIN niccolo.epistemic_objects o ON o.workspace_id=p.workspace_id AND o.object_id=p.proposition_id \
+            WHERE sp.workspace_id=$1 AND sp.situation_id=$2 \
+           UNION ALL \
            SELECT h.hypothesis_id AS object_id,'HYPOTHESIS'::text AS kind,h.statement_text AS text,h.rationale,o.created_by_principal_id AS created_by,h.created_at \
              FROM niccolo.epistemic_hypotheses h JOIN niccolo.epistemic_objects o ON o.workspace_id=h.workspace_id AND o.object_id=h.hypothesis_id \
             WHERE h.workspace_id=$1 AND h.situation_id=$2 \
