@@ -1,9 +1,21 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('keeps intention, attempt, intended and actual audiences and effects independent',()=>{
+    expect(deceptionDimensions).toHaveLength(6);
+    const attempt={...draft,dimension:'DECEPTION_ATTEMPT',judgment:'INDICATED'};
+    expect(request(attempt).counterparty_actor_id).toBeNull();
+    for(const dimension of ['DECEPTION_INTENDED_TARGET','DECEPTION_INTENDED_EFFECT','DECEPTION_ACTUAL_EFFECT']){
+      expect(()=>request({...attempt,dimension})).toThrow();
+      expect(request({...attempt,dimension,counterparty_actor_id:'b'}).counterparty_actor_id).toBe('b');
+    }
+    const actual={...attempt,dimension:'DECEPTION_ACTUAL_EFFECT',counterparty_actor_id:'b',judgment:'NOT_INDICATED'};
+    expect(request(actual).judgment).toBe('NOT_INDICATED');
+    expect(()=>request({...actual,counterparty_actor_id:null,revises_event_id:'r'},[{event_id:'r',input:request(actual)}])).toThrow();
+  });
   it('records narrative means without inferring deceptive intent from omission or framing',()=>{
     expect(narrativeMeansDimensions).toHaveLength(8);
     for(const dimension of narrativeMeansDimensions){

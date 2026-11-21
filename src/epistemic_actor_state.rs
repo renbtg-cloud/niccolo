@@ -82,8 +82,33 @@ pub enum StateDimension {
     NarrativeTiming,
     NarrativeAggregation,
     NarrativeDecontextualization,
+    DeceptionIntention,
+    DeceptionAttempt,
+    DeceptionIntendedTarget,
+    DeceptionIntendedEffect,
+    DeceptionActualEffect,
+    DeceptionPerceivedSuccess,
 }
 impl StateDimension {
+    pub fn is_deception_facet(self) -> bool {
+        matches!(
+            self,
+            Self::DeceptionIntention
+                | Self::DeceptionAttempt
+                | Self::DeceptionIntendedTarget
+                | Self::DeceptionIntendedEffect
+                | Self::DeceptionActualEffect
+                | Self::DeceptionPerceivedSuccess
+        )
+    }
+    pub fn requires_deception_audience(self) -> bool {
+        matches!(
+            self,
+            Self::DeceptionIntendedTarget
+                | Self::DeceptionIntendedEffect
+                | Self::DeceptionActualEffect
+        )
+    }
     pub fn is_narrative_means(self) -> bool {
         matches!(
             self,
@@ -328,6 +353,8 @@ pub async fn record(
         || (input.dimension.is_epistemic_influence() && input.target_object_id.is_none())
         || (input.dimension.is_epistemic_power() && input.target_object_id.is_none())
         || (input.dimension.is_narrative_means() && input.target_object_id.is_none())
+        || (input.dimension.is_deception_facet() && input.target_object_id.is_none())
+        || (input.dimension.requires_deception_audience() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_asymmetry() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_influence() != input.influence_target.is_some())
         || (input.dimension.requires_influence_counterparty()
@@ -337,7 +364,8 @@ pub async fn record(
             && (!(input.dimension.is_contextual_pressure()
                 || input.dimension.is_epistemic_influence()
                 || input.dimension.is_epistemic_power()
-                || input.dimension.is_narrative_means())
+                || input.dimension.is_narrative_means()
+                || input.dimension.is_deception_facet())
                 || input.counterparty_actor_id == Some(input.subject_actor_id)))
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()

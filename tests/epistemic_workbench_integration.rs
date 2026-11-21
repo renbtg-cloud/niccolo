@@ -267,6 +267,36 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn deception_attempt_can_fail_for_target_and_affect_other_audience() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Review possible misdirection of investigators").await;
+    let issue=node(&f,sit,ExpertNodeKind::Question,"Was the ledger account misleading?").await;
+    let narrator=Uuid::new_v4();let intended=Uuid::new_v4();let observer=Uuid::new_v4();
+    for (id,label) in [(narrator,"Narrator"),(intended,"Investigator"),(observer,"Observer")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:narrator,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::DeceptionAttempt,judgment:StateJudgment::Indicated,context:"Account review".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported attempt to misdirect review".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    record(Uuid::new_v4(),item.clone()).await.unwrap();
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::DeceptionIntention,judgment:StateJudgment::Contested,..item.clone()}).await.unwrap();
+    for dimension in [StateDimension::DeceptionIntendedTarget,StateDimension::DeceptionIntendedEffect,StateDimension::DeceptionActualEffect] {
+        assert!(matches!(record(Uuid::new_v4(),StateInput{dimension,..item.clone()}).await,Err(WorkbenchError::Invalid)));
+        record(Uuid::new_v4(),StateInput{dimension,counterparty_actor_id:Some(intended),judgment:if dimension==StateDimension::DeceptionActualEffect{StateJudgment::NotIndicated}else{StateJudgment::Indicated},..item.clone()}).await.unwrap();
+    }
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::DeceptionActualEffect,counterparty_actor_id:Some(observer),rationale:"Observer reportedly accepted the account".into(),..item.clone()}).await.unwrap();
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::DeceptionPerceivedSuccess,judgment:StateJudgment::Unknown,..item.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),7);
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::DeceptionActualEffect&&e.input.counterparty_actor_id==Some(intended)&&e.input.judgment==StateJudgment::NotIndicated));
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::DeceptionActualEffect&&e.input.counterparty_actor_id==Some(observer)&&e.input.judgment==StateJudgment::Indicated));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'DECEPTION_ACTUAL_EFFECT','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(narrator).bind(issue).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn narrative_means_do_not_establish_deception_or_effect() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;
