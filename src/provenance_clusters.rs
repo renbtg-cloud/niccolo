@@ -51,34 +51,45 @@ pub enum ClusterError {
     Withdrawn,
 }
 
-fn trace_roots(
-    node: Uuid,
-    nodes: &BTreeMap<Uuid, &LineageNode>,
-    active: &mut BTreeSet<Uuid>,
-    cache: &mut BTreeMap<Uuid, BTreeSet<Uuid>>,
-) -> Result<BTreeSet<Uuid>, ClusterError> {
-    if let Some(cached) = cache.get(&node) {
-        return Ok(cached.clone());
-    }
-    if !active.insert(node) {
-        return Err(ClusterError::Cycle);
-    }
-    let source = nodes.get(&node).ok_or(ClusterError::Missing)?;
-    if !source.admissible {
-        return Err(ClusterError::Withdrawn);
-    }
-    let roots = if source.parents.is_empty() {
-        BTreeSet::from([node])
-    } else {
-        let mut union = BTreeSet::new();
-        for parent in &source.parents {
-            union.extend(trace_roots(*parent, nodes, active, cache)?);
-        }
-        union
+struct Trace {
+    roots: BTreeSet<Uuid>,
+    documents: BTreeSet<Uuid>,
+}
+
+fn trace_lineage(node: Uuid, nodes: &BTreeMap<Uuid, &LineageNode>) -> Result<Trace, ClusterError> {
+    let mut trace = Trace {
+        roots: BTreeSet::new(),
+        documents: BTreeSet::new(),
     };
-    active.remove(&node);
-    cache.insert(node, roots.clone());
-    Ok(roots)
+    let mut active = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    let mut stack = vec![(node, false)];
+    while let Some((id, done)) = stack.pop() {
+        if done {
+            active.remove(&id);
+            visited.insert(id);
+            continue;
+        }
+        if visited.contains(&id) {
+            continue;
+        }
+        if !active.insert(id) {
+            return Err(ClusterError::Cycle);
+        }
+        let source = nodes.get(&id).ok_or(ClusterError::Missing)?;
+        if !source.admissible {
+            return Err(ClusterError::Withdrawn);
+        }
+        if source.parents.is_empty() {
+            trace.roots.insert(id);
+        }
+        if let Some(doc) = source.source_document_id {
+            trace.documents.insert(doc);
+        }
+        stack.push((id, true));
+        stack.extend(source.parents.iter().rev().map(|parent| (*parent, false)));
+    }
+    Ok(trace)
 }
 
 fn find(parents: &mut [usize], mut i: usize) -> usize {
@@ -97,8 +108,8 @@ fn union(parents: &mut [usize], a: usize, b: usize) {
     }
 }
 
-/// Group selected observations when they share any known root OR the same
-/// source document. Transitivity is deliberate: A related to B, B related to C
+/// Group selected observations when they share any known root OR any recorded
+/// source document along their ancestry. Transitivity is deliberate: A related to B, B related to C
 /// means all three must be kept in one conservative dependence component.
 ///
 /// The supplied graph must include every known ancestor of selected evidence.
@@ -132,24 +143,18 @@ pub fn cluster(
         return Err(ClusterError::Invalid);
     }
     let selected = selected.into_iter().collect::<Vec<_>>();
-    let mut roots_cache = BTreeMap::new();
     let mut by_selected = Vec::with_capacity(selected.len());
     for id in &selected {
-        by_selected.push(trace_roots(
-            *id,
-            &nodes,
-            &mut BTreeSet::new(),
-            &mut roots_cache,
-        )?);
+        by_selected.push(trace_lineage(*id, &nodes)?);
     }
 
     let mut groups = (0..selected.len()).collect::<Vec<_>>();
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
-            let doc_i = nodes[&selected[i]].source_document_id;
-            let doc_j = nodes[&selected[j]].source_document_id;
-            let same_document = doc_i.is_some() && doc_i == doc_j;
-            let share_origin = !by_selected[i].is_disjoint(&by_selected[j]);
+            let same_document = !by_selected[i]
+                .documents
+                .is_disjoint(&by_selected[j].documents);
+            let share_origin = !by_selected[i].roots.is_disjoint(&by_selected[j].roots);
             if same_document || share_origin {
                 union(&mut groups, i, j);
             }
@@ -171,10 +176,10 @@ pub fn cluster(
         record.selected_evidence_ids.push(selected[i]);
         record
             .documented_roots
-            .extend(by_selected[i].iter().copied());
-        if let Some(doc) = nodes[&selected[i]].source_document_id {
-            record.shared_document_ids.push(doc);
-        }
+            .extend(by_selected[i].roots.iter().copied());
+        record
+            .shared_document_ids
+            .extend(by_selected[i].documents.iter().copied());
     }
     let mut clusters = clusters_by_group.into_values().collect::<Vec<_>>();
     for item in &mut clusters {
@@ -230,6 +235,23 @@ mod tests {
         .unwrap();
         assert_eq!(r.clusters.len(), 1);
         assert_eq!(r.clusters[0].documented_roots, vec![id(1), id(2)]);
+    }
+    #[test]
+    fn separate_fragments_of_ancestral_document_link_derived_documents() {
+        let nodes = vec![
+            node(1, &[], Some(20)),
+            node(2, &[], Some(20)),
+            node(3, &[1], Some(30)),
+            node(4, &[2], Some(40)),
+        ];
+        let r = cluster(&nodes, &[id(3), id(4)]).unwrap();
+        assert_eq!(r.clusters.len(), 1);
+        assert_eq!(r.clusters[0].documented_roots, vec![id(1), id(2)]);
+        assert_eq!(
+            r.clusters[0].shared_document_ids,
+            vec![id(20), id(30), id(40)]
+        );
+        assert!(!r.different_clusters_establish_independence);
     }
     #[test]
     fn transitive_overlap_is_conservatively_merged() {

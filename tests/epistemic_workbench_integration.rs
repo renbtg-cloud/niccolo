@@ -506,6 +506,60 @@ async fn direct_documentary_routes_group_shared_ancestry_without_claiming_indepe
             .collect::<std::collections::BTreeSet<_>>(),
         route_refs[..3].iter().copied().collect()
     );
+    // The public read path uses the restrictive API role and credential gates,
+    // not the more permissive legacy integration role.
+    {
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode, header},
+        };
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1)
+            .await
+            .unwrap();
+        let secure = PgPoolOptions::new()
+            .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+            .await
+            .unwrap();
+        let router = niccolo_evidence::api::router(secure);
+        let path = format!(
+            "/v1/workspaces/{}/situations/{}/epistemic/workbench",
+            f.workspace, sit
+        );
+        let request = Request::builder()
+            .uri(path)
+            .header(header::AUTHORIZATION, format!("Bearer {reader}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            body["reasoning_diagnostics"][0]["direct_evidence_lineage"]["components"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let unrelated = fixture().await;
+        let unrelated_situation = situation(&unrelated, "Not authorized by the reader").await;
+        let request = Request::builder()
+            .uri(format!(
+                "/v1/workspaces/{}/situations/{}/epistemic/workbench",
+                unrelated.workspace, unrelated_situation
+            ))
+            .header(header::AUTHORIZATION, format!("Bearer {reader}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(request).await.unwrap();
+        assert!(matches!(
+            response.status(),
+            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND
+        ));
+    }
     sqlx::query(
         "UPDATE niccolo.evidence SET admissible=false WHERE workspace_id=$1 AND evidence_id=$2",
     )

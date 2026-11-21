@@ -164,6 +164,8 @@ Explicit supporting routes can form cycles. Context members provide circumstance
 
 Exact reuse of the same object or evidence fragment across authored routes must be visible, using the composite argument and grounding-set identity. This is a structural diagnostic, not a complete provenance-independence test: different grounds may still share ancestry. Support and opposition remain separate, and no numerical confidence or truth verdict is inferred from route counts.
 
+The structured Workbench now also projects recorded dependence components for directly selected documentary grounds of each conclusion. It reuses the bounded, workspace-scoped evidence derivation loader and connects fragments sharing a recorded root or a source document anywhere in their ancestry. The components retain the selected fragment and authored route identities; they do not infer independent corroboration even when distinct. Withdrawn, missing, cyclic or excessive lineage is reported as unresolved rather than supplying a misleading component count. Indirect ancestry through epistemic object grounds and unrecorded collection dependencies are not covered by this projection.
+
 ## 8. Selective epistemic revision
 
 Changes propagate as **obligations to reassess**, not as automatic global falsification.
