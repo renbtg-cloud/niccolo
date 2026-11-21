@@ -1,0 +1,205 @@
+From 35a77142877f43c80e338790d1b200a5e9607ab2 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Sat, 21 Nov 2026 03:09:51 +0000
+Subject: [PATCH] WIP 01: expert evidence search for grounding
+
+---
+ frontend/src/api/client.js                    |  1 +
+ .../src/pages/ExpertWorkbench.product.test.js | 13 +++---
+ frontend/src/pages/ExpertWorkbenchPage.jsx    | 16 ++++++--
+ src/api.rs                                    | 29 ++++++++++++++
+ src/epistemic_workbench.rs                    | 40 +++++++++++++++++++
+ 5 files changed, 91 insertions(+), 8 deletions(-)
+
+diff --git a/frontend/src/api/client.js b/frontend/src/api/client.js
+index c835758..b0452f6 100644
+--- a/frontend/src/api/client.js
++++ b/frontend/src/api/client.js
+@@ -79,6 +79,7 @@ export class NiccoloClient {
+   compareEpistemic(body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/compare`, { body }); }
+   recordEpistemicPolicy(policyId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/policies/${policyId}`, { body }); }
+   expertWorkbench() { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench`); }
++  searchExpertEvidence(query, limit = 20) { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench/evidence/search?q=${encodeURIComponent(query)}&limit=${limit}`); }
+   createExpertNode(objectId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/objects/${objectId}`, { body }); }
+   createExpertRelation(relationId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/relations/${relationId}`, { body }); }
+   createExpertArgument(argumentId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}`, { body }); }
+diff --git a/frontend/src/pages/ExpertWorkbench.product.test.js b/frontend/src/pages/ExpertWorkbench.product.test.js
+index 25ffcfe..e5b843a 100644
+--- a/frontend/src/pages/ExpertWorkbench.product.test.js
++++ b/frontend/src/pages/ExpertWorkbench.product.test.js
+@@ -25,15 +25,17 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+     const calls = [];
+     const client = new NiccoloClient(config, async (url, options) => { calls.push({ url, options }); return response; });
+     await client.expertWorkbench();
++    await client.searchExpertEvidence('approval hold');
+     await client.createExpertNode('33333333-3333-4333-8333-333333333333', { kind: 'HYPOTHESIS', text: 'H', rationale: 'R' });
+     await client.createExpertRelation('44444444-4444-4444-8444-444444444444', { family: 'SEMANTIC', kind: 'CONTRADICTS', left_object_id: 'a', right_object_id: 'b', rationale: 'R' });
+     await client.createExpertArgument('55555555-5555-4555-8555-555555555555', { conclusion_object_id: 'a', mode: 'ABDUCTIVE', rationale: 'R' });
+     await client.createExpertGrounding('55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666', { effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: 'R', members: [] });
+-    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'POST', 'POST', 'POST', 'POST']);
+-    expect(calls[1].url).toContain('/epistemic/objects/');
+-    expect(calls[2].url).toContain('/epistemic/relations/');
+-    expect(calls[3].url).toContain('/epistemic/arguments/');
+-    expect(calls[4].url).toContain('/grounding/');
++    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'GET', 'POST', 'POST', 'POST', 'POST']);
++    expect(calls[1].url).toContain('/epistemic/workbench/evidence/search?q=approval%20hold');
++    expect(calls[2].url).toContain('/epistemic/objects/');
++    expect(calls[3].url).toContain('/epistemic/relations/');
++    expect(calls[4].url).toContain('/epistemic/arguments/');
++    expect(calls[5].url).toContain('/grounding/');
+   });
+ 
+   it('lets a trained investigator author a proposition explicitly', () => {
+@@ -53,6 +55,7 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+     expect(page).toContain('Documentary evidence');
+     expect(page).toContain('EVIDENCE · {item.document_locator}');
+     expect(page).toContain('first 256 admissible source fragments');
++    expect(page).toContain('Search all attached admissible fragments');
+   });
+ 
+ 
+diff --git a/frontend/src/pages/ExpertWorkbenchPage.jsx b/frontend/src/pages/ExpertWorkbenchPage.jsx
+index 3867c8a..4281780 100644
+--- a/frontend/src/pages/ExpertWorkbenchPage.jsx
++++ b/frontend/src/pages/ExpertWorkbenchPage.jsx
+@@ -35,9 +35,11 @@ export function ExpertWorkbenchPage() {
+   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
+   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
+   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState([]);
++  const [evidenceSearchText, setEvidenceSearchText] = useState('');
+   const [groundRoles, setGroundRoles] = useState({});
+   const [groundMemberRationales, setGroundMemberRationales] = useState({});
+ 
++  const searchEvidence = useMutation({ mutationFn: async (query) => (await client.searchExpertEvidence(query, 20)).value });
+   const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
+   const createRelation = useWorkbenchMutation(client, workbench, async (body) => client.createExpertRelation(crypto.randomUUID(), body));
+   const createArgument = useWorkbenchMutation(client, workbench, async (body) => client.createExpertArgument(crypto.randomUUID(), body));
+@@ -50,9 +52,14 @@ export function ExpertWorkbenchPage() {
+     () => data.nodes.filter((n) => selectedGroundIds.includes(n.object_id)),
+     [data.nodes, selectedGroundIds],
+   );
++  const evidenceChoices = useMemo(() => {
++    const merged = new Map(data.evidence.map((item) => [item.evidence_id, item]));
++    for (const item of searchEvidence.data?.results ?? []) merged.set(item.evidence_id, item);
++    return [...merged.values()];
++  }, [data.evidence, searchEvidence.data]);
+   const selectedGroundEvidence = useMemo(
+-    () => data.evidence.filter((item) => selectedEvidenceIds.includes(item.evidence_id)),
+-    [data.evidence, selectedEvidenceIds],
++    () => evidenceChoices.filter((item) => selectedEvidenceIds.includes(item.evidence_id)),
++    [evidenceChoices, selectedEvidenceIds],
+   );
+   const submit = (action) => (event) => {
+     event.preventDefault();
+@@ -109,7 +116,10 @@ export function ExpertWorkbenchPage() {
+         <label>Adequacy<select value={grounding.adequacy} onChange={(e) => setGrounding({ ...grounding, adequacy: e.target.value })}>{groundingAdequacies.map((x) => <option key={x}>{x}</option>)}</select></label>
+         <fieldset><legend>Joint grounds</legend>
+           {data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <><select value={groundRoles[n.object_id] ?? (n.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE')} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}><option>PREMISE</option><option>ASSUMPTION</option><option>CONTEXT</option></select><input aria-label={`Why ${n.kind} is a ground`} placeholder="Why this object belongs in this grounding set" value={groundMemberRationales[`object:${n.object_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`object:${n.object_id}`]: e.target.value })} /></>}</div>)}
+-          {data.evidence.length > 0 && <><p><strong>Documentary evidence</strong></p>{data.evidence.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label>{selectedEvidenceIds.includes(item.evidence_id) && <input aria-label="Why this evidence is a ground" placeholder="Why this exact fragment belongs in this grounding set" value={groundMemberRationales[`evidence:${item.evidence_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`evidence:${item.evidence_id}`]: e.target.value })} />}</div>)}</>}
++          <p><strong>Documentary evidence</strong></p>
++          <div className="evidence-search"><input aria-label="Search documentary evidence" placeholder="Search all attached admissible fragments" value={evidenceSearchText} maxLength={512} onChange={(e) => setEvidenceSearchText(e.target.value)} /><button type="button" disabled={searchEvidence.isPending || !evidenceSearchText.trim()} onClick={() => searchEvidence.mutate(evidenceSearchText.trim())}>Search evidence</button></div>
++          {searchEvidence.error && <small className="error">Evidence search failed: {searchEvidence.error.message}</small>}
++          {evidenceChoices.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label>{selectedEvidenceIds.includes(item.evidence_id) && <input aria-label="Why this evidence is a ground" placeholder="Why this exact fragment belongs in this grounding set" value={groundMemberRationales[`evidence:${item.evidence_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`evidence:${item.evidence_id}`]: e.target.value })} />}</div>)}
+           {data.evidence_truncated && <small>Showing the first 256 admissible source fragments attached to this Situation. Use source inspection for material outside this bounded Workbench list.</small>}
+         </fieldset>
+         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
+diff --git a/src/api.rs b/src/api.rs
+index 6688d0f..1aebb9d 100644
+--- a/src/api.rs
++++ b/src/api.rs
+@@ -276,6 +276,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
+             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench",
+             get(get_expert_epistemic_workbench),
+         )
++        .route(
++            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/evidence/search",
++            get(search_expert_workbench_evidence),
++        )
+         .route(
+             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}",
+             post(create_expert_epistemic_node),
+@@ -3419,6 +3423,31 @@ struct ExpertGroundingSetRequest {
+     members: Vec<epistemic_workbench::NewGroundingMember>,
+ }
+ 
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct ExpertEvidenceSearchQuery {
++    q: String,
++    limit: Option<i64>,
++}
++
++async fn search_expert_workbench_evidence(
++    State(state): State<AppState>,
++    Path((workspace, situation)): Path<(Uuid, Uuid)>,
++    Query(input): Query<ExpertEvidenceSearchQuery>,
++    headers: HeaderMap,
++) -> Result<Response, ApiError> {
++    guard(&state, &headers, workspace, Capability::Read).await?;
++    let results = epistemic_workbench::search_evidence(
++        &state.pool,
++        workspace,
++        situation,
++        &input.q,
++        input.limit.unwrap_or(20),
++    )
++    .await?;
++    Ok(no_store(json!({ "results": results }), StatusCode::OK))
++}
++
+ async fn get_expert_epistemic_workbench(
+     State(state): State<AppState>,
+     Path((workspace, situation)): Path<(Uuid, Uuid)>,
+diff --git a/src/epistemic_workbench.rs b/src/epistemic_workbench.rs
+index fbfd950..8471c10 100644
+--- a/src/epistemic_workbench.rs
++++ b/src/epistemic_workbench.rs
+@@ -1033,6 +1033,46 @@ fn member_role_from_db(value: &str) -> Result<GroundingMemberRole, WorkbenchErro
+     }
+ }
+ 
++pub async fn search_evidence(
++    pool: &PgPool,
++    workspace: Uuid,
++    situation: Uuid,
++    query: &str,
++    limit: i64,
++) -> Result<Vec<WorkbenchEvidence>, WorkbenchError> {
++    if !valid_text(query, 512) || !(1..=50).contains(&limit) {
++        return Err(WorkbenchError::Invalid);
++    }
++    let mut tx = scoped(pool, workspace, true).await?;
++    if !situation_visible(&mut tx, workspace, situation).await? {
++        return Err(WorkbenchError::Invisible);
++    }
++    let rows: Vec<WorkbenchEvidenceRow> = sqlx::query_as(
++        "SELECT f.evidence_id,f.document_id,f.ordinal,f.speaker_label,e.content,e.source_class,e.source_locator,d.locator \
++         FROM niccolo.situation_sources ss \
++         JOIN niccolo.source_fragments f ON f.workspace_id=ss.workspace_id AND f.document_id=ss.document_id \
++         JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
++         JOIN niccolo.source_documents d ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id \
++         WHERE ss.workspace_id=$1 AND ss.situation_id=$2 AND e.admissible \
++           AND to_tsvector('simple',e.content) @@ plainto_tsquery('simple',$3) \
++         ORDER BY ts_rank_cd(to_tsvector('simple',e.content),plainto_tsquery('simple',$3)) DESC, \
++                  d.created_at,f.document_id,f.ordinal LIMIT $4",
++    )
++    .bind(workspace)
++    .bind(situation)
++    .bind(query.trim())
++    .bind(limit)
++    .fetch_all(&mut *tx)
++    .await?;
++    tx.commit().await?;
++    Ok(rows
++        .into_iter()
++        .map(|(evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator)| WorkbenchEvidence {
++            evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator
++        })
++        .collect())
++}
++
+ pub async fn snapshot(
+     pool: &PgPool,
+     workspace: Uuid,
+-- 
+2.47.3
