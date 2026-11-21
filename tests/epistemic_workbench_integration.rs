@@ -75,6 +75,91 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn action_recommendations_are_attributed_revisable_and_not_authorizations() {
+    use epistemic_workbench::action_recommendation::{
+        self, RecommendationAlternative, RecommendationInput, RecommendationKind, Reversibility,
+    };
+    let f = fixture().await;
+    let sit = situation(&f, "Possible exposure of sensitive records").await;
+    let other = situation(&f, "Unrelated investigation").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Privileges remain broad").await;
+    let foreign = node(&f, other, ExpertNodeKind::Proposition, "Unrelated record").await;
+    let recipient = Uuid::new_v4();
+    let another_recipient = Uuid::new_v4();
+    for actor in [recipient, another_recipient] {
+        niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, actor, "Reviewer").await.unwrap();
+    }
+    let input = RecommendationInput {
+        kind: RecommendationKind::ReviewPrivileges,
+        recipient_actor_id: recipient,
+        purpose: "Inspect access without presuming misconduct".into(),
+        context: "A suspected leak remains unresolved".into(),
+        rationale: "Broad privileges are a separate structural concern".into(),
+        ground_object_ids: vec![ground],
+        conditions: "Requires separate human approval".into(),
+        alternatives: vec![RecommendationAlternative {
+            kind: RecommendationKind::Inaction,
+            rationale: "Wait for additional evidence".into(),
+            expected_consequences: "Exposure may remain".into(),
+        }],
+        expected_consequences: "A clearer understanding of access".into(),
+        uncertainty: "No proof of a leak".into(),
+        risk: "Investigation may become visible".into(),
+        reversibility: Reversibility::Reversible,
+        revises_recommendation_id: None,
+    };
+    let before = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    let record = |id, input| action_recommendation::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let id = Uuid::new_v4();
+    let first = record(id, input.clone()).await.unwrap();
+    assert_eq!(first.recorded_by, f.principal);
+    assert!(!first.replayed);
+    assert!(record(id, input.clone()).await.unwrap().replayed);
+    assert!(matches!(record(id, RecommendationInput { risk: "Changed".into(), ..input.clone() }).await, Err(WorkbenchError::Conflict)));
+    assert!(matches!(record(Uuid::new_v4(), RecommendationInput { ground_object_ids: vec![foreign], ..input.clone() }).await, Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(), RecommendationInput { recipient_actor_id: Uuid::new_v4(), ..input.clone() }).await, Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(), RecommendationInput { recipient_actor_id: another_recipient, revises_recommendation_id: Some(id), ..input.clone() }).await, Err(WorkbenchError::Invalid)));
+    let revision = RecommendationInput { revises_recommendation_id: Some(id), risk: "Review discreetly".into(), ..input.clone() };
+    let second_id = Uuid::new_v4();
+    record(second_id, revision.clone()).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(), revision).await, Err(WorkbenchError::Conflict)));
+    let items = action_recommendation::list(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].input, input);
+    assert_eq!(items[1].input.revises_recommendation_id, Some(id));
+    assert!(action_recommendation::list(&f.service, f.workspace, other).await.unwrap().is_empty());
+    let separate = fixture().await;
+    assert!(matches!(action_recommendation::list(&separate.service, separate.workspace, sit).await, Err(WorkbenchError::Invisible)));
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(before.nodes, after.nodes);
+    assert_eq!(before.arguments, after.arguments);
+    assert_eq!(before.assessments, after.assessments);
+    assert!(after.question_decisions.is_empty());
+
+    // Direct SQL cannot inject authority, foreign grounds, or update historical records.
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let mut payload = serde_json::to_value(&input).unwrap();
+    payload["authorized"] = true.into();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_action_recommendations(workspace_id,situation_id,recommendation_id,recipient_actor_id,ground_object_ids,payload,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)")
+        .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(recipient).bind(vec![ground]).bind(payload.to_string()).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514"));
+    tx.rollback().await.unwrap();
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let payload = serde_json::to_string(&RecommendationInput { ground_object_ids: vec![foreign], ..input.clone() }).unwrap();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_action_recommendations(workspace_id,situation_id,recommendation_id,recipient_actor_id,ground_object_ids,payload,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)")
+        .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(recipient).bind(vec![foreign]).bind(payload).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514"));
+    tx.rollback().await.unwrap();
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let rejected = sqlx::query("UPDATE niccolo.epistemic_action_recommendations SET payload=payload WHERE recommendation_id=$1").bind(id).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("42501"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
     use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment};
     let f=fixture().await;

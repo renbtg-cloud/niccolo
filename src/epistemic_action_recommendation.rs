@@ -1,8 +1,8 @@
 //! Non-executable recommendations: a recommendation is never a decision or authorization.
-//! This module validates the domain payload; persistence and visibility checks belong to
-//! the authoring boundary, not to this pure value contract.
-use super::{WorkbenchError, valid_text};
+//! Validate the domain payload separately from the scoped authoring boundary.
+use super::{WorkbenchError, object_available_in_situation, scoped, situation_visible, valid_text};
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
@@ -86,6 +86,131 @@ impl RecommendationInput {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Recommendation {
+    pub recommendation_id: Uuid,
+    pub input: RecommendationInput,
+    pub recorded_by: Uuid,
+    pub recorded_at: String,
+    pub replayed: bool,
+}
+
+async fn list_filtered(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    recommendation: Option<Uuid>,
+) -> Result<Vec<Recommendation>, WorkbenchError> {
+    let rows: Vec<(Uuid, String, Uuid, String)> = sqlx::query_as(
+        "SELECT recommendation_id,payload::text,recorded_by_principal_id,created_at::text \
+         FROM niccolo.epistemic_action_recommendations \
+         WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR recommendation_id=$3) \
+         ORDER BY recommendation_no",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(recommendation)
+    .fetch_all(&mut **tx)
+    .await?;
+    rows.into_iter()
+        .map(|(recommendation_id, payload, recorded_by, recorded_at)| {
+            let input = serde_json::from_str::<RecommendationInput>(&payload)
+                .map_err(|_| WorkbenchError::Invalid)?;
+            input.validate()?;
+            Ok(Recommendation {
+                recommendation_id,
+                input,
+                recorded_by,
+                recorded_at,
+                replayed: false,
+            })
+        })
+        .collect()
+}
+
+pub async fn list(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<Recommendation>, WorkbenchError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    if !situation_visible(&mut tx, workspace, situation).await? {
+        return Err(WorkbenchError::Invisible);
+    }
+    let result = list_filtered(&mut tx, workspace, situation, None).await?;
+    tx.commit().await?;
+    Ok(result)
+}
+
+pub async fn record(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    recorder: Uuid,
+    recommendation: Uuid,
+    input: RecommendationInput,
+) -> Result<Recommendation, WorkbenchError> {
+    input.validate()?;
+    if recommendation.is_nil() || input.revises_recommendation_id == Some(recommendation) {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    if !situation_visible(&mut tx, workspace, situation).await? {
+        return Err(WorkbenchError::Invisible);
+    }
+    if let Some(mut existing) = list_filtered(&mut tx, workspace, situation, Some(recommendation))
+        .await?
+        .pop()
+    {
+        if existing.input != input || existing.recorded_by != recorder {
+            return Err(WorkbenchError::Conflict);
+        }
+        existing.replayed = true;
+        tx.commit().await?;
+        return Ok(existing);
+    }
+    let recipient_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.actors WHERE workspace_id=$1 AND actor_id=$2)",
+    )
+    .bind(workspace)
+    .bind(input.recipient_actor_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !recipient_exists {
+        return Err(WorkbenchError::Invisible);
+    }
+    for ground in &input.ground_object_ids {
+        if object_available_in_situation(&mut tx, workspace, situation, *ground)
+            .await?
+            .is_none()
+        {
+            return Err(WorkbenchError::Invisible);
+        }
+    }
+    if let Some(prior_id) = input.revises_recommendation_id {
+        let prior = list_filtered(&mut tx, workspace, situation, Some(prior_id))
+            .await?
+            .pop()
+            .ok_or(WorkbenchError::Invisible)?;
+        if prior.input.recipient_actor_id != input.recipient_actor_id {
+            return Err(WorkbenchError::Invalid);
+        }
+    }
+    let payload = serde_json::to_string(&input).map_err(|_| WorkbenchError::Invalid)?;
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_action_recommendations(workspace_id,situation_id,recommendation_id,recipient_actor_id,ground_object_ids,revises_recommendation_id,payload,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) ON CONFLICT DO NOTHING")
+        .bind(workspace).bind(situation).bind(recommendation).bind(input.recipient_actor_id).bind(&input.ground_object_ids).bind(input.revises_recommendation_id).bind(payload).bind(recorder).execute(&mut *tx).await?.rows_affected() == 1;
+    let mut stored = list_filtered(&mut tx, workspace, situation, Some(recommendation))
+        .await?
+        .pop()
+        .ok_or(WorkbenchError::Conflict)?;
+    if stored.input != input || stored.recorded_by != recorder {
+        return Err(WorkbenchError::Conflict);
+    }
+    stored.replayed = !inserted;
+    tx.commit().await?;
+    Ok(stored)
 }
 
 #[cfg(test)]
