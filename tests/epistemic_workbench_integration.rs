@@ -472,6 +472,34 @@ async fn epistemic_influence_separates_facets_and_exact_targets() {
 }
 
 #[tokio::test]
+async fn vulnerability_qualifications_do_not_establish_compromise_or_response() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Examine exposure of a resource").await;
+    let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"Centralized ledger access could enable tampering").await;
+    let a=Uuid::new_v4();let b=Uuid::new_v4();
+    for (id,label) in [(a,"Custodian"),(b,"Administrator")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:a,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::VulnerabilityPotential,judgment:StateJudgment::Indicated,context:"Centralized ledger administration".into(),temporal_scope:"Before audit".into(),orientation_scope:None,orientation_goal:None,rationale:"Potential loss of ledger integrity".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let prior=Uuid::new_v4();record(prior,item.clone()).await.unwrap();
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::VulnerabilityActual,judgment:StateJudgment::Unknown,..item.clone()}).await.unwrap();
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::VulnerabilityPerceived,counterparty_actor_id:Some(b),..item.clone()}).await.unwrap();
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::VulnerabilityMisattributed,judgment:StateJudgment::Contested,..item.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::VulnerabilityActual,revises_event_id:Some(prior),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{target_object_id:None,target_state_event_id:Some(prior),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{counterparty_actor_id:Some(a),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),4);
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::VulnerabilityActual&&e.input.judgment==StateJudgment::Unknown));
+    assert!(snapshot.assessments.is_empty()&&snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty()&&snapshot.arguments.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'VULNERABILITY_POTENTIAL','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(a).bind(prior).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn vulnerability_and_compliance_do_not_establish_consent_or_loyalty() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;

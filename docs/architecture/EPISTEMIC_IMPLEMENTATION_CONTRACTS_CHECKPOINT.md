@@ -581,6 +581,8 @@ Checkpoint 1.48: 49 focused PostgreSQL workbench tests and 157 frontend tests pa
 
 Vulnerability is actor/resource/circumstance/consequence specific and may be actual, potential, perceived, unknown or misattributed.
 
+Migration 0137 adds independent actual, potential, perceived and misattributed vulnerability dimensions, all attributed judgments rather than established facts; unknown remains an explicit judgment for any dimension. Each requires an exact resource or other Situation object, actor, circumstance, temporal scope and rationale (including intended consequence), with an optional distinct attributed counterparty. These qualifications do not imply exploitation, compromise, consent or a protective response.
+
 Vulnerabilities may emerge compositionally. Several individually innocuous data points can jointly expose sensitive information.
 
 Protective actions can introduce new vulnerabilities: centralization can reduce diffusion while creating a single point of failure, dependency or capture risk.

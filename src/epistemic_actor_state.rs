@@ -58,6 +58,10 @@ pub enum StateDimension {
     ThreatPerceivedCredibility,
     ThreatOutcome,
     Vulnerability,
+    VulnerabilityActual,
+    VulnerabilityPotential,
+    VulnerabilityPerceived,
+    VulnerabilityMisattributed,
     CoercionSusceptibility,
     Compliance,
     Consent,
@@ -196,6 +200,10 @@ impl StateDimension {
                 | Self::ThreatPerceivedCredibility
                 | Self::ThreatOutcome
                 | Self::Vulnerability
+                | Self::VulnerabilityActual
+                | Self::VulnerabilityPotential
+                | Self::VulnerabilityPerceived
+                | Self::VulnerabilityMisattributed
                 | Self::CoercionSusceptibility
                 | Self::Compliance
                 | Self::Consent

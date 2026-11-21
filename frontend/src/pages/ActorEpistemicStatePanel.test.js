@@ -1,9 +1,21 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,modeledSecrecyDimensions,stateRequest,distributedActorRecords} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,qualifiedVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,modeledSecrecyDimensions,stateRequest,distributedActorRecords} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('qualifies actual, potential, perceived and misattributed vulnerability independently',()=>{
+    expect(qualifiedVulnerabilityDimensions).toEqual(['VULNERABILITY_ACTUAL','VULNERABILITY_POTENTIAL','VULNERABILITY_PERCEIVED','VULNERABILITY_MISATTRIBUTED']);
+    for(const dimension of qualifiedVulnerabilityDimensions){
+      const item={...draft,dimension,judgment:'UNKNOWN'};
+      expect(request(item).judgment).toBe('UNKNOWN');
+      expect(request({...item,counterparty_actor_id:'b'}).counterparty_actor_id).toBe('b');
+      expect(()=>request({...item,counterparty_actor_id:'a'})).toThrow();
+      expect(()=>request({...item,target_object_id:null,target_state_event_id:'prior'},[{event_id:'prior',input:request(draft)}])).toThrow();
+    }
+    const item={...draft,dimension:'VULNERABILITY_PERCEIVED'};
+    expect(()=>request({...item,dimension:'VULNERABILITY_ACTUAL',revises_event_id:'prior'},[{event_id:'prior',input:request(item)}])).toThrow();
+  });
   it('compares only current exact-context records across distinct actors, without aggregation',()=>{
     const event=(event_id,extra)=>({event_id,input:{...draft,...extra}});
     const old=event('old',{dimension:'BELIEF'});
