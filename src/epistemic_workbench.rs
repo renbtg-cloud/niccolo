@@ -698,6 +698,7 @@ pub struct WorkbenchSnapshot {
     pub question_decisions: Vec<inquiry_decision::InquiryDecision>,
     pub question_decision_basis_changes: Vec<inquiry_decision_review::DecisionBasisChange>,
     pub action_recommendations: Vec<action_recommendation::Recommendation>,
+    pub recommendation_basis_impacts: Vec<action_recommendation::RecommendationBasisImpact>,
     pub action_decisions: Vec<action_decision::Decision>,
     pub intervention_records: Vec<intervention::InterventionRecord>,
     pub intervention_causal_assessments: Vec<intervention::CausalAssessmentView>,
@@ -2426,6 +2427,7 @@ pub async fn snapshot(
     .await?;
     let mut reassessment_impacts =
         selective_reassessment_impacts(&relations, &arguments, &grounding_sets, &applicability);
+    let recommendation_basis_impacts = action_recommendation::basis_impacts(&action_recommendations, &relations, &reassessment_impacts);
     let review_rows: Vec<ReassessmentReviewRow> = sqlx::query_as(
         "SELECT trigger_relation_id,argument_id,grounding_set_id,review_event_id,disposition,note,recorded_by_principal_id \
          FROM niccolo.epistemic_reassessment_review_events \
@@ -2596,6 +2598,7 @@ pub async fn snapshot(
         question_decisions,
         question_decision_basis_changes,
         action_recommendations,
+        recommendation_basis_impacts,
         action_decisions,
         intervention_records,
         intervention_causal_assessments,
@@ -2639,6 +2642,7 @@ mod tests {
             question_decisions: vec![],
             question_decision_basis_changes: vec![],
             action_recommendations: vec![],
+            recommendation_basis_impacts: vec![],
             action_decisions: vec![],
             intervention_records: vec![],
             intervention_causal_assessments: vec![],

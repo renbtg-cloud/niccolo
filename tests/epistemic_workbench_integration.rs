@@ -131,6 +131,41 @@ async fn recommendation_qualified_basis_preserves_alternative_structural_grounds
 }
 
 #[tokio::test]
+async fn recommendation_basis_changes_surface_alternatives_without_deciding_appropriateness() {
+    use epistemic_workbench::action_recommendation::{self, BasisKind, QualifiedBasis, RecommendationInput};
+    let f = fixture().await;
+    let sit = situation(&f, "Structural risk after suspicion is rejected").await;
+    let suspicion = node(&f, sit, ExpertNodeKind::Hypothesis, "Possible unauthorized disclosure").await;
+    let revised = node(&f, sit, ExpertNodeKind::Hypothesis, "Unauthorized disclosure is unsupported").await;
+    let structural = node(&f, sit, ExpertNodeKind::Proposition, "Privileges are excessively broad").await;
+    let downstream = node(&f, sit, ExpertNodeKind::Finding, "The suspicion may justify a review").await;
+    let argument = Uuid::new_v4(); let set = Uuid::new_v4();
+    epistemic_workbench::create_argument(&f.service, f.workspace, sit, f.principal, argument, downstream, ArgumentMode::Abductive, "Reason from the suspicion").await.unwrap();
+    epistemic_workbench::create_grounding_set(&f.service, f.workspace, sit, f.principal, argument, set, GroundingEffect::Supports, GroundingAdequacy::Partial, "Dependent on suspicion", &[NewGroundingMember {member_id: Uuid::new_v4(), role: GroundingMemberRole::Premise, ground_object_id: Some(suspicion), evidence_id: None, rationale: "Premise".into()}]).await.unwrap();
+    let recipient = Uuid::new_v4(); niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, recipient, "Reviewer").await.unwrap();
+    let original = recommendation_input(suspicion, recipient);
+    let qualified = RecommendationInput {ground_object_ids: vec![suspicion, structural, downstream], qualified_basis: vec![QualifiedBasis {kind: BasisKind::ContextOnly, ground_object_ids: vec![suspicion], rationale: "Motivating concern".into()}, QualifiedBasis {kind: BasisKind::AlternativeSufficient, ground_object_ids: vec![structural], rationale: "Independent structural rationale".into()}, QualifiedBasis {kind: BasisKind::AlternativeSufficient, ground_object_ids: vec![downstream], rationale: "Dependent rationale".into()}], ..original.clone()};
+    let rec = Uuid::new_v4(); let unaffected_rec = Uuid::new_v4(); let legacy_rec = Uuid::new_v4(); let argument_rec = Uuid::new_v4();
+    for (id, input) in [(rec, qualified.clone()), (unaffected_rec, recommendation_input(structural, recipient)), (legacy_rec, original), (argument_rec, recommendation_input(argument, recipient))] { action_recommendation::record(&f.service, f.workspace, sit, f.principal, id, input).await.unwrap(); }
+    let before = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert!(before.recommendation_basis_impacts.is_empty());
+    let relation = Uuid::new_v4(); epistemic_workbench::create_relation(&f.service, f.workspace, sit, f.principal, relation, RelationFamily::Genealogy, RelationKind::Supersedes, revised, suspicion, "Earlier hypothesis no longer supported").await.unwrap();
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(before.action_recommendations, after.action_recommendations); assert!(after.action_decisions.is_empty());
+    let impacts = &after.recommendation_basis_impacts;
+    assert_eq!(impacts.len(), 3);
+    let impact = impacts.iter().find(|i| i.recommendation_id == rec).unwrap();
+    assert_eq!(impact.trigger_relation_id, relation); assert_eq!(impact.affected_ground_object_ids, vec![suspicion, downstream]); assert_eq!(impact.affected_basis_indices, vec![0, 2]); assert_eq!(impact.alternative_basis_indices_not_linked_to_trigger, vec![1]);
+    assert!(!impact.grounds_unqualified); assert!(!impact.historical_recommendation);
+    assert!(impacts.iter().find(|i| i.recommendation_id == legacy_rec).unwrap().grounds_unqualified);
+    assert_eq!(impacts.iter().find(|i| i.recommendation_id == argument_rec).unwrap().affected_ground_object_ids, vec![argument]);
+    let successor = Uuid::new_v4(); action_recommendation::record(&f.service, f.workspace, sit, f.principal, successor, RecommendationInput {revises_recommendation_id: Some(rec), ..recommendation_input(structural, recipient)}).await.unwrap();
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert!(after.recommendation_basis_impacts.iter().find(|i| i.recommendation_id == rec).unwrap().historical_recommendation);
+    assert!(!after.recommendation_basis_impacts.iter().any(|i| i.recommendation_id == successor || i.recommendation_id == unaffected_rec));
+}
+
+#[tokio::test]
 async fn action_recommendations_are_attributed_revisable_and_not_authorizations() {
     use epistemic_workbench::action_recommendation::{self, RecommendationInput};
     let f = fixture().await;

@@ -1,6 +1,9 @@
 //! Non-executable recommendations: a recommendation is never a decision or authorization.
 //! Validate the domain payload separately from the scoped authoring boundary.
-use super::{WorkbenchError, object_available_in_situation, scoped, situation_visible, valid_text};
+use super::{
+    ExpertRelation, ReassessmentImpact, RelationFamily, RelationKind, WorkbenchError,
+    object_available_in_situation, scoped, situation_visible, valid_text,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::BTreeSet;
@@ -135,6 +138,85 @@ pub struct Recommendation {
     pub recorded_by: Uuid,
     pub recorded_at: String,
     pub replayed: bool,
+}
+
+/// A structural dependency cue, not a judgment that the recommendation has become inappropriate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecommendationBasisImpact {
+    pub recommendation_id: Uuid,
+    pub trigger_relation_id: Uuid,
+    pub affected_ground_object_ids: Vec<Uuid>,
+    pub affected_basis_indices: Vec<usize>,
+    pub alternative_basis_indices_not_linked_to_trigger: Vec<usize>,
+    pub grounds_unqualified: bool,
+    pub historical_recommendation: bool,
+}
+
+pub(super) fn basis_impacts(
+    recommendations: &[Recommendation],
+    relations: &[ExpertRelation],
+    reassessment_impacts: &[ReassessmentImpact],
+) -> Vec<RecommendationBasisImpact> {
+    let mut changed = std::collections::BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
+    for relation in relations.iter().filter(|r| {
+        r.family == RelationFamily::Genealogy
+            && matches!(
+                r.kind,
+                RelationKind::Supersedes | RelationKind::Retracts | RelationKind::Reinterprets
+            )
+    }) {
+        changed
+            .entry(relation.relation_id)
+            .or_default()
+            .insert(relation.right_object_id);
+    }
+    for impact in reassessment_impacts {
+        if let Some(grounds) = changed.get_mut(&impact.trigger_relation_id) {
+            grounds.extend([impact.argument_id, impact.conclusion_object_id]);
+        }
+    }
+    let historical: BTreeSet<_> = recommendations
+        .iter()
+        .filter_map(|r| r.input.revises_recommendation_id)
+        .collect();
+    let mut result = vec![];
+    for recommendation in recommendations {
+        for (trigger_relation_id, changed_ground_ids) in &changed {
+            let affected_ground_object_ids: Vec<_> = recommendation
+                .input
+                .ground_object_ids
+                .iter()
+                .copied()
+                .filter(|id| changed_ground_ids.contains(id))
+                .collect();
+            if affected_ground_object_ids.is_empty() {
+                continue;
+            }
+            let mut affected_basis_indices = vec![];
+            let mut alternative_basis_indices_not_linked_to_trigger = vec![];
+            for (index, basis) in recommendation.input.qualified_basis.iter().enumerate() {
+                if basis
+                    .ground_object_ids
+                    .iter()
+                    .any(|id| changed_ground_ids.contains(id))
+                {
+                    affected_basis_indices.push(index);
+                } else if basis.kind == BasisKind::AlternativeSufficient {
+                    alternative_basis_indices_not_linked_to_trigger.push(index);
+                }
+            }
+            result.push(RecommendationBasisImpact {
+                recommendation_id: recommendation.recommendation_id,
+                trigger_relation_id: *trigger_relation_id,
+                affected_ground_object_ids,
+                affected_basis_indices,
+                alternative_basis_indices_not_linked_to_trigger,
+                grounds_unqualified: recommendation.input.qualified_basis.is_empty(),
+                historical_recommendation: historical.contains(&recommendation.recommendation_id),
+            });
+        }
+    }
+    result
 }
 
 async fn list_filtered(
