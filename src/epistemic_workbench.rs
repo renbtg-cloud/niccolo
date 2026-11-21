@@ -31,6 +31,7 @@ pub enum ExpertNodeKind {
     Hypothesis,
     Assumption,
     InformationGap,
+    Question,
     Finding,
 }
 impl ExpertNodeKind {
@@ -40,6 +41,7 @@ impl ExpertNodeKind {
             Self::Hypothesis => "HYPOTHESIS",
             Self::Assumption => "ASSUMPTION",
             Self::InformationGap => "INFORMATION_GAP",
+            Self::Question => "QUESTION",
             Self::Finding => "FINDING",
         }
     }
@@ -683,6 +685,14 @@ async fn object_available_in_situation(
         .bind(object_id)
         .fetch_one(&mut **tx)
         .await?,
+        "QUESTION" => sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_questions WHERE workspace_id=$1 AND situation_id=$2 AND question_id=$3)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(object_id)
+        .fetch_one(&mut **tx)
+        .await?,
         "FINDING" => sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_findings WHERE workspace_id=$1 AND situation_id=$2 AND finding_id=$3)",
         )
@@ -789,6 +799,9 @@ pub async fn create_node(
             ExpertNodeKind::InformationGap => {
                 "INSERT INTO niccolo.epistemic_information_gaps(workspace_id,gap_id,situation_id,description,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
             }
+            ExpertNodeKind::Question => {
+                "INSERT INTO niccolo.epistemic_questions(workspace_id,question_id,situation_id,question_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
+            }
             ExpertNodeKind::Finding => {
                 "INSERT INTO niccolo.epistemic_findings(workspace_id,finding_id,situation_id,statement_text,rationale) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING"
             }
@@ -811,6 +824,9 @@ pub async fn create_node(
             }
             ExpertNodeKind::InformationGap => {
                 "SELECT situation_id,description,rationale FROM niccolo.epistemic_information_gaps WHERE workspace_id=$1 AND gap_id=$2"
+            }
+            ExpertNodeKind::Question => {
+                "SELECT situation_id,question_text,rationale FROM niccolo.epistemic_questions WHERE workspace_id=$1 AND question_id=$2"
             }
             ExpertNodeKind::Finding => {
                 "SELECT situation_id,statement_text,rationale FROM niccolo.epistemic_findings WHERE workspace_id=$1 AND finding_id=$2"
@@ -862,14 +878,17 @@ pub async fn create_relation(
     }
     let rationale = rationale.trim();
     let mut tx = scoped(pool, workspace, false).await?;
-    if object_available_in_situation(&mut tx, workspace, situation, left_object_id)
+    let left_kind = object_available_in_situation(&mut tx, workspace, situation, left_object_id)
         .await?
-        .is_none()
-        || object_available_in_situation(&mut tx, workspace, situation, right_object_id)
-            .await?
-            .is_none()
+        .ok_or(WorkbenchError::Invisible)?;
+    let right_kind = object_available_in_situation(&mut tx, workspace, situation, right_object_id)
+        .await?
+        .ok_or(WorkbenchError::Invisible)?;
+    if (left_kind == "QUESTION" || right_kind == "QUESTION")
+        && !(kind == RelationKind::RelevantTo
+            || (family == RelationFamily::Genealogy && left_kind == right_kind))
     {
-        return Err(WorkbenchError::Invisible);
+        return Err(WorkbenchError::Invalid);
     }
     let inserted = sqlx::query(
         "INSERT INTO niccolo.epistemic_relations \
@@ -947,6 +966,9 @@ pub async fn create_argument(
         object_available_in_situation(&mut tx, workspace, situation, conclusion_object_id).await?;
     if conclusion_kind.is_none() || conclusion_kind.as_deref() == Some("ARGUMENT") {
         return Err(WorkbenchError::Invisible);
+    }
+    if conclusion_kind.as_deref() == Some("QUESTION") {
+        return Err(WorkbenchError::Invalid);
     }
     let object_inserted = ensure_object(&mut tx, workspace, argument_id, "ARGUMENT", actor).await?;
     sqlx::query(
@@ -1044,12 +1066,13 @@ pub async fn create_grounding_set(
         return Err(WorkbenchError::Invisible);
     }
     for member in members {
-        if let Some(object_id) = member.ground_object_id
-            && object_available_in_situation(&mut tx, workspace, situation, object_id)
+        if let Some(object_id) = member.ground_object_id {
+            let kind = object_available_in_situation(&mut tx, workspace, situation, object_id)
                 .await?
-                .is_none()
-        {
-            return Err(WorkbenchError::Invisible);
+                .ok_or(WorkbenchError::Invisible)?;
+            if kind == "QUESTION" && member.role != GroundingMemberRole::Context {
+                return Err(WorkbenchError::Invalid);
+            }
         }
         if let Some(evidence_id) = member.evidence_id {
             let visible: bool = sqlx::query_scalar(
@@ -1184,6 +1207,7 @@ fn node_kind_from_db(value: &str) -> Result<ExpertNodeKind, WorkbenchError> {
         "HYPOTHESIS" => Ok(ExpertNodeKind::Hypothesis),
         "ASSUMPTION" => Ok(ExpertNodeKind::Assumption),
         "INFORMATION_GAP" => Ok(ExpertNodeKind::InformationGap),
+        "QUESTION" => Ok(ExpertNodeKind::Question),
         "FINDING" => Ok(ExpertNodeKind::Finding),
         _ => Err(WorkbenchError::Invalid),
     }
@@ -1983,6 +2007,10 @@ pub async fn snapshot(
            SELECT g.gap_id,'INFORMATION_GAP',g.description,g.rationale,o.created_by_principal_id,g.created_at \
              FROM niccolo.epistemic_information_gaps g JOIN niccolo.epistemic_objects o ON o.workspace_id=g.workspace_id AND o.object_id=g.gap_id \
             WHERE g.workspace_id=$1 AND g.situation_id=$2 \
+           UNION ALL \
+           SELECT q.question_id,'QUESTION',q.question_text,q.rationale,o.created_by_principal_id,q.created_at \
+             FROM niccolo.epistemic_questions q JOIN niccolo.epistemic_objects o ON o.workspace_id=q.workspace_id AND o.object_id=q.question_id \
+            WHERE q.workspace_id=$1 AND q.situation_id=$2 \
            UNION ALL \
            SELECT f.finding_id,'FINDING',f.statement_text,f.rationale,o.created_by_principal_id,f.created_at \
              FROM niccolo.epistemic_findings f JOIN niccolo.epistemic_objects o ON o.workspace_id=f.workspace_id AND o.object_id=f.finding_id \

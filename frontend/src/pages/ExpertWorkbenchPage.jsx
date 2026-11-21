@@ -11,6 +11,7 @@ import {
   groundingAdequacies,
   groundingEffects,
   groundingRequest,
+  defaultGroundRole, relationEndpointAllowed,
   nodeKinds,
   nodeRequest,
   relationKinds,
@@ -117,25 +118,25 @@ export function ExpertWorkbenchPage() {
       <form onSubmit={submit(() => createNode.mutate(nodeRequest(node.kind, node.text, node.rationale)))}>
         <h3>Add abstraction</h3>
         <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x}>{x}</option>)}</select></label>
-        <label>Structured statement<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
+        <label>{node.kind === 'QUESTION' ? 'Investigative question (not an assertion)' : 'Structured statement'}<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
         <label>Why this abstraction is appropriate<textarea value={node.rationale} maxLength={4096} onChange={(e) => setNode({ ...node, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create object</button>
       </form>
 
       <form onSubmit={submit(() => createRelation.mutate(relationRequest(relation.family, relation.kind, relation.left, relation.right, relation.rationale)))}>
         <h3>Add typed relation</h3>
-        <label>Family<select value={relation.family} onChange={(e) => setRelation({ ...relation, family: e.target.value, kind: relationKinds[e.target.value][0] })}>{Object.keys(relationKinds).map((x) => <option key={x}>{x}</option>)}</select></label>
-        <label>Relation<select value={relation.kind} onChange={(e) => setRelation({ ...relation, kind: e.target.value })}>{relationKinds[relation.family].map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>Family<select value={relation.family} onChange={(e) => setRelation({ ...relation, family: e.target.value, kind: relationKinds[e.target.value][0], left:'', right:'' })}>{Object.keys(relationKinds).map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>Relation<select value={relation.kind} onChange={(e) => setRelation({ ...relation, kind: e.target.value, left:'', right:'' })}>{relationKinds[relation.family].map((x) => <option key={x}>{x}</option>)}</select></label>
         <small className="relation-semantics">{relationSemantics[relation.kind].description}</small>
-        <label>{relationSemantics[relation.kind].left}<select value={relation.left} onChange={(e) => setRelation({ ...relation, left: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
-        <label>{relationSemantics[relation.kind].right}<select value={relation.right} onChange={(e) => setRelation({ ...relation, right: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <label>{relationSemantics[relation.kind].left}<select value={relation.left} onChange={(e) => setRelation({ ...relation, left: e.target.value })}><option value="">Choose…</option>{data.nodes.filter(n => relationEndpointAllowed(relation.family, relation.kind, n.kind, data.nodes.find(o => o.object_id === relation.right)?.kind)).map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <label>{relationSemantics[relation.kind].right}<select value={relation.right} onChange={(e) => setRelation({ ...relation, right: e.target.value })}><option value="">Choose…</option>{data.nodes.filter(n => relationEndpointAllowed(relation.family, relation.kind, n.kind, data.nodes.find(o => o.object_id === relation.left)?.kind)).map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
         <label>Rationale<textarea value={relation.rationale} maxLength={4096} onChange={(e) => setRelation({ ...relation, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create relation</button>
       </form>
 
       <form onSubmit={submit(() => createArgument.mutate(argumentRequest(argument.conclusion, argument.mode, argument.rationale)))}>
         <h3>Add argument</h3>
-        <label>Conclusion<select value={argument.conclusion} onChange={(e) => setArgument({ ...argument, conclusion: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <label>Conclusion<select value={argument.conclusion} onChange={(e) => setArgument({ ...argument, conclusion: e.target.value })}><option value="">Choose…</option>{data.nodes.filter(n => n.kind !== 'QUESTION').map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
         <label>Mode<select value={argument.mode} onChange={(e) => setArgument({ ...argument, mode: e.target.value })}>{argumentModes.map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>Rationale<textarea value={argument.rationale} maxLength={4096} onChange={(e) => setArgument({ ...argument, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create argument</button>
@@ -151,7 +152,7 @@ export function ExpertWorkbenchPage() {
         <label>Effect<select value={grounding.effect} onChange={(e) => setGrounding({ ...grounding, effect: e.target.value })}>{groundingEffects.map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>Adequacy<select value={grounding.adequacy} onChange={(e) => setGrounding({ ...grounding, adequacy: e.target.value })}>{groundingAdequacies.map((x) => <option key={x}>{x}</option>)}</select></label>
         <fieldset><legend>Joint grounds</legend>
-          {data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <><select value={groundRoles[n.object_id] ?? (n.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE')} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}><option>PREMISE</option><option>ASSUMPTION</option><option>CONTEXT</option></select><input aria-label={`Why ${n.kind} is a ground`} placeholder="Why this object belongs in this grounding set" value={groundMemberRationales[`object:${n.object_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`object:${n.object_id}`]: e.target.value })} /></>}</div>)}
+          {data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <><select value={groundRoles[n.object_id] ?? defaultGroundRole(n.kind)} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}>{(n.kind === 'QUESTION' ? ['CONTEXT'] : ['PREMISE','ASSUMPTION','CONTEXT']).map(role => <option key={role}>{role}</option>)}</select><input aria-label={`Why ${n.kind} is a ground`} placeholder="Why this object belongs in this grounding set" value={groundMemberRationales[`object:${n.object_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`object:${n.object_id}`]: e.target.value })} /></>}</div>)}
           <p><strong>Documentary evidence</strong></p>
           <div className="evidence-search"><input aria-label="Search documentary evidence" placeholder="Search all attached admissible fragments" value={evidenceSearchText} maxLength={512} onChange={(e) => setEvidenceSearchText(e.target.value)} /><button type="button" disabled={searchEvidence.isPending || !evidenceSearchText.trim()} onClick={() => searchEvidence.mutate(evidenceSearchText.trim())}>Search evidence</button></div>
           {searchEvidence.error && <small className="error">Evidence search failed: {searchEvidence.error.message}</small>}
@@ -169,7 +170,7 @@ export function ExpertWorkbenchPage() {
         <h3>Assess inferential applicability</h3>
         <p>Record a required condition and the investigator’s assessment of it; this is not a truth verdict for the premises or conclusion.</p>
         <label>Grounding route<select value={applicability.route} onChange={(e) => setApplicability({...applicability, route: e.target.value})}><option value="">Choose…</option>{data.grounding_sets.map((g) => <option key={`${g.argument_id}:${g.grounding_set_id}`} value={`${g.argument_id}:${g.grounding_set_id}`}>{g.effect}/{g.adequacy}: {g.rationale}</option>)}</select></label>
-        <label>Required condition<select value={applicability.condition} onChange={(e) => setApplicability({...applicability, condition: e.target.value})}><option value="">Choose…</option>{data.nodes.filter((n) => n.kind !== 'INFORMATION_GAP').map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <label>Required condition<select value={applicability.condition} onChange={(e) => setApplicability({...applicability, condition: e.target.value})}><option value="">Choose…</option>{data.nodes.filter((n) => !['INFORMATION_GAP','QUESTION'].includes(n.kind)).map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
         <label>Condition assessment<select value={applicability.assessment} onChange={(e) => setApplicability({...applicability, assessment: e.target.value})}>{applicabilityAssessments.map((a) => <option key={a}>{a}</option>)}</select></label>
         <label>Assessment rationale<textarea value={applicability.rationale} maxLength={4096} onChange={(e) => setApplicability({...applicability, rationale: e.target.value})} /></label>
         <button disabled={busy}>Record applicability assessment</button>

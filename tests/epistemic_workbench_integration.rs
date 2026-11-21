@@ -75,6 +75,160 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn investigative_question_is_distinct_from_gap_and_never_a_conclusion_or_premise() {
+    let f = fixture().await;
+    let sit = situation(&f, "Investigate an unverified allegation").await;
+    let other = situation(&f, "Separate investigation").await;
+    let question = node(
+        &f,
+        sit,
+        ExpertNodeKind::Question,
+        "Why did the manager lie?",
+    )
+    .await;
+    let gap = node(
+        &f,
+        sit,
+        ExpertNodeKind::InformationGap,
+        "Whether the manager knew the statement was false",
+    )
+    .await;
+    let hypothesis = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The manager knowingly misrepresented the record",
+    )
+    .await;
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|n| n.object_id == question)
+            .unwrap()
+            .kind,
+        ExpertNodeKind::Question
+    );
+    assert!(snapshot.relations.is_empty());
+    assert!(snapshot.arguments.is_empty());
+    let link = |s, family, kind, left, right| {
+        epistemic_workbench::create_relation(
+            &f.service,
+            f.workspace,
+            s,
+            f.principal,
+            Uuid::new_v4(),
+            family,
+            kind,
+            left,
+            right,
+            "Investigative relevance only",
+        )
+    };
+    assert!(
+        link(
+            sit,
+            RelationFamily::Contextual,
+            RelationKind::RelevantTo,
+            question,
+            gap
+        )
+        .await
+        .is_ok()
+    );
+    assert!(matches!(
+        link(
+            sit,
+            RelationFamily::Semantic,
+            RelationKind::Entails,
+            question,
+            hypothesis
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        link(
+            other,
+            RelationFamily::Contextual,
+            RelationKind::RelevantTo,
+            question,
+            gap
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(matches!(
+        epistemic_workbench::create_argument(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            Uuid::new_v4(),
+            question,
+            ArgumentMode::Abductive,
+            "Not a proposition"
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    let argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument,
+        hypothesis,
+        ArgumentMode::Abductive,
+        "Hypothesis remains open",
+    )
+    .await
+    .unwrap();
+    let member = |role| NewGroundingMember {
+        member_id: Uuid::new_v4(),
+        role,
+        ground_object_id: Some(question),
+        evidence_id: None,
+        rationale: "Question frames this inquiry".into(),
+    };
+    let create = |members: Vec<NewGroundingMember>| async {
+        epistemic_workbench::create_grounding_set(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            argument,
+            Uuid::new_v4(),
+            GroundingEffect::Supports,
+            GroundingAdequacy::Partial,
+            "A question is not evidence",
+            &members,
+        )
+        .await
+    };
+    assert!(matches!(
+        create(vec![member(GroundingMemberRole::Premise)]).await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(
+        create(vec![member(GroundingMemberRole::Context)])
+            .await
+            .is_ok()
+    );
+    assert!(
+        epistemic_workbench::snapshot(&f.service, f.workspace, other)
+            .await
+            .unwrap()
+            .nodes
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn assessments_can_target_exact_prior_assessments_without_mutating_them() {
     use epistemic_workbench::assessment::*;
     let f = fixture().await;

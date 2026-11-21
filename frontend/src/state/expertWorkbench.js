@@ -28,7 +28,14 @@ export const relationSemantics = Object.freeze({
   ATTENUATES: { left: 'Attenuator', right: 'Affected outcome', description: 'The left object reduces the intensity or likelihood represented by the right object.' },
 });
 
-export const nodeKinds = Object.freeze(['PROPOSITION', 'HYPOTHESIS', 'ASSUMPTION', 'INFORMATION_GAP', 'FINDING']);
+export const nodeKinds = Object.freeze(['PROPOSITION', 'HYPOTHESIS', 'ASSUMPTION', 'INFORMATION_GAP', 'QUESTION', 'FINDING']);
+export function defaultGroundRole(kind) {
+  return kind === 'QUESTION' ? 'CONTEXT' : kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE';
+}
+export function relationEndpointAllowed(family, kind, candidate, other) {
+  if (candidate !== 'QUESTION' && other !== 'QUESTION') return true;
+  return kind === 'RELEVANT_TO' || (family === 'GENEALOGY' && (!other || candidate === other));
+}
 export const argumentModes = Object.freeze(['DEDUCTIVE', 'INDUCTIVE', 'ABDUCTIVE', 'CAUSAL', 'ANALOGICAL', 'POLICY', 'OTHER']);
 export const groundingEffects = Object.freeze(['SUPPORTS', 'WEAKENS', 'CHALLENGES', 'CONDITIONS']);
 export const groundingAdequacies = Object.freeze(['UNSPECIFIED', 'PARTIAL', 'SUFFICIENT', 'NECESSARY_CONDITION']);
@@ -97,6 +104,7 @@ export function argumentRequest(conclusionObjectId, mode, rationale) {
 export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles, selectedEvidence = [], memberRationales = {}) {
   if (!groundingEffects.includes(effect) || !groundingAdequacies.includes(adequacy)) throw new Error('Choose grounding semantics.');
   if (!selectedNodes.length && !selectedEvidence.length) throw new Error('Choose at least one joint ground.');
+  if (selectedNodes.some(node => node.kind === 'QUESTION' && (roles[node.object_id] ?? defaultGroundRole(node.kind)) !== 'CONTEXT')) throw new Error('A question is context, not a premise or assumption.');
   return {
     effect,
     adequacy,
@@ -104,7 +112,7 @@ export function groundingRequest(effect, adequacy, rationale, selectedNodes, rol
     members: [
       ...selectedNodes.map((node) => ({
         member_id: crypto.randomUUID(),
-        role: roles[node.object_id] ?? (node.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE'),
+        role: roles[node.object_id] ?? defaultGroundRole(node.kind),
         ground_object_id: node.object_id,
         evidence_id: null,
         rationale: requireText(memberRationales[`object:${node.object_id}`], 'Ground rationale'),

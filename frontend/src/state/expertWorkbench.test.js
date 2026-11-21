@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision } from './expertWorkbench.js';
+import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed } from './expertWorkbench.js';
 
 describe('contextual assessment request', () => {
   const draft = { dimension: 'RELIABILITY', result: 'RELIABLE', confidence: 'LOW', criterion: ' consistency ', context: ' current investigation ', rationale: ' because of provenance ' };
@@ -43,5 +43,16 @@ describe('contextual assessment request', () => {
     expect(assessmentTargetRevision({kind:'OBJECT',object_id:'object'},events)).toBeNull();
     expect(assessmentRequest(draft,target,[]).target).toEqual(target);
     expect(assessmentTargetRevision(target,[...events,{event_id:'original', input:{revises_event_id:'latest'}}])).toBeNull();
+  });
+});
+
+describe('investigative question semantics', () => {
+  it('allows a question as a distinct authored node and context, not a premise', () => {
+    expect(nodeRequest('QUESTION','Why did the manager lie?', 'Investigate an allegation').kind).toBe('QUESTION');
+    expect(defaultGroundRole('QUESTION')).toBe('CONTEXT');
+    expect(relationEndpointAllowed('SEMANTIC','ENTAILS','QUESTION','HYPOTHESIS')).toBe(false);
+    expect(relationEndpointAllowed('CONTEXTUAL','RELEVANT_TO','INFORMATION_GAP','QUESTION')).toBe(true);
+    expect(relationEndpointAllowed('GENEALOGY','REFINES','QUESTION','QUESTION')).toBe(true);
+    expect(relationEndpointAllowed('GENEALOGY','REFINES','QUESTION','HYPOTHESIS')).toBe(false);
   });
 });
