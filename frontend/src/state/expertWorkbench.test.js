@@ -55,4 +55,12 @@ describe('investigative question semantics', () => {
     expect(relationEndpointAllowed('GENEALOGY','REFINES','QUESTION','QUESTION')).toBe(true);
     expect(relationEndpointAllowed('GENEALOGY','REFINES','QUESTION','HYPOTHESIS')).toBe(false);
   });
+  it('restricts directed investigative links to their semantic endpoint types', () => {
+    expect(relationEndpointAllowed('CONTEXTUAL','ADDRESSES_GAP','QUESTION','INFORMATION_GAP')).toBe(true);
+    expect(relationEndpointAllowed('CONTEXTUAL','ADDRESSES_GAP','INFORMATION_GAP','QUESTION')).toBe(false);
+    expect(relationEndpointAllowed('CONTEXTUAL','TESTS_HYPOTHESIS','HYPOTHESIS','QUESTION','right')).toBe(true);
+    expect(relationEndpointAllowed('CONTEXTUAL','TESTS_HYPOTHESIS','FINDING','QUESTION','right')).toBe(false);
+    expect(relationEndpointAllowed('CONTEXTUAL','PRESUPPOSES','ASSUMPTION','QUESTION','right')).toBe(true);
+    expect(relationEndpointAllowed('CONTEXTUAL','PRESUPPOSES','INFORMATION_GAP','QUESTION','right')).toBe(false);
+  });
 });

@@ -93,6 +93,9 @@ pub enum RelationKind {
     Reinterprets,
     RelevantTo,
     ApplicableUnder,
+    AddressesGap,
+    TestsHypothesis,
+    Presupposes,
     Causes,
     ContributesTo,
     Enables,
@@ -116,6 +119,9 @@ impl RelationKind {
             Self::Reinterprets => "REINTERPRETS",
             Self::RelevantTo => "RELEVANT_TO",
             Self::ApplicableUnder => "APPLICABLE_UNDER",
+            Self::AddressesGap => "ADDRESSES_GAP",
+            Self::TestsHypothesis => "TESTS_HYPOTHESIS",
+            Self::Presupposes => "PRESUPPOSES",
             Self::Causes => "CAUSES",
             Self::ContributesTo => "CONTRIBUTES_TO",
             Self::Enables => "ENABLES",
@@ -137,7 +143,11 @@ impl RelationKind {
             | Self::Consolidates
             | Self::Separates
             | Self::Reinterprets => RelationFamily::Genealogy,
-            Self::RelevantTo | Self::ApplicableUnder => RelationFamily::Contextual,
+            Self::RelevantTo
+            | Self::ApplicableUnder
+            | Self::AddressesGap
+            | Self::TestsHypothesis
+            | Self::Presupposes => RelationFamily::Contextual,
             Self::Causes
             | Self::ContributesTo
             | Self::Enables
@@ -151,6 +161,20 @@ impl RelationKind {
             self,
             Self::EquivalentTo | Self::Contradicts | Self::PartialOverlap
         )
+    }
+    fn accepts_endpoints(self, left: &str, right: &str) -> bool {
+        match self {
+            Self::AddressesGap => left == "QUESTION" && right == "INFORMATION_GAP",
+            Self::TestsHypothesis => left == "QUESTION" && right == "HYPOTHESIS",
+            Self::Presupposes => {
+                left == "QUESTION" && matches!(right, "PROPOSITION" | "ASSUMPTION" | "HYPOTHESIS")
+            }
+            _ if left == "QUESTION" || right == "QUESTION" => {
+                self == Self::RelevantTo
+                    || (self.family() == RelationFamily::Genealogy && left == right)
+            }
+            _ => true,
+        }
     }
 }
 
@@ -884,10 +908,7 @@ pub async fn create_relation(
     let right_kind = object_available_in_situation(&mut tx, workspace, situation, right_object_id)
         .await?
         .ok_or(WorkbenchError::Invisible)?;
-    if (left_kind == "QUESTION" || right_kind == "QUESTION")
-        && !(kind == RelationKind::RelevantTo
-            || (family == RelationFamily::Genealogy && left_kind == right_kind))
-    {
+    if !kind.accepts_endpoints(&left_kind, &right_kind) {
         return Err(WorkbenchError::Invalid);
     }
     let inserted = sqlx::query(
@@ -1236,6 +1257,9 @@ fn relation_kind_from_db(value: &str) -> Result<RelationKind, WorkbenchError> {
         "REINTERPRETS" => Ok(RelationKind::Reinterprets),
         "RELEVANT_TO" => Ok(RelationKind::RelevantTo),
         "APPLICABLE_UNDER" => Ok(RelationKind::ApplicableUnder),
+        "ADDRESSES_GAP" => Ok(RelationKind::AddressesGap),
+        "TESTS_HYPOTHESIS" => Ok(RelationKind::TestsHypothesis),
+        "PRESUPPOSES" => Ok(RelationKind::Presupposes),
         "CAUSES" => Ok(RelationKind::Causes),
         "CONTRIBUTES_TO" => Ok(RelationKind::ContributesTo),
         "ENABLES" => Ok(RelationKind::Enables),

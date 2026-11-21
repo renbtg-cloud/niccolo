@@ -1,7 +1,7 @@
 export const relationKinds = Object.freeze({
   SEMANTIC: ['EQUIVALENT_TO', 'MORE_SPECIFIC_THAN', 'ENTAILS', 'CONTRADICTS', 'PARTIAL_OVERLAP'],
   GENEALOGY: ['REFINES', 'SUPERSEDES', 'RETRACTS', 'CONSOLIDATES', 'SEPARATES', 'REINTERPRETS'],
-  CONTEXTUAL: ['RELEVANT_TO', 'APPLICABLE_UNDER'],
+  CONTEXTUAL: ['RELEVANT_TO', 'APPLICABLE_UNDER', 'ADDRESSES_GAP', 'TESTS_HYPOTHESIS', 'PRESUPPOSES'],
   CAUSAL: ['CAUSES', 'CONTRIBUTES_TO', 'ENABLES', 'PREVENTS', 'INTENSIFIES', 'ATTENUATES'],
 });
 
@@ -20,6 +20,9 @@ export const relationSemantics = Object.freeze({
   REINTERPRETS: { left: 'New interpretation', right: 'Prior object', description: 'The left object provides a revised reading of the right object.' },
   RELEVANT_TO: { left: 'Relevant object', right: 'Context object', description: 'The left object is relevant to the right object in the stated context.' },
   APPLICABLE_UNDER: { left: 'Applicable object', right: 'Condition object', description: 'The left object applies under the condition represented by the right object.' },
+  ADDRESSES_GAP: { left: 'Investigative question', right: 'Information gap', description: 'This question may help investigate the gap; asking or answering it does not resolve the gap.' },
+  TESTS_HYPOTHESIS: { left: 'Investigative question', right: 'Hypothesis to examine', description: 'Possible answers may bear on the hypothesis. No discriminatory power or truth is inferred from this link.' },
+  PRESUPPOSES: { left: 'Investigative question', right: 'Explicit presupposition', description: 'Expose an assumption embedded in the question so it can be challenged, without endorsing it.' },
   CAUSES: { left: 'Cause', right: 'Effect', description: 'The left object is asserted as a cause of the right object.' },
   CONTRIBUTES_TO: { left: 'Contributor', right: 'Outcome', description: 'The left object contributes causally to the right object without claiming sole causation.' },
   ENABLES: { left: 'Enabler', right: 'Enabled outcome', description: 'The left object enables the right object.' },
@@ -32,7 +35,12 @@ export const nodeKinds = Object.freeze(['PROPOSITION', 'HYPOTHESIS', 'ASSUMPTION
 export function defaultGroundRole(kind) {
   return kind === 'QUESTION' ? 'CONTEXT' : kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE';
 }
-export function relationEndpointAllowed(family, kind, candidate, other) {
+export function relationEndpointAllowed(family, kind, candidate, other, side = 'left') {
+  const investigativeTargets = {ADDRESSES_GAP:['INFORMATION_GAP'], TESTS_HYPOTHESIS:['HYPOTHESIS'], PRESUPPOSES:['PROPOSITION','ASSUMPTION','HYPOTHESIS']};
+  if (investigativeTargets[kind]) {
+    if (family !== 'CONTEXTUAL') return false;
+    return side === 'left' ? candidate === 'QUESTION' && (!other || investigativeTargets[kind].includes(other)) : investigativeTargets[kind].includes(candidate) && (!other || other === 'QUESTION');
+  }
   if (candidate !== 'QUESTION' && other !== 'QUESTION') return true;
   return kind === 'RELEVANT_TO' || (family === 'GENEALOGY' && (!other || candidate === other));
 }

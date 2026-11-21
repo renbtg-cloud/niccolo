@@ -75,6 +75,119 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn investigative_links_expose_presuppositions_without_asserting_them_or_resolving_gaps() {
+    let f = fixture().await;
+    let sit = situation(&f, "Examine a loaded investigative question").await;
+    let other = situation(&f, "Another investigation").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Why did Juan lie?").await;
+    let g1 = node(
+        &f,
+        sit,
+        ExpertNodeKind::InformationGap,
+        "Whether the statement was false",
+    )
+    .await;
+    let g2 = node(
+        &f,
+        sit,
+        ExpertNodeKind::InformationGap,
+        "Whether the speaker knew it was false",
+    )
+    .await;
+    let h1 = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The speaker intended to mislead",
+    )
+    .await;
+    let h2 = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The speaker was mistaken",
+    )
+    .await;
+    let p = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The speaker made the statement",
+    )
+    .await;
+    let foreign = node(&f, other, ExpertNodeKind::InformationGap, "A gap elsewhere").await;
+    let link = |id, kind, left, right| {
+        epistemic_workbench::create_relation(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            RelationFamily::Contextual,
+            kind,
+            left,
+            right,
+            "Investigator-authored relationship; no truth assertion",
+        )
+    };
+    for (kind, target) in [
+        (RelationKind::AddressesGap, g1),
+        (RelationKind::AddressesGap, g2),
+        (RelationKind::TestsHypothesis, h1),
+        (RelationKind::TestsHypothesis, h2),
+        (RelationKind::Presupposes, p),
+        (RelationKind::Presupposes, h1),
+    ] {
+        let id = Uuid::new_v4();
+        assert!(!link(id, kind, q, target).await.unwrap().replayed);
+        assert!(link(id, kind, q, target).await.unwrap().replayed);
+    }
+    assert!(matches!(
+        link(Uuid::new_v4(), RelationKind::AddressesGap, g1, q).await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        link(Uuid::new_v4(), RelationKind::TestsHypothesis, q, g1).await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        link(Uuid::new_v4(), RelationKind::Presupposes, q, g1).await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        link(Uuid::new_v4(), RelationKind::AddressesGap, q, foreign).await,
+        Err(WorkbenchError::Invisible)
+    ));
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)")
+        .bind(f.workspace.to_string())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let invalid = sqlx::query("INSERT INTO niccolo.epistemic_relations(workspace_id,situation_id,relation_id,relation_family,relation_kind,left_object_id,right_object_id,rationale,recorded_by_principal_id) VALUES($1,$2,$3,'CONTEXTUAL','ADDRESSES_GAP',$4,$5,'Wrong Situation',$6)")
+        .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(q).bind(foreign).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(
+        invalid.as_database_error().unwrap().code().as_deref(),
+        Some("23514")
+    );
+    tx.rollback().await.unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.relations.len(), 6);
+    assert!(snapshot.arguments.is_empty());
+    assert!(snapshot.assessments.is_empty());
+    assert!(snapshot.reassessment_impacts.is_empty());
+    assert!(snapshot.reasoning_diagnostics.is_empty());
+    assert!(
+        snapshot
+            .nodes
+            .iter()
+            .any(|n| n.object_id == q && n.text == "Why did Juan lie?")
+    );
+}
+
+#[tokio::test]
 async fn investigative_question_is_distinct_from_gap_and_never_a_conclusion_or_premise() {
     let f = fixture().await;
     let sit = situation(&f, "Investigate an unverified allegation").await;
