@@ -655,6 +655,8 @@ Checkpoint 1.71 adds an AT-08/AT-22 regression witness: two analyses of the same
 
 Checkpoint 1.72 adds six independent contextual response assessments for AT-19, distinguishing observed absence, actual nonresponse, expectation, opportunity, deliberate nonresponse and interpreted assent. Observed absence assertions require an exact evidence fragment; interpreted assent identifies its distinct interpreting actor. Neither establishes consent or actual nonresponse. Migration 0147 and a five-participant fixture passed alongside 289 Rust and 24 Python tests. Completeness of observation remains a human assessment, not a consequence of recording an observation.
 
+Checkpoint 1.73 exposes these six independently attributed response assessments in the React Workbench with exact communication, interpreting actor, observation scope, evidence and revision identity checks. All 148 migrations applied to a fresh PostgreSQL database; 634 Rust tests across 47 groups, 182 React tests, 24 Python tests and eight standalone JavaScript tests passed, including the served bundle smoke test.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
