@@ -262,6 +262,8 @@ Niccolò may reason from an unconfirmed interpretation, but it must remain expli
 
 User confirmation of an interpretation means that the meaning was understood correctly. It does **not** establish the truth of the resulting proposition.
 
+The Workbench now exposes the existing persistent utterance-interpretation substrate (migration 0098) for response occurrences. A trained investigator explicitly authors each human interpretation revision; the API scopes the utterance, interpretation and predecessor to the exact Situation and uses optimistic revision identity. Meaning confirmation or rejection targets an exact revision and preserves recorder, note and time. The response snapshot presents original wording, current and historical interpretations, producer, rationale, and all confirmation events. A new revision is provisional even when the preceding revision was confirmed; a later confirmation of a historical revision cannot confirm its successor. No proposition, truth, gap resolution or inference is automatically authored by this operation.
+
 Interpretation should be conservative. Parse what was said and what the context supports; do not complete an implied chain such as received -> read -> understood -> believed without evidence. Unknown is preferable to unsupported semantic completion.
 
 ## 11. Choosing the next investigative step
