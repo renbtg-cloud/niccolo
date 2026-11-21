@@ -1,6 +1,7 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::{
     authz,
+    epistemic_reassessment::{self, ReassessmentChangeKind},
     epistemic_workbench::{
         self, ArgumentMode, ExpertNodeKind, GroundingAdequacy, GroundingEffect,
         GroundingMemberRole, NewGroundingMember, RelationFamily, RelationKind, WorkbenchError,
@@ -297,4 +298,207 @@ async fn grounding_member_target_and_role_are_not_guessed() {
     )
     .await;
     assert!(matches!(invalid, Err(WorkbenchError::Invalid)));
+}
+
+#[tokio::test]
+async fn changed_ground_marks_only_dependency_chain_for_reassessment_without_falsifying_it() {
+    let f = fixture().await;
+    let sit = situation(&f, "Selective reassessment chain").await;
+    let original = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The payment delay was caused by a manual approval hold.",
+    )
+    .await;
+    let replacement = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The payment delay may have combined a manual hold with provider latency.",
+    )
+    .await;
+    let independent = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "Provider logs independently show a latency interval.",
+    )
+    .await;
+    let first_finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The delay mechanism requires renewed review.",
+    )
+    .await;
+    let downstream_finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The operational explanation remains usable for a downstream recommendation.",
+    )
+    .await;
+
+    let first_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_argument,
+        first_finding,
+        ArgumentMode::Abductive,
+        "First finding depends on alternative explicit grounding routes.",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_argument,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "Route one uses the original hypothesis.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(original),
+            evidence_id: None,
+            rationale: "Original explanatory route.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_argument,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "Route two remains independent of the changed hypothesis.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(independent),
+            evidence_id: None,
+            rationale: "Independent route must survive as a distinct route.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let second_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second_argument,
+        downstream_finding,
+        ArgumentMode::Policy,
+        "Downstream conclusion explicitly depends on the first finding.",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second_argument,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The downstream route consumes the first finding.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(first_finding),
+            evidence_id: None,
+            rationale: "Explicit downstream dependency.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let event_id = Uuid::new_v4();
+    let recorded = epistemic_reassessment::record_object_change(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        event_id,
+        original,
+        Some(replacement),
+        ReassessmentChangeKind::Revised,
+        "The investigator authored a revised explanation and wants downstream dependencies reviewed.",
+    )
+    .await
+    .unwrap();
+    assert!(!recorded.replayed);
+    assert!(!recorded.automatic_conclusion_status_change);
+    assert_eq!(recorded.impacts.len(), 2);
+    assert_eq!(recorded.impacts[0].argument_id, first_argument);
+    assert_eq!(recorded.impacts[0].minimum_depth, 1);
+    assert_eq!(recorded.impacts[0].impact_scope, "DIRECT_GROUND");
+    assert_eq!(recorded.impacts[1].argument_id, second_argument);
+    assert_eq!(recorded.impacts[1].minimum_depth, 2);
+    assert_eq!(recorded.impacts[1].impact_scope, "DOWNSTREAM_CONCLUSION");
+
+    let replay = epistemic_reassessment::record_object_change(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        event_id,
+        original,
+        Some(replacement),
+        ReassessmentChangeKind::Revised,
+        "The investigator authored a revised explanation and wants downstream dependencies reviewed.",
+    )
+    .await
+    .unwrap();
+    assert!(replay.replayed);
+    assert_eq!(replay.impacts, recorded.impacts);
+
+    let history = epistemic_reassessment::list(&f.service, f.workspace, sit, 100)
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].event_id, event_id);
+    assert!(!history[0].automatic_conclusion_status_change);
+}
+
+#[tokio::test]
+async fn reassessment_rejects_cross_situation_replacement() {
+    let f = fixture().await;
+    let first = situation(&f, "First reassessment Situation").await;
+    let second = situation(&f, "Second reassessment Situation").await;
+    let trigger = node(&f, first, ExpertNodeKind::Hypothesis, "Original.").await;
+    let foreign_replacement =
+        node(&f, second, ExpertNodeKind::Hypothesis, "Foreign revision.").await;
+
+    let result = epistemic_reassessment::record_object_change(
+        &f.service,
+        f.workspace,
+        first,
+        f.principal,
+        Uuid::new_v4(),
+        trigger,
+        Some(foreign_replacement),
+        ReassessmentChangeKind::Revised,
+        "Cross-Situation replacement must not be guessed into the current model.",
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(epistemic_reassessment::ReassessmentError::Invisible)
+    ));
 }

@@ -11,6 +11,8 @@ import {
   nodeRequest,
   relationKinds,
   relationRequest,
+  reassessmentChangeKinds,
+  reassessmentRequest,
 } from '../state/expertWorkbench.js';
 
 function useWorkbenchMutation(client, workbenchQuery, fn) {
@@ -27,7 +29,13 @@ export function ExpertWorkbenchPage() {
     enabled: !!client,
     queryFn: async () => (await client.expertWorkbench()).value,
   });
+  const reassessments = useQuery({
+    queryKey: ['expert-epistemic-reassessments', client?.config.workspace, client?.config.situation],
+    enabled: !!client,
+    queryFn: async () => (await client.expertReassessments()).value.reassessments,
+  });
   const data = workbench.data ?? { nodes: [], relations: [], arguments: [], grounding_sets: [] };
+  const reassessmentHistory = reassessments.data ?? [];
   const [error, setError] = useState('');
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
@@ -35,12 +43,19 @@ export function ExpertWorkbenchPage() {
   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
   const [groundRoles, setGroundRoles] = useState({});
+  const [reassessment, setReassessment] = useState({ changeKind: 'MANUAL_REVIEW', trigger: '', replacement: '', rationale: '' });
 
   const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
   const createRelation = useWorkbenchMutation(client, workbench, async (body) => client.createExpertRelation(crypto.randomUUID(), body));
   const createArgument = useWorkbenchMutation(client, workbench, async (body) => client.createExpertArgument(crypto.randomUUID(), body));
   const createGrounding = useWorkbenchMutation(client, workbench, async ({ argumentId, body }) => client.createExpertGrounding(argumentId, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding];
+  const createReassessment = useMutation({
+    mutationFn: async (body) => client.createExpertReassessment(crypto.randomUUID(), body),
+    onSuccess: async () => {
+      await Promise.all([workbench.refetch(), reassessments.refetch()]);
+    },
+  });
+  const mutations = [createNode, createRelation, createArgument, createGrounding, createReassessment];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -105,6 +120,21 @@ export function ExpertWorkbenchPage() {
         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create grounding set</button>
       </form>
+
+      <form onSubmit={submit(() => createReassessment.mutate(reassessmentRequest(
+        reassessment.changeKind,
+        reassessment.trigger,
+        reassessment.replacement,
+        reassessment.rationale,
+      )))}>
+        <h3>Trigger downstream reassessment</h3>
+        <p>Record an explicit change and identify dependent arguments. Niccolò marks review impact; it does not automatically falsify conclusions.</p>
+        <label>Change kind<select value={reassessment.changeKind} onChange={(e) => setReassessment({ ...reassessment, changeKind: e.target.value, replacement: ['REVISED', 'SUPERSEDED', 'REINTERPRETED'].includes(e.target.value) ? reassessment.replacement : '' })}>{reassessmentChangeKinds.map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>Changed object<select value={reassessment.trigger} onChange={(e) => setReassessment({ ...reassessment, trigger: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        {['REVISED', 'SUPERSEDED', 'REINTERPRETED'].includes(reassessment.changeKind) && <label>Replacement object<select value={reassessment.replacement} onChange={(e) => setReassessment({ ...reassessment, replacement: e.target.value })}><option value="">Choose…</option>{data.nodes.filter((n) => n.object_id !== reassessment.trigger).map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>}
+        <label>Why reassessment is required<textarea value={reassessment.rationale} maxLength={4096} onChange={(e) => setReassessment({ ...reassessment, rationale: e.target.value })} /></label>
+        <button disabled={busy}>Trace downstream impact</button>
+      </form>
     </div>
 
     <article><h3>Current structured model</h3>
@@ -112,6 +142,11 @@ export function ExpertWorkbenchPage() {
       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}
       {data.grounding_sets.length > 0 && <details><summary>Grounding</summary><ul>{data.grounding_sets.map((g) => <li key={g.grounding_set_id}>{g.effect}/{g.adequacy}: {g.members.length} joint member(s)</li>)}</ul></details>}
+      <details open={reassessmentHistory.length > 0}><summary>Downstream reassessment</summary>
+        {reassessments.isPending && <p>Loading reassessment history…</p>}
+        {reassessments.error && <p className="error">Reassessment history unavailable: {reassessments.error.message}</p>}
+        {reassessmentHistory.length === 0 ? <p>No dependency reassessment events recorded.</p> : <ul>{reassessmentHistory.map((event) => <li key={event.event_id}><strong>{event.change_kind}</strong> — {event.impacts.length} argument(s) require review; automatic conclusion change: {String(event.automatic_conclusion_status_change)}<ul>{event.impacts.map((impact) => <li key={impact.argument_id}>{impact.impact_scope} depth {impact.minimum_depth}: argument {impact.argument_id} → conclusion {impact.conclusion_object_id}</li>)}</ul></li>)}</ul>}
+      </details>
     </article>
   </section>;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { groundingRequest, relationRequest } from '../state/expertWorkbench.js';
+import { groundingRequest, relationRequest, reassessmentRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -10,7 +10,7 @@ const config = {
   situation: '22222222-2222-4222-8222-222222222222',
   token: 'test-in-memory-credential',
 };
-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], relations: [], arguments: [], grounding_sets: [] }) };
+const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], relations: [], arguments: [], grounding_sets: [], reassessments: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
@@ -29,16 +29,32 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     await client.createExpertRelation('44444444-4444-4444-8444-444444444444', { family: 'SEMANTIC', kind: 'CONTRADICTS', left_object_id: 'a', right_object_id: 'b', rationale: 'R' });
     await client.createExpertArgument('55555555-5555-4555-8555-555555555555', { conclusion_object_id: 'a', mode: 'ABDUCTIVE', rationale: 'R' });
     await client.createExpertGrounding('55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666', { effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: 'R', members: [] });
-    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'POST', 'POST', 'POST', 'POST']);
+    await client.expertReassessments();
+    await client.createExpertReassessment('88888888-8888-4888-8888-888888888888', { trigger_object_id: 'a', replacement_object_id: null, change_kind: 'MANUAL_REVIEW', rationale: 'R' });
+    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'POST', 'POST', 'POST', 'POST', 'GET', 'POST']);
     expect(calls[1].url).toContain('/epistemic/objects/');
     expect(calls[2].url).toContain('/epistemic/relations/');
     expect(calls[3].url).toContain('/epistemic/arguments/');
     expect(calls[4].url).toContain('/grounding/');
+    expect(calls[5].url).toContain('/epistemic/reassessments');
+    expect(calls[6].url).toContain('/epistemic/reassessments/');
   });
 
   it('keeps relation family semantics explicit instead of guessing them', () => {
     expect(() => relationRequest('CAUSAL', 'CONTRADICTS', 'a', 'b', 'R')).toThrow(/does not belong/);
     expect(relationRequest('SEMANTIC', 'CONTRADICTS', 'a', 'b', 'R').kind).toBe('CONTRADICTS');
+  });
+
+  it('requires explicit replacement semantics and never turns reassessment into falsity', () => {
+    expect(() => reassessmentRequest('REVISED', 'old', '', 'Reason')).toThrow(/replacement/);
+    expect(reassessmentRequest('RETRACTED', 'old', '', 'Reason')).toEqual({
+      trigger_object_id: 'old',
+      replacement_object_id: null,
+      change_kind: 'RETRACTED',
+      rationale: 'Reason',
+    });
+    expect(page).toContain('does not automatically falsify conclusions');
+    expect(page).toContain('Downstream reassessment');
   });
 
   it('represents multiple selected objects as one joint grounding set', () => {

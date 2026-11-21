@@ -83,6 +83,8 @@ export class NiccoloClient {
   createExpertRelation(relationId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/relations/${relationId}`, { body }); }
   createExpertArgument(argumentId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}`, { body }); }
   createExpertGrounding(argumentId, groundingId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}/grounding/${groundingId}`, { body }); }
+  expertReassessments() { return this.request('GET', `${situationPath(this.config)}/epistemic/reassessments`); }
+  createExpertReassessment(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/reassessments/${eventId}`, { body }); }
 
   reasoningInput(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/reasoning-input`); }
   reasoningHandoff(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/handoff`); }

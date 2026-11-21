@@ -21,6 +21,7 @@ use crate::decision_readiness::{
 };
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
+use crate::epistemic_reassessment::{self, ReassessmentError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
@@ -291,6 +292,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/arguments/{argument}/grounding/{grounding}",
             post(create_expert_grounding_set),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/reassessments",
+            get(list_expert_reassessments),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/reassessments/{event}",
+            post(record_expert_reassessment),
         )
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
@@ -3332,6 +3341,29 @@ async fn record_hypothesis_portfolio_event(
     ))
 }
 
+impl From<ReassessmentError> for ApiError {
+    fn from(error: ReassessmentError) -> Self {
+        match error {
+            ReassessmentError::Invalid => Self(
+                StatusCode::BAD_REQUEST,
+                "invalid epistemic reassessment request",
+            ),
+            ReassessmentError::Invisible => Self(
+                StatusCode::NOT_FOUND,
+                "epistemic reassessment target unavailable",
+            ),
+            ReassessmentError::Conflict => Self(
+                StatusCode::CONFLICT,
+                "epistemic reassessment replay conflict",
+            ),
+            ReassessmentError::Privileged | ReassessmentError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "epistemic reassessment unavailable",
+            ),
+        }
+    }
+}
+
 impl From<WorkbenchError> for ApiError {
     fn from(error: WorkbenchError) -> Self {
         match error {
@@ -3417,6 +3449,15 @@ struct ExpertGroundingSetRequest {
     adequacy: epistemic_workbench::GroundingAdequacy,
     rationale: String,
     members: Vec<epistemic_workbench::NewGroundingMember>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpertReassessmentRequest {
+    trigger_object_id: Uuid,
+    replacement_object_id: Option<Uuid>,
+    change_kind: epistemic_reassessment::ReassessmentChangeKind,
+    rationale: String,
 }
 
 async fn get_expert_epistemic_workbench(
@@ -3535,6 +3576,43 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn list_expert_reassessments(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let events = epistemic_reassessment::list(&state.pool, workspace, situation, 100).await?;
+    Ok(no_store(json!({"reassessments":events}), StatusCode::OK))
+}
+
+async fn record_expert_reassessment(
+    State(state): State<AppState>,
+    Path((workspace, situation, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertReassessmentRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let reassessment = epistemic_reassessment::record_object_change(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        input.trigger_object_id,
+        input.replacement_object_id,
+        input.change_kind,
+        &input.rationale,
+    )
+    .await?;
+    let status = if reassessment.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"reassessment":reassessment}), status))
 }
 
 #[derive(Deserialize)]

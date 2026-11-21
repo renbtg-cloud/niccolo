@@ -19,6 +19,7 @@ pub mod human_feedback;
 pub mod hypotheses;
 pub mod identity;
 pub mod epistemic_identity;
+pub mod epistemic_reassessment;
 pub mod epistemic_workbench;
 
 pub mod actors;

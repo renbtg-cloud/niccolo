@@ -54,3 +54,20 @@ export function groundingRequest(effect, adequacy, rationale, selectedNodes, rol
     })),
   };
 }
+
+export const reassessmentChangeKinds = Object.freeze(['REVISED', 'RETRACTED', 'SUPERSEDED', 'REINTERPRETED', 'MANUAL_REVIEW']);
+
+export function reassessmentRequest(changeKind, triggerObjectId, replacementObjectId, rationale) {
+  if (!reassessmentChangeKinds.includes(changeKind)) throw new Error('Choose a supported reassessment kind.');
+  if (!triggerObjectId) throw new Error('Choose the object whose change triggers reassessment.');
+  const needsReplacement = ['REVISED', 'SUPERSEDED', 'REINTERPRETED'].includes(changeKind);
+  if (needsReplacement && !replacementObjectId) throw new Error('Choose the replacement or revised object.');
+  if (!needsReplacement && replacementObjectId) throw new Error('This reassessment kind does not accept a replacement object.');
+  if (replacementObjectId && replacementObjectId === triggerObjectId) throw new Error('Replacement must be a different object.');
+  return {
+    trigger_object_id: triggerObjectId,
+    replacement_object_id: replacementObjectId || null,
+    change_kind: changeKind,
+    rationale: requireText(rationale, 'Rationale'),
+  };
+}
