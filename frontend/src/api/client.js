@@ -83,6 +83,7 @@ export class NiccoloClient {
   recordExpertQuestionResponse(questionId, responseId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/questions/${questionId}/responses/${responseId}`, { body }); }
   recordResponseInterpretation(utteranceId, interpretationId, revisionId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/utterances/${utteranceId}/interpretations/${interpretationId}/revisions/${revisionId}`, { body }); }
   confirmResponseInterpretation(utteranceId, interpretationId, revisionId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/utterances/${utteranceId}/interpretations/${interpretationId}/revisions/${revisionId}/confirmations/${eventId}`, { body }); }
+  recordInterpretationDependency(dependencyId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/interpretation-dependencies/${dependencyId}`, { body }); }
   searchExpertEvidence(query, limit = 20) { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench/evidence/search?q=${encodeURIComponent(query)}&limit=${limit}`); }
   createExpertNode(objectId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/objects/${objectId}`, { body }); }
   createExpertRelation(relationId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/relations/${relationId}`, { body }); }

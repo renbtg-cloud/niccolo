@@ -402,8 +402,8 @@ pub async fn record_dependency_review(
 }
 
 // Potential downstream routes, not a claim that their inferred conclusions change.
-fn downstream_routes(
-    input: &DependencyInput,
+pub(super) fn downstream_routes(
+    initial: GroundingRouteRef,
     arguments: &[ExpertArgument],
     sets: &[GroundingSetView],
     applicability: &[RouteApplicabilityAssessment],
@@ -413,13 +413,9 @@ fn downstream_routes(
         .map(|a| (a.argument_id, a.conclusion_object_id))
         .collect();
     let mut visited = BTreeSet::new();
-    let initial = GroundingRouteRef {
-        argument_id: input.argument_id,
-        grounding_set_id: input.grounding_set_id,
-    };
     let mut routes = BTreeSet::from([initial]);
     let mut pending = std::collections::VecDeque::new();
-    if let Some(conclusion) = conclusions.get(&input.argument_id) {
+    if let Some(conclusion) = conclusions.get(&initial.argument_id) {
         pending.push_back(*conclusion);
     }
     while let Some(object) = pending.pop_front() {
@@ -562,7 +558,15 @@ pub(super) async fn dependency_views(
                         .as_ref()
                         .is_none_or(|r| r.input.disposition != ReassessmentDisposition::Retained);
                 let potential_downstream_routes = if assessment_revised {
-                    downstream_routes(&input, arguments, sets, applicability)
+                    downstream_routes(
+                        GroundingRouteRef {
+                            argument_id: input.argument_id,
+                            grounding_set_id: input.grounding_set_id,
+                        },
+                        arguments,
+                        sets,
+                        applicability,
+                    )
                 } else {
                     vec![]
                 };

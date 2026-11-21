@@ -290,6 +290,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}",post(record_expert_response_interpretation))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}/confirmations/{event}",post(confirm_expert_response_interpretation))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/interpretation-dependencies/{dependency}",post(record_expert_interpretation_dependency))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}", post(record_expert_assessment_dependency))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/reviews/{event}", post(record_expert_assessment_dependency_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/downstream-reviews/{event}", post(record_expert_assessment_downstream_review))
@@ -3601,6 +3602,34 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn record_expert_interpretation_dependency(
+    State(state): State<AppState>,
+    Path((workspace, situation, dependency)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<
+        epistemic_workbench::interpretation_dependency::InterpretationDependencyInput,
+    >,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::interpretation_dependency::record(
+        &state.pool,
+        workspace,
+        situation,
+        actor,
+        dependency,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"dependency":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_response_interpretation(

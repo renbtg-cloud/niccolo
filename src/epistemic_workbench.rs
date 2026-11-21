@@ -11,6 +11,8 @@ use uuid::Uuid;
 pub mod assessment;
 #[path = "epistemic_inquiry_response.rs"]
 pub mod inquiry_response;
+#[path = "epistemic_interpretation_dependency.rs"]
+pub mod interpretation_dependency;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WorkbenchError {
@@ -443,6 +445,7 @@ pub struct ReasoningRouteDiagnostic {
     pub applicability_conditions: Vec<RouteApplicabilityAssessment>,
     pub reassessment: ReassessmentAttentionSummary,
     pub assessment_reassessment: AssessmentReassessmentAttention,
+    pub interpretation_reassessment: AssessmentReassessmentAttention,
     pub recursive_support_cycle: bool,
     pub unanchored_recursive_support: bool,
 }
@@ -642,6 +645,7 @@ pub struct WorkbenchSnapshot {
     pub question_inquiries: Vec<QuestionInquiryView>,
     pub question_responses: Vec<inquiry_response::QuestionResponse>,
     pub response_interpretations: Vec<inquiry_response::ResponseInterpretationView>,
+    pub interpretation_dependencies: Vec<interpretation_dependency::InterpretationDependencyView>,
     pub assessments: Vec<assessment::AssessmentEvent>,
     pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
     pub investigator_free_text_compiler_enabled: bool,
@@ -1963,6 +1967,7 @@ fn reasoning_diagnostics(
                 applicability_conditions: Vec::new(),
                 reassessment: reassessment_attention(route_impacts),
                 assessment_reassessment: AssessmentReassessmentAttention::default(),
+                interpretation_reassessment: AssessmentReassessmentAttention::default(),
                 recursive_support_cycle: !cycle_matches.is_empty(),
                 unanchored_recursive_support: cycle_matches
                     .iter()
@@ -2292,6 +2297,16 @@ pub async fn snapshot(
         inquiry_response::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     let response_interpretations =
         inquiry_response::interpretations_in_snapshot(&mut tx, workspace, situation).await?;
+    let interpretation_dependencies = interpretation_dependency::views(
+        &mut tx,
+        workspace,
+        situation,
+        &response_interpretations,
+        &arguments,
+        &grounding_sets,
+        &applicability,
+    )
+    .await?;
     let assessment_dependencies = assessment::dependency_views(
         &mut tx,
         workspace,
@@ -2395,6 +2410,29 @@ pub async fn snapshot(
                 );
         }
     }
+    let mut interpretation_attention_by_route =
+        BTreeMap::<GroundingRouteRef, AssessmentReassessmentAttention>::new();
+    for dependency in interpretation_dependencies
+        .iter()
+        .filter(|d| d.requires_review)
+    {
+        let route = GroundingRouteRef {
+            argument_id: dependency.dependency.input.argument_id,
+            grounding_set_id: dependency.dependency.input.grounding_set_id,
+        };
+        interpretation_attention_by_route
+            .entry(route)
+            .or_default()
+            .directly_relying
+            .record(None);
+        for downstream in &dependency.potential_downstream_routes {
+            interpretation_attention_by_route
+                .entry(*downstream)
+                .or_default()
+                .downstream
+                .record(None);
+        }
+    }
     for route in reasoning_diagnostics
         .iter_mut()
         .flat_map(|diagnostic| &mut diagnostic.routes)
@@ -2403,6 +2441,12 @@ pub async fn snapshot(
             .remove(&(route.argument_id, route.grounding_set_id))
             .unwrap_or_default();
         route.assessment_reassessment = assessment_attention_by_route
+            .remove(&GroundingRouteRef {
+                argument_id: route.argument_id,
+                grounding_set_id: route.grounding_set_id,
+            })
+            .unwrap_or_default();
+        route.interpretation_reassessment = interpretation_attention_by_route
             .remove(&GroundingRouteRef {
                 argument_id: route.argument_id,
                 grounding_set_id: route.grounding_set_id,
@@ -2432,6 +2476,7 @@ pub async fn snapshot(
         question_inquiries,
         question_responses,
         response_interpretations,
+        interpretation_dependencies,
         assessments,
         assessment_dependencies,
         investigator_free_text_compiler_enabled: false,
@@ -2466,6 +2511,7 @@ mod tests {
             question_inquiries: vec![],
             question_responses: vec![],
             response_interpretations: vec![],
+            interpretation_dependencies: vec![],
             assessments: vec![],
             assessment_dependencies: vec![],
             investigator_free_text_compiler_enabled: false,

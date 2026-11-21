@@ -106,6 +106,12 @@ export function questionResponseRequest(draft, utteranceId) {
   return {utterance_id: utteranceId, utterance_text: requireText(draft.text, 'Original utterance', 8192), speaker_actor_id: draft.speaker || null, source_evidence_id: draft.evidence || null, source_contribution_id: null, rationale: requireText(draft.rationale, 'Response link rationale')};
 }
 
+export function interpretationDependencyRequest(route, view, revision, rationale) {
+  if (!route || !view || !revision || !view.revisions.some(r => r.revision_id === revision)) throw new Error('Choose a route and exact interpretation revision.');
+  const confirmation = [...view.confirmations].reverse().find(c => c.revision_id === revision);
+  return {argument_id:route.argument_id,grounding_set_id:route.grounding_set_id,interpretation_id:view.interpretation_id,revision_id:revision,confirmation_event_id:confirmation?.event_id ?? null,rationale:requireText(rationale,'Interpretation reliance rationale')};
+}
+
 export function relationRequest(family, kind, leftObjectId, rightObjectId, rationale) {
   if (!relationKinds[family]?.includes(kind)) throw new Error('Relation kind does not belong to the selected family.');
   if (!leftObjectId || !rightObjectId || leftObjectId === rightObjectId) throw new Error('Choose two distinct epistemic objects.');

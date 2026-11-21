@@ -306,6 +306,214 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
 }
 
 #[tokio::test]
+async fn pinned_interpretation_changes_require_only_explicit_route_and_downstream_attention() {
+    use epistemic_workbench::{
+        inquiry_response::*,
+        interpretation_dependency::{self, InterpretationDependencyInput},
+    };
+    use niccolo_evidence::epistemic_identity::MeaningConfirmation;
+    let f = fixture().await;
+    let sit = situation(&f, "Interpretation dependence").await;
+    let other = situation(&f, "Other inquiry").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Who approved it?").await;
+    let utterance = Uuid::new_v4();
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        q,
+        Uuid::new_v4(),
+        ResponseInput {
+            utterance_id: utterance,
+            utterance_text: "I don't know.".into(),
+            speaker_actor_id: None,
+            source_evidence_id: None,
+            source_contribution_id: None,
+            rationale: "Interview".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let interpretation = Uuid::new_v4();
+    let revision = Uuid::new_v4();
+    let meaning = InterpretationInput {
+        expected_current_revision_id: None,
+        interpretation_text: "The actor claims ignorance.".into(),
+        rationale: "Claimed, not actual ignorance".into(),
+    };
+    record_interpretation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        utterance,
+        interpretation,
+        revision,
+        meaning.clone(),
+    )
+    .await
+    .unwrap();
+    let p = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The person responded to the interview",
+    )
+    .await;
+    let alt = node(&f, sit, ExpertNodeKind::Proposition, "Independent evidence").await;
+    let h = node(&f, sit, ExpertNodeKind::Hypothesis, "Candidate explanation").await;
+    let downstream = node(&f, sit, ExpertNodeKind::Finding, "Subsequent conclusion").await;
+    let mut routes = vec![];
+    for (ground, result) in [(p, h), (alt, h), (h, downstream)] {
+        let a = Uuid::new_v4();
+        let g = Uuid::new_v4();
+        epistemic_workbench::create_argument(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            a,
+            result,
+            ArgumentMode::Abductive,
+            "Explicit route",
+        )
+        .await
+        .unwrap();
+        epistemic_workbench::create_grounding_set(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            a,
+            g,
+            GroundingEffect::Supports,
+            GroundingAdequacy::Partial,
+            "Explicit basis",
+            &[NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role: GroundingMemberRole::Premise,
+                ground_object_id: Some(ground),
+                evidence_id: None,
+                rationale: "Ground".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        routes.push((a, g));
+    }
+    let input = InterpretationDependencyInput {
+        argument_id: routes[0].0,
+        grounding_set_id: routes[0].1,
+        interpretation_id: interpretation,
+        revision_id: revision,
+        confirmation_event_id: None,
+        rationale: "This route provisionally relies on the reported meaning".into(),
+    };
+    let id = Uuid::new_v4();
+    let pin = |scope, id, input| {
+        interpretation_dependency::record(&f.service, f.workspace, scope, f.principal, id, input)
+    };
+    assert!(matches!(
+        pin(other, id, input.clone()).await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(matches!(
+        pin(
+            sit,
+            id,
+            InterpretationDependencyInput {
+                confirmation_event_id: Some(Uuid::new_v4()),
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(!pin(sit, id, input.clone()).await.unwrap().replayed);
+    assert!(pin(sit, id, input.clone()).await.unwrap().replayed);
+    assert!(
+        !epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+            .await
+            .unwrap()
+            .interpretation_dependencies[0]
+            .requires_review
+    );
+    let event = Uuid::new_v4();
+    confirm_interpretation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        utterance,
+        interpretation,
+        revision,
+        event,
+        ConfirmationInput {
+            state: MeaningConfirmation::Confirmed,
+            note: "Meaning only".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let view = &after.interpretation_dependencies[0];
+    assert!(
+        view.requires_review && view.meaning_confirmation_changed && !view.interpretation_revised
+    );
+    assert_eq!(view.current_confirmation_event_id, Some(event));
+    assert_eq!(view.potential_downstream_routes.len(), 1);
+    assert_eq!(view.potential_downstream_routes[0].argument_id, routes[2].0);
+    for (index, (a, g)) in routes.iter().enumerate() {
+        let diag = after
+            .reasoning_diagnostics
+            .iter()
+            .flat_map(|c| &c.routes)
+            .find(|r| r.argument_id == *a && r.grounding_set_id == *g)
+            .unwrap();
+        assert_eq!(
+            diag.interpretation_reassessment.directly_relying.unreviewed,
+            usize::from(index == 0)
+        );
+        assert_eq!(
+            diag.interpretation_reassessment.downstream.unreviewed,
+            usize::from(index == 2)
+        );
+        assert_eq!(diag.assessment_reassessment.directly_relying.impacted, 0);
+    }
+    let second = Uuid::new_v4();
+    record_interpretation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        utterance,
+        interpretation,
+        second,
+        InterpretationInput {
+            expected_current_revision_id: Some(revision),
+            interpretation_text: "The actor claims not to know the approver's identity.".into(),
+            ..meaning
+        },
+    )
+    .await
+    .unwrap();
+    let after = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(
+        after.interpretation_dependencies[0].current_revision_id,
+        second
+    );
+    assert!(after.interpretation_dependencies[0].interpretation_revised);
+    assert_eq!(after.interpretation_dependencies[0].dependency.input, input);
+    assert_eq!(after.grounding_sets.len(), 3);
+    assert!(after.assessments.is_empty());
+}
+
+#[tokio::test]
 async fn response_meaning_confirmation_is_revision_specific_and_never_truth() {
     use epistemic_workbench::inquiry_response::*;
     use niccolo_evidence::epistemic_identity::{InterpretationProducer, MeaningConfirmation};

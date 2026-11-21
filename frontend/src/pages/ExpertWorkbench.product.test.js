@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest, questionResponseRequest } from '../state/expertWorkbench.js';
+import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest, questionResponseRequest, interpretationDependencyRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -14,6 +14,18 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('pins exact interpretation and confirmation context, not a mutable current meaning', async () => {
+    const meaning={interpretation_id:'i',revisions:[{revision_id:'r1'},{revision_id:'r2'}],confirmations:[{revision_id:'r1',event_id:'c1'},{revision_id:'r2',event_id:'c2'}]};
+    const body=interpretationDependencyRequest({argument_id:'a',grounding_set_id:'g'},meaning,'r1','Provisional reliance');
+    expect(body).toMatchObject({interpretation_id:'i',revision_id:'r1',confirmation_event_id:'c1'});
+    const calls=[];
+    const client=new NiccoloClient(config,async(url,options)=>{calls.push({url,options});return response;});
+    await client.recordInterpretationDependency('d',body);
+    expect(calls[0].url).toContain('/epistemic/interpretation-dependencies/d');
+    expect(page).toContain('Meaning confirmation changed; reassessment required.');
+    expect(page).toContain('route.interpretation_reassessment');
+    expect(page).toContain('Meaning change does not automatically alter truth.');
+  });
   it('authors revision-pinned understanding and meaning confirmation without asserting truth', async () => {
     const calls=[];
     const client=new NiccoloClient(config,async(url,options)=>{calls.push({url,options});return response;});

@@ -16,6 +16,7 @@ import {
   nodeKinds,
   nodeRequest,
   questionResponseRequest,
+  interpretationDependencyRequest,
   relationKinds,
   relationRequest,
   relationSemantics,
@@ -44,6 +45,7 @@ export function ExpertWorkbenchPage() {
   const [error, setError] = useState('');
   const [assessment, setAssessment] = useState({ target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: [] });
   const [dependency, setDependency] = useState({route: '', assessment: '', rationale: ''});
+  const [meaningDependency, setMeaningDependency] = useState({route:'',revision:'',rationale:''});
   const [dependencyReviews, setDependencyReviews] = useState({});
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
@@ -67,9 +69,10 @@ export function ExpertWorkbenchPage() {
   const recordAssessment = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
   const recordResponse = useWorkbenchMutation(client, workbench, async ({questionId,responseId,body}) => client.recordExpertQuestionResponse(questionId,responseId,body));
   const recordDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessmentDependency(crypto.randomUUID(), body));
+  const recordMeaningDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordInterpretationDependency(crypto.randomUUID(), body));
   const reviewDependency = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDependency(id, crypto.randomUUID(), body));
   const reviewDownstream = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDownstream(id, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordResponse, recordDependency, reviewDependency, reviewDownstream];
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordResponse, recordDependency, recordMeaningDependency, reviewDependency, reviewDownstream];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -232,9 +235,20 @@ export function ExpertWorkbenchPage() {
         <label>Why this route relies on this judgment<textarea value={dependency.rationale} maxLength={4096} onChange={e => setDependency({...dependency,rationale:e.target.value})}/></label>
         <button disabled={busy}>Record reliance</button>
       </form>
+      {(data.response_interpretations ?? []).length > 0 && <form onSubmit={submit(() => {
+        const route=data.grounding_sets.find(g=>`${g.argument_id}:${g.grounding_set_id}`===meaningDependency.route);
+        const [id,revision]=meaningDependency.revision.split(':');
+        const view=data.response_interpretations.find(v=>v.interpretation_id===id);
+        recordMeaningDependency.mutate(interpretationDependencyRequest(route,view,revision,meaningDependency.rationale));
+      })}><h3>Declare reliance on interpreted meaning</h3><p>Pin the exact revision and its recorded confirmation context. Unconfirmed meaning may be used provisionally; confirmed meaning is not verified truth.</p>
+        <label>Route<select value={meaningDependency.route} onChange={e=>setMeaningDependency({...meaningDependency,route:e.target.value})}><option value="">Choose…</option>{data.grounding_sets.map(g=><option key={`${g.argument_id}:${g.grounding_set_id}`} value={`${g.argument_id}:${g.grounding_set_id}`}>{g.rationale}</option>)}</select></label>
+        <label>Interpretation revision<select value={meaningDependency.revision} onChange={e=>setMeaningDependency({...meaningDependency,revision:e.target.value})}><option value="">Choose…</option>{data.response_interpretations.flatMap(v=>v.revisions.map(r=><option key={`${v.interpretation_id}:${r.revision_id}`} value={`${v.interpretation_id}:${r.revision_id}`}>{r.meaning_confirmation} · {r.revision_id===v.current_revision_id?'current':'historical'} · {r.interpretation_text}</option>))}</select></label>
+        <label>Why this route relies on this meaning<textarea value={meaningDependency.rationale} maxLength={4096} onChange={e=>setMeaningDependency({...meaningDependency,rationale:e.target.value})}/></label><button disabled={busy}>Record interpretation reliance</button>
+      </form>}
     </div>
 
     <article><h3>Current structured model</h3>
+      {(data.interpretation_dependencies ?? []).length>0 && <details open><summary>Interpretation reliance — selective reassessment</summary><p>Meaning revision or changed confirmation context prompts attention only for explicitly relying routes and their potential downstream routes. It never rewrites a conclusion.</p><ul>{data.interpretation_dependencies.map(view=><li key={view.dependency.dependency_id}><strong>{routeLabel(view.dependency.input)}</strong><p>{view.dependency.input.rationale}</p><small>Pinned revision {view.dependency.input.revision_id} · confirmation {view.dependency.input.confirmation_event_id ?? 'none recorded'} · recorded by {view.dependency.recorded_by}</small><p>{view.interpretation_revised?'Interpretation revised; reassessment required.':view.meaning_confirmation_changed?'Meaning confirmation changed; reassessment required.':'No change to pinned meaning or confirmation context.'}</p>{view.requires_review&&<p>Current revision {view.current_revision_id} · confirmation {view.current_confirmation_event_id ?? 'none recorded'}</p>}{view.potential_downstream_routes.length>0&&<details><summary>Potential downstream routes ({view.potential_downstream_routes.length})</summary><ul>{view.potential_downstream_routes.map(route=><li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)}</li>)}</ul></details>}</li>)}</ul></details>}
       {(data.question_responses ?? []).length > 0 && <details open><summary>Utterance understanding — revisable meaning, not truth</summary>{[...new Map(data.question_responses.map(r => [r.utterance.utterance_id,r.utterance])).values()].map(utterance => <ResponseInterpretationPanel key={`${client.config.workspace}:${client.config.situation}:${utterance.utterance_id}`} utterance={utterance} view={(data.response_interpretations ?? []).find(v => v.utterance_id === utterance.utterance_id)} client={client} onChanged={() => workbench.refetch()}/>)}</details>}
       {data.nodes.some(n => n.kind === 'INFORMATION_GAP') && <details open><summary>Information gaps — attributed resolution judgments</summary><p>A response or a question link does not resolve an information gap. Missing judgments are not findings.</p><ul>{data.nodes.filter(n => n.kind === 'INFORMATION_GAP').map(gap => {
         const judgments = assessmentHistory.filter(a => a.input.dimension === 'GAP_RESOLUTION' && a.input.target.kind === 'OBJECT' && a.input.target.object_id === gap.object_id && !supersededAssessments.has(a.event_id));
@@ -301,6 +315,7 @@ export function ExpertWorkbenchPage() {
             const authoredArgument = data.arguments.find((a) => a.argument_id === route.argument_id);
             return <li key={`${route.argument_id}:${route.grounding_set_id}`}>{route.effect}/{route.adequacy} · {route.member_count} joint member(s){route.non_context_member_count === 0 ? ' · context-only' : ''}{route.reassessment.impacted > 0 ? ` · reassessment: ${route.reassessment.unreviewed} unreviewed, ${route.reassessment.deferred} deferred, ${route.reassessment.revision_required} revision required, ${route.reassessment.retained} retained` : ''}{route.unanchored_recursive_support ? ' · WARNING: unanchored recursive support' : route.recursive_support_cycle ? ' · recursive support with external grounds' : ''}
             {route.assessment_reassessment && Object.entries(route.assessment_reassessment).filter(([,attention]) => attention.impacted > 0).map(([kind,attention]) => <p key={kind}><small>{kind === 'directly_relying' ? 'Pinned assessment revisions' : 'Downstream assessment revisions'}: {attention.unreviewed} unreviewed · {attention.deferred} deferred · {attention.revision_required} revision required · {attention.retained} retained. Review counts are not confidence scores.</small></p>)}
+            {route.interpretation_reassessment && Object.entries(route.interpretation_reassessment).filter(([,attention])=>attention.impacted>0).map(([kind,attention])=><p key={kind}><small>{kind==='directly_relying'?'Pinned interpretation attention':'Downstream interpretation attention'}: {attention.unreviewed} unreviewed. Meaning change does not automatically alter truth.</small></p>)}
             {route.applicability_conditions?.length > 0 ? <details open><summary>Required conditions — attributed assessments</summary><ul>{route.applicability_conditions.map((condition) => <li key={`${condition.condition_object_id}:${condition.recorded_by}`}><strong>{condition.assessment}</strong> · {groundText({ground_object_id: condition.condition_object_id})}<br/><small>{condition.rationale} · recorded by {condition.recorded_by}</small></li>)}</ul><small>Even satisfied conditions do not establish truth or validity. Divergent assessments remain visible; no consensus is inferred. Unsatisfied, contested or unknown conditions require attention before relying on this route.</small></details> : <small> · No applicability condition recorded; applicability is not certified.</small>}
             {set && <details><summary>Inspect authored grounds and rationales</summary>{authoredArgument && <p>{authoredArgument.mode}: {authoredArgument.rationale}</p>}<p>{set.rationale}</p><ul>{set.members.map((member) => <li key={member.member_id}><strong>{member.role}:</strong> {groundText(member)}<br/><small>{member.rationale}</small></li>)}</ul></details>}</li>;
           })}</ul>
