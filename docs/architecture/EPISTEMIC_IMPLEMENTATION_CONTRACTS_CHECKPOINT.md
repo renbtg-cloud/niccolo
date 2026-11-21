@@ -666,7 +666,7 @@ Checkpoint 1.60 connects both independent authoring forms and their attributed r
 
 Checkpoint 1.61 adds attributed, append-only causal review events with authenticated authoring. Each review pins the current execution and event revisions after a basis change, retaining the original assessment; retention can acknowledge the exact changed basis, while deferral or requested reconsideration keeps review pending. Later changes reopen the review without deleting earlier review history. The database independently rejects stale or unrelated pins. Migration 0143 passed; 212 unit, 58 Workbench integration and 13 security/readiness tests passed.
 
-Checkpoint 1.62 adds the explicit React review surface. It shows original and current pins and attributed review history, and never silently retargets a review after another revision. All 173 React tests passed; the full Rust regression is running on a freshly migrated database.
+Checkpoint 1.62 adds the explicit React review surface. It shows original and current pins and attributed review history, and never silently retargets a review after another revision. All 144 migrations applied cleanly to a freshly created PostgreSQL database. The full regression passed: 627 Rust tests in 47 groups (including the real HTTP bundle smoke), 173 React tests, 22 Python tests and 8 standalone JavaScript tests.
 
 ## 24. Implementation stance
 
