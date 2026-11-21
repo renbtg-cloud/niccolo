@@ -54,6 +54,7 @@ const integrityResults = Object.freeze(['NO_CONCERN_INDICATED','CONCERN_INDICATE
 export const decisionPerspectiveDimensions = Object.freeze(['DECISION_CONTEMPORANEOUS_REASONABLENESS','DECISION_ACTUAL_CIRCUMSTANCES_ADEQUACY','DECISION_REASONABLY_OBTAINABLE_INFORMATION']);
 const actionAssessmentDimensions = Object.freeze(['RECOMMENDATION_APPROPRIATENESS', ...decisionPerspectiveDimensions]);
 const actionAssessmentResults = Object.freeze(['ADEQUATE','PARTIALLY_ADEQUATE','INADEQUATE','UNKNOWN','CONTESTED']);
+export const objectionDimensions = Object.freeze(['OBJECTION_NOVELTY','OBJECTION_MATERIALITY','OBJECTION_REVIEW_COST','OBJECTION_ATTENTION_DISPOSITION']);
 export const assessmentResults = Object.freeze({
   CREDIBILITY: ['CREDIBLE', 'QUESTIONABLE', 'NOT_CREDIBLE', 'UNKNOWN', 'CONTESTED'],
   RELEVANCE: ['RELEVANT', 'LIMITED_RELEVANCE', 'IRRELEVANT', 'UNKNOWN', 'CONTESTED'],
@@ -72,6 +73,10 @@ export const assessmentResults = Object.freeze({
   RELIANCE_CONTAINMENT: ['PAUSE_INDICATED','LIMIT_INDICATED','NO_PAUSE_INDICATED','UNKNOWN','CONTESTED'],
   RECOVERY_READINESS: ['RECOVERY_READY','RECOVERY_PARTIAL','RECOVERY_NOT_READY','UNKNOWN','CONTESTED'],
   ...Object.fromEntries(actionAssessmentDimensions.map(dimension => [dimension, actionAssessmentResults])),
+  OBJECTION_NOVELTY: ['NOVEL','PARTIALLY_NOVEL','DUPLICATIVE','UNKNOWN','CONTESTED'],
+  OBJECTION_MATERIALITY: ['MATERIAL','LIMITED_MATERIALITY','IMMATERIAL','UNKNOWN','CONTESTED'],
+  OBJECTION_REVIEW_COST: ['LOW_COST','MODERATE_COST','HIGH_COST','UNKNOWN','CONTESTED'],
+  OBJECTION_ATTENTION_DISPOSITION: ['REVIEW_NOW','DEFER_REVIEW','MONITOR','NO_FURTHER_REVIEW_INDICATED','UNKNOWN','CONTESTED'],
 });
 export const selectionCriteria = Object.freeze(['ACQUISITION_COST','ACCESSIBILITY','CONTAMINATION_RISK','URGENCY','AUTHORIZATION_STATUS','INVESTIGATION_COVERAGE']);
 export function assessmentDimensionsForTarget(target, nodes) {
@@ -84,6 +89,25 @@ export function assessmentDimensionsForTarget(target, nodes) {
 export const assessmentConfidences = Object.freeze(['LOW', 'MODERATE', 'HIGH', 'UNKNOWN']);
 export function assessmentKey(target) {
   return target.kind === 'ROUTE' ? `ROUTE:${target.argument_id}:${target.grounding_set_id}` : `${target.kind}:${target.object_id ?? target.evidence_id ?? target.relation_id ?? target.assessment_event_id ?? target.recommendation_id ?? target.decision_id}`;
+}
+// Group only explicitly triaged targets. Retain every current attributed
+// judgment in its own revision chain; never score, rank or resolve dissent.
+export function objectionAttentionGroups(history) {
+  const groups = new Map();
+  const superseded = new Set(history.map(a => a.input.revises_event_id).filter(Boolean));
+  for (const a of history) {
+    if (!objectionDimensions.includes(a.input.dimension)) continue;
+    const key = assessmentKey(a.input.target);
+    if (!groups.has(key)) groups.set(key,{key,target:a.input.target,current:[],historicalCount:0});
+  }
+  for (const a of history) {
+    if (![...objectionDimensions,'RELEVANCE','DISCRIMINATORY_POWER'].includes(a.input.dimension)) continue;
+    const group = groups.get(assessmentKey(a.input.target));
+    if (!group) continue;
+    if (superseded.has(a.event_id)) group.historicalCount++;
+    else group.current.push(a);
+  }
+  return [...groups.values()];
 }
 // Follow only explicit revision links. Never substitute a competing judgment or
 // retarget an assessment of an earlier event.

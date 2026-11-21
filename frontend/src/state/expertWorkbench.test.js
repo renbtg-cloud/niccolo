@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed, assessmentDimensionsForTarget, integrityDimensions } from './expertWorkbench.js';
+import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed, assessmentDimensionsForTarget, integrityDimensions, objectionAttentionGroups } from './expertWorkbench.js';
 
 describe('contextual assessment request', () => {
   const draft = { dimension: 'RELIABILITY', result: 'RELIABLE', confidence: 'LOW', criterion: ' consistency ', context: ' current investigation ', rationale: ' because of provenance ' };
@@ -10,9 +10,26 @@ describe('contextual assessment request', () => {
     expect(assessmentKey({kind:'ROUTE', argument_id:'a', grounding_set_id:'g'})).toBe('ROUTE:a:g');
   });
   it('prevents cross-dimensional results and duplicate grounds', () => {
-    expect(Object.keys(assessmentResults)).toHaveLength(29);
+    expect(Object.keys(assessmentResults)).toHaveLength(33);
     expect(() => assessmentRequest({...draft, result:'CREDIBLE'}, target, [])).toThrow();
     expect(() => assessmentRequest(draft, target, [ground, ground])).toThrow();
+  });
+  it('records objection triage dimensions independently and never confuses review priority with truth', () => {
+    const route = {kind:'ROUTE',argument_id:'a',grounding_set_id:'g'};
+    const results = { OBJECTION_NOVELTY:'DUPLICATIVE', OBJECTION_MATERIALITY:'LIMITED_MATERIALITY', OBJECTION_REVIEW_COST:'HIGH_COST', OBJECTION_ATTENTION_DISPOSITION:'DEFER_REVIEW' };
+    for (const [dimension,result] of Object.entries(results)) {
+      expect(assessmentDimensionsForTarget(route,[])).toContain(dimension);
+      expect(assessmentRequest({...draft,dimension,result},route,[ground])).toMatchObject({target:route,dimension,result});
+      expect(() => assessmentRequest({...draft,dimension,result:'CREDIBLE'},route,[])).toThrow();
+    }
+  });
+  it('groups only explicitly triaged targets with distinct current disagreements and preserved revision counts', () => {
+    const route = {kind:'ROUTE',argument_id:'a',grounding_set_id:'g'};
+    const other = {kind:'ROUTE',argument_id:'a',grounding_set_id:'other'};
+    const record = (event_id,dimension,result,target=route,revises_event_id=null) => ({event_id,input:{...draft,dimension,result,target,revises_event_id}});
+    const history = [record('a','OBJECTION_NOVELTY','DUPLICATIVE'),record('b','OBJECTION_NOVELTY','PARTIALLY_NOVEL',route,'a'),record('c','OBJECTION_ATTENTION_DISPOSITION','DEFER_REVIEW'),record('d','OBJECTION_ATTENTION_DISPOSITION','REVIEW_NOW'),record('e','RELEVANCE','LIMITED_RELEVANCE'),record('f','RELEVANCE','RELEVANT',other)];
+    expect(objectionAttentionGroups(history)).toEqual([{key:'ROUTE:a:g',target:route,historicalCount:1,current:history.slice(1,5)}]);
+    expect(objectionAttentionGroups([history[5]])).toEqual([]);
   });
   it('separates recommendation suitability from three historical decision perspectives', () => {
     const recommendation = {kind:'RECOMMENDATION',recommendation_id:'r1'};

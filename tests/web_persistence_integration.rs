@@ -71,6 +71,8 @@ async fn real_loopback_web_and_persistent_situation_smoke() {
     assert!(bundle.contains("DECISION_ACTUAL_CIRCUMSTANCES_ADEQUACY"));
     assert!(bundle.contains("DECISION_REASONABLY_OBTAINABLE_INFORMATION"));
     assert!(bundle.contains("RECOMMENDATION_APPROPRIATENESS"));
+    assert!(bundle.contains("OBJECTION_ATTENTION_DISPOSITION"));
+    assert!(bundle.contains("Objection attention"));
     assert!(bundle.contains("epistemic/action-decisions/"));
     assert!(bundle.contains("Record causal assessment only"));
     assert!(bundle.contains("epistemic/intervention-records/"));

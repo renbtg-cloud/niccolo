@@ -647,6 +647,8 @@ Checkpoint 1.67 exposes the exact action records as assessment targets in the Wo
 
 Checkpoint 1.68 implements the AT-26 objection-attention contract using existing attributed assessment history: novelty, materiality to consequential conclusions, review cost and explicit attention disposition are distinct from relevance, discriminatory power and epistemic validity. Divergent judgments and deferred objections remain representable without deleting, closing or vetoing the challenged material or a human inquiry decision. Migration 0146 also enforces the existing immutable assessment revision identity contract at the storage boundary for all dimensions. The 213 unit, 62 Workbench integration and 13 security/readiness tests passed.
 
+Checkpoint 1.69 exposes the AT-26 dimensions and a contextual attention view grouped by exact explicitly triaged target, retaining competing unrevised judgments and historic revisions without ranking or automatic closure. All 147 migrations applied on a new PostgreSQL database. Full regression passed: 632 Rust, 181 React, 22 Python and 8 standalone JavaScript tests (843 total).
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

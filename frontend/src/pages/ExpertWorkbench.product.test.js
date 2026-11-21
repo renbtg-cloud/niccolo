@@ -15,6 +15,13 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('presents objection attention as contextual judgments, not a veto or automatic closure', () => {
+    expect(page).toContain('objectionAttentionGroups(assessmentHistory)');
+    expect(page).toContain('Deferring review does not suppress dissent, remove the objection, close an inquiry or grant a veto.');
+    expect(page).toContain('Objection attention — attributed judgments, no automatic veto');
+    expect(page).toContain('Competing priorities remain visible without a computed ranking, closure or automatic action.');
+    expect(page).toContain('group.historicalCount');
+  });
   it('authors exact historical action assessments without treating hindsight as contemporaneous knowledge', () => {
     expect(page).toContain("kind:'RECOMMENDATION',recommendation_id:r.recommendation_id");
     expect(page).toContain("kind:'DECISION',decision_id:d.decision_id");
