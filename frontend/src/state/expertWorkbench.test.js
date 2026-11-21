@@ -25,4 +25,9 @@ describe('contextual assessment request', () => {
     expect(assessmentDownstreamReviewRequest(view,route,'DEFERRED',' wait ')).toEqual({...route,reviewed_assessment_event_id:'revision',disposition:'DEFERRED',note:'wait'});
     expect(() => assessmentDownstreamReviewRequest(view,{argument_id:'a',grounding_set_id:'other'},'RETAINED','note')).toThrow();
   });
+  it('identifies an assessment target by its exact event rather than its underlying object', () => {
+    const meta={kind:'ASSESSMENT',assessment_event_id:'original'};
+    expect(assessmentKey(meta)).toBe('ASSESSMENT:original');
+    expect(assessmentRequest(draft,meta,[]).target).toEqual(meta);
+  });
 });

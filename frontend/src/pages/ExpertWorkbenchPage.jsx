@@ -79,14 +79,15 @@ export function ExpertWorkbenchPage() {
     () => evidenceChoices.filter((item) => selectedEvidenceIds.includes(item.evidence_id)),
     [evidenceChoices, selectedEvidenceIds],
   );
+  const assessmentHistory = data.assessments ?? [];
   const assessmentChoices = [
     ...data.nodes.map(n => ({ target: {kind: 'OBJECT', object_id: n.object_id}, label: `${n.kind}: ${n.text}` })),
     ...data.arguments.map(a => ({target: {kind: 'OBJECT', object_id: a.argument_id}, label: `ARGUMENT: ${a.rationale}`})),
     ...evidenceChoices.map(e => ({target: {kind: 'EVIDENCE', evidence_id: e.evidence_id}, label: `EVIDENCE: ${e.document_locator} #${e.ordinal}: ${e.content}`})),
     ...data.relations.map(r => ({target: {kind: 'RELATION', relation_id: r.relation_id}, label: `${r.kind}: ${r.rationale}`})),
     ...data.grounding_sets.map(g => ({target: {kind: 'ROUTE', argument_id: g.argument_id, grounding_set_id: g.grounding_set_id}, label: `ROUTE ${g.effect}: ${g.rationale}`})),
+    ...assessmentHistory.map(a => ({target: {kind:'ASSESSMENT',assessment_event_id:a.event_id}, label:`ASSESSMENT ${a.input.dimension}: ${a.input.result} — ${a.input.criterion} (${a.event_id})`})),
   ];
-  const assessmentHistory = data.assessments ?? [];
   const assessmentDependencies = data.assessment_dependencies ?? [];
   const routeLabel = route => data.grounding_sets.find(g => g.argument_id === route.argument_id && g.grounding_set_id === route.grounding_set_id)?.rationale ?? `${route.argument_id}/${route.grounding_set_id}`;
   const supersededAssessments = new Set(assessmentHistory.map(a => a.input.revises_event_id).filter(Boolean));
@@ -176,6 +177,7 @@ export function ExpertWorkbenchPage() {
       })}>
         <h3>Record contextual epistemic assessment</h3>
         <p>One attributed dimension at a time. Confidence refers to the judgment, not the truth of the target.</p>
+        <p>An assessment may itself be assessed. The judgment targets an exact event, not its later revisions or the truth of whatever it assessed.</p>
         {assessment.revises_event_id && <p>Revising {assessment.revises_event_id} <button type="button" onClick={() => setAssessment({...assessment, revises_event_id: null})}>Cancel revision</button></p>}
         <label>Target<select disabled={!!assessment.revises_event_id} value={assessment.target} onChange={e => setAssessment({...assessment, target: e.target.value})}><option value="">Choose…</option>{assessmentChoices.map(c => <option key={assessmentKey(c.target)} value={assessmentKey(c.target)}>{c.label}</option>)}</select></label>
         <label>Dimension<select disabled={!!assessment.revises_event_id} value={assessment.dimension} onChange={e => setAssessment({...assessment, dimension: e.target.value, result: 'UNKNOWN'})}>{Object.keys(assessmentResults).map(x => <option key={x}>{x}</option>)}</select></label>
