@@ -226,6 +226,8 @@ Initial structured authoring of investigative questions (migration 0109): a Situ
 
 Typed investigative links (migration 0110) let an investigator record `ADDRESSES_GAP` from a question to one or several information gaps, `TESTS_HYPOTHESIS` to one or several candidate explanations, and `PRESUPPOSES` to explicitly identified propositions, assumptions or hypotheses. Endpoint types, direction and Situation visibility are validated by the API and by a caller-scoped SQL trigger. These links preserve the original question, do not resolve a gap or endorse a hidden premise, and do not imply that testing several hypotheses discriminates between them.
 
+The Workbench snapshot's `question_inquiries` is a read-only projection for every visible question, including questions with no links. It groups the exact typed relation and target identities, and separately exposes unrevised direct relevance and discriminatory-power assessment event IDs. The UI resolves these identities to the original wording, rationale, criterion, context and attribution. Independent judgment chains remain separate; neither link counts nor the absence of an assessment imply discriminatory power, truth, priority or resolution.
+
 A question should be evaluable in terms of what it could change. Discriminatory power is a core dimension: information can be relevant yet fail to distinguish between competing hypotheses.
 
 Initial qualitative scales are acceptable, for example negligible / low / moderate / high / very_high, provided rationale and context are preserved.
