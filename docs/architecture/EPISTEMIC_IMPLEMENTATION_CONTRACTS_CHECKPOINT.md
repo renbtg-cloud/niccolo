@@ -391,6 +391,8 @@ The product owner explicitly prefers **ego protection** for this personal self-i
 
 Migration 0123 introduces separate attributed ego-protection and identity-protection judgments about a visible Situation object. Each has its own rationale, temporal scope, judgment and optional evidence; neither indicates a diagnosis, an established motive, nor an automatic inference from behavior. Other actor states can target an exact prior motive judgment, but the motive description itself cannot use an actor or state event instead of its Situation object.
 
+Checkpoint 1.32 validation: migration 0123, independent concurrent motive judgments, cross-dimension revision refusal and direct SQL target constraint verified. Full regression passed (595 Rust, 141 React, 22 Python, 8 standalone JavaScript tests), running test binaries in bounded batches to respect the transient VM's disk limit.
+
 ## 16. Pressure, coercion, dependency, leverage and autonomy
 
 Do not collapse all motivation into one field.
