@@ -75,6 +75,157 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn assessments_can_target_exact_prior_assessments_without_mutating_them() {
+    use epistemic_workbench::assessment::*;
+    let f = fixture().await;
+    let sit = situation(&f, "Review an assessment's reliability").await;
+    let other = situation(&f, "Separate investigation").await;
+    let object = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "An initial explanatory proposition",
+    )
+    .await;
+    let original = Uuid::new_v4();
+    let base = AssessmentInput {
+        target: AssessmentTarget::Object { object_id: object },
+        dimension: AssessmentDimension::Credibility,
+        result: AssessmentResult::Credible,
+        confidence: AssessmentConfidence::Moderate,
+        criterion: "Consistency".into(),
+        context: "Initial examination".into(),
+        rationale: "Consistent with reported sequence".into(),
+        grounds: vec![],
+        revises_event_id: None,
+    };
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        original,
+        base.clone(),
+    )
+    .await
+    .unwrap();
+    let meta_id = Uuid::new_v4();
+    let meta = AssessmentInput {
+        target: AssessmentTarget::Assessment {
+            assessment_event_id: original,
+        },
+        dimension: AssessmentDimension::Reliability,
+        result: AssessmentResult::LimitedReliability,
+        confidence: AssessmentConfidence::High,
+        criterion: "Method used".into(),
+        context: "Assess investigator judgment".into(),
+        rationale: "Independent confirmation is absent".into(),
+        grounds: vec![],
+        revises_event_id: None,
+    };
+    assert!(
+        !record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            meta_id,
+            meta.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(
+        record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            meta_id,
+            meta.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(matches!(
+        record(
+            &f.service,
+            f.workspace,
+            other,
+            f.principal,
+            Uuid::new_v4(),
+            meta.clone()
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    let self_id = Uuid::new_v4();
+    assert!(matches!(
+        record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            self_id,
+            AssessmentInput {
+                target: AssessmentTarget::Assessment {
+                    assessment_event_id: self_id
+                },
+                ..meta.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    let revision = Uuid::new_v4();
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        revision,
+        AssessmentInput {
+            result: AssessmentResult::Questionable,
+            revises_event_id: Some(original),
+            ..base.clone()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            Uuid::new_v4(),
+            AssessmentInput {
+                target: AssessmentTarget::Assessment {
+                    assessment_event_id: revision
+                },
+                revises_event_id: Some(meta_id),
+                ..meta.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.assessments.len(), 3);
+    assert_eq!(snapshot.assessments[0].input, base);
+    assert_eq!(snapshot.assessments[1].input, meta);
+    assert_eq!(
+        snapshot.assessments[2].input.revises_event_id,
+        Some(original)
+    );
+    assert!(snapshot.assessment_dependencies.is_empty());
+}
+
+#[tokio::test]
 async fn multidimensional_assessments_preserve_revision_and_disagreement() {
     use epistemic_workbench::assessment::*;
     let f = fixture().await;
