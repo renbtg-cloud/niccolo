@@ -15,6 +15,14 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('shows exact contradictory supporting routes as review candidates, never a self-sealing verdict', () => {
+    expect(page).toContain('diagnostic.contradictory_supports');
+    expect(page).toContain('candidate.left_supporting_routes');
+    expect(page).toContain('candidate.right_supporting_routes');
+    expect(page).toContain('conditional or alternative routes can be legitimate');
+    expect(page).toContain('Absence of a warning does not establish falsifiability.');
+    expect(page).toContain('No conclusion or route is automatically rejected.');
+  });
   it('records a human inquiry decision without executing or granting authorization', async () => {
     const calls=[];
     const client=new NiccoloClient(config,async(url,options)=>{calls.push({url,options});return response;});

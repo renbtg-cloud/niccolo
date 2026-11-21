@@ -3096,6 +3096,40 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
 }
 
 #[tokio::test]
+async fn contradictory_support_is_an_exact_structural_review_candidate_not_a_verdict() {
+    let f=fixture().await;
+    let sit=situation(&f,"Examine potential self-sealing reasoning").await;
+    let hypothesis=node(&f,sit,ExpertNodeKind::Hypothesis,"The record was intentionally concealed").await;
+    let left=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was made available").await;
+    let right=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was not made available").await;
+    let unrelated=node(&f,sit,ExpertNodeKind::Hypothesis,"An unrelated account").await;
+    let fref=&f;
+    let route=|conclusion,ground,effect,role|async move {
+        let arg=Uuid::new_v4(); let set=Uuid::new_v4();
+        epistemic_workbench::create_argument(&fref.service,fref.workspace,sit,fref.principal,arg,conclusion,ArgumentMode::Abductive,"An explicitly authored route").await.unwrap();
+        epistemic_workbench::create_grounding_set(&fref.service,fref.workspace,sit,fref.principal,arg,set,effect,GroundingAdequacy::Partial,"Attributed support",&[NewGroundingMember{member_id:Uuid::new_v4(),role,ground_object_id:Some(ground),evidence_id:None,rationale:"Explicit ground".into()}]).await.unwrap();
+        epistemic_workbench::GroundingRouteRef{argument_id:arg,grounding_set_id:set}
+    };
+    let a=route(hypothesis,left,GroundingEffect::Supports,GroundingMemberRole::Premise).await;
+    let b=route(hypothesis,right,GroundingEffect::Supports,GroundingMemberRole::Premise).await;
+    let _context=route(unrelated,left,GroundingEffect::Supports,GroundingMemberRole::Context).await;
+    let _actual=route(unrelated,right,GroundingEffect::Supports,GroundingMemberRole::Premise).await;
+    let _opposition=route(unrelated,left,GroundingEffect::Challenges,GroundingMemberRole::Premise).await;
+    let before=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert!(before.reasoning_diagnostics.iter().all(|d|d.contradictory_supports.is_empty()));
+    let relation=epistemic_workbench::create_relation(&f.service,f.workspace,sit,f.principal,Uuid::new_v4(),RelationFamily::Semantic,RelationKind::Contradicts,left,right,"The two alternatives are incompatible in the same context").await.unwrap();
+    let after=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    let diagnostic=after.reasoning_diagnostics.iter().find(|d|d.conclusion_object_id==hypothesis).unwrap();
+    assert_eq!(diagnostic.contradictory_supports.len(),1);
+    let candidate=&diagnostic.contradictory_supports[0];
+    assert_eq!(candidate.relation_id,relation.relation_id);
+    assert_eq!(candidate.left_supporting_routes,vec![if relation.left_object_id==left{a}else{b}]);
+    assert_eq!(candidate.right_supporting_routes,vec![if relation.right_object_id==right{b}else{a}]);
+    assert!(after.reasoning_diagnostics.iter().find(|d|d.conclusion_object_id==unrelated).unwrap().contradictory_supports.is_empty());
+    assert!(after.assessments.is_empty()&&after.question_decisions.is_empty());
+}
+
+#[tokio::test]
 async fn expert_authored_relations_and_joint_grounding_remain_explicit() {
     let f = fixture().await;
     let sit = situation(
