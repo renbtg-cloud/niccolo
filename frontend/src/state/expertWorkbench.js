@@ -5,6 +5,29 @@ export const relationKinds = Object.freeze({
   CAUSAL: ['CAUSES', 'CONTRIBUTES_TO', 'ENABLES', 'PREVENTS', 'INTENSIFIES', 'ATTENUATES'],
 });
 
+
+export const relationSemantics = Object.freeze({
+  EQUIVALENT_TO: { left: 'Object A', right: 'Object B', description: 'The two objects express equivalent meaning in this context.' },
+  MORE_SPECIFIC_THAN: { left: 'More specific object', right: 'Broader object', description: 'The left object narrows the meaning of the right object.' },
+  ENTAILS: { left: 'Entailing object', right: 'Entailed object', description: 'Accepting the left object commits the model to the right object under the stated rationale.' },
+  CONTRADICTS: { left: 'Object A', right: 'Object B', description: 'The two objects cannot both hold as stated in the same relevant context.' },
+  PARTIAL_OVERLAP: { left: 'Object A', right: 'Object B', description: 'The objects overlap semantically without being equivalent.' },
+  REFINES: { left: 'Refined object', right: 'Prior object', description: 'The left object adds precision to the right object without necessarily replacing it.' },
+  SUPERSEDES: { left: 'Replacement object', right: 'Superseded object', description: 'The left object replaces the right object for subsequent reasoning.' },
+  RETRACTS: { left: 'Retraction object', right: 'Retracted object', description: 'The left object explicitly withdraws the right object from active use.' },
+  CONSOLIDATES: { left: 'Consolidated object', right: 'Source object', description: 'The left object incorporates the right object into a consolidated representation.' },
+  SEPARATES: { left: 'Separated object', right: 'Prior combined object', description: 'The left object separates a distinction that the right object previously combined.' },
+  REINTERPRETS: { left: 'New interpretation', right: 'Prior object', description: 'The left object provides a revised reading of the right object.' },
+  RELEVANT_TO: { left: 'Relevant object', right: 'Context object', description: 'The left object is relevant to the right object in the stated context.' },
+  APPLICABLE_UNDER: { left: 'Applicable object', right: 'Condition object', description: 'The left object applies under the condition represented by the right object.' },
+  CAUSES: { left: 'Cause', right: 'Effect', description: 'The left object is asserted as a cause of the right object.' },
+  CONTRIBUTES_TO: { left: 'Contributor', right: 'Outcome', description: 'The left object contributes causally to the right object without claiming sole causation.' },
+  ENABLES: { left: 'Enabler', right: 'Enabled outcome', description: 'The left object enables the right object.' },
+  PREVENTS: { left: 'Preventer', right: 'Prevented outcome', description: 'The left object prevents the right object.' },
+  INTENSIFIES: { left: 'Intensifier', right: 'Affected outcome', description: 'The left object increases the intensity or likelihood represented by the right object.' },
+  ATTENUATES: { left: 'Attenuator', right: 'Affected outcome', description: 'The left object reduces the intensity or likelihood represented by the right object.' },
+});
+
 export const nodeKinds = Object.freeze(['PROPOSITION', 'HYPOTHESIS', 'ASSUMPTION', 'INFORMATION_GAP', 'FINDING']);
 export const argumentModes = Object.freeze(['DEDUCTIVE', 'INDUCTIVE', 'ABDUCTIVE', 'CAUSAL', 'ANALOGICAL', 'POLICY', 'OTHER']);
 export const groundingEffects = Object.freeze(['SUPPORTS', 'WEAKENS', 'CHALLENGES', 'CONDITIONS']);

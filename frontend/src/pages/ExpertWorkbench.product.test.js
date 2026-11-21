@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { groundingRequest, nodeRequest, relationRequest } from '../state/expertWorkbench.js';
+import { groundingRequest, nodeRequest, relationRequest, relationSemantics } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -44,6 +44,14 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
       text: 'The transfer occurred after approval.',
       rationale: 'A proposition to be tested in this Situation.',
     });
+  });
+
+  it('makes directed relation semantics explicit before the investigator selects endpoints', () => {
+    expect(relationSemantics.SUPERSEDES).toMatchObject({ left: 'Replacement object', right: 'Superseded object' });
+    expect(relationSemantics.CAUSES).toMatchObject({ left: 'Cause', right: 'Effect' });
+    expect(page).toContain('relationSemantics[relation.kind].description');
+    expect(page).toContain('relationSemantics[relation.kind].left');
+    expect(page).toContain('relationSemantics[relation.kind].right');
   });
 
   it('keeps relation family semantics explicit instead of guessing them', () => {

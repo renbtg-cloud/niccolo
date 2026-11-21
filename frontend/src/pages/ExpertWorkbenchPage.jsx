@@ -11,6 +11,7 @@ import {
   nodeRequest,
   relationKinds,
   relationRequest,
+  relationSemantics,
 } from '../state/expertWorkbench.js';
 
 function useWorkbenchMutation(client, workbenchQuery, fn) {
@@ -91,8 +92,9 @@ export function ExpertWorkbenchPage() {
         <h3>Add typed relation</h3>
         <label>Family<select value={relation.family} onChange={(e) => setRelation({ ...relation, family: e.target.value, kind: relationKinds[e.target.value][0] })}>{Object.keys(relationKinds).map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>Relation<select value={relation.kind} onChange={(e) => setRelation({ ...relation, kind: e.target.value })}>{relationKinds[relation.family].map((x) => <option key={x}>{x}</option>)}</select></label>
-        <label>Left object<select value={relation.left} onChange={(e) => setRelation({ ...relation, left: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
-        <label>Right object<select value={relation.right} onChange={(e) => setRelation({ ...relation, right: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <small className="relation-semantics">{relationSemantics[relation.kind].description}</small>
+        <label>{relationSemantics[relation.kind].left}<select value={relation.left} onChange={(e) => setRelation({ ...relation, left: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <label>{relationSemantics[relation.kind].right}<select value={relation.right} onChange={(e) => setRelation({ ...relation, right: e.target.value })}><option value="">Choose…</option>{data.nodes.map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
         <label>Rationale<textarea value={relation.rationale} maxLength={4096} onChange={(e) => setRelation({ ...relation, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create relation</button>
       </form>
