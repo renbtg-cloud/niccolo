@@ -433,6 +433,8 @@ Checkpoint 1.33 validation: migration 0124, all seven independent autonomy judgm
 
 Vulnerability is contextual exposure to an adverse consequence, not a personal defect.
 
+Migration 0128 adds independent contextual vulnerability, coercion susceptibility, compliance, consent and submission judgments about a registered actor and visible Situation object, with optional exact counterparty. They distinguish exposure or susceptibility to an adverse consequence from a response to pressure; no judgment derives a personal defect, consent from compliance, loyalty from submission, or deterministic authorization for Niccolò. These are attributed descriptions and do not determine legal validity.
+
 ## 17. Epistemic influence and power
 
 Epistemic influence can target more than belief. It can target:

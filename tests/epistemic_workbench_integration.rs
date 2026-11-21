@@ -267,6 +267,32 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn vulnerability_and_compliance_do_not_establish_consent_or_loyalty() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Examine response under dependence").await;
+    let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The employee accepted a change to the bonus").await;
+    let affected=Uuid::new_v4();let other=Uuid::new_v4();
+    for (id,label) in [(affected,"Employee"),(other,"Manager")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(other),dimension:StateDimension::Compliance,judgment:StateJudgment::Indicated,context:"Bonus review".into(),temporal_scope:"At decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported acceptance of the change".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let compliance=Uuid::new_v4();record(compliance,item.clone()).await.unwrap();
+    for (dimension,judgment,counterparty_actor_id) in [(StateDimension::Consent,StateJudgment::NotIndicated,Some(other)),(StateDimension::Submission,StateJudgment::Contested,Some(other)),(StateDimension::Vulnerability,StateJudgment::Indicated,None),(StateDimension::CoercionSusceptibility,StateJudgment::Unknown,Some(other))] {record(Uuid::new_v4(),StateInput{dimension,judgment,counterparty_actor_id,..item.clone()}).await.unwrap();}
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::Consent,revises_event_id:Some(compliance),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::Vulnerability,target_object_id:None,target_state_event_id:Some(compliance),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),5);
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::Consent&&e.input.judgment==StateJudgment::NotIndicated));
+    assert!(!snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::Loyalty));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'VULNERABILITY','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(affected).bind(compliance).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn threat_capability_intent_perceived_credibility_and_outcome_are_independent() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;

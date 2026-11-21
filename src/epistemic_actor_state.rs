@@ -57,6 +57,11 @@ pub enum StateDimension {
     ThreatIntent,
     ThreatPerceivedCredibility,
     ThreatOutcome,
+    Vulnerability,
+    CoercionSusceptibility,
+    Compliance,
+    Consent,
+    Submission,
 }
 impl StateDimension {
     pub fn is_contextual_pressure(self) -> bool {
@@ -74,6 +79,11 @@ impl StateDimension {
                 | Self::ThreatIntent
                 | Self::ThreatPerceivedCredibility
                 | Self::ThreatOutcome
+                | Self::Vulnerability
+                | Self::CoercionSusceptibility
+                | Self::Compliance
+                | Self::Consent
+                | Self::Submission
         )
     }
     pub fn requires_threat_counterparty(self) -> bool {

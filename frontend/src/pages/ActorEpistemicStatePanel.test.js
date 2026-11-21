@@ -1,9 +1,18 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('distinguishes contextual vulnerability, susceptibility, compliance, consent and submission',()=>{
+    expect(contextualVulnerabilityDimensions).toHaveLength(5);
+    const compliance={...draft,dimension:'COMPLIANCE',counterparty_actor_id:'b'};
+    expect(request(compliance).judgment).toBe('INDICATED');
+    expect(request({...compliance,dimension:'CONSENT',judgment:'NOT_INDICATED'}).judgment).toBe('NOT_INDICATED');
+    expect(request({...compliance,dimension:'VULNERABILITY',counterparty_actor_id:null}).target_object_id).toBe('p');
+    const prior={event_id:'compliance',input:request(compliance)};
+    expect(()=>request({...compliance,dimension:'CONSENT',revises_event_id:'compliance'},[prior])).toThrow();
+  });
   it('requires an alleged issuer for threat capability or intent, without inferring credibility or outcome',()=>{
     expect(threatFacetDimensions).toHaveLength(4);
     const capability={...draft,dimension:'THREAT_CAPABILITY',counterparty_actor_id:'b'};
