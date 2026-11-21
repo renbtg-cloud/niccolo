@@ -35,6 +35,9 @@ pub enum AssessmentDimension {
     IntegrityDissentPreservation,
     IntegrityHistoricalTraceability,
     IntegrityReviewability,
+    MaterialCompromise,
+    RelianceContainment,
+    RecoveryReadiness,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,6 +84,12 @@ pub enum AssessmentResult {
     NoConcernIndicated,
     ConcernIndicated,
     CompromiseIndicated,
+    PauseIndicated,
+    LimitIndicated,
+    NoPauseIndicated,
+    RecoveryReady,
+    RecoveryPartial,
+    RecoveryNotReady,
     Unknown,
     Contested,
 }
@@ -121,7 +130,10 @@ impl AssessmentDimension {
                 | Self::IntegrityCriteriaConsistency
                 | Self::IntegrityDissentPreservation
                 | Self::IntegrityHistoricalTraceability
-                | Self::IntegrityReviewability => matches!(result, NoConcernIndicated | ConcernIndicated | CompromiseIndicated),
+                | Self::IntegrityReviewability
+                | Self::MaterialCompromise => matches!(result, NoConcernIndicated | ConcernIndicated | CompromiseIndicated),
+                Self::RelianceContainment => matches!(result, PauseIndicated | LimitIndicated | NoPauseIndicated),
+                Self::RecoveryReadiness => matches!(result, RecoveryReady | RecoveryPartial | RecoveryNotReady),
             }
     }
 

@@ -2594,6 +2594,44 @@ async fn multidimensional_assessments_preserve_revision_and_disagreement() {
 }
 
 #[tokio::test]
+async fn compromise_containment_recovery_are_independent_and_selective() {
+    use epistemic_workbench::assessment::*;
+    let f=fixture().await;
+    let sit=situation(&f,"Review a possibly compromised ledger").await;
+    let premise=node(&f,sit,ExpertNodeKind::Proposition,"Reported ledger entry").await;
+    let alternate=node(&f,sit,ExpertNodeKind::Proposition,"Independently reported receipt").await;
+    let conclusion=node(&f,sit,ExpertNodeKind::Hypothesis,"Payment occurred").await;
+    let mut routes=vec![];
+    for ground in [premise,alternate]{
+        let argument_id=Uuid::new_v4();let grounding_set_id=Uuid::new_v4();
+        epistemic_workbench::create_argument(&f.service,f.workspace,sit,f.principal,argument_id,conclusion,ArgumentMode::Abductive,"Explicit route").await.unwrap();
+        epistemic_workbench::create_grounding_set(&f.service,f.workspace,sit,f.principal,argument_id,grounding_set_id,GroundingEffect::Supports,GroundingAdequacy::Partial,"Explicit ground",&[NewGroundingMember{member_id:Uuid::new_v4(),role:GroundingMemberRole::Premise,ground_object_id:Some(ground),evidence_id:None,rationale:"Reported observation".into()}]).await.unwrap();
+        routes.push((argument_id,grounding_set_id));
+    }
+    let before=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    let input=AssessmentInput{target:AssessmentTarget::Object{object_id:premise},dimension:AssessmentDimension::MaterialCompromise,result:AssessmentResult::ConcernIndicated,confidence:AssessmentConfidence::Low,criterion:"Ledger integrity".into(),context:"Current review".into(),rationale:"Possible missing entries".into(),grounds:vec![],revises_event_id:None};
+    let assess=|id,item|record(&f.service,f.workspace,sit,f.principal,id,item);
+    let compromise=Uuid::new_v4();let containment=Uuid::new_v4();let recovery=Uuid::new_v4();
+    assess(compromise,input.clone()).await.unwrap();
+    let containment_input=AssessmentInput{dimension:AssessmentDimension::RelianceContainment,result:AssessmentResult::PauseIndicated,..input.clone()};
+    assess(containment,containment_input.clone()).await.unwrap();
+    assess(recovery,AssessmentInput{dimension:AssessmentDimension::RecoveryReadiness,result:AssessmentResult::RecoveryNotReady,..input.clone()}).await.unwrap();
+    assert!(matches!(assess(Uuid::new_v4(),AssessmentInput{dimension:AssessmentDimension::RecoveryReadiness,result:AssessmentResult::PauseIndicated,..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.nodes,before.nodes);assert_eq!(snapshot.arguments,before.arguments);assert_eq!(snapshot.grounding_sets,before.grounding_sets);assert!(snapshot.assessment_dependencies.is_empty());
+    let dep=Uuid::new_v4();
+    record_dependency(&f.service,f.workspace,sit,f.principal,dep,DependencyInput{argument_id:routes[0].0,grounding_set_id:routes[0].1,assessment_event_id:containment,rationale:"Review reliance on the ledger".into()}).await.unwrap();
+    let revision=Uuid::new_v4();
+    assess(revision,AssessmentInput{result:AssessmentResult::LimitIndicated,revises_event_id:Some(containment),..containment_input}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.assessments.len(),4);assert_eq!(snapshot.assessment_dependencies.len(),1);
+    assert!(snapshot.assessment_dependencies[0].requires_review);
+    assert_eq!(snapshot.assessment_dependencies[0].current_assessment_event_id,revision);
+    assert_eq!(snapshot.nodes,before.nodes);assert_eq!(snapshot.arguments,before.arguments);assert_eq!(snapshot.grounding_sets,before.grounding_sets);
+    assert!(snapshot.question_decisions.is_empty());
+}
+
+#[tokio::test]
 async fn pinned_assessment_revisions_require_selective_review_without_rewriting_routes() {
     use epistemic_workbench::assessment::*;
     let f = fixture().await;

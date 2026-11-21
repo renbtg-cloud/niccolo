@@ -600,6 +600,8 @@ Epistemic containment for potentially compromised material should:
 
 Epistemic recovery should identify usable material, independently grounded material, revised conclusions, unresolved gaps and controls that must be restored.
 
+Migration 0138 introduces separate contextual assessments of possible material compromise, the indicated need to pause or limit reliance, and recovery readiness. An assessment may target any exact visible workbench object, fragment, relation, argument route or previous assessment and cite explicit grounds. Neither a compromise nor a containment or recovery judgment changes evidence or reliance automatically. An investigator can explicitly cite such a judgment in a route dependency; a later revision surfaces the existing selective downstream review without rewriting routes or deleting provenance.
+
 ## 22. ActionRecommendation and the human action boundary
 
 `ActionRecommendation` is a first-class, attributable, revisable object with purpose, recipient, context, rationale, grounding, conditions, alternatives, expected consequences, uncertainty, risk and reversibility.

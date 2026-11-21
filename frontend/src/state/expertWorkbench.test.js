@@ -10,7 +10,7 @@ describe('contextual assessment request', () => {
     expect(assessmentKey({kind:'ROUTE', argument_id:'a', grounding_set_id:'g'})).toBe('ROUTE:a:g');
   });
   it('prevents cross-dimensional results and duplicate grounds', () => {
-    expect(Object.keys(assessmentResults)).toHaveLength(22);
+    expect(Object.keys(assessmentResults)).toHaveLength(25);
     expect(() => assessmentRequest({...draft, result:'CREDIBLE'}, target, [])).toThrow();
     expect(() => assessmentRequest(draft, target, [ground, ground])).toThrow();
   });
@@ -34,6 +34,14 @@ describe('contextual assessment request', () => {
     }
     expect(()=>assessmentRequest({...draft,result:'COMPROMISE_INDICATED'},target,[])).toThrow();
     expect(assessmentDimensionsForTarget({kind:'ASSESSMENT',assessment_event_id:'prior'},[])).toContain('INTEGRITY_REVIEWABILITY');
+  });
+  it('keeps compromise, containment and recovery separate without authorizing a change',()=>{
+    for(const [dimension,result] of [['MATERIAL_COMPROMISE','COMPROMISE_INDICATED'],['RELIANCE_CONTAINMENT','PAUSE_INDICATED'],['RECOVERY_READINESS','RECOVERY_NOT_READY']]){
+      expect(assessmentRequest({...draft,dimension,result},target,[ground])).toMatchObject({dimension,result,target,grounds:[ground]});
+      expect(assessmentRequest({...draft,dimension,result:'UNKNOWN'},target,[]).result).toBe('UNKNOWN');
+    }
+    expect(()=>assessmentRequest({...draft,dimension:'RECOVERY_READINESS',result:'NO_PAUSE_INDICATED'},target,[])).toThrow();
+    expect(()=>assessmentRequest({...draft,dimension:'MATERIAL_COMPROMISE',result:'RECOVERY_READY'},target,[])).toThrow();
   });
   it('restricts gap resolution to gaps and requires non-question grounds for a supported or partially addressed result', () => {
     const nodes = [{object_id:'g',kind:'INFORMATION_GAP'},{object_id:'q',kind:'QUESTION'},{object_id:'p',kind:'PROPOSITION'}];
