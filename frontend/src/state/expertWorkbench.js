@@ -38,7 +38,7 @@ export function argumentRequest(conclusionObjectId, mode, rationale) {
   return { conclusion_object_id: conclusionObjectId, mode, rationale: requireText(rationale, 'Rationale') };
 }
 
-export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles, selectedEvidence = []) {
+export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles, selectedEvidence = [], memberRationales = {}) {
   if (!groundingEffects.includes(effect) || !groundingAdequacies.includes(adequacy)) throw new Error('Choose grounding semantics.');
   if (!selectedNodes.length && !selectedEvidence.length) throw new Error('Choose at least one joint ground.');
   return {
@@ -51,14 +51,14 @@ export function groundingRequest(effect, adequacy, rationale, selectedNodes, rol
         role: roles[node.object_id] ?? (node.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE'),
         ground_object_id: node.object_id,
         evidence_id: null,
-        rationale: `Explicit ${node.kind.toLowerCase()} selected by the investigator as a grounding member.`,
+        rationale: requireText(memberRationales[`object:${node.object_id}`], 'Ground rationale'),
       })),
       ...selectedEvidence.map((item) => ({
         member_id: crypto.randomUUID(),
         role: 'EVIDENCE',
         ground_object_id: null,
         evidence_id: item.evidence_id,
-        rationale: 'Explicit source fragment selected by the investigator as documentary evidence in this grounding set.',
+        rationale: requireText(memberRationales[`evidence:${item.evidence_id}`], 'Evidence rationale'),
       })),
     ],
   };

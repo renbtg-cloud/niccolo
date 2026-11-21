@@ -47,6 +47,16 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('first 256 admissible source fragments');
   });
 
+
+  it('requires the investigator to explain each selected ground instead of fabricating rationale', () => {
+    expect(() => groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [
+      { object_id: 'a', kind: 'HYPOTHESIS' },
+    ], {}, [], {})).toThrow('Ground rationale');
+    expect(() => groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [], {}, [
+      { evidence_id: 'evidence-1' },
+    ], {})).toThrow('Evidence rationale');
+  });
+
   it('represents multiple selected objects as one joint grounding set', () => {
     const oldCrypto = globalThis.crypto;
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => '77777777-7777-4777-8777-777777777777' } });
@@ -54,11 +64,15 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
       const body = groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [
         { object_id: 'a', kind: 'HYPOTHESIS' },
         { object_id: 'b', kind: 'ASSUMPTION' },
-      ], {}, [{ evidence_id: 'evidence-1' }]);
+      ], {}, [{ evidence_id: 'evidence-1' }], {
+        'object:a': 'This hypothesis is a necessary premise for the inference.',
+        'object:b': 'This assumption is being adopted explicitly for this argument.',
+        'evidence:evidence-1': 'This fragment directly documents the approval hold.',
+      });
       expect(body.members).toHaveLength(3);
-      expect(body.members[0].role).toBe('PREMISE');
-      expect(body.members[1].role).toBe('ASSUMPTION');
-      expect(body.members[2]).toMatchObject({ role: 'EVIDENCE', ground_object_id: null, evidence_id: 'evidence-1' });
+      expect(body.members[0]).toMatchObject({ role: 'PREMISE', rationale: 'This hypothesis is a necessary premise for the inference.' });
+      expect(body.members[1]).toMatchObject({ role: 'ASSUMPTION', rationale: 'This assumption is being adopted explicitly for this argument.' });
+      expect(body.members[2]).toMatchObject({ role: 'EVIDENCE', ground_object_id: null, evidence_id: 'evidence-1', rationale: 'This fragment directly documents the approval hold.' });
       expect(body.adequacy).toBe('PARTIAL');
     } finally {
       Object.defineProperty(globalThis, 'crypto', { configurable: true, value: oldCrypto });
