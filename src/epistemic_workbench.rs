@@ -15,6 +15,8 @@ pub mod inquiry_response;
 pub mod inquiry_decision;
 #[path = "epistemic_inquiry_decision_review.rs"]
 pub mod inquiry_decision_review;
+#[path = "epistemic_action_recommendation.rs"]
+pub mod action_recommendation;
 #[path = "epistemic_actor_state.rs"]
 pub mod actor_state;
 #[path = "epistemic_actor_act.rs"]

@@ -606,6 +606,8 @@ Migration 0138 introduces separate contextual assessments of possible material c
 
 `ActionRecommendation` is a first-class, attributable, revisable object with purpose, recipient, context, rationale, grounding, conditions, alternatives, expected consequences, uncertainty, risk and reversibility.
 
+The Rust `action_recommendation` module now defines a bounded, non-executable draft contract for protective and investigative recommendations, including delay and inaction. It requires explicit grounds, risk, uncertainty and an alternative; its closed kind enum excludes kinetic attack plans. This is a structural contract only: free-text descriptions still require human review, recipients and grounds must be resolved within the Situation at the future persistence boundary, and no API or execution capability is introduced by this slice.
+
 Keep structurally distinct:
 
 ```text
