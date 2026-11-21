@@ -1,0 +1,64 @@
+name: Rebuild expert-scope epistemology PDF once
+
+on:
+  push:
+    branches:
+      - tmp/rebuild-epistemology-pdf-expert-20261120
+    paths:
+      - .github/workflows/rebuild-epistemology-pdf-expert-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install PDF dependencies
+        run: python -m pip install --disable-pip-version-check markdown-it-py reportlab pypdf
+      - name: Generate and validate PDF
+        run: |
+          python scripts/generate-epistemology-pdf.py \
+            docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.md \
+            README-cover-image.png \
+            docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.pdf
+          python - <<'PY'
+          from pypdf import PdfReader
+          p='docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.pdf'
+          r=PdfReader(p)
+          assert len(r.pages) >= 50
+          assert len(r.outline) == 39
+          text='\n'.join((page.extract_text() or '') for page in r.pages)
+          for needle in [
+              'MVP interaction model: structured expert authoring',
+              'Post-MVP: investigator free-text interpretation',
+              'Structured reasoning first',
+              'Weaponized formalism',
+          ]:
+              assert needle.lower() in text.lower(), needle
+          print('pages', len(r.pages), 'outline', len(r.outline))
+          PY
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: epistemology-pdf-expert
+          path: docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.pdf
+          retention-days: 1
+      - name: Commit derived PDF
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/product/EPISTEMOLOGICAL_MODEL_AND_CAPABILITIES.pdf
+          if git diff --cached --quiet; then
+            echo "PDF already current"
+            exit 0
+          fi
+          git commit -m "docs(product): regenerate expert-scope epistemology PDF"
+          git push origin HEAD:main
