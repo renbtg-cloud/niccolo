@@ -349,6 +349,59 @@ async fn intervention_records_preserve_occurrence_and_causality_independently() 
 }
 
 #[tokio::test]
+async fn intervention_api_preserves_attribution_and_selective_reassessment() {
+    use axum::{body::{Body, to_bytes}, http::{Request, StatusCode, header}};
+    use tower::ServiceExt;
+    let f = fixture().await;
+    let sit = situation(&f, "Intervention feedback").await;
+    let other = situation(&f, "Separate investigation").await;
+    let admin = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let author = Uuid::new_v4();
+    let writer = authz::provision_token(&admin, author, f.workspace, true, true, 1).await.unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1).await.unwrap();
+    let secure = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();
+    let router = niccolo_evidence::api::router(secure);
+    let request = |token: &str, situation, collection: &str, id, body: serde_json::Value| Request::builder().method("POST")
+        .uri(format!("/v1/workspaces/{}/situations/{}/epistemic/{}/{}", f.workspace, situation, collection, id))
+        .header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::CONTENT_TYPE, "application/json").body(Body::from(body.to_string())).unwrap();
+    let execution = Uuid::new_v4();
+    let event = Uuid::new_v4();
+    let unrelated = Uuid::new_v4();
+    let record = serde_json::json!({"kind":"EXECUTION_OCCURRENCE","linked_decision_id":null,"characterization":"REPORTED","description":"Review reportedly occurred","event_temporal_scope":"January","acquisition_temporal_scope":"March","basis_evidence_id":null,"revises_record_id":null});
+    assert_eq!(router.clone().oneshot(request(&reader, sit, "intervention-records", execution, record.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    let mut invalid = record.clone(); invalid["execute"] = true.into();
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-records", execution, invalid)).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let created = router.clone().oneshot(request(&writer, sit, "intervention-records", execution, record.clone())).await.unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    assert_eq!(created.headers()[header::CACHE_CONTROL], "no-store");
+    let saved: serde_json::Value = serde_json::from_slice(&to_bytes(created.into_body(), 1024*1024).await.unwrap()).unwrap();
+    assert_eq!(saved["record"]["recorded_by"], serde_json::json!(author));
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-records", execution, record.clone())).await.unwrap().status(), StatusCode::OK);
+    let mut observation = record.clone(); observation["kind"] = "EVENT_OBSERVATION".into(); observation["description"] = "Employee explores other work".into();
+    for id in [event, unrelated] { assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-records", id, observation.clone())).await.unwrap().status(), StatusCode::CREATED); }
+    let assessment_id = Uuid::new_v4();
+    let causal = serde_json::json!({"execution_record_id":execution,"event_observation_record_id":event,"assessment":"POSSIBLY_INDUCED","rationale":"Reported timing","alternative_explanations":"Prior plans","uncertainty":"Causation unclear","basis_evidence_id":null,"revises_assessment_id":null});
+    assert_eq!(router.clone().oneshot(request(&reader, sit, "intervention-causal-assessments", assessment_id, causal.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&writer, other, "intervention-causal-assessments", assessment_id, causal.clone())).await.unwrap().status(), StatusCode::NOT_FOUND);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-causal-assessments", assessment_id, causal.clone())).await.unwrap().status(), StatusCode::CREATED);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-causal-assessments", assessment_id, causal.clone())).await.unwrap().status(), StatusCode::OK);
+    let mut independent = causal.clone(); independent["event_observation_record_id"] = serde_json::json!(unrelated);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-causal-assessments", Uuid::new_v4(), independent)).await.unwrap().status(), StatusCode::CREATED);
+    observation["revises_record_id"] = serde_json::json!(event); observation["event_temporal_scope"] = "December".into();
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-records", Uuid::new_v4(), observation)).await.unwrap().status(), StatusCode::CREATED);
+    let snapshot = router.oneshot(Request::builder().uri(format!("/v1/workspaces/{}/situations/{}/epistemic/workbench", f.workspace, sit)).header(header::AUTHORIZATION, format!("Bearer {reader}")).body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(snapshot.status(), StatusCode::OK);
+    let data: serde_json::Value = serde_json::from_slice(&to_bytes(snapshot.into_body(), 1024*1024).await.unwrap()).unwrap();
+    assert_eq!(data["intervention_records"].as_array().unwrap().len(), 4);
+    let assessments = data["intervention_causal_assessments"].as_array().unwrap();
+    assert_eq!(assessments.len(), 2);
+    assert_eq!(assessments[0]["assessment"]["input"], causal);
+    assert_eq!(assessments[0]["requires_review"], true);
+    assert_eq!(assessments[1]["requires_review"], false);
+    assert_eq!(data["action_decisions"], serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn action_decision_api_authenticates_the_decider_and_preserves_pinned_history() {
     use axum::{body::{Body, to_bytes}, http::{Request, StatusCode, header}};
     use epistemic_workbench::{action_decision::{DecisionDisposition, DecisionInput}, action_recommendation};

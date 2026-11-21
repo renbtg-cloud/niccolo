@@ -113,6 +113,56 @@ pub struct AttributedRecord<T> {
 pub type InterventionRecord = AttributedRecord<InterventionInput>;
 pub type CausalAssessment = AttributedRecord<CausalAssessmentInput>;
 
+/// Review cues only; supersession does not invalidate a historical assessment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CausalAssessmentView {
+    pub assessment: CausalAssessment,
+    pub execution_revised: bool,
+    pub event_observation_revised: bool,
+    pub requires_review: bool,
+    pub superseded: bool,
+}
+
+pub fn assessment_views(
+    records: &[InterventionRecord],
+    assessments: Vec<CausalAssessment>,
+) -> Vec<CausalAssessmentView> {
+    let revised: std::collections::BTreeSet<_> = records
+        .iter()
+        .filter_map(|r| r.input.revises_record_id)
+        .collect();
+    let superseded: std::collections::BTreeSet<_> = assessments
+        .iter()
+        .filter_map(|a| a.input.revises_assessment_id)
+        .collect();
+    assessments
+        .into_iter()
+        .map(|assessment| {
+            let execution_revised = revised.contains(&assessment.input.execution_record_id);
+            let event_observation_revised =
+                revised.contains(&assessment.input.event_observation_record_id);
+            let superseded = superseded.contains(&assessment.id);
+            CausalAssessmentView {
+                assessment,
+                execution_revised,
+                event_observation_revised,
+                requires_review: !superseded && (execution_revised || event_observation_revised),
+                superseded,
+            }
+        })
+        .collect()
+}
+
+pub(super) async fn list_in_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<(Vec<InterventionRecord>, Vec<CausalAssessmentView>), WorkbenchError> {
+    let records = records(tx, workspace, situation, None).await?;
+    let views = assessment_views(&records, assessments(tx, workspace, situation, None).await?);
+    Ok((records, views))
+}
+
 fn code<T: Serialize>(value: T) -> String {
     serde_json::to_value(value)
         .expect("closed enum")
