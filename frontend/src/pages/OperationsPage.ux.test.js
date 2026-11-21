@@ -7,7 +7,7 @@ const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 
 describe('primary analysis path', () => {
   it('presents analysis as the primary action while keeping execution plumbing advanced', () => {
-    expect(app).toContain('<NavLink to="/">Situation</NavLink><NavLink to="/operations">Analyze</NavLink><NavLink to="/review">Review</NavLink>');
+    expect(app).toContain('<NavLink to="/">Situation</NavLink><NavLink to="/workbench">Workbench</NavLink><NavLink to="/operations">Analyze</NavLink><NavLink to="/review">Review</NavLink>');
     expect(app).toContain('<summary>Technical</summary>');
     expect(situation).toContain('Analyze this Situation →');
     expect(operations).toContain('<h2>Analyze this Situation</h2>');
