@@ -319,9 +319,17 @@ pub async fn submit(
 
 pub async fn get(pool: &PgPool, scope: OperationScope) -> Result<OperationView, BffOperationError> {
     let mut tx = scoped(pool, scope.workspace, true).await?;
-    let row: Option<OperationRow> = sqlx::query_as("SELECT operation_id,operation_kind,target_analysis_id,parent_operation_id,state,state_version,result_json,error_code,error_message,step_budget FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_optional(&mut *tx).await?;
+    let view = get_in_snapshot(&mut tx, scope).await?;
     tx.commit().await?;
+    Ok(view)
+}
+
+async fn get_in_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+) -> Result<OperationView, BffOperationError> {
+    let row: Option<OperationRow> = sqlx::query_as("SELECT operation_id,operation_kind,target_analysis_id,parent_operation_id,state,state_version,result_json,error_code,error_message,step_budget FROM niccolo.bff_operations WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_optional(&mut **tx).await?;
     row.map(row_to_view)
         .transpose()?
         .ok_or(BffOperationError::Invisible)
@@ -496,10 +504,20 @@ pub async fn events(
         return Err(BffOperationError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, true).await?;
+    let page = events_in_snapshot(&mut tx, scope, after, limit).await?;
+    tx.commit().await?;
+    Ok(page)
+}
+
+async fn events_in_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    after: i64,
+    limit: i64,
+) -> Result<EventPage, BffOperationError> {
     type Row = (i64, String, String);
     let rows:Vec<Row>=sqlx::query_as("SELECT event_seq,event_kind,event_json FROM niccolo.bff_operation_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND event_seq>$4 ORDER BY event_seq LIMIT $5")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(after).bind(limit+1).fetch_all(&mut *tx).await?;
-    tx.commit().await?;
+        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(after).bind(limit+1).fetch_all(&mut **tx).await?;
     let more = rows.len() as i64 > limit;
     let events = rows
         .into_iter()
@@ -868,8 +886,13 @@ pub async fn observe(
     }
     let started = tokio::time::Instant::now();
     loop {
-        let operation = get(pool, scope).await?;
-        let page = events(pool, scope, after_event, event_limit).await?;
+        // State and its committed events must describe the SAME database snapshot.
+        // Two independent read transactions can straddle a transition and expose
+        // a new event next to an obsolete operation state.
+        let mut tx = scoped(pool, scope.workspace, true).await?;
+        let operation = get_in_snapshot(&mut tx, scope).await?;
+        let page = events_in_snapshot(&mut tx, scope, after_event, event_limit).await?;
+        tx.commit().await?;
         let operation_changed = operation.state_version > after_version;
         let events_changed = !page.events.is_empty();
         let timed_out = started.elapsed().as_millis() >= u128::from(timeout_ms);

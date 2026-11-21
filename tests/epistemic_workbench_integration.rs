@@ -845,6 +845,46 @@ async fn route_applicability_is_attributed_and_condition_revision_triggers_selec
             StatusCode::OK
         );
     }
+    let other = Uuid::new_v4();
+    authz::provision_token(&admin, other, f.workspace, true, true, 1)
+        .await
+        .unwrap();
+    epistemic_workbench::record_route_applicability(
+        &f.service,
+        f.workspace,
+        sit,
+        other,
+        Uuid::new_v4(),
+        arg,
+        sets[0],
+        condition,
+        ApplicabilityAssessment::Satisfied,
+        "A second investigator disagrees.",
+    )
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let route = snapshot.reasoning_diagnostics[0]
+        .routes
+        .iter()
+        .find(|r| r.grounding_set_id == sets[0])
+        .unwrap();
+    assert_eq!(route.applicability_conditions.len(), 2);
+    assert!(
+        route
+            .applicability_conditions
+            .iter()
+            .any(|a| a.recorded_by == f.principal
+                && a.assessment == ApplicabilityAssessment::NotSatisfied)
+    );
+    assert!(
+        route
+            .applicability_conditions
+            .iter()
+            .any(|a| a.recorded_by == other && a.assessment == ApplicabilityAssessment::Satisfied)
+    );
 }
 
 #[tokio::test]

@@ -1457,7 +1457,7 @@ async fn latest_route_applicability(
     workspace: Uuid,
     situation: Uuid,
 ) -> Result<Vec<RouteApplicabilityAssessment>, WorkbenchError> {
-    let rows: Vec<(Uuid,Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT DISTINCT ON (argument_id,grounding_set_id,condition_object_id) event_id,argument_id,grounding_set_id,condition_object_id,assessment,rationale,recorded_by_principal_id FROM niccolo.epistemic_route_applicability_events WHERE workspace_id=$1 AND situation_id=$2 ORDER BY argument_id,grounding_set_id,condition_object_id,event_no DESC")
+    let rows: Vec<(Uuid,Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT DISTINCT ON (argument_id,grounding_set_id,condition_object_id,recorded_by_principal_id) event_id,argument_id,grounding_set_id,condition_object_id,assessment,rationale,recorded_by_principal_id FROM niccolo.epistemic_route_applicability_events WHERE workspace_id=$1 AND situation_id=$2 ORDER BY argument_id,grounding_set_id,condition_object_id,recorded_by_principal_id,event_no DESC")
         .bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
     rows.into_iter()
         .map(

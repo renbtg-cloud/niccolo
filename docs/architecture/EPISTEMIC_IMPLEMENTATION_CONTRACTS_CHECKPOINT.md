@@ -166,6 +166,12 @@ Exact reuse of the same object or evidence fragment across authored routes must 
 
 The structured Workbench now also projects recorded dependence components for directly selected documentary grounds of each conclusion. It reuses the bounded, workspace-scoped evidence derivation loader and connects fragments sharing a recorded root or a source document anywhere in their ancestry. The components retain the selected fragment and authored route identities; they do not infer independent corroboration even when distinct. Withdrawn, missing, cyclic or excessive lineage is reported as unresolved rather than supplying a misleading component count. Indirect ancestry through epistemic object grounds and unrecorded collection dependencies are not covered by this projection.
 
+### Inferential applicability — initial expert-authored implementation
+
+A particular grounding route may have explicitly authored required conditions referring to Situation objects. The investigator records an applicability assessment (`UNASSESSED`, `SATISFIED`, `NOT_SATISFIED`, `CONTESTED`, or `UNKNOWN`) with rationale, actor and append-only event identity. The read model retains the latest assessment per condition and assessor, exposing disagreement rather than manufacturing consensus. The absence of a condition is not certification of applicability. The assessment does not establish proposition truth, deductive validity or actual conclusion strength.
+
+Revision of a required condition creates a selective reassessment obligation for its route and downstream dependencies without silently erasing the authored support or alternative routes. The implementation does not yet constitute a separately versioned inference-rule registry, automatic condition evaluation, or a general assessment language.
+
 ## 8. Selective epistemic revision
 
 Changes propagate as **obligations to reassess**, not as automatic global falsification.
