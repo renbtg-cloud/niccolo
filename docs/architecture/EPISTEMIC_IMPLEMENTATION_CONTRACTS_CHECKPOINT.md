@@ -466,6 +466,8 @@ Epistemic power is not formal authority. A person without formal rank may contro
 
 Epistemic asymmetry can concern information, access, understanding, meta-knowledge or influence.
 
+Migration 0130 preserves epistemic power and formal authority as independent contextual judgments. Each of the five asymmetries records an attributed comparative advantage of the subject relative to an exact, distinct registered counterparty concerning a visible Situation object. Neither a reverse comparison nor a global ranking is generated; formal authority is not an application permission. Revision retains the exact participants, object, scope and dimension.
+
 ## 18. Pervasive deception
 
 Deception is not equivalent to a false statement.

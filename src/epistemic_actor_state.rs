@@ -67,8 +67,29 @@ pub enum StateDimension {
     InfluenceIntendedEffect,
     InfluenceActualEffect,
     InfluencePerceivedSuccess,
+    EpistemicPower,
+    FormalAuthority,
+    AsymmetryInformation,
+    AsymmetryAccess,
+    AsymmetryUnderstanding,
+    AsymmetryMetaKnowledge,
+    AsymmetryInfluence,
 }
 impl StateDimension {
+    pub fn is_epistemic_asymmetry(self) -> bool {
+        matches!(
+            self,
+            Self::AsymmetryInformation
+                | Self::AsymmetryAccess
+                | Self::AsymmetryUnderstanding
+                | Self::AsymmetryMetaKnowledge
+                | Self::AsymmetryInfluence
+        )
+    }
+    pub fn is_epistemic_power(self) -> bool {
+        matches!(self, Self::EpistemicPower | Self::FormalAuthority)
+            || self.is_epistemic_asymmetry()
+    }
     pub fn is_epistemic_influence(self) -> bool {
         matches!(
             self,
@@ -284,13 +305,16 @@ pub async fn record(
         || (input.dimension.is_contextual_autonomy() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_pressure() && input.target_object_id.is_none())
         || (input.dimension.is_epistemic_influence() && input.target_object_id.is_none())
+        || (input.dimension.is_epistemic_power() && input.target_object_id.is_none())
+        || (input.dimension.is_epistemic_asymmetry() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_influence() != input.influence_target.is_some())
         || (input.dimension.requires_influence_counterparty()
             && input.counterparty_actor_id.is_none())
         || (input.dimension.requires_threat_counterparty() && input.counterparty_actor_id.is_none())
         || (input.counterparty_actor_id.is_some()
             && (!(input.dimension.is_contextual_pressure()
-                || input.dimension.is_epistemic_influence())
+                || input.dimension.is_epistemic_influence()
+                || input.dimension.is_epistemic_power())
                 || input.counterparty_actor_id == Some(input.subject_actor_id)))
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()

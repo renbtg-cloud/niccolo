@@ -1,9 +1,22 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('distinguishes power, authority, and five exact directed comparative advantages',()=>{
+    expect(powerDimensions).toHaveLength(7);
+    expect(asymmetryDimensions).toHaveLength(5);
+    expect(request({...draft,dimension:'EPISTEMIC_POWER'}).counterparty_actor_id).toBeNull();
+    expect(request({...draft,dimension:'FORMAL_AUTHORITY',judgment:'NOT_INDICATED'}).judgment).toBe('NOT_INDICATED');
+    for(const dimension of asymmetryDimensions){
+      const item={...draft,dimension,counterparty_actor_id:'b'};
+      expect(request(item).counterparty_actor_id).toBe('b');
+      expect(()=>request({...item,counterparty_actor_id:null})).toThrow();
+      expect(()=>request({...item,counterparty_actor_id:'a'})).toThrow();
+      expect(()=>request({...item,subject_actor_id:'b',counterparty_actor_id:'a',revises_event_id:'r'},[{event_id:'r',input:request(item)}])).toThrow();
+    }
+  });
   it('qualifies influence on nine independent targets without inferring the actual effect',()=>{
     expect(influenceDimensions).toHaveLength(5);
     expect(influenceTargets).toHaveLength(9);

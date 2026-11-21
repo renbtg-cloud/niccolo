@@ -267,6 +267,36 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn power_and_authority_do_not_imply_directed_asymmetry() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Who controls access to the ledger?").await;
+    let issue=node(&f,sit,ExpertNodeKind::Question,"Who sees the original ledger?").await;
+    let subject=Uuid::new_v4();let other=Uuid::new_v4();
+    for (id,label) in [(subject,"Analyst"),(other,"Manager")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:subject,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::EpistemicPower,judgment:StateJudgment::Indicated,context:"Ledger review".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported control of access".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    record(Uuid::new_v4(),item.clone()).await.unwrap();
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::FormalAuthority,judgment:StateJudgment::NotIndicated,..item.clone()}).await.unwrap();
+    for dimension in [StateDimension::AsymmetryInformation,StateDimension::AsymmetryAccess,StateDimension::AsymmetryUnderstanding,StateDimension::AsymmetryMetaKnowledge,StateDimension::AsymmetryInfluence] {
+        let directed=StateInput{dimension,counterparty_actor_id:Some(other),..item.clone()};
+        let id=Uuid::new_v4();record(id,directed.clone()).await.unwrap();
+        assert!(matches!(record(Uuid::new_v4(),StateInput{counterparty_actor_id:None,..directed.clone()}).await,Err(WorkbenchError::Invalid)));
+        assert!(matches!(record(Uuid::new_v4(),StateInput{counterparty_actor_id:Some(subject),..directed.clone()}).await,Err(WorkbenchError::Invalid)));
+        assert!(matches!(record(Uuid::new_v4(),StateInput{subject_actor_id:other,counterparty_actor_id:Some(subject),revises_event_id:Some(id),..directed}).await,Err(WorkbenchError::Invalid)));
+    }
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),7);
+    assert!(snapshot.actor_epistemic_states.iter().all(|e|e.input.subject_actor_id==subject));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'ASYMMETRY_ACCESS','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(subject).bind(issue).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn epistemic_influence_separates_facets_and_exact_targets() {
     use epistemic_workbench::actor_state::{self,InfluenceTarget,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;
