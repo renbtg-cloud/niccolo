@@ -297,6 +297,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(create_expert_grounding_set),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/arguments/{argument}/grounding/{grounding}/applicability/{event}",
+            post(record_expert_route_applicability),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/reassessment/{relation}/arguments/{argument}/reviews/{event}",
             post(record_expert_reassessment_review),
         )
@@ -3437,6 +3441,14 @@ struct ExpertReassessmentReviewRequest {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ExpertRouteApplicabilityRequest {
+    condition_object_id: Uuid,
+    assessment: epistemic_workbench::ApplicabilityAssessment,
+    rationale: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ExpertEvidenceSearchQuery {
     q: String,
     limit: Option<i64>,
@@ -3576,6 +3588,34 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn record_expert_route_applicability(
+    State(state): State<AppState>,
+    Path((workspace, situation, argument, grounding, event)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertRouteApplicabilityRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let assessment = epistemic_workbench::record_route_applicability(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        argument,
+        grounding,
+        input.condition_object_id,
+        input.assessment,
+        &input.rationale,
+    )
+    .await?;
+    let status = if assessment.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"assessment": assessment}), status))
 }
 
 async fn record_expert_reassessment_review(

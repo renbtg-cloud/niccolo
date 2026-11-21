@@ -33,6 +33,7 @@ export const argumentModes = Object.freeze(['DEDUCTIVE', 'INDUCTIVE', 'ABDUCTIVE
 export const groundingEffects = Object.freeze(['SUPPORTS', 'WEAKENS', 'CHALLENGES', 'CONDITIONS']);
 export const groundingAdequacies = Object.freeze(['UNSPECIFIED', 'PARTIAL', 'SUFFICIENT', 'NECESSARY_CONDITION']);
 export const reassessmentDispositions = Object.freeze(['RETAINED', 'REVISION_REQUIRED', 'DEFERRED']);
+export const applicabilityAssessments = Object.freeze(['UNASSESSED', 'SATISFIED', 'NOT_SATISFIED', 'CONTESTED', 'UNKNOWN']);
 
 export function requireText(value, label, max = 4096) {
   const text = String(value ?? '').trim();
@@ -95,4 +96,9 @@ export function reassessmentReviewRequest(groundingSetId, disposition, note) {
     disposition,
     note: requireText(note, 'Review note'),
   };
+}
+
+export function applicabilityRequest(conditionObjectId, assessment, rationale) {
+  if (!conditionObjectId || !applicabilityAssessments.includes(assessment)) throw new Error('Choose a condition and applicability assessment.');
+  return { condition_object_id: conditionObjectId, assessment, rationale: requireText(rationale, 'Assessment rationale') };
 }

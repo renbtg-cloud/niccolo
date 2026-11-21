@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest } from '../state/expertWorkbench.js';
+import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -13,6 +13,17 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('records attributed inferential applicability separately from truth', async () => {
+    const body = applicabilityRequest('condition', 'NOT_SATISFIED', 'Authentication failed.');
+    expect(body).toEqual({condition_object_id:'condition', assessment:'NOT_SATISFIED', rationale:'Authentication failed.'});
+    expect(() => applicabilityRequest('condition', 'TRUE', 'Wrong domain.')).toThrow();
+    const calls = [];
+    const client = new NiccoloClient(config, async (url, options) => { calls.push({url, options}); return response; });
+    await client.recordExpertApplicability('argument','route','event',body);
+    expect(calls[0].url).toContain('/epistemic/arguments/argument/grounding/route/applicability/event');
+    expect(page).toContain('Even satisfied conditions do not establish truth or validity.');
+    expect(page).toContain('No applicability condition recorded; applicability is not certified.');
+  });
   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
     expect(app).toContain('<NavLink to="/workbench">Workbench</NavLink>');
     expect(app).toContain('<Route path="/workbench" element={<ExpertWorkbenchPage/>}/>');

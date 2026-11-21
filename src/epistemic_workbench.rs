@@ -302,6 +302,7 @@ pub struct GroundingSetView {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReassessmentImpactKind {
     GroundMember,
+    ApplicabilityCondition,
     Conclusion,
 }
 
@@ -389,9 +390,53 @@ pub struct ReasoningRouteDiagnostic {
     pub adequacy: GroundingAdequacy,
     pub member_count: usize,
     pub non_context_member_count: usize,
+    pub applicability_conditions: Vec<RouteApplicabilityAssessment>,
     pub reassessment: ReassessmentAttentionSummary,
     pub recursive_support_cycle: bool,
     pub unanchored_recursive_support: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ApplicabilityAssessment {
+    Unassessed,
+    Satisfied,
+    NotSatisfied,
+    Contested,
+    Unknown,
+}
+impl ApplicabilityAssessment {
+    fn db_value(self) -> &'static str {
+        match self {
+            Self::Unassessed => "UNASSESSED",
+            Self::Satisfied => "SATISFIED",
+            Self::NotSatisfied => "NOT_SATISFIED",
+            Self::Contested => "CONTESTED",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+    fn from_db(value: &str) -> Result<Self, WorkbenchError> {
+        match value {
+            "UNASSESSED" => Ok(Self::Unassessed),
+            "SATISFIED" => Ok(Self::Satisfied),
+            "NOT_SATISFIED" => Ok(Self::NotSatisfied),
+            "CONTESTED" => Ok(Self::Contested),
+            "UNKNOWN" => Ok(Self::Unknown),
+            _ => Err(WorkbenchError::Invalid),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteApplicabilityAssessment {
+    pub event_id: Uuid,
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+    pub condition_object_id: Uuid,
+    pub assessment: ApplicabilityAssessment,
+    pub rationale: String,
+    pub recorded_by: Uuid,
+    pub replayed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1341,10 +1386,110 @@ pub async fn record_reassessment_review(
     })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "condition assessment identity, route and authorship are independent audit inputs"
+)]
+pub async fn record_route_applicability(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    event_id: Uuid,
+    argument_id: Uuid,
+    grounding_set_id: Uuid,
+    condition_object_id: Uuid,
+    assessment: ApplicabilityAssessment,
+    rationale: &str,
+) -> Result<RouteApplicabilityAssessment, WorkbenchError> {
+    if !valid_text(rationale, 4096) || event_id.is_nil() {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let conclusion: Option<Uuid> = sqlx::query_scalar("SELECT a.conclusion_object_id FROM niccolo.epistemic_arguments a JOIN niccolo.epistemic_grounding_sets g ON a.workspace_id=g.workspace_id AND a.argument_id=g.argument_id WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.argument_id=$3 AND g.grounding_set_id=$4")
+        .bind(workspace).bind(situation).bind(argument_id).bind(grounding_set_id).fetch_optional(&mut *tx).await?;
+    let Some(conclusion) = conclusion else {
+        return Err(WorkbenchError::Invisible);
+    };
+    let kind = object_available_in_situation(&mut tx, workspace, situation, condition_object_id)
+        .await?
+        .ok_or(WorkbenchError::Invisible)?;
+    if condition_object_id == conclusion
+        || !matches!(
+            kind.as_str(),
+            "PROPOSITION" | "HYPOTHESIS" | "ASSUMPTION" | "FINDING"
+        )
+    {
+        return Err(WorkbenchError::Invalid);
+    }
+    let rationale = rationale.trim();
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_route_applicability_events (workspace_id,situation_id,event_id,argument_id,grounding_set_id,condition_object_id,assessment,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING")
+        .bind(workspace).bind(situation).bind(event_id).bind(argument_id).bind(grounding_set_id).bind(condition_object_id).bind(assessment.db_value()).bind(rationale).bind(actor).execute(&mut *tx).await?.rows_affected() == 1;
+    let stored: Option<(Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT argument_id,grounding_set_id,condition_object_id,assessment,rationale,recorded_by_principal_id FROM niccolo.epistemic_route_applicability_events WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3")
+        .bind(workspace).bind(situation).bind(event_id).fetch_optional(&mut *tx).await?;
+    if stored
+        != Some((
+            argument_id,
+            grounding_set_id,
+            condition_object_id,
+            assessment.db_value().to_owned(),
+            rationale.to_owned(),
+            actor,
+        ))
+    {
+        return Err(WorkbenchError::Conflict);
+    }
+    tx.commit().await?;
+    Ok(RouteApplicabilityAssessment {
+        event_id,
+        argument_id,
+        grounding_set_id,
+        condition_object_id,
+        assessment,
+        rationale: rationale.to_owned(),
+        recorded_by: actor,
+        replayed: !inserted,
+    })
+}
+
+async fn latest_route_applicability(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<RouteApplicabilityAssessment>, WorkbenchError> {
+    let rows: Vec<(Uuid,Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT DISTINCT ON (argument_id,grounding_set_id,condition_object_id) event_id,argument_id,grounding_set_id,condition_object_id,assessment,rationale,recorded_by_principal_id FROM niccolo.epistemic_route_applicability_events WHERE workspace_id=$1 AND situation_id=$2 ORDER BY argument_id,grounding_set_id,condition_object_id,event_no DESC")
+        .bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
+    rows.into_iter()
+        .map(
+            |(
+                event_id,
+                argument_id,
+                grounding_set_id,
+                condition_object_id,
+                assessment,
+                rationale,
+                recorded_by,
+            )| {
+                Ok(RouteApplicabilityAssessment {
+                    event_id,
+                    argument_id,
+                    grounding_set_id,
+                    condition_object_id,
+                    assessment: ApplicabilityAssessment::from_db(&assessment)?,
+                    rationale,
+                    recorded_by,
+                    replayed: false,
+                })
+            },
+        )
+        .collect()
+}
+
 fn selective_reassessment_impacts(
     relations: &[ExpertRelation],
     arguments: &[ExpertArgument],
     grounding_sets: &[GroundingSetView],
+    applicability: &[RouteApplicabilityAssessment],
 ) -> Vec<ReassessmentImpact> {
     let conclusion_by_argument = arguments
         .iter()
@@ -1367,11 +1512,7 @@ fn selective_reassessment_impacts(
             .iter()
             .filter(|a| a.conclusion_object_id == relation.right_object_id)
         {
-            let key = (
-                argument.argument_id,
-                None,
-                ReassessmentImpactKind::Conclusion,
-            );
+            let key = (argument.argument_id, None);
             if seen_impacts.insert(key) {
                 impacts.push(ReassessmentImpact {
                     trigger_relation_id: relation.relation_id,
@@ -1393,21 +1534,27 @@ fn selective_reassessment_impacts(
                 continue;
             }
             for set in grounding_sets {
-                if !set
+                let ground_changed = set
                     .members
                     .iter()
-                    .any(|member| member.ground_object_id == Some(changed_object))
-                {
+                    .any(|member| member.ground_object_id == Some(changed_object));
+                let condition_changed = applicability.iter().any(|condition| {
+                    condition.argument_id == set.argument_id
+                        && condition.grounding_set_id == set.grounding_set_id
+                        && condition.condition_object_id == changed_object
+                });
+                if !ground_changed && !condition_changed {
                     continue;
                 }
                 let Some(&conclusion) = conclusion_by_argument.get(&set.argument_id) else {
                     continue;
                 };
-                let key = (
-                    set.argument_id,
-                    Some(set.grounding_set_id),
-                    ReassessmentImpactKind::GroundMember,
-                );
+                let impact_kind = if ground_changed {
+                    ReassessmentImpactKind::GroundMember
+                } else {
+                    ReassessmentImpactKind::ApplicabilityCondition
+                };
+                let key = (set.argument_id, Some(set.grounding_set_id));
                 if seen_impacts.insert(key) {
                     impacts.push(ReassessmentImpact {
                         trigger_relation_id: relation.relation_id,
@@ -1417,7 +1564,7 @@ fn selective_reassessment_impacts(
                         argument_id: set.argument_id,
                         grounding_set_id: Some(set.grounding_set_id),
                         conclusion_object_id: conclusion,
-                        impact_kind: ReassessmentImpactKind::GroundMember,
+                        impact_kind,
                         depth,
                         latest_review: None,
                     });
@@ -1662,6 +1809,7 @@ fn reasoning_diagnostics(
                     .iter()
                     .filter(|m| m.role != GroundingMemberRole::Context)
                     .count(),
+                applicability_conditions: Vec::new(),
                 reassessment: reassessment_attention(route_impacts),
                 recursive_support_cycle: !cycle_matches.is_empty(),
                 unanchored_recursive_support: cycle_matches
@@ -1982,8 +2130,9 @@ pub async fn snapshot(
             replayed: false,
         });
     }
+    let applicability = latest_route_applicability(&mut tx, workspace, situation).await?;
     let mut reassessment_impacts =
-        selective_reassessment_impacts(&relations, &arguments, &grounding_sets);
+        selective_reassessment_impacts(&relations, &arguments, &grounding_sets, &applicability);
     let review_rows: Vec<ReassessmentReviewRow> = sqlx::query_as(
         "SELECT trigger_relation_id,argument_id,grounding_set_id,review_event_id,disposition,note,recorded_by_principal_id \
          FROM niccolo.epistemic_reassessment_review_events \
@@ -2034,6 +2183,22 @@ pub async fn snapshot(
         &reassessment_impacts,
         &grounding_cycles,
     );
+    let mut conditions_by_route =
+        BTreeMap::<(Uuid, Uuid), Vec<RouteApplicabilityAssessment>>::new();
+    for condition in applicability {
+        conditions_by_route
+            .entry((condition.argument_id, condition.grounding_set_id))
+            .or_default()
+            .push(condition);
+    }
+    for route in reasoning_diagnostics
+        .iter_mut()
+        .flat_map(|diagnostic| &mut diagnostic.routes)
+    {
+        route.applicability_conditions = conditions_by_route
+            .remove(&(route.argument_id, route.grounding_set_id))
+            .unwrap_or_default();
+    }
     direct_evidence_lineage(
         &mut tx,
         workspace,
@@ -2196,7 +2361,7 @@ mod tests {
                 replayed: false,
             },
         ];
-        let impacts = selective_reassessment_impacts(&relations, &arguments, &sets);
+        let impacts = selective_reassessment_impacts(&relations, &arguments, &sets, &[]);
         assert_eq!(impacts.len(), 2);
         assert_eq!(impacts[0].argument_id, arg_middle);
         assert_eq!(impacts[0].depth, 1);

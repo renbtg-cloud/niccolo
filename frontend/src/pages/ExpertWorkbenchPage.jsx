@@ -4,6 +4,8 @@ import { useClient } from '../hooks/useClient.js';
 import {
   argumentModes,
   argumentRequest,
+  applicabilityAssessments,
+  applicabilityRequest,
   groundingAdequacies,
   groundingEffects,
   groundingRequest,
@@ -42,6 +44,7 @@ export function ExpertWorkbenchPage() {
   const [groundRoles, setGroundRoles] = useState({});
   const [groundMemberRationales, setGroundMemberRationales] = useState({});
   const [reassessmentDrafts, setReassessmentDrafts] = useState({});
+  const [applicability, setApplicability] = useState({route: '', condition: '', assessment: 'UNASSESSED', rationale: ''});
 
   const searchEvidence = useMutation({ mutationFn: async (query) => (await client.searchExpertEvidence(query, 20)).value });
   const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
@@ -49,7 +52,8 @@ export function ExpertWorkbenchPage() {
   const createArgument = useWorkbenchMutation(client, workbench, async (body) => client.createExpertArgument(crypto.randomUUID(), body));
   const createGrounding = useWorkbenchMutation(client, workbench, async ({ argumentId, body }) => client.createExpertGrounding(argumentId, crypto.randomUUID(), body));
   const reviewReassessment = useWorkbenchMutation(client, workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment];
+  const recordApplicability = useWorkbenchMutation(client, workbench, async ({route, body}) => client.recordExpertApplicability(route.argument_id, route.grounding_set_id, crypto.randomUUID(), body));
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -131,6 +135,19 @@ export function ExpertWorkbenchPage() {
         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create grounding set</button>
       </form>
+      <form onSubmit={submit(() => {
+        const route = data.grounding_sets.find((g) => `${g.argument_id}:${g.grounding_set_id}` === applicability.route);
+        if (!route) throw new Error('Choose an authored route.');
+        recordApplicability.mutate({route, body: applicabilityRequest(applicability.condition, applicability.assessment, applicability.rationale)});
+      })}>
+        <h3>Assess inferential applicability</h3>
+        <p>Record a required condition and the investigator’s assessment of it; this is not a truth verdict for the premises or conclusion.</p>
+        <label>Grounding route<select value={applicability.route} onChange={(e) => setApplicability({...applicability, route: e.target.value})}><option value="">Choose…</option>{data.grounding_sets.map((g) => <option key={`${g.argument_id}:${g.grounding_set_id}`} value={`${g.argument_id}:${g.grounding_set_id}`}>{g.effect}/{g.adequacy}: {g.rationale}</option>)}</select></label>
+        <label>Required condition<select value={applicability.condition} onChange={(e) => setApplicability({...applicability, condition: e.target.value})}><option value="">Choose…</option>{data.nodes.filter((n) => n.kind !== 'INFORMATION_GAP').map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
+        <label>Condition assessment<select value={applicability.assessment} onChange={(e) => setApplicability({...applicability, assessment: e.target.value})}>{applicabilityAssessments.map((a) => <option key={a}>{a}</option>)}</select></label>
+        <label>Assessment rationale<textarea value={applicability.rationale} maxLength={4096} onChange={(e) => setApplicability({...applicability, rationale: e.target.value})} /></label>
+        <button disabled={busy}>Record applicability assessment</button>
+      </form>
     </div>
 
     <article><h3>Current structured model</h3>
@@ -166,6 +183,7 @@ export function ExpertWorkbenchPage() {
             const set = data.grounding_sets.find((g) => g.argument_id === route.argument_id && g.grounding_set_id === route.grounding_set_id);
             const authoredArgument = data.arguments.find((a) => a.argument_id === route.argument_id);
             return <li key={`${route.argument_id}:${route.grounding_set_id}`}>{route.effect}/{route.adequacy} · {route.member_count} joint member(s){route.non_context_member_count === 0 ? ' · context-only' : ''}{route.reassessment.impacted > 0 ? ` · reassessment: ${route.reassessment.unreviewed} unreviewed, ${route.reassessment.deferred} deferred, ${route.reassessment.revision_required} revision required, ${route.reassessment.retained} retained` : ''}{route.unanchored_recursive_support ? ' · WARNING: unanchored recursive support' : route.recursive_support_cycle ? ' · recursive support with external grounds' : ''}
+            {route.applicability_conditions?.length > 0 ? <details open><summary>Required conditions — attributed assessments</summary><ul>{route.applicability_conditions.map((condition) => <li key={condition.condition_object_id}><strong>{condition.assessment}</strong> · {groundText({ground_object_id: condition.condition_object_id})}<br/><small>{condition.rationale} · recorded by {condition.recorded_by}</small></li>)}</ul><small>Even satisfied conditions do not establish truth or validity. Unsatisfied, contested or unknown conditions require attention before relying on this route.</small></details> : <small> · No applicability condition recorded; applicability is not certified.</small>}
             {set && <details><summary>Inspect authored grounds and rationales</summary>{authoredArgument && <p>{authoredArgument.mode}: {authoredArgument.rationale}</p>}<p>{set.rationale}</p><ul>{set.members.map((member) => <li key={member.member_id}><strong>{member.role}:</strong> {groundText(member)}<br/><small>{member.rationale}</small></li>)}</ul></details>}</li>;
           })}</ul>
         </li>;

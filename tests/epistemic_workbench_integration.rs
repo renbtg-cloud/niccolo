@@ -579,6 +579,275 @@ async fn direct_documentary_routes_group_shared_ancestry_without_claiming_indepe
 }
 
 #[tokio::test]
+async fn route_applicability_is_attributed_and_condition_revision_triggers_selective_review() {
+    use epistemic_workbench::{ApplicabilityAssessment, ReassessmentImpactKind};
+    let f = fixture().await;
+    let sit = situation(&f, "Distinguish inference applicability from truth").await;
+    let premise = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "An invoice was provided.",
+    )
+    .await;
+    let condition = node(
+        &f,
+        sit,
+        ExpertNodeKind::Assumption,
+        "The invoice is genuine.",
+    )
+    .await;
+    let conclusion = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The transaction occurred.",
+    )
+    .await;
+    let arg = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        arg,
+        conclusion,
+        ArgumentMode::Inductive,
+        "Invoice interpretation.",
+    )
+    .await
+    .unwrap();
+    let mut sets = Vec::new();
+    for _ in 0..2 {
+        let set = Uuid::new_v4();
+        epistemic_workbench::create_grounding_set(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            arg,
+            set,
+            GroundingEffect::Supports,
+            GroundingAdequacy::Partial,
+            "Authored route.",
+            &[NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role: GroundingMemberRole::Premise,
+                ground_object_id: Some(premise),
+                evidence_id: None,
+                rationale: "Document premise.".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        sets.push(set);
+    }
+    let first_event = Uuid::new_v4();
+    for replay in [false, true] {
+        let event = epistemic_workbench::record_route_applicability(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            first_event,
+            arg,
+            sets[0],
+            condition,
+            ApplicabilityAssessment::Unassessed,
+            "Genuineness must be assessed.",
+        )
+        .await
+        .unwrap();
+        assert_eq!(event.replayed, replay);
+    }
+    let conflict = epistemic_workbench::record_route_applicability(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_event,
+        arg,
+        sets[0],
+        condition,
+        ApplicabilityAssessment::Satisfied,
+        "Changed replay.",
+    )
+    .await;
+    assert!(matches!(conflict, Err(WorkbenchError::Conflict)));
+    let cross_sit = situation(&f, "Unrelated condition").await;
+    let outside = node(
+        &f,
+        cross_sit,
+        ExpertNodeKind::Proposition,
+        "Outside this Situation.",
+    )
+    .await;
+    assert!(matches!(
+        epistemic_workbench::record_route_applicability(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            Uuid::new_v4(),
+            arg,
+            sets[0],
+            outside,
+            ApplicabilityAssessment::Satisfied,
+            "Not scoped."
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(matches!(
+        epistemic_workbench::record_route_applicability(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            Uuid::new_v4(),
+            arg,
+            sets[0],
+            conclusion,
+            ApplicabilityAssessment::Satisfied,
+            "Circular condition."
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    let second_event = Uuid::new_v4();
+    epistemic_workbench::record_route_applicability(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second_event,
+        arg,
+        sets[0],
+        condition,
+        ApplicabilityAssessment::NotSatisfied,
+        "Authentication failed.",
+    )
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let diag = &snapshot.reasoning_diagnostics[0];
+    assert!(diag.has_supporting_routes); // authorship is still recorded; not truth or actual applicability
+    let route = diag
+        .routes
+        .iter()
+        .find(|r| r.grounding_set_id == sets[0])
+        .unwrap();
+    assert_eq!(route.applicability_conditions.len(), 1);
+    assert_eq!(route.applicability_conditions[0].event_id, second_event);
+    assert_eq!(
+        route.applicability_conditions[0].assessment,
+        ApplicabilityAssessment::NotSatisfied
+    );
+    assert!(
+        diag.routes
+            .iter()
+            .find(|r| r.grounding_set_id == sets[1])
+            .unwrap()
+            .applicability_conditions
+            .is_empty()
+    );
+    let revised = node(
+        &f,
+        sit,
+        ExpertNodeKind::Assumption,
+        "The invoice may be genuine under a different verification method.",
+    )
+    .await;
+    let relation = Uuid::new_v4();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        relation,
+        RelationFamily::Genealogy,
+        RelationKind::Supersedes,
+        revised,
+        condition,
+        "The required condition has been revised.",
+    )
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let impacts: Vec<_> = snapshot
+        .reassessment_impacts
+        .iter()
+        .filter(|i| i.trigger_relation_id == relation)
+        .collect();
+    assert_eq!(impacts.len(), 1);
+    assert_eq!(impacts[0].grounding_set_id, Some(sets[0]));
+    assert_eq!(
+        impacts[0].impact_kind,
+        ReassessmentImpactKind::ApplicabilityCondition
+    );
+    assert_eq!(impacts[0].latest_review, None);
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM niccolo.epistemic_route_applicability_events WHERE workspace_id=$1 AND argument_id=$2").bind(f.workspace).bind(arg).fetch_one(&admin).await.unwrap();
+    assert_eq!(count, 2);
+    // Authenticated HTTP write, idempotence and read-only rejection on the new endpoint.
+    {
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode, header},
+        };
+        use tower::ServiceExt;
+        let writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1)
+            .await
+            .unwrap();
+        let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1)
+            .await
+            .unwrap();
+        let secure = PgPoolOptions::new()
+            .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+            .await
+            .unwrap();
+        let router = niccolo_evidence::api::router(secure);
+        let event = Uuid::new_v4();
+        let path = format!(
+            "/v1/workspaces/{}/situations/{}/epistemic/arguments/{}/grounding/{}/applicability/{}",
+            f.workspace, sit, arg, sets[1], event
+        );
+        let request = |token: &str| {
+            Request::builder().method("POST").uri(&path).header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::CONTENT_TYPE,"application/json").body(Body::from(serde_json::json!({"condition_object_id": revised,"assessment":"CONTESTED","rationale":"Competing verification outcomes."}).to_string())).unwrap()
+        };
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(request(&reader))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(request(&writer))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CREATED
+        );
+        assert_eq!(
+            router.oneshot(request(&writer)).await.unwrap().status(),
+            StatusCode::OK
+        );
+    }
+}
+
+#[tokio::test]
 async fn persistent_proposition_requires_explicit_situation_membership() {
     let f = fixture().await;
     let sit_a = situation(&f, "Proposition source situation").await;
