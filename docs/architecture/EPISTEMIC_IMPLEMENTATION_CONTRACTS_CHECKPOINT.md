@@ -338,6 +338,8 @@ Persistent dispositions must be distinguished from immediate reactions. Observed
 
 Migration 0120 extends the existing actor-state judgment ledger with independent orientation dimensions (`INTEREST`, `CURIOSITY`, `INDIFFERENCE`, `AVERSION`, `LIMITED_INQUIRY`, `DENIABILITY_PRESERVATION`, `DELEGATED_KNOWING`, `DOCUMENTATION_AVOIDANCE`). These require an explicit attributed goal and either `IMMEDIATE_REACTION` or `PERSISTENT_DISPOSITION`; ordinary epistemic states forbid the orientation fields. The scope and goal are part of the identity preserved by revisions. The investigator may mark a disposition unknown or contested, and no orientation infers a personality trait, executes an act or proves knowledge.
 
+Checkpoint 1.29 validation: PostgreSQL verified scope/goal requirements, refusal to attach orientation metadata to ordinary states, exact revision identity, isolation from inquiry execution and direct SQL constraints. Full regression passed (592 Rust, 137 React, 22 Python, 8 standalone JavaScript tests).
+
 Epistemic acts include investigating, ignoring, deepening, deferring, avoiding acquisition, delegating, reconsidering, challenging and preserving ambiguity.
 
 ## 14. Higher-order epistemic state
