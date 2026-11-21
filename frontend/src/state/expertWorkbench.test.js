@@ -10,9 +10,35 @@ describe('contextual assessment request', () => {
     expect(assessmentKey({kind:'ROUTE', argument_id:'a', grounding_set_id:'g'})).toBe('ROUTE:a:g');
   });
   it('prevents cross-dimensional results and duplicate grounds', () => {
-    expect(Object.keys(assessmentResults)).toHaveLength(25);
+    expect(Object.keys(assessmentResults)).toHaveLength(29);
     expect(() => assessmentRequest({...draft, result:'CREDIBLE'}, target, [])).toThrow();
     expect(() => assessmentRequest(draft, target, [ground, ground])).toThrow();
+  });
+  it('separates recommendation suitability from three historical decision perspectives', () => {
+    const recommendation = {kind:'RECOMMENDATION',recommendation_id:'r1'};
+    const decision = {kind:'DECISION',decision_id:'d1'};
+    const dimensions = ['DECISION_CONTEMPORANEOUS_REASONABLENESS','DECISION_ACTUAL_CIRCUMSTANCES_ADEQUACY','DECISION_REASONABLY_OBTAINABLE_INFORMATION'];
+    expect(assessmentDimensionsForTarget(recommendation,[])).toEqual(['RECOMMENDATION_APPROPRIATENESS']);
+    expect(assessmentDimensionsForTarget(decision,[])).toEqual(dimensions);
+    expect(assessmentKey(recommendation)).toBe('RECOMMENDATION:r1');
+    expect(assessmentKey(decision)).toBe('DECISION:d1');
+    for (const dimension of dimensions) {
+      const judgment = {...draft,dimension,result:'INADEQUATE'};
+      expect(assessmentRequest(judgment,decision,[ground])).toMatchObject({target:decision,dimension,result:'INADEQUATE'});
+      expect(() => assessmentRequest(judgment,recommendation,[])).toThrow('exact recommendation or decision');
+      expect(() => assessmentRequest(judgment,target,[])).toThrow();
+    }
+    expect(() => assessmentRequest(draft,decision,[])).toThrow();
+    expect(assessmentRequest({...draft,dimension:'RECOMMENDATION_APPROPRIATENESS',result:'CONTESTED'},recommendation,[]).target).toEqual(recommendation);
+  });
+  it('shows explicit action successors without changing the historical assessment target', () => {
+    const recommendation = {kind:'RECOMMENDATION',recommendation_id:'r1'};
+    const decision = {kind:'DECISION',decision_id:'d1'};
+    const recommendations = [{recommendation_id:'r2',input:{revises_recommendation_id:'r1'}}];
+    const decisions = [{decision_id:'d2',input:{revises_decision_id:'d1'}},{decision_id:'d3',input:{revises_decision_id:'d2'}}];
+    expect(assessmentTargetRevision(recommendation,[],recommendations,decisions)).toBe('r2');
+    expect(assessmentTargetRevision(decision,[],recommendations,decisions)).toBe('d3');
+    expect(assessmentRequest({...draft,dimension:'DECISION_CONTEMPORANEOUS_REASONABLENESS',result:'ADEQUATE'},decision,[]).target).toEqual(decision);
   });
   it('keeps question selection criteria separate and restricts them to questions', () => {
     const q = {kind:'OBJECT',object_id:'q'};

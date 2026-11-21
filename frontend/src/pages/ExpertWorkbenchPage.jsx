@@ -97,6 +97,8 @@ export function ExpertWorkbenchPage() {
     [evidenceChoices, selectedEvidenceIds],
   );
   const assessmentHistory = data.assessments ?? [];
+  const recommendationHistory = data.action_recommendations ?? [];
+  const decisionHistory = data.action_decisions ?? [];
   const assessmentChoices = [
     ...data.nodes.map(n => ({ target: {kind: 'OBJECT', object_id: n.object_id}, label: `${n.kind}: ${n.text}` })),
     ...data.arguments.map(a => ({target: {kind: 'OBJECT', object_id: a.argument_id}, label: `ARGUMENT: ${a.rationale}`})),
@@ -104,6 +106,8 @@ export function ExpertWorkbenchPage() {
     ...data.relations.map(r => ({target: {kind: 'RELATION', relation_id: r.relation_id}, label: `${r.kind}: ${r.rationale}`})),
     ...data.grounding_sets.map(g => ({target: {kind: 'ROUTE', argument_id: g.argument_id, grounding_set_id: g.grounding_set_id}, label: `ROUTE ${g.effect}: ${g.rationale}`})),
     ...assessmentHistory.map(a => ({target: {kind:'ASSESSMENT',assessment_event_id:a.event_id}, label:`ASSESSMENT ${a.input.dimension}: ${a.input.result} — ${a.input.criterion} (${a.event_id})`})),
+    ...recommendationHistory.map(r => ({target: {kind:'RECOMMENDATION',recommendation_id:r.recommendation_id}, label:`RECOMMENDATION ${r.input.kind}: ${r.input.purpose} (${r.recommendation_id})`})),
+    ...decisionHistory.map(d => ({target: {kind:'DECISION',decision_id:d.decision_id}, label:`DECISION ${d.input.disposition}: ${d.input.rationale} (${d.decision_id})`})),
   ];
   const assessmentDependencies = data.assessment_dependencies ?? [];
   const routeLabel = route => data.grounding_sets.find(g => g.argument_id === route.argument_id && g.grounding_set_id === route.grounding_set_id)?.rationale ?? `${route.argument_id}/${route.grounding_set_id}`;
@@ -112,7 +116,7 @@ export function ExpertWorkbenchPage() {
   const assessmentDimensions = assessmentDimensionsForTarget(selectedAssessmentTarget, data.nodes);
   const assessmentLabel = target => {
     const label = assessmentChoices.find(c => assessmentKey(c.target) === assessmentKey(target))?.label ?? assessmentKey(target);
-    const successor = assessmentTargetRevision(target, assessmentHistory);
+    const successor = assessmentTargetRevision(target, assessmentHistory, recommendationHistory, decisionHistory);
     return successor ? `${label} — pinned historical event; latest explicit revision ${successor}. This judgment does not assess the successor.` : label;
   };
   const submit = (action) => (event) => {
@@ -218,13 +222,18 @@ export function ExpertWorkbenchPage() {
         {assessment.revises_event_id && <p>Revising {assessment.revises_event_id} <button type="button" onClick={() => setAssessment({...assessment, revises_event_id: null})}>Cancel revision</button></p>}
         <label>Target<select disabled={!!assessment.revises_event_id} value={assessment.target} onChange={e => {
           const target = assessmentChoices.find(c => assessmentKey(c.target) === e.target.value)?.target;
-          const compatible = assessmentDimensionsForTarget(target, data.nodes).includes(assessment.dimension);
-          setAssessment({...assessment, target: e.target.value, ...(compatible ? {} : {dimension:'CREDIBILITY',result:'UNKNOWN'})});
+          const dimensions = assessmentDimensionsForTarget(target, data.nodes);
+          const compatible = dimensions.includes(assessment.dimension);
+          setAssessment({...assessment, target: e.target.value, ...(compatible ? {} : {dimension:dimensions[0],result:'UNKNOWN'})});
         }}><option value="">Choose…</option>{assessmentChoices.map(c => <option key={assessmentKey(c.target)} value={assessmentKey(c.target)}>{c.label}</option>)}</select></label>
         <label>Dimension<select disabled={!!assessment.revises_event_id} value={assessment.dimension} onChange={e => setAssessment({...assessment, dimension: e.target.value, result: 'UNKNOWN'})}>{assessmentDimensions.map(x => <option key={x}>{x}</option>)}</select></label>
         {assessment.dimension === 'GAP_RESOLUTION' && <p>Assess the missing aspect independently of questions or answers. PARTIALLY_ADDRESSED and SUPPORTED require an explicit ground other than a question or information gap. The assessment is not a truth verdict.</p>}
         {selectionCriteria.includes(assessment.dimension) && <p>Record a contextual judgment about this question. Reported authorization is not a permission grant; no judgment authorizes execution, establishes truth, or reallocates resources.</p>}
         {assessment.dimension.startsWith('INTEGRITY_') && <p>Assess only the selected aspect in context. No concern indicated does not prove integrity; a concern or indicated compromise is contestable and does not automatically invalidate the investigation or veto a decision.</p>}
+        {assessment.dimension === 'RECOMMENDATION_APPROPRIATENESS' && <p>Assess the strategic suitability of this exact recommendation under the stated criterion and circumstances, independently of the truth of its individual grounds. This judgment does not authorize implementation.</p>}
+        {assessment.dimension === 'DECISION_CONTEMPORANEOUS_REASONABLENESS' && <p>Identify the decision time and information then available to the decision maker. Do not substitute later discoveries for contemporaneous knowledge.</p>}
+        {assessment.dimension === 'DECISION_ACTUAL_CIRCUMSTANCES_ADEQUACY' && <p>Assess the exact historical decision against actual circumstances, including subsequently discovered facts when relevant. This does not establish what the decision maker knew at the time.</p>}
+        {assessment.dimension === 'DECISION_REASONABLY_OBTAINABLE_INFORMATION' && <p>Specify what information could reasonably have been obtained at the decision time, with constraints and uncertainty. Obtainability alone establishes neither actual knowledge nor negligence.</p>}
         {['MATERIAL_COMPROMISE','RELIANCE_CONTAINMENT','RECOVERY_READINESS'].includes(assessment.dimension) && <p>Compromise, need to limit or pause reliance, and recovery readiness are separate attributed assessments. State the affected material, dependencies, verification and remaining gaps. Recording a judgment does not delete evidence, pause reliance, establish falsity or authorize resumption. Explicitly cite it as a dependency if relevant.</p>}
         <label>Result<select value={assessment.result} onChange={e => setAssessment({...assessment, result: e.target.value})}>{assessmentResults[assessment.dimension].map(x => <option key={x}>{x}</option>)}</select></label>
         <label>Confidence<select value={assessment.confidence} onChange={e => setAssessment({...assessment, confidence: e.target.value})}>{assessmentConfidences.map(x => <option key={x}>{x}</option>)}</select></label>

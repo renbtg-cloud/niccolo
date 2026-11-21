@@ -15,6 +15,14 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('authors exact historical action assessments without treating hindsight as contemporaneous knowledge', () => {
+    expect(page).toContain("kind:'RECOMMENDATION',recommendation_id:r.recommendation_id");
+    expect(page).toContain("kind:'DECISION',decision_id:d.decision_id");
+    expect(page).toContain('Do not substitute later discoveries for contemporaneous knowledge.');
+    expect(page).toContain('Obtainability alone establishes neither actual knowledge nor negligence.');
+    expect(page).toContain('This judgment does not assess the successor.');
+    expect(page).toContain('This judgment does not authorize implementation.');
+  });
   it('distinguishes an authored gap used as support from a verified absence', () => {
     expect(page).toContain('diagnostic.information_gap_supports');
     expect(page).toContain('gap.supporting_routes');

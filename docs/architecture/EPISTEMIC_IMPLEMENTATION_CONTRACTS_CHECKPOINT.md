@@ -643,6 +643,8 @@ Checkpoint 1.65 adds qualified basis authoring and selective impact presentation
 
 Checkpoint 1.66 extends attributed multidimensional assessments to exact recommendation and decision records. Recommendation appropriateness, contemporaneous decision reasonableness, adequacy under actual circumstances and reasonably obtainable information are independent judgments with criterion, context, rationale, uncertainty and optional explicit grounds. Later discoveries do not rewrite a historical decision or automatically establish prior knowledge. Existing assessment revision, scope and authority boundaries apply; migration 0145 additionally enforces exact target and revision identity. The 213 unit, 61 Workbench integration and 13 security/readiness tests passed.
 
+Checkpoint 1.67 exposes the exact action records as assessment targets in the Workbench, restricts choices to compatible perspectives, and visibly identifies explicit successor records without retargeting judgments. The form distinguishes strategic suitability, contemporaneous knowledge, actual circumstances and reasonable information obtainability. All 146 migrations applied on a new PostgreSQL database; 631 Rust, 178 React, 22 Python and 8 standalone JavaScript tests passed (839 total).
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

@@ -51,6 +51,9 @@ export const reassessmentDispositions = Object.freeze(['RETAINED', 'REVISION_REQ
 export const applicabilityAssessments = Object.freeze(['UNASSESSED', 'SATISFIED', 'NOT_SATISFIED', 'CONTESTED', 'UNKNOWN']);
 export const integrityDimensions = Object.freeze(['INTEGRITY_INVESTIGATIVE_INDEPENDENCE','INTEGRITY_EVIDENCE_SELECTION','INTEGRITY_PROVENANCE','INTEGRITY_QUESTION_FRAMING','INTEGRITY_HYPOTHESIS_COVERAGE','INTEGRITY_REASONING_QUALITY','INTEGRITY_CRITERIA_CONSISTENCY','INTEGRITY_DISSENT_PRESERVATION','INTEGRITY_HISTORICAL_TRACEABILITY','INTEGRITY_REVIEWABILITY']);
 const integrityResults = Object.freeze(['NO_CONCERN_INDICATED','CONCERN_INDICATED','COMPROMISE_INDICATED','UNKNOWN','CONTESTED']);
+export const decisionPerspectiveDimensions = Object.freeze(['DECISION_CONTEMPORANEOUS_REASONABLENESS','DECISION_ACTUAL_CIRCUMSTANCES_ADEQUACY','DECISION_REASONABLY_OBTAINABLE_INFORMATION']);
+const actionAssessmentDimensions = Object.freeze(['RECOMMENDATION_APPROPRIATENESS', ...decisionPerspectiveDimensions]);
+const actionAssessmentResults = Object.freeze(['ADEQUATE','PARTIALLY_ADEQUATE','INADEQUATE','UNKNOWN','CONTESTED']);
 export const assessmentResults = Object.freeze({
   CREDIBILITY: ['CREDIBLE', 'QUESTIONABLE', 'NOT_CREDIBLE', 'UNKNOWN', 'CONTESTED'],
   RELEVANCE: ['RELEVANT', 'LIMITED_RELEVANCE', 'IRRELEVANT', 'UNKNOWN', 'CONTESTED'],
@@ -68,23 +71,28 @@ export const assessmentResults = Object.freeze({
   MATERIAL_COMPROMISE: integrityResults,
   RELIANCE_CONTAINMENT: ['PAUSE_INDICATED','LIMIT_INDICATED','NO_PAUSE_INDICATED','UNKNOWN','CONTESTED'],
   RECOVERY_READINESS: ['RECOVERY_READY','RECOVERY_PARTIAL','RECOVERY_NOT_READY','UNKNOWN','CONTESTED'],
+  ...Object.fromEntries(actionAssessmentDimensions.map(dimension => [dimension, actionAssessmentResults])),
 });
 export const selectionCriteria = Object.freeze(['ACQUISITION_COST','ACCESSIBILITY','CONTAMINATION_RISK','URGENCY','AUTHORIZATION_STATUS','INVESTIGATION_COVERAGE']);
 export function assessmentDimensionsForTarget(target, nodes) {
+  if (target?.kind === 'RECOMMENDATION') return ['RECOMMENDATION_APPROPRIATENESS'];
+  if (target?.kind === 'DECISION') return decisionPerspectiveDimensions;
   const isGap = target?.kind === 'OBJECT' && nodes.some(n => n.object_id === target.object_id && n.kind === 'INFORMATION_GAP');
   const isQuestion = target?.kind === 'OBJECT' && nodes.some(n => n.object_id === target.object_id && n.kind === 'QUESTION');
-  return Object.keys(assessmentResults).filter(dimension => (dimension !== 'GAP_RESOLUTION' || isGap) && (!selectionCriteria.includes(dimension) || isQuestion));
+  return Object.keys(assessmentResults).filter(dimension => !actionAssessmentDimensions.includes(dimension) && (dimension !== 'GAP_RESOLUTION' || isGap) && (!selectionCriteria.includes(dimension) || isQuestion));
 }
 export const assessmentConfidences = Object.freeze(['LOW', 'MODERATE', 'HIGH', 'UNKNOWN']);
 export function assessmentKey(target) {
-  return target.kind === 'ROUTE' ? `ROUTE:${target.argument_id}:${target.grounding_set_id}` : `${target.kind}:${target.object_id ?? target.evidence_id ?? target.relation_id ?? target.assessment_event_id}`;
+  return target.kind === 'ROUTE' ? `ROUTE:${target.argument_id}:${target.grounding_set_id}` : `${target.kind}:${target.object_id ?? target.evidence_id ?? target.relation_id ?? target.assessment_event_id ?? target.recommendation_id ?? target.decision_id}`;
 }
 // Follow only explicit revision links. Never substitute a competing judgment or
 // retarget an assessment of an earlier event.
-export function assessmentTargetRevision(target, history) {
-  if (target.kind !== 'ASSESSMENT') return null;
-  const pinned = target.assessment_event_id;
-  const revisions = new Map(history.filter(a => a.input.revises_event_id).map(a => [a.input.revises_event_id, a.event_id]));
+export function assessmentTargetRevision(target, history, recommendations = [], decisions = []) {
+  const source = {ASSESSMENT:[history,'assessment_event_id','event_id','revises_event_id'], RECOMMENDATION:[recommendations,'recommendation_id','recommendation_id','revises_recommendation_id'], DECISION:[decisions,'decision_id','decision_id','revises_decision_id']}[target.kind];
+  if (!source) return null;
+  const [records, targetKey, recordKey, revisionKey] = source;
+  const pinned = target[targetKey];
+  const revisions = new Map(records.filter(a => a.input[revisionKey]).map(a => [a.input[revisionKey], a[recordKey]]));
   const visited = new Set([pinned]);
   let current = pinned;
   while (revisions.has(current)) {
@@ -98,6 +106,7 @@ export function assessmentRequest(draft, target, grounds, nodes = []) {
   if (!target || !assessmentResults[draft.dimension]?.includes(draft.result) || !assessmentConfidences.includes(draft.confidence)) throw new Error('Choose a target, dimension-specific result and confidence.');
   if (grounds.length > 64 || new Set(grounds.map(assessmentKey)).size !== grounds.length) throw new Error('Choose at most 64 distinct grounds.');
   if (selectionCriteria.includes(draft.dimension) && !assessmentDimensionsForTarget(target, nodes).includes(draft.dimension)) throw new Error('Selection criteria must target an investigative question.');
+  if ((actionAssessmentDimensions.includes(draft.dimension) || ['RECOMMENDATION','DECISION'].includes(target.kind)) && !assessmentDimensionsForTarget(target, nodes).includes(draft.dimension)) throw new Error('Choose the dimension for this exact recommendation or decision.');
   if (draft.dimension === 'GAP_RESOLUTION') {
     if (!assessmentDimensionsForTarget(target, nodes).includes(draft.dimension)) throw new Error('Gap resolution must target an information gap.');
     if (['PARTIALLY_ADDRESSED','SUPPORTED'].includes(draft.result) && !grounds.some(g => g.kind === 'EVIDENCE' || (g.kind === 'OBJECT' && nodes.some(n => n.object_id === g.object_id && !['QUESTION','INFORMATION_GAP'].includes(n.kind))))) throw new Error('Choose an explicit ground other than a question or information gap.');
