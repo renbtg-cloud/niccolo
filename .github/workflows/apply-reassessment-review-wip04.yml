@@ -1,0 +1,50 @@
+name: Apply reassessment review WIP 04
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-reassessment-review-wip04-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "8de4706596e408215a35e3b31a150012b6cfec8a"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          H4sIAAAAAAAAA51U/W/bNhD9XX/FIS2CBJJdSZY/osVBssZZCyxNYHcLhq4QKPHscJNJlqTsGEX/
+          95GRNNuBkQETDPNDx3f33j3qRoklDPNkPkzovB9SSodJHA+G/TOSh/Qs6cUYhzFiXkR0BLeCwwwl
+          REMIw/T5B3EYRt6NhUnhTiK/+gjnXCiU5eZS2DVh3UIsL7xrYjCFGTEBxBF8Eit7MB5A2Ev7wzTp
+          gR/ax5tV+V9YmBS+3F99fv/hKzx8vIcwSUEh0Rq1XiI3drFiuIa1UH/PS7H2PI+y+Rw6nQUzQN5p
+          VbxDybTBJSsyF5UjLx67SkP+ykuPcYpPQMKEDnLsdvu9+Qj7FKIwHCSJ1+l0XsX2fN9/Hf/yEjq9
+          URgMwHfDEOyGrHLQRlWFgYc2dsaJ1I/CwHcPPDAbidt3kxWjdsSpWMMYTn6rGA2g/me9OICZUYwv
+          /ms8/anBnRnbKvqLEhWndv8WlzmqBrs9cicNE/zcJbl4uWpj3NKC+s+g051eTZ9bdaDafZx672Wx
+          DWpd6osiW5EaaA/c8wyzO3WSR1F/5DS341kQha3qRG94AXMOGokqHjNslG2g3GOdW5bWjienpx78
+          sM3w33zBJ+l2PN8FFCWTcpOmRohsSfgmI2pROdo6qAOcbe2dGcPRnoFdJsPMJgBjT6A1LadAjKWd
+          VwYpUKal0MwpBEQhOGfau+ROAamodTnjsjL6yPNPv3r7dBQWQtFsN19WX5iGmRSiTOH4fnFvJ41a
+          zqdaksJe0R3hBsnIutSPBv3e1q1b3ZoONLA/6qG0bJaV2buwGVtabKNhvNVWo1OWrTA7FHlyrLAk
+          jr8O4HirKhwvWhtkGo227ui0WWuSmRJrncLvWJz/P79d2G7pb+VTmn6rUNmW6qbZB3Mc9PohiH+J
+          H80mv07efwabc7FAlbVEM1tRS9TN94i6jSY3rpqAHZMEXBgM6s4jzfJNJi2jgklS2kj4c5sdbqZ3
+          t8BZYa0tutsP1QG71Jn03umHD5PpZOsWCz5+G8HVp2uwhVQtj/HbGO6m15Mp/PwH1PVycRR4/wDQ
+          ILKxbQYAAA==
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/epistemic_workbench.rs
+          git commit -m "WIP 04: reassessment review workflow"
+          git push origin HEAD:main
