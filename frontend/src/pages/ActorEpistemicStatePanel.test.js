@@ -1,9 +1,29 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,qualifiedVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,modeledSecrecyDimensions,stateRequest,distributedActorRecords} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,qualifiedVulnerabilityDimensions,influenceDimensions,influenceTargets,powerDimensions,asymmetryDimensions,narrativeMeansDimensions,deceptionDimensions,selfDeceptionDimensions,modeledSecrecyDimensions,responseSilenceDimensions,stateRequest,distributedActorRecords} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('keeps six response absence and interpretation dimensions independently qualified',()=>{
+    expect(responseSilenceDimensions).toEqual(['RESPONSE_OBSERVED_ABSENCE','RESPONSE_ACTUAL_NONRESPONSE','RESPONSE_EXPECTATION','RESPONSE_OPPORTUNITY','RESPONSE_DELIBERATE_NONRESPONSE','RESPONSE_INTERPRETED_ASSENT']);
+    for(const dimension of responseSilenceDimensions){
+      const item={...draft,dimension,judgment:'UNKNOWN',counterparty_actor_id:'b'};
+      expect(request(item)).toMatchObject({dimension,judgment:'UNKNOWN',counterparty_actor_id:'b'});
+      expect(()=>request({...item,counterparty_actor_id:'a'})).toThrow();
+      expect(()=>request({...item,target_object_id:null,target_state_event_id:'prior'},[{event_id:'prior',input:request(draft)}])).toThrow();
+      if(dimension!=='RESPONSE_INTERPRETED_ASSENT')expect(request({...item,counterparty_actor_id:null}).counterparty_actor_id).toBeNull();
+    }
+    const observed={...draft,dimension:'RESPONSE_OBSERVED_ABSENCE'};
+    for(const judgment of ['INDICATED','NOT_INDICATED']){
+      expect(()=>request({...observed,judgment})).toThrow('evidence fragment');
+      expect(request({...observed,judgment,basis_evidence_id:'e'}).basis_evidence_id).toBe('e');
+    }
+    const assent={...draft,dimension:'RESPONSE_INTERPRETED_ASSENT',counterparty_actor_id:'b'};
+    expect(()=>request({...assent,counterparty_actor_id:null})).toThrow();
+    const prior={event_id:'assent',input:request(assent)};
+    expect(()=>request({...assent,dimension:'CONSENT',revises_event_id:'assent'},[prior])).toThrow();
+    expect(request({...assent,judgment:'CONTESTED',revises_event_id:'assent'},[prior]).judgment).toBe('CONTESTED');
+  });
   it('qualifies actual, potential, perceived and misattributed vulnerability independently',()=>{
     expect(qualifiedVulnerabilityDimensions).toEqual(['VULNERABILITY_ACTUAL','VULNERABILITY_POTENTIAL','VULNERABILITY_PERCEIVED','VULNERABILITY_MISATTRIBUTED']);
     for(const dimension of qualifiedVulnerabilityDimensions){
