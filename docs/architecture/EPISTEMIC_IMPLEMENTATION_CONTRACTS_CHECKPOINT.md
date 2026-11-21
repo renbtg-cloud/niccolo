@@ -389,6 +389,8 @@ The product owner explicitly prefers **ego protection** for this personal self-i
 
 **Identity protection** remains a separate, broader possibility: protection of a social, professional, political, familial or group identity. The two must not be collapsed.
 
+Migration 0123 introduces separate attributed ego-protection and identity-protection judgments about a visible Situation object. Each has its own rationale, temporal scope, judgment and optional evidence; neither indicates a diagnosis, an established motive, nor an automatic inference from behavior. Other actor states can target an exact prior motive judgment, but the motive description itself cannot use an actor or state event instead of its Situation object.
+
 ## 16. Pressure, coercion, dependency, leverage and autonomy
 
 Do not collapse all motivation into one field.

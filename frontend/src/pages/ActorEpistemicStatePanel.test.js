@@ -1,9 +1,19 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('distinguishes ego protection from identity protection without promoting either to fact',()=>{
+    expect(protectiveMotiveDimensions).toEqual(['EGO_PROTECTION','IDENTITY_PROTECTION']);
+    const ego={...draft,dimension:'EGO_PROTECTION',judgment:'CONTESTED'};
+    expect(request(ego).dimension).toBe('EGO_PROTECTION');
+    expect(request({...ego,dimension:'IDENTITY_PROTECTION',judgment:'UNKNOWN'}).judgment).toBe('UNKNOWN');
+    const prior={event_id:'ego',input:request(ego)};
+    expect(()=>request({...ego,dimension:'IDENTITY_PROTECTION',revises_event_id:'ego'},[prior])).toThrow();
+    expect(()=>request({...ego,target_object_id:null,target_state_event_id:'ego'},[prior])).toThrow();
+    expect(()=>request({...ego,target_object_id:null,target_actor_id:'b'})).toThrow();
+  });
   it('keeps dimensions distinct without deriving belief or knowledge from exposure',()=>{
     expect(stateDimensions).toHaveLength(15);
     expect(request(draft)).toEqual({...draft,rationale:'Reported exposure',basis_evidence_id:null});

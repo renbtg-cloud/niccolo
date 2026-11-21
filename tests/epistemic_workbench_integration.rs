@@ -267,6 +267,33 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn protective_motives_are_distinct_attributed_hypotheses_not_diagnoses() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Examine alleged motives").await;
+    let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The analyst avoided disclosing a mistake").await;
+    let actor=Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Analyst").await.unwrap();
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,dimension:StateDimension::EgoProtection,judgment:StateJudgment::Contested,context:"Review of disclosure".into(),temporal_scope:"At review".into(),orientation_scope:None,orientation_goal:None,rationale:"Possible avoidance of embarrassment".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let ego=Uuid::new_v4();
+    record(ego,input.clone()).await.unwrap();
+    let identity=Uuid::new_v4();
+    record(identity,StateInput{dimension:StateDimension::IdentityProtection,judgment:StateJudgment::Unknown,rationale:"Professional group identity was not established".into(),..input.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::IdentityProtection,revises_event_id:Some(ego),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{target_object_id:None,target_state_event_id:Some(ego),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),2);
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.event_id==ego&&e.input.dimension==StateDimension::EgoProtection));
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.event_id==identity&&e.input.dimension==StateDimension::IdentityProtection));
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'EGO_PROTECTION','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(actor).bind(ego).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn inquiry_decision_records_exact_considered_judgments_without_execution() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
     use epistemic_workbench::{assessment::{AssessmentInput,AssessmentTarget,AssessmentDimension,AssessmentResult,AssessmentConfidence},inquiry_decision::{InquiryDecisionInput,InquiryDisposition}};

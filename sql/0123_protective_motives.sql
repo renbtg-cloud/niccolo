@@ -1,0 +1,10 @@
+-- Distinct attributed personal ego and broader identity protections.
+BEGIN;
+ALTER TABLE niccolo.actor_epistemic_state_events DROP CONSTRAINT actor_epistemic_state_events_dimension_check;
+ALTER TABLE niccolo.actor_epistemic_state_events ADD CONSTRAINT actor_epistemic_state_events_dimension_check CHECK (dimension IN (
+ 'EXPOSURE','ACCESS','PERCEPTION','ATTENTION','EXAMINATION','COMPREHENSION','RECALL','SUSPICION','INCLINATION','DOUBT','BELIEF','SUSPENDED_JUDGMENT','CLAIMED_KNOWLEDGE','PERCEIVED_KNOWLEDGE','EVIDENCE_SUPPORTED_KNOWLEDGE',
+ 'INTEREST','CURIOSITY','INDIFFERENCE','AVERSION','LIMITED_INQUIRY','DENIABILITY_PRESERVATION','DELEGATED_KNOWING','DOCUMENTATION_AVOIDANCE',
+ 'TRUST_COMPETENCE','TRUST_CONFIDENTIALITY','TRUST_TRUTHFULNESS','LOYALTY','EGO_PROTECTION','IDENTITY_PROTECTION'));
+ALTER TABLE niccolo.actor_epistemic_state_events ADD CONSTRAINT actor_epistemic_protective_motive_target CHECK (
+ dimension NOT IN ('EGO_PROTECTION','IDENTITY_PROTECTION') OR target_object_id IS NOT NULL);
+COMMIT;
