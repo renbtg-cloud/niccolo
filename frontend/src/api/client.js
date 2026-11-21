@@ -82,6 +82,7 @@ export class NiccoloClient {
   recordInquiryDecision(decisionId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/question-decisions/${decisionId}`, {body}); }
   recordDecisionBasisReview(decisionId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/question-decisions/${decisionId}/reviews/${eventId}`, {body}); }
   recordActorEpistemicState(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/actor-states/${eventId}`, {body}); }
+  recordActorEpistemicAct(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/actor-acts/${eventId}`, {body}); }
   actors() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/actors`); }
   recordExpertQuestionResponse(questionId, responseId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/questions/${questionId}/responses/${responseId}`, { body }); }
   recordResponseInterpretation(utteranceId, interpretationId, revisionId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/utterances/${utteranceId}/interpretations/${interpretationId}/revisions/${revisionId}`, { body }); }

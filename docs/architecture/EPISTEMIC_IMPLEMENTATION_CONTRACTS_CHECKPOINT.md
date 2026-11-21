@@ -342,6 +342,8 @@ Checkpoint 1.29 validation: PostgreSQL verified scope/goal requirements, refusal
 
 Epistemic acts include investigating, ignoring, deepening, deferring, avoiding acquisition, delegating, reconsidering, challenging and preserving ambiguity.
 
+Migration 0121 records independent attributed descriptions of those nine acts against an existing actor and Situation object. Each description distinguishes `REPORTED`, `OBSERVED`, `INFERRED`, or `CONTESTED`, includes explicit context, temporal scope, rationale and optional source fragment; an observed description requires a visible source fragment. A delegation can name an independently registered recipient, without executing any work or granting authority. Revisions preserve actor, target, act, context, time, delegate and recorder. The ledger never changes an orientation, proves a personality trait, executes an inquiry or resolves a gap.
+
 ## 14. Higher-order epistemic state
 
 Niccolò must represent beliefs or knowledge about another actor's epistemic state without hard-coded “first/second/third-order” classes.

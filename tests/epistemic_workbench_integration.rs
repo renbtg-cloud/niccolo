@@ -203,6 +203,42 @@ async fn actor_epistemic_orientations_distinguish_immediate_reactions_from_persi
 }
 
 #[tokio::test]
+async fn actor_epistemic_act_records_occurrence_not_an_instruction_or_trait() {
+    use axum::{body::Body,http::{Request,StatusCode,header}};
+    use epistemic_workbench::actor_act::{self,ActInput,ActKind,ActCharacterization};
+    use tower::ServiceExt;
+    let f=fixture().await;let sit=situation(&f,"Document a reported delegation").await;
+    let q=node(&f,sit,ExpertNodeKind::Question,"What did the ledger show?").await;
+    let a=Uuid::new_v4();let b=Uuid::new_v4();
+    for (id,label) in [(a,"Manager"),(b,"Analyst")]{niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let input=ActInput{subject_actor_id:a,target_object_id:q,act_kind:ActKind::Delegating,characterization:ActCharacterization::Reported,delegate_actor_id:Some(b),context:"Meeting".into(),temporal_scope:"Before hearing".into(),rationale:"Reported asking analyst to inspect the ledger".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_act::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let act=Uuid::new_v4();assert!(!record(act,input.clone()).await.unwrap().replayed);assert!(record(act,input.clone()).await.unwrap().replayed);
+    assert!(matches!(record(act,ActInput{characterization:ActCharacterization::Contested,..input.clone()}).await,Err(WorkbenchError::Conflict)));
+    assert!(matches!(record(Uuid::new_v4(),ActInput{act_kind:ActKind::Ignoring,..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),ActInput{delegate_actor_id:Some(a),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),ActInput{characterization:ActCharacterization::Observed,..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),ActInput{delegate_actor_id:Some(Uuid::new_v4()),..input.clone()}).await,Err(WorkbenchError::Invisible)));
+    let other=situation(&f,"Unrelated investigation").await;let foreign=node(&f,other,ExpertNodeKind::Question,"Another question?").await;
+    assert!(matches!(record(Uuid::new_v4(),ActInput{target_object_id:foreign,..input.clone()}).await,Err(WorkbenchError::Invisible)));
+    let document=Uuid::new_v4();let imported=ingest_source(&f.service,f.workspace,document,SourceFormat::WhatsappExport,"fixture://epistemic-act",b"[02/11/2026, 12:00] Manager: Analyst, inspect the ledger\n").await.unwrap();
+    let observed=ActInput{characterization:ActCharacterization::Observed,basis_evidence_id:Some(imported.fragment_ids[0]),revises_event_id:Some(act),..input.clone()};
+    assert!(matches!(record(Uuid::new_v4(),observed.clone()).await,Err(WorkbenchError::Invisible)));
+    situation_store::add_source(&f.service,f.workspace,f.principal,sit,document).await.unwrap();
+    let revised=Uuid::new_v4();
+    let admin=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let writer=authz::provision_token(&admin,f.principal,f.workspace,true,true,1).await.unwrap();let reader=authz::provision_token(&admin,Uuid::new_v4(),f.workspace,true,false,1).await.unwrap();
+    let secure=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();let router=niccolo_evidence::api::router(secure);
+    let path=format!("/v1/workspaces/{}/situations/{}/epistemic/actor-acts/{}",f.workspace,sit,revised);
+    let request=|token:&str|Request::builder().method("POST").uri(&path).header(header::AUTHORIZATION,format!("Bearer {token}")).header(header::CONTENT_TYPE,"application/json").body(Body::from(serde_json::to_string(&observed).unwrap())).unwrap();
+    assert_eq!(router.clone().oneshot(request(&reader)).await.unwrap().status(),StatusCode::FORBIDDEN);assert_eq!(router.clone().oneshot(request(&writer)).await.unwrap().status(),StatusCode::CREATED);assert_eq!(router.oneshot(request(&writer)).await.unwrap().status(),StatusCode::OK);
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();assert_eq!(snapshot.actor_epistemic_acts.len(),2);assert_eq!(snapshot.actor_epistemic_acts[0].input,input);assert_eq!(snapshot.actor_epistemic_acts[1].input,observed);assert_eq!(snapshot.actor_epistemic_acts[1].recorded_by,f.principal);
+    assert!(snapshot.actor_epistemic_states.is_empty()&&snapshot.question_decisions.is_empty()&&snapshot.question_responses.is_empty()&&snapshot.arguments.is_empty());
+    let mut tx=f.service.begin().await.unwrap();sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.actor_epistemic_act_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,act_kind,characterization,delegate_actor_id,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'IGNORING','REPORTED',$6,'context','time','rationale',$7)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(a).bind(q).bind(b).bind(f.principal).execute(&mut *tx).await.unwrap_err();assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn inquiry_decision_records_exact_considered_judgments_without_execution() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
     use epistemic_workbench::{assessment::{AssessmentInput,AssessmentTarget,AssessmentDimension,AssessmentResult,AssessmentConfidence},inquiry_decision::{InquiryDecisionInput,InquiryDisposition}};
