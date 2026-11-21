@@ -1,0 +1,23 @@
+name: Export current main once
+
+on:
+  push:
+    branches:
+      - tmp/export-main-for-promotion-policy-20261120
+    paths:
+      - .github/workflows/export-current-main-once.yml
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Archive source
+        run: git archive --format=zip --output=niccolo-current.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-current-source
+          path: niccolo-current.zip
+          retention-days: 1
