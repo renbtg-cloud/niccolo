@@ -45,6 +45,21 @@ export const assessmentConfidences = Object.freeze(['LOW', 'MODERATE', 'HIGH', '
 export function assessmentKey(target) {
   return target.kind === 'ROUTE' ? `ROUTE:${target.argument_id}:${target.grounding_set_id}` : `${target.kind}:${target.object_id ?? target.evidence_id ?? target.relation_id ?? target.assessment_event_id}`;
 }
+// Follow only explicit revision links. Never substitute a competing judgment or
+// retarget an assessment of an earlier event.
+export function assessmentTargetRevision(target, history) {
+  if (target.kind !== 'ASSESSMENT') return null;
+  const pinned = target.assessment_event_id;
+  const revisions = new Map(history.filter(a => a.input.revises_event_id).map(a => [a.input.revises_event_id, a.event_id]));
+  const visited = new Set([pinned]);
+  let current = pinned;
+  while (revisions.has(current)) {
+    current = revisions.get(current);
+    if (visited.has(current)) return null;
+    visited.add(current);
+  }
+  return current === pinned ? null : current;
+}
 export function assessmentRequest(draft, target, grounds) {
   if (!target || !assessmentResults[draft.dimension]?.includes(draft.result) || !assessmentConfidences.includes(draft.confidence)) throw new Error('Choose a target, dimension-specific result and confidence.');
   if (grounds.length > 64 || new Set(grounds.map(assessmentKey)).size !== grounds.length) throw new Error('Choose at most 64 distinct grounds.');

@@ -6,7 +6,7 @@ import {
   argumentRequest,
   applicabilityAssessments,
   applicabilityRequest,
-  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest,
+  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest, assessmentTargetRevision,
   assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest,
   groundingAdequacies,
   groundingEffects,
@@ -91,7 +91,11 @@ export function ExpertWorkbenchPage() {
   const assessmentDependencies = data.assessment_dependencies ?? [];
   const routeLabel = route => data.grounding_sets.find(g => g.argument_id === route.argument_id && g.grounding_set_id === route.grounding_set_id)?.rationale ?? `${route.argument_id}/${route.grounding_set_id}`;
   const supersededAssessments = new Set(assessmentHistory.map(a => a.input.revises_event_id).filter(Boolean));
-  const assessmentLabel = target => assessmentChoices.find(c => assessmentKey(c.target) === assessmentKey(target))?.label ?? assessmentKey(target);
+  const assessmentLabel = target => {
+    const label = assessmentChoices.find(c => assessmentKey(c.target) === assessmentKey(target))?.label ?? assessmentKey(target);
+    const successor = assessmentTargetRevision(target, assessmentHistory);
+    return successor ? `${label} — pinned historical event; latest explicit revision ${successor}. This judgment does not assess the successor.` : label;
+  };
   const submit = (action) => (event) => {
     event.preventDefault();
     setError('');

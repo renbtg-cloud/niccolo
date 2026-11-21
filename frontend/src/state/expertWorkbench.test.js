@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest } from './expertWorkbench.js';
+import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision } from './expertWorkbench.js';
 
 describe('contextual assessment request', () => {
   const draft = { dimension: 'RELIABILITY', result: 'RELIABLE', confidence: 'LOW', criterion: ' consistency ', context: ' current investigation ', rationale: ' because of provenance ' };
@@ -29,5 +29,19 @@ describe('contextual assessment request', () => {
     const meta={kind:'ASSESSMENT',assessment_event_id:'original'};
     expect(assessmentKey(meta)).toBe('ASSESSMENT:original');
     expect(assessmentRequest(draft,meta,[]).target).toEqual(meta);
+  });
+  it('exposes explicit target successors without retargeting meta-assessments', () => {
+    const target = {kind:'ASSESSMENT', assessment_event_id:'original'};
+    const events = [
+      {event_id:'original', input:{target:{kind:'OBJECT',object_id:'object'}}},
+      {event_id:'competing', input:{target:{kind:'OBJECT',object_id:'object'}}},
+      {event_id:'revision', input:{revises_event_id:'original'}},
+      {event_id:'latest', input:{revises_event_id:'revision'}},
+    ];
+    expect(assessmentTargetRevision(target,events)).toBe('latest');
+    expect(assessmentTargetRevision(target,events.slice(0,2))).toBeNull();
+    expect(assessmentTargetRevision({kind:'OBJECT',object_id:'object'},events)).toBeNull();
+    expect(assessmentRequest(draft,target,[]).target).toEqual(target);
+    expect(assessmentTargetRevision(target,[...events,{event_id:'original', input:{revises_event_id:'latest'}}])).toBeNull();
   });
 });
