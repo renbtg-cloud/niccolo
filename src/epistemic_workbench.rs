@@ -520,6 +520,14 @@ pub struct ContradictorySupportDiagnostic {
     pub right_supporting_routes: Vec<GroundingRouteRef>,
 }
 
+/// An explicit information-gap object used as a non-contextual supporting
+/// ground. This does not establish absence of evidence or verified absence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InformationGapSupportDiagnostic {
+    pub gap_object_id: Uuid,
+    pub supporting_routes: Vec<GroundingRouteRef>,
+}
+
 /// Diagnostic of explicitly authored documentary grounds only. Different
 /// components do not establish independence; object-ground ancestry is not
 /// inferred by this projection.
@@ -567,6 +575,8 @@ pub struct ConclusionReasoningDiagnostic {
     pub shared_grounds: Vec<SharedGroundDiagnostic>,
     #[serde(default)]
     pub contradictory_supports: Vec<ContradictorySupportDiagnostic>,
+    #[serde(default)]
+    pub information_gap_supports: Vec<InformationGapSupportDiagnostic>,
     pub direct_evidence_lineage: DirectEvidenceLineageDiagnostic,
     pub has_supporting_routes: bool,
     pub has_opposing_routes: bool,
@@ -1934,6 +1944,7 @@ fn reasoning_diagnostics(
     reassessment_impacts: &[ReassessmentImpact],
     grounding_cycles: &[GroundingCycleDiagnostic],
     relations: &[ExpertRelation],
+    nodes: &[ExpertNode],
 ) -> Vec<ConclusionReasoningDiagnostic> {
     let mut argument_ids_by_conclusion = BTreeMap::<Uuid, Vec<Uuid>>::new();
     let mut conclusion_by_argument = BTreeMap::new();
@@ -1948,6 +1959,11 @@ fn reasoning_diagnostics(
     for relation in relations.iter().filter(|r| r.kind == RelationKind::Contradicts) {
         contradictions_by_left.entry(relation.left_object_id).or_default().push(relation);
     }
+    let gap_ids: BTreeSet<_> = nodes
+        .iter()
+        .filter(|node| node.kind == ExpertNodeKind::InformationGap)
+        .map(|node| node.object_id)
+        .collect();
 
     let mut diagnostics = Vec::with_capacity(argument_ids_by_conclusion.len());
     for (conclusion_object_id, mut argument_ids) in argument_ids_by_conclusion {
@@ -2053,6 +2069,14 @@ fn reasoning_diagnostics(
             }
         }
         contradictory_supports.sort_by_key(|candidate| candidate.relation_id);
+        let information_gap_supports = supporting_ground_routes
+            .iter()
+            .filter(|(id, _)| gap_ids.contains(*id))
+            .map(|(id, routes)| InformationGapSupportDiagnostic {
+                gap_object_id: *id,
+                supporting_routes: routes.iter().copied().collect(),
+            })
+            .collect();
         diagnostics.push(ConclusionReasoningDiagnostic {
             conclusion_object_id,
             argument_ids,
@@ -2069,6 +2093,7 @@ fn reasoning_diagnostics(
                 )
                 .collect(),
             contradictory_supports,
+            information_gap_supports,
             direct_evidence_lineage: DirectEvidenceLineageDiagnostic::default(),
             has_supporting_routes,
             has_opposing_routes,
@@ -2438,6 +2463,7 @@ pub async fn snapshot(
         &reassessment_impacts,
         &grounding_cycles,
         &relations,
+        &nodes,
     );
     let mut conditions_by_route =
         BTreeMap::<(Uuid, Uuid), Vec<RouteApplicabilityAssessment>>::new();
@@ -2956,7 +2982,7 @@ mod tests {
             latest_review: None,
         }];
 
-        let diagnostics = reasoning_diagnostics(&arguments, &sets, &impacts, &[], &[]);
+        let diagnostics = reasoning_diagnostics(&arguments, &sets, &impacts, &[], &[], &[]);
         assert_eq!(diagnostics.len(), 1);
         let diagnostic = &diagnostics[0];
         assert!(diagnostic.has_supporting_routes);
@@ -2971,7 +2997,7 @@ mod tests {
         let mut shared = sets.clone();
         shared[1].members[0].ground_object_id = Some(premise);
         shared[1].grounding_set_id = support_set;
-        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[], &[]);
+        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[], &[], &[]);
         assert_eq!(
             diagnostics[0].shared_grounds[0].ground_object_id,
             Some(premise)
@@ -2990,7 +3016,7 @@ mod tests {
             ]
         );
         shared[1].members[0].role = GroundingMemberRole::Context;
-        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[], &[]);
+        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[], &[], &[]);
         assert!(!diagnostics[0].has_opposing_routes);
         assert!(!diagnostics[0].has_mixed_directional_grounding);
         assert_eq!(diagnostics[0].routes[1].non_context_member_count, 0);
@@ -3000,7 +3026,7 @@ mod tests {
             set.members[0].ground_object_id = None;
             set.members[0].evidence_id = Some(premise);
         }
-        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[], &[]);
+        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[], &[], &[]);
         assert_eq!(diagnostics[0].shared_grounds[0].evidence_id, Some(premise));
 
         let serialized = serde_json::to_value(diagnostic).unwrap();

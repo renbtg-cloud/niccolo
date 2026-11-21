@@ -15,6 +15,13 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('distinguishes an authored gap used as support from a verified absence', () => {
+    expect(page).toContain('diagnostic.information_gap_supports');
+    expect(page).toContain('gap.supporting_routes');
+    expect(page).toContain('not by itself evidence of absence, concealment or misconduct');
+    expect(page).toContain('Both contradictory grounds and a gap are used as support.');
+    expect(page).toContain('no self-sealing verdict is inferred');
+  });
   it('shows exact contradictory supporting routes as review candidates, never a self-sealing verdict', () => {
     expect(page).toContain('diagnostic.contradictory_supports');
     expect(page).toContain('candidate.left_supporting_routes');

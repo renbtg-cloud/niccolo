@@ -3096,6 +3096,35 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
 }
 
 #[tokio::test]
+async fn information_gap_support_is_visible_without_inferring_absence_or_misconduct() {
+    let f=fixture().await;
+    let sit=situation(&f,"Review a gap used as support").await;
+    let hypothesis=node(&f,sit,ExpertNodeKind::Hypothesis,"A payment record may have been concealed").await;
+    let unrelated=node(&f,sit,ExpertNodeKind::Hypothesis,"Another explanation").await;
+    let gap=node(&f,sit,ExpertNodeKind::InformationGap,"Whether the relevant ledger interval was collected").await;
+    let fref=&f;
+    let route=|conclusion,effect,role|async move {
+        let arg=Uuid::new_v4();let set=Uuid::new_v4();
+        epistemic_workbench::create_argument(&fref.service,fref.workspace,sit,fref.principal,arg,conclusion,ArgumentMode::Abductive,"Authored route only").await.unwrap();
+        epistemic_workbench::create_grounding_set(&fref.service,fref.workspace,sit,fref.principal,arg,set,effect,GroundingAdequacy::Partial,"Gap considered in this context",&[NewGroundingMember{member_id:Uuid::new_v4(),role,ground_object_id:Some(gap),evidence_id:None,rationale:"Possible gap relevance".into()}]).await.unwrap();
+        epistemic_workbench::GroundingRouteRef{argument_id:arg,grounding_set_id:set}
+    };
+    route(unrelated,GroundingEffect::Supports,GroundingMemberRole::Context).await;
+    route(unrelated,GroundingEffect::Challenges,GroundingMemberRole::Premise).await;
+    let before=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert!(before.reasoning_diagnostics.iter().all(|d|d.information_gap_supports.is_empty()));
+    let support=route(hypothesis,GroundingEffect::Supports,GroundingMemberRole::Premise).await;
+    let after=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    let diagnostic=after.reasoning_diagnostics.iter().find(|d|d.conclusion_object_id==hypothesis).unwrap();
+    assert_eq!(diagnostic.information_gap_supports.len(),1);
+    assert_eq!(diagnostic.information_gap_supports[0].gap_object_id,gap);
+    assert_eq!(diagnostic.information_gap_supports[0].supporting_routes,vec![support]);
+    assert!(diagnostic.contradictory_supports.is_empty());
+    assert!(after.reasoning_diagnostics.iter().find(|d|d.conclusion_object_id==unrelated).unwrap().information_gap_supports.is_empty());
+    assert!(after.assessments.is_empty()&&after.question_decisions.is_empty());
+}
+
+#[tokio::test]
 async fn contradictory_support_is_an_exact_structural_review_candidate_not_a_verdict() {
     let f=fixture().await;
     let sit=situation(&f,"Examine potential self-sealing reasoning").await;
@@ -3127,6 +3156,13 @@ async fn contradictory_support_is_an_exact_structural_review_candidate_not_a_ver
     assert_eq!(candidate.right_supporting_routes,vec![if relation.right_object_id==right{b}else{a}]);
     assert!(after.reasoning_diagnostics.iter().find(|d|d.conclusion_object_id==unrelated).unwrap().contradictory_supports.is_empty());
     assert!(after.assessments.is_empty()&&after.question_decisions.is_empty());
+    let gap=node(&f,sit,ExpertNodeKind::InformationGap,"Whether another collection path was searched").await;
+    let gap_route=route(hypothesis,gap,GroundingEffect::Supports,GroundingMemberRole::Premise).await;
+    let combined=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    let d=combined.reasoning_diagnostics.iter().find(|d|d.conclusion_object_id==hypothesis).unwrap();
+    assert_eq!(d.contradictory_supports.len(),1);
+    assert_eq!(d.information_gap_supports[0].supporting_routes,vec![gap_route]);
+    assert!(combined.assessments.is_empty());
 }
 
 #[tokio::test]
