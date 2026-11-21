@@ -1,9 +1,18 @@
 import {describe,expect,it} from 'vitest';
 import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
-const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
+const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('pins an optional registered counterparty without changing the pressure target',()=>{
+    const pressure={...draft,dimension:'PRESSURE',counterparty_actor_id:'b'};
+    expect(request(pressure)).toMatchObject({target_object_id:'p',counterparty_actor_id:'b'});
+    expect(()=>request({...pressure,counterparty_actor_id:'a'})).toThrow();
+    expect(()=>request({...pressure,counterparty_actor_id:'foreign'})).toThrow();
+    expect(()=>request({...pressure,dimension:'BELIEF'})).toThrow();
+    const prior={event_id:'pressure',input:request(pressure)};
+    expect(()=>request({...pressure,revises_event_id:'pressure',counterparty_actor_id:null},[prior])).toThrow();
+  });
   it('does not infer coercion from a threat, incentive, constraint or dependency',()=>{
     expect(contextualPressureDimensions).toHaveLength(8);
     const threat={...draft,dimension:'COMMUNICATED_THREAT',judgment:'INDICATED'};

@@ -415,6 +415,8 @@ Migration 0125 adds independent attributed judgments of incentive, pressure, com
 
 Checkpoint 1.34 validation: migration 0125, eight independent conditions, unknown coercion despite indicated threat, revision identity and direct SQL qualification verified. Full regression passed (597 Rust, 143 React, 22 Python, 8 standalone JavaScript tests).
 
+Migration 0126 permits an optional exact registered counterparty for these contextual pressure judgments while retaining the affected actor and Situation object. It expresses an attributed possible contribution or counterparty relation, not established causation, intent or responsibility. Unknown counterparties remain valid; the system does not invent identities. A revision cannot change the counterparty, and incompatible dimensions, self-counterparties and out-of-workspace identities are rejected.
+
 Compliance is not consent. Submission is not loyalty.
 
 Autonomy is contextual: ability to decide, refuse, disagree, exit, seek review, acquire information and revise commitments may differ independently.

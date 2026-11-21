@@ -3,7 +3,7 @@ use super::{
     WorkbenchError, assessment::evidence_visible, object_available_in_situation, scoped, valid_text,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +125,7 @@ pub struct StateInput {
     pub target_object_id: Option<Uuid>,
     pub target_state_event_id: Option<Uuid>,
     pub target_actor_id: Option<Uuid>,
+    pub counterparty_actor_id: Option<Uuid>,
     pub dimension: StateDimension,
     pub judgment: StateJudgment,
     pub context: String,
@@ -153,74 +154,41 @@ fn code<T: Serialize>(value: T) -> String {
 fn parse<T: for<'de> Deserialize<'de>>(value: String) -> Result<T, WorkbenchError> {
     serde_json::from_value(serde_json::Value::String(value)).map_err(|_| WorkbenchError::Invalid)
 }
-type StateRow = (
-    Uuid,
-    Uuid,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    String,
-    Option<Uuid>,
-    Option<Uuid>,
-    Uuid,
-    String,
-);
 async fn list(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,
     event: Option<Uuid>,
 ) -> Result<Vec<StateEvent>, WorkbenchError> {
-    let rows:Vec<StateRow>=sqlx::query_as("SELECT event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,dimension,judgment,context,temporal_scope,orientation_scope,orientation_goal,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,created_at::text FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no").bind(workspace).bind(situation).bind(event).fetch_all(&mut **tx).await?;
+    let rows=sqlx::query("SELECT event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,counterparty_actor_id,dimension,judgment,context,temporal_scope,orientation_scope,orientation_goal,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,created_at::text AS recorded_at FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no").bind(workspace).bind(situation).bind(event).fetch_all(&mut **tx).await?;
     rows.into_iter()
-        .map(
-            |(
-                event_id,
-                subject_actor_id,
-                target_object_id,
-                target_state_event_id,
-                target_actor_id,
-                dimension,
-                judgment,
-                context,
-                temporal_scope,
-                orientation_scope,
-                orientation_goal,
-                rationale,
-                basis_evidence_id,
-                revises_event_id,
-                recorded_by,
-                recorded_at,
-            )| {
-                Ok(StateEvent {
-                    event_id,
-                    input: StateInput {
-                        subject_actor_id,
-                        target_object_id,
-                        target_state_event_id,
-                        target_actor_id,
-                        dimension: parse(dimension)?,
-                        judgment: parse(judgment)?,
-                        context,
-                        temporal_scope,
-                        orientation_scope: orientation_scope.map(parse).transpose()?,
-                        orientation_goal,
-                        rationale,
-                        basis_evidence_id,
-                        revises_event_id,
-                    },
-                    recorded_by,
-                    recorded_at,
-                    replayed: false,
-                })
-            },
-        )
+        .map(|row| {
+            Ok(StateEvent {
+                event_id: row.try_get("event_id")?,
+                input: StateInput {
+                    subject_actor_id: row.try_get("subject_actor_id")?,
+                    target_object_id: row.try_get("target_object_id")?,
+                    target_state_event_id: row.try_get("target_state_event_id")?,
+                    target_actor_id: row.try_get("target_actor_id")?,
+                    counterparty_actor_id: row.try_get("counterparty_actor_id")?,
+                    dimension: parse(row.try_get("dimension")?)?,
+                    judgment: parse(row.try_get("judgment")?)?,
+                    context: row.try_get("context")?,
+                    temporal_scope: row.try_get("temporal_scope")?,
+                    orientation_scope: row
+                        .try_get::<Option<String>, _>("orientation_scope")?
+                        .map(parse)
+                        .transpose()?,
+                    orientation_goal: row.try_get("orientation_goal")?,
+                    rationale: row.try_get("rationale")?,
+                    basis_evidence_id: row.try_get("basis_evidence_id")?,
+                    revises_event_id: row.try_get("revises_event_id")?,
+                },
+                recorded_by: row.try_get("recorded_by_principal_id")?,
+                recorded_at: row.try_get("recorded_at")?,
+                replayed: false,
+            })
+        })
         .collect()
 }
 pub(super) async fn list_in_snapshot(
@@ -255,6 +223,9 @@ pub async fn record(
         || (input.dimension.is_protective_motive() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_autonomy() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_pressure() && input.target_object_id.is_none())
+        || (input.counterparty_actor_id.is_some()
+            && (!input.dimension.is_contextual_pressure()
+                || input.counterparty_actor_id == Some(input.subject_actor_id)))
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()
             && input.dimension != StateDimension::Loyalty
@@ -329,6 +300,18 @@ pub async fn record(
     if !actor_exists || !target_visible {
         return Err(WorkbenchError::Invisible);
     }
+    if let Some(counterparty) = input.counterparty_actor_id {
+        let visible: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM niccolo.actors WHERE workspace_id=$1 AND actor_id=$2)",
+        )
+        .bind(workspace)
+        .bind(counterparty)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !visible {
+            return Err(WorkbenchError::Invisible);
+        }
+    }
     if let Some(basis) = input.basis_evidence_id {
         if !evidence_visible(&mut tx, workspace, situation, basis).await? {
             return Err(WorkbenchError::Invisible);
@@ -344,6 +327,7 @@ pub async fn record(
             || prior.input.target_object_id != input.target_object_id
             || prior.input.target_state_event_id != input.target_state_event_id
             || prior.input.target_actor_id != input.target_actor_id
+            || prior.input.counterparty_actor_id != input.counterparty_actor_id
             || prior.input.dimension != input.dimension
             || prior.input.context != input.context
             || prior.input.temporal_scope != input.temporal_scope
@@ -353,7 +337,7 @@ pub async fn record(
             return Err(WorkbenchError::Invalid);
         }
     }
-    let inserted=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,orientation_scope,orientation_goal) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(event).bind(input.subject_actor_id).bind(input.target_object_id).bind(input.target_state_event_id).bind(input.target_actor_id).bind(code(input.dimension)).bind(code(input.judgment)).bind(&input.context).bind(&input.temporal_scope).bind(&input.rationale).bind(input.basis_evidence_id).bind(input.revises_event_id).bind(recorder).bind(input.orientation_scope.map(code)).bind(&input.orientation_goal).execute(&mut *tx).await?.rows_affected()==1;
+    let inserted=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,orientation_scope,orientation_goal,counterparty_actor_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(event).bind(input.subject_actor_id).bind(input.target_object_id).bind(input.target_state_event_id).bind(input.target_actor_id).bind(code(input.dimension)).bind(code(input.judgment)).bind(&input.context).bind(&input.temporal_scope).bind(&input.rationale).bind(input.basis_evidence_id).bind(input.revises_event_id).bind(recorder).bind(input.orientation_scope.map(code)).bind(&input.orientation_goal).bind(input.counterparty_actor_id).execute(&mut *tx).await?.rows_affected()==1;
     let mut result = list(&mut tx, workspace, situation, Some(event))
         .await?
         .pop()
