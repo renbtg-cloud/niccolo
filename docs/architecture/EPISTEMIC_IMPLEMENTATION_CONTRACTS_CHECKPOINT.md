@@ -288,6 +288,8 @@ This is not an autonomous universal optimizer. The user controls investigative r
 
 Migration 0115 introduces separate, attributed question-context assessments for acquisition cost, accessibility, contamination risk, urgency, reported authorization status and investigation coverage. The existing relevance and discriminatory-power dimensions remain independent. Each assessment retains its criterion, context, rationale, confidence, grounds and revision chain. Reported authorization is not an authorization grant; no dimension permits an external act, reallocates resources or establishes epistemic resolution. Missing or contested judgments must not be converted into numerical defaults.
 
+The Workbench comparison panel projects up to three explicitly selected questions side by side, retaining linked gaps, tested hypotheses and presuppositions alongside attributed current criterion judgments. It distinguishes no assessment from an explicit UNKNOWN or an incomplete projection, retains disagreements, and makes no automatic selection or ranking. The panel is read-only: comparison does not create an investigative act or authorize one.
+
 Administrative closure remains independent from epistemic resolution. An investigation can legitimately be closed while epistemically unresolved.
 
 ## 12. Human epistemic state is not a boolean

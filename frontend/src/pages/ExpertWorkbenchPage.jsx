@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useClient } from '../hooks/useClient.js';
 import { ResponseInterpretationPanel } from './ResponseInterpretationPanel.jsx';
 import { InterpretationRelianceReview } from './InterpretationRelianceReview.jsx';
+import { InquiryComparisonPanel } from './InquiryComparisonPanel.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -256,6 +257,7 @@ export function ExpertWorkbenchPage() {
         const judgments = assessmentHistory.filter(a => a.input.dimension === 'GAP_RESOLUTION' && a.input.target.kind === 'OBJECT' && a.input.target.object_id === gap.object_id && !supersededAssessments.has(a.event_id));
         return <li key={gap.object_id}><strong>{gap.text}</strong><p>{gap.rationale}</p>{judgments.length === 0 ? <p>No explicit gap resolution judgment recorded.</p> : <ul>{judgments.map(a => <li key={a.event_id}><strong>{a.input.result}</strong> · confidence {a.input.confidence}<p>{a.input.criterion} · {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.event_id}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}</li>)}</ul>}</li>;
       })}</ul><small>Current judgments in their own revision chains remain separate, including disagreement. Earlier revisions are retained in assessment history.</small></details>}
+      <InquiryComparisonPanel key={`${client.config.workspace}:${client.config.situation}`} snapshot={data}/>
       {(data.question_inquiries ?? []).length > 0 && <details open><summary>Investigative questions — explicit inquiry map</summary><p>Links record what to investigate, not answers or gap resolution. Testing multiple hypotheses does not establish discriminatory power.</p><ul>{data.question_inquiries.map(inquiry => {
         const question = data.nodes.find(n => n.object_id === inquiry.question_object_id);
         const linkGroups = [['Addressed gaps', inquiry.addressed_gaps], ['Tested hypotheses', inquiry.tested_hypotheses], ['Explicit presuppositions', inquiry.presuppositions]];
