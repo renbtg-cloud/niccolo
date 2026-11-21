@@ -380,6 +380,7 @@ pub struct WorkbenchSnapshot {
 
 type WorkbenchEvidenceRow = (Uuid, Uuid, i32, String, String, String, String, String);
 type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
+type ReassessmentReviewRow = (Uuid, Uuid, Option<Uuid>, Uuid, String, String, Uuid);
 type GroundingMemberSnapshotRow = (
     Uuid,
     Uuid,
@@ -1158,6 +1159,10 @@ pub async fn search_evidence(
         .collect())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "reassessment identity, target and attributed disposition are independent audit inputs"
+)]
 pub async fn record_reassessment_review(
     pool: &PgPool,
     workspace: Uuid,
@@ -1648,7 +1653,7 @@ pub async fn snapshot(
     }
     let mut reassessment_impacts =
         selective_reassessment_impacts(&relations, &arguments, &grounding_sets);
-    let review_rows: Vec<(Uuid, Uuid, Option<Uuid>, Uuid, String, String, Uuid)> = sqlx::query_as(
+    let review_rows: Vec<ReassessmentReviewRow> = sqlx::query_as(
         "SELECT trigger_relation_id,argument_id,grounding_set_id,review_event_id,disposition,note,recorded_by_principal_id \
          FROM niccolo.epistemic_reassessment_review_events \
          WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no",
