@@ -296,6 +296,8 @@ Checkpoint 1.25 validation: real PostgreSQL authoring/replay, incompatible repla
 
 Migration 0117 exposes changes to the exact cited assessment basis of a recorded inquiry decision. A human may retain the decision, require reconsideration, or defer review, with an attributed note attached to both the original and current assessment events. Retention clears attention only for that exact current successor; any subsequent revision reopens attention. Unrelated judgments do not trigger a review, and neither review nor revision rewrites the decision, changes allocation or executes an inquiry. PostgreSQL validates the cited original and current successor, and the Workbench retains the review history.
 
+Checkpoint 1.26 validation: PostgreSQL integration verified exact original/current identity, retry safety, refusal of unrelated and stale reviews, reopening after a second revision, and preservation of the original decision. The full suite passed (588 Rust, 132 React, 22 Python, 8 standalone JavaScript tests), including the embedded frontend build.
+
 Administrative closure remains independent from epistemic resolution. An investigation can legitimately be closed while epistemically unresolved.
 
 ## 12. Human epistemic state is not a boolean
