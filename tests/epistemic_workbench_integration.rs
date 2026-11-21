@@ -166,6 +166,40 @@ async fn recommendation_basis_changes_surface_alternatives_without_deciding_appr
 }
 
 #[tokio::test]
+async fn retrospective_action_assessments_keep_hindsight_and_contemporaneous_reasonableness_separate() {
+    use epistemic_workbench::{action_recommendation, action_decision::{self, DecisionInput, DecisionDisposition}, assessment::{self, AssessmentInput, AssessmentTarget, AssessmentDimension, AssessmentResult, AssessmentConfidence, AssessmentGround}};
+    let f = fixture().await;
+    let sit = situation(&f, "January decision reviewed after a March discovery").await;
+    let other = situation(&f, "Separate investigation").await;
+    let known = node(&f, sit, ExpertNodeKind::Proposition, "No unauthorized connection known in January").await;
+    let actual = node(&f, sit, ExpertNodeKind::Proposition, "March evidence describes a connection dating to December").await;
+    let obtainable = node(&f, sit, ExpertNodeKind::Hypothesis, "Whether a January check could have revealed the connection is unresolved").await;
+    let recipient = Uuid::new_v4(); niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, recipient, "Reviewer").await.unwrap();
+    let recommendation = Uuid::new_v4(); action_recommendation::record(&f.service, f.workspace, sit, f.principal, recommendation, recommendation_input(known, recipient)).await.unwrap();
+    let decision = Uuid::new_v4(); action_decision::record(&f.service, f.workspace, sit, f.principal, decision, DecisionInput {recommendation_id: recommendation, disposition: DecisionDisposition::SelectAlternative, alternative_index: Some(0), rationale: "Retain original access until further grounds are known".into(), revises_decision_id: None}).await.unwrap();
+    let first = AssessmentInput {target: AssessmentTarget::Decision {decision_id: decision}, dimension: AssessmentDimension::DecisionContemporaneousReasonableness, result: AssessmentResult::Adequate, confidence: AssessmentConfidence::Moderate, criterion: "Reasonableness relative to information then available".into(), context: "January decision; assessed in April".into(), rationale: "No known link in January".into(), grounds: vec![AssessmentGround::Object {object_id: known}], revises_event_id: None};
+    let second = AssessmentInput {dimension: AssessmentDimension::DecisionActualCircumstancesAdequacy, result: AssessmentResult::Inadequate, criterion: "Appropriateness relative to reconstructed circumstances".into(), rationale: "March discovery suggests actual exposure at decision time".into(), grounds: vec![AssessmentGround::Object {object_id: actual}], ..first.clone()};
+    let third = AssessmentInput {dimension: AssessmentDimension::DecisionReasonablyObtainableInformation, result: AssessmentResult::Unknown, criterion: "Whether proportionate inquiry could have changed the basis".into(), rationale: "Available checks require independent examination".into(), grounds: vec![AssessmentGround::Object {object_id: obtainable}], ..first.clone()};
+    let strategic = AssessmentInput {target: AssessmentTarget::Recommendation {recommendation_id: recommendation}, dimension: AssessmentDimension::RecommendationAppropriateness, result: AssessmentResult::Adequate, criterion: "Current protective purpose".into(), rationale: "Privilege review may be appropriate independently of the suspected connection".into(), ..first.clone()};
+    let record = |id,input| assessment::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let first_id = Uuid::new_v4();
+    record(first_id, first.clone()).await.unwrap();
+    for input in [second.clone(), third.clone(), strategic.clone()] { record(Uuid::new_v4(), input).await.unwrap(); }
+    assert!(matches!(record(Uuid::new_v4(), AssessmentInput {target: AssessmentTarget::Recommendation {recommendation_id: recommendation}, ..first.clone()}).await, Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(), AssessmentInput {target: AssessmentTarget::Decision {decision_id: Uuid::new_v4()}, ..first.clone()}).await, Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(), AssessmentInput {dimension: AssessmentDimension::DecisionActualCircumstancesAdequacy, revises_event_id: Some(first_id), ..first.clone()}).await, Err(WorkbenchError::Invalid)));
+    assert!(matches!(assessment::record(&f.service, f.workspace, other, f.principal, Uuid::new_v4(), first.clone()).await, Err(WorkbenchError::Invisible)));
+    let history = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(history.assessments.iter().map(|a| &a.input).collect::<Vec<_>>(), vec![&first, &second, &third, &strategic]);
+    assert_eq!(history.action_decisions.len(), 1); assert_eq!(history.action_recommendations.len(), 1);
+    let next = Uuid::new_v4(); action_decision::record(&f.service, f.workspace, sit, f.principal, next, DecisionInput {recommendation_id: recommendation, disposition: DecisionDisposition::SelectPrimary, alternative_index: None, rationale: "Reconsider in April".into(), revises_decision_id: Some(decision)}).await.unwrap();
+    assert_eq!(epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap().assessments[0].input.target, first.target);
+    let mut tx = f.service.begin().await.unwrap(); sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,target_decision_id,revises_event_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'DECISION_CONTEMPORANEOUS_REASONABLENESS','ADEQUATE','MODERATE',$6,$7,'Retargeted',$8)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(next).bind(first_id).bind(&first.criterion).bind(&first.context).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514")); tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn action_recommendations_are_attributed_revisable_and_not_authorizations() {
     use epistemic_workbench::action_recommendation::{self, RecommendationInput};
     let f = fixture().await;

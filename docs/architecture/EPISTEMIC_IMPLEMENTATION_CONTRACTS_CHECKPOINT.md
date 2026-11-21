@@ -641,6 +641,8 @@ Checkpoint 1.64 projects recommendation basis impacts from the existing scoped g
 
 Checkpoint 1.65 adds qualified basis authoring and selective impact presentation to the React recommendation panel, preserving the historical flat-list contract and displaying declared alternative groups not linked to each trigger without asserting sufficiency or appropriateness. All 145 migrations applied in a new PostgreSQL database; 287 Rust tests including the real HTTP bundle smoke and 175 React tests passed.
 
+Checkpoint 1.66 extends attributed multidimensional assessments to exact recommendation and decision records. Recommendation appropriateness, contemporaneous decision reasonableness, adequacy under actual circumstances and reasonably obtainable information are independent judgments with criterion, context, rationale, uncertainty and optional explicit grounds. Later discoveries do not rewrite a historical decision or automatically establish prior knowledge. Existing assessment revision, scope and authority boundaries apply; migration 0145 additionally enforces exact target and revision identity. The 213 unit, 61 Workbench integration and 13 security/readiness tests passed.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

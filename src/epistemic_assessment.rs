@@ -38,6 +38,10 @@ pub enum AssessmentDimension {
     MaterialCompromise,
     RelianceContainment,
     RecoveryReadiness,
+    RecommendationAppropriateness,
+    DecisionContemporaneousReasonableness,
+    DecisionActualCircumstancesAdequacy,
+    DecisionReasonablyObtainableInformation,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +94,9 @@ pub enum AssessmentResult {
     RecoveryReady,
     RecoveryPartial,
     RecoveryNotReady,
+    Adequate,
+    Inadequate,
+    PartiallyAdequate,
     Unknown,
     Contested,
 }
@@ -134,11 +141,21 @@ impl AssessmentDimension {
                 | Self::MaterialCompromise => matches!(result, NoConcernIndicated | ConcernIndicated | CompromiseIndicated),
                 Self::RelianceContainment => matches!(result, PauseIndicated | LimitIndicated | NoPauseIndicated),
                 Self::RecoveryReadiness => matches!(result, RecoveryReady | RecoveryPartial | RecoveryNotReady),
+                Self::RecommendationAppropriateness | Self::DecisionContemporaneousReasonableness | Self::DecisionActualCircumstancesAdequacy | Self::DecisionReasonablyObtainableInformation => matches!(result, Adequate | Inadequate | PartiallyAdequate),
             }
     }
 
     pub fn is_question_selection_criterion(self) -> bool {
         Self::QUESTION_SELECTION_CRITERIA.contains(&self)
+    }
+
+    pub fn is_decision_perspective(self) -> bool {
+        matches!(self, Self::DecisionContemporaneousReasonableness | Self::DecisionActualCircumstancesAdequacy | Self::DecisionReasonablyObtainableInformation)
+    }
+
+    fn accepts_action_target(self, target: &AssessmentTarget) -> bool {
+        (self == Self::RecommendationAppropriateness) == matches!(target, AssessmentTarget::Recommendation { .. })
+            && self.is_decision_perspective() == matches!(target, AssessmentTarget::Decision { .. })
     }
 }
 
@@ -170,6 +187,8 @@ pub enum AssessmentTarget {
     Assessment {
         assessment_event_id: Uuid,
     },
+    Recommendation { recommendation_id: Uuid },
+    Decision { decision_id: Uuid },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -708,50 +727,49 @@ pub(super) async fn evidence_visible(
         .bind(workspace).bind(situation).bind(id).fetch_one(&mut **tx).await?)
 }
 
-type TargetColumns = (
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-);
+type TargetColumns = [Option<Uuid>; 8];
 impl AssessmentTarget {
     fn columns(&self) -> TargetColumns {
         match *self {
-            Self::Object { object_id } => (Some(object_id), None, None, None, None, None),
-            Self::Evidence { evidence_id } => (None, Some(evidence_id), None, None, None, None),
-            Self::Relation { relation_id } => (None, None, Some(relation_id), None, None, None),
+            Self::Object { object_id } => [Some(object_id), None, None, None, None, None, None, None],
+            Self::Evidence { evidence_id } => [None, Some(evidence_id), None, None, None, None, None, None],
+            Self::Relation { relation_id } => [None, None, Some(relation_id), None, None, None, None, None],
             Self::Route {
                 argument_id,
                 grounding_set_id,
-            } => (
+            } => [
                 None,
                 None,
                 None,
                 Some(argument_id),
                 Some(grounding_set_id),
                 None,
-            ),
+                None,
+                None,
+            ],
             Self::Assessment {
                 assessment_event_id,
-            } => (None, None, None, None, None, Some(assessment_event_id)),
+            } => [None, None, None, None, None, Some(assessment_event_id), None, None],
+            Self::Recommendation { recommendation_id } => [None, None, None, None, None, None, Some(recommendation_id), None],
+            Self::Decision { decision_id } => [None, None, None, None, None, None, None, Some(decision_id)],
         }
     }
     fn from_columns(c: TargetColumns) -> Result<Self, WorkbenchError> {
         match c {
-            (Some(object_id), None, None, None, None, None) => Ok(Self::Object { object_id }),
-            (None, Some(evidence_id), None, None, None, None) => Ok(Self::Evidence { evidence_id }),
-            (None, None, Some(relation_id), None, None, None) => Ok(Self::Relation { relation_id }),
-            (None, None, None, Some(argument_id), Some(grounding_set_id), None) => {
+            [Some(object_id), None, None, None, None, None, None, None] => Ok(Self::Object { object_id }),
+            [None, Some(evidence_id), None, None, None, None, None, None] => Ok(Self::Evidence { evidence_id }),
+            [None, None, Some(relation_id), None, None, None, None, None] => Ok(Self::Relation { relation_id }),
+            [None, None, None, Some(argument_id), Some(grounding_set_id), None, None, None] => {
                 Ok(Self::Route {
                     argument_id,
                     grounding_set_id,
                 })
             }
-            (None, None, None, None, None, Some(assessment_event_id)) => Ok(Self::Assessment {
+            [None, None, None, None, None, Some(assessment_event_id), None, None] => Ok(Self::Assessment {
                 assessment_event_id,
             }),
+            [None, None, None, None, None, None, Some(recommendation_id), None] => Ok(Self::Recommendation { recommendation_id }),
+            [None, None, None, None, None, None, None, Some(decision_id)] => Ok(Self::Decision { decision_id }),
             _ => Err(WorkbenchError::Invalid),
         }
     }
@@ -767,6 +785,8 @@ impl AssessmentTarget {
             Self::Relation {relation_id} => sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_relations WHERE workspace_id=$1 AND situation_id=$2 AND relation_id=$3)").bind(workspace).bind(situation).bind(relation_id).fetch_one(&mut **tx).await?,
             Self::Route {argument_id,grounding_set_id} => sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_arguments a JOIN niccolo.epistemic_grounding_sets g USING(workspace_id,argument_id) WHERE a.workspace_id=$1 AND a.situation_id=$2 AND a.argument_id=$3 AND g.grounding_set_id=$4)").bind(workspace).bind(situation).bind(argument_id).bind(grounding_set_id).fetch_one(&mut **tx).await?,
             Self::Assessment {assessment_event_id} => sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_assessment_events WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3)").bind(workspace).bind(situation).bind(assessment_event_id).fetch_one(&mut **tx).await?,
+            Self::Recommendation { recommendation_id } => sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_action_recommendations WHERE workspace_id=$1 AND situation_id=$2 AND recommendation_id=$3)").bind(workspace).bind(situation).bind(recommendation_id).fetch_one(&mut **tx).await?,
+            Self::Decision { decision_id } => sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.epistemic_action_decisions WHERE workspace_id=$1 AND situation_id=$2 AND decision_id=$3)").bind(workspace).bind(situation).bind(decision_id).fetch_one(&mut **tx).await?,
         })
     }
 }
@@ -774,12 +794,7 @@ impl AssessmentTarget {
 type EventRow = (
     Uuid,
     Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
-    Option<Uuid>,
+    Vec<Option<Uuid>>,
     String,
     String,
     String,
@@ -796,7 +811,7 @@ pub(super) async fn list_in_snapshot(
     situation: Uuid,
     only: Option<Uuid>,
 ) -> Result<Vec<AssessmentEvent>, WorkbenchError> {
-    let rows: Vec<EventRow> = sqlx::query_as("SELECT event_id,revises_event_id,target_object_id,target_evidence_id,target_relation_id,target_argument_id,target_grounding_set_id,target_assessment_event_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id,created_at::text FROM niccolo.epistemic_assessment_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no")
+    let rows: Vec<EventRow> = sqlx::query_as("SELECT event_id,revises_event_id,ARRAY[target_object_id,target_evidence_id,target_relation_id,target_argument_id,target_grounding_set_id,target_assessment_event_id,target_recommendation_id,target_decision_id],dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id,created_at::text FROM niccolo.epistemic_assessment_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no")
         .bind(workspace).bind(situation).bind(only).fetch_all(&mut **tx).await?;
     let basis: Vec<(Uuid,Option<Uuid>,Option<Uuid>)> = sqlx::query_as("SELECT b.event_id,b.ground_object_id,b.ground_evidence_id FROM niccolo.epistemic_assessment_basis b JOIN niccolo.epistemic_assessment_events e USING(workspace_id,event_id) WHERE b.workspace_id=$1 AND e.situation_id=$2 AND ($3::uuid IS NULL OR b.event_id=$3) ORDER BY b.event_id,b.ordinal")
         .bind(workspace).bind(situation).bind(only).fetch_all(&mut **tx).await?;
@@ -814,12 +829,7 @@ pub(super) async fn list_in_snapshot(
             |(
                 event_id,
                 revises_event_id,
-                o,
-                e,
-                r,
-                a,
-                g,
-                target_assessment,
+                target_columns,
                 dimension,
                 result,
                 confidence,
@@ -832,7 +842,7 @@ pub(super) async fn list_in_snapshot(
                 Ok(AssessmentEvent {
                     event_id,
                     input: AssessmentInput {
-                        target: AssessmentTarget::from_columns((o, e, r, a, g, target_assessment))?,
+                        target: AssessmentTarget::from_columns(target_columns.try_into().map_err(|_| WorkbenchError::Invalid)?)?,
                         dimension: parse(dimension)?,
                         result: parse(result)?,
                         confidence: parse(confidence)?,
@@ -863,6 +873,7 @@ pub async fn record(
         || matches!(input.target, AssessmentTarget::Assessment {assessment_event_id} if assessment_event_id==event_id)
         || input.revises_event_id == Some(event_id)
         || !input.dimension.accepts(input.result)
+        || !input.dimension.accepts_action_target(&input.target)
         || !valid_text(&input.criterion, 2048)
         || !valid_text(&input.context, 2048)
         || !valid_text(&input.rationale, 4096)
@@ -932,9 +943,9 @@ pub async fn record(
             return Err(WorkbenchError::Invalid);
         }
     }
-    let (o, e, r, a, g, target_assessment) = input.target.columns();
-    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,revises_event_id,target_object_id,target_evidence_id,target_relation_id,target_argument_id,target_grounding_set_id,target_assessment_event_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT DO NOTHING")
-        .bind(workspace).bind(situation).bind(event_id).bind(input.revises_event_id).bind(o).bind(e).bind(r).bind(a).bind(g).bind(target_assessment).bind(code(input.dimension)).bind(code(input.result)).bind(code(input.confidence)).bind(&input.criterion).bind(&input.context).bind(&input.rationale).bind(actor).execute(&mut *tx).await?.rows_affected()==1;
+    let [o, e, r, a, g, target_assessment, target_recommendation, target_decision] = input.target.columns();
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,revises_event_id,target_object_id,target_evidence_id,target_relation_id,target_argument_id,target_grounding_set_id,target_assessment_event_id,target_recommendation_id,target_decision_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT DO NOTHING")
+        .bind(workspace).bind(situation).bind(event_id).bind(input.revises_event_id).bind(o).bind(e).bind(r).bind(a).bind(g).bind(target_assessment).bind(target_recommendation).bind(target_decision).bind(code(input.dimension)).bind(code(input.result)).bind(code(input.confidence)).bind(&input.criterion).bind(&input.context).bind(&input.rationale).bind(actor).execute(&mut *tx).await?.rows_affected()==1;
     if inserted {
         for (i, ground) in input.grounds.iter().enumerate() {
             let (o, e) = match *ground {
