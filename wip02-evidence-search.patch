@@ -1,0 +1,110 @@
+From dbd6ee72843ee459f5cdf9ba6059924c019cc328 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Sat, 21 Nov 2026 03:11:47 +0000
+Subject: [PATCH] WIP 02: expert evidence search for grounding
+
+---
+ .../src/pages/ExpertWorkbench.product.test.js |  1 +
+ frontend/src/pages/ExpertWorkbenchPage.jsx    |  2 +-
+ tests/epistemic_workbench_integration.rs      | 64 +++++++++++++++++++
+ 3 files changed, 66 insertions(+), 1 deletion(-)
+
+diff --git a/frontend/src/pages/ExpertWorkbench.product.test.js b/frontend/src/pages/ExpertWorkbench.product.test.js
+index e5b843a..a5e8f12 100644
+--- a/frontend/src/pages/ExpertWorkbench.product.test.js
++++ b/frontend/src/pages/ExpertWorkbench.product.test.js
+@@ -55,6 +55,7 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+     expect(page).toContain('Documentary evidence');
+     expect(page).toContain('EVIDENCE · {item.document_locator}');
+     expect(page).toContain('first 256 admissible source fragments');
++    expect(page).toContain('Search above to reach material outside this bounded list.');
+     expect(page).toContain('Search all attached admissible fragments');
+   });
+ 
+diff --git a/frontend/src/pages/ExpertWorkbenchPage.jsx b/frontend/src/pages/ExpertWorkbenchPage.jsx
+index 4281780..d4fde94 100644
+--- a/frontend/src/pages/ExpertWorkbenchPage.jsx
++++ b/frontend/src/pages/ExpertWorkbenchPage.jsx
+@@ -120,7 +120,7 @@ export function ExpertWorkbenchPage() {
+           <div className="evidence-search"><input aria-label="Search documentary evidence" placeholder="Search all attached admissible fragments" value={evidenceSearchText} maxLength={512} onChange={(e) => setEvidenceSearchText(e.target.value)} /><button type="button" disabled={searchEvidence.isPending || !evidenceSearchText.trim()} onClick={() => searchEvidence.mutate(evidenceSearchText.trim())}>Search evidence</button></div>
+           {searchEvidence.error && <small className="error">Evidence search failed: {searchEvidence.error.message}</small>}
+           {evidenceChoices.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label>{selectedEvidenceIds.includes(item.evidence_id) && <input aria-label="Why this evidence is a ground" placeholder="Why this exact fragment belongs in this grounding set" value={groundMemberRationales[`evidence:${item.evidence_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`evidence:${item.evidence_id}`]: e.target.value })} />}</div>)}
+-          {data.evidence_truncated && <small>Showing the first 256 admissible source fragments attached to this Situation. Use source inspection for material outside this bounded Workbench list.</small>}
++          {data.evidence_truncated && <small>Showing the first 256 admissible source fragments attached to this Situation. Search above to reach material outside this bounded list.</small>}
+         </fieldset>
+         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
+         <button disabled={busy}>Create grounding set</button>
+diff --git a/tests/epistemic_workbench_integration.rs b/tests/epistemic_workbench_integration.rs
+index 27286c6..35cd180 100644
+--- a/tests/epistemic_workbench_integration.rs
++++ b/tests/epistemic_workbench_integration.rs
+@@ -429,3 +429,67 @@ async fn persistent_proposition_requires_explicit_situation_membership() {
+     .await;
+     assert!(matches!(relation, Err(WorkbenchError::Invisible)));
+ }
++
++
++#[tokio::test]
++async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
++    let f = fixture().await;
++    let sit = situation(&f, "Search documentary evidence beyond the bounded Workbench list").await;
++    let document_id = Uuid::new_v4();
++    let mut body = String::new();
++    for minute in 0..300 {
++        let marker = if minute == 299 {
++            " UNIQUESEARCHMARKER approval was suspended"
++        } else {
++            " routine status update"
++        };
++        body.push_str(&format!(
++            "[02/11/2026, {:02}:{:02}] Ana: message {minute}{marker}\n",
++            12 + (minute / 60),
++            minute % 60,
++        ));
++    }
++    let imported = ingest_source(
++        &f.service,
++        f.workspace,
++        document_id,
++        SourceFormat::WhatsappExport,
++        "fixture://expert-search-chat",
++        body.as_bytes(),
++    )
++    .await
++    .unwrap();
++    assert_eq!(imported.fragment_ids.len(), 300);
++    situation_store::add_source(
++        &f.service,
++        f.workspace,
++        f.principal,
++        sit,
++        document_id,
++    )
++    .await
++    .unwrap();
++
++    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
++        .await
++        .unwrap();
++    assert_eq!(snapshot.evidence.len(), 256);
++    assert!(snapshot.evidence_truncated);
++    assert!(snapshot
++        .evidence
++        .iter()
++        .all(|item| !item.content.contains("UNIQUESEARCHMARKER")));
++
++    let results = epistemic_workbench::search_evidence(
++        &f.service,
++        f.workspace,
++        sit,
++        "UNIQUESEARCHMARKER",
++        20,
++    )
++    .await
++    .unwrap();
++    assert_eq!(results.len(), 1);
++    assert_eq!(results[0].evidence_id, imported.fragment_ids[299]);
++    assert!(results[0].content.contains("approval was suspended"));
++}
+-- 
+2.47.3
