@@ -488,6 +488,8 @@ Omission is not automatically deceptive. Ignorance, forgetfulness, irrelevance, 
 
 Migration 0131 distinguishes eight attributed narrative means, including a false statement and each of the seven composition methods. A judgment is contextual to a registered narrator and visible Situation object, with an optional exact audience member. No deceptive intention, attempt or effect is inferred; competing explanations remain open. A contested omission is not an accusation.
 
+Checkpoint 1.40: Migration 0131 applied successfully; 603 Rust tests, 149 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
+
 Separate:
 
 - deceptive intention;
