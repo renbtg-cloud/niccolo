@@ -195,7 +195,7 @@ async fn investigative_question_is_distinct_from_gap_and_never_a_conclusion_or_p
         evidence_id: None,
         rationale: "Question frames this inquiry".into(),
     };
-    let create = |members: Vec<NewGroundingMember>| async {
+    let create = async |members: Vec<NewGroundingMember>| {
         epistemic_workbench::create_grounding_set(
             &f.service,
             f.workspace,
@@ -219,12 +219,106 @@ async fn investigative_question_is_distinct_from_gap_and_never_a_conclusion_or_p
             .await
             .is_ok()
     );
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert!(!snapshot.reasoning_diagnostics[0].has_supporting_routes);
+    assert_eq!(
+        snapshot.reasoning_diagnostics[0].routes[0].non_context_member_count,
+        0
+    );
     assert!(
         epistemic_workbench::snapshot(&f.service, f.workspace, other)
             .await
             .unwrap()
             .nodes
             .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn question_authoring_respects_authenticated_http_and_workspace_boundaries() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+    };
+    use tower::ServiceExt;
+    let f = fixture().await;
+    let sit = situation(&f, "Question authoring").await;
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let secure = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1)
+        .await
+        .unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let foreign = fixture().await;
+    let outsider =
+        authz::provision_token(&admin, foreign.principal, foreign.workspace, true, true, 1)
+            .await
+            .unwrap();
+    let id = Uuid::new_v4();
+    let path = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/objects/{id}",
+        f.workspace, sit
+    );
+    let router = niccolo_evidence::api::router(secure);
+    let send = |token: &str, question: &str| {
+        Request::builder().method("POST").uri(&path)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE,"application/json")
+        .body(Body::from(serde_json::json!({"kind":"QUESTION","text":question,"rationale":"Investigate without presupposing truth"}).to_string())).unwrap()
+    };
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(send(&reader, "What happened?"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(send(&outsider, "What happened?"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(send(&writer, "What happened?"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(send(&writer, "What happened?"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        router
+            .oneshot(send(&writer, "Different question?"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
     );
 }
 
