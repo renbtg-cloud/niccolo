@@ -31,6 +31,19 @@ This reconciliation inspected, among others:
 - `src/clarification_answer.rs`
 - migrations `0001`, `0019`–`0028`, `0055`–`0059`, `0080`–`0097`
 
+### 1.1 Owner scope refinement after reconciliation
+
+After this reconciliation, the owner narrowed the MVP interaction model in a way that simplifies the implementation critical path without reducing the epistemological model:
+
+- the MVP assumes a cultivated, domain-trained professional;
+- the user explicitly authors epistemic abstractions through the structured UI;
+- automatic interpretation of the investigator's own free text into those abstractions is post-MVP;
+- free text inside an explicitly selected object type remains normal structured authoring;
+- `0098` interpretation machinery is retained as useful persistent/anticipatory substrate, not as an MVP parser requirement;
+- `0099` remains an auditable proposal boundary for model-generated reasoning, but sophisticated free-text promotion policy is not the current critical path.
+
+This makes typed relations, grounding/dependencies and expert authoring the immediate implementation priority.
+
 ## 2. Executive result
 
 The implementation does **not** need a general rewrite.
@@ -319,6 +332,14 @@ The architecture is not “wrong and due for replacement”.
 
 It contains substantial durable engineering that should survive.
 
-The necessary change is a **semantic substrate refactor around persistent identity, typed relations, grounding and interpretation state**, followed by incremental migration of the existing analysis-scoped objects.
+The necessary change is a **semantic substrate refactor around persistent identity, typed relations and explicit grounding**, followed by incremental migration of the existing analysis-scoped objects.
 
-The next code step should therefore start with migration `0098` and Rust types for persistent epistemic identity and interpretation state, while preserving the current 98-migration baseline and existing external behavior until new contract tests are green.
+The reconciliation has now begun to land incrementally:
+
+- `0098_persistent_epistemic_identity.sql` added durable epistemic identity and interpretation-state substrate;
+- `0099_reasoning_proposal_ledger.sql` separated model proposal identity from canonical reasoning objects;
+- `0100_expert_epistemic_workbench.sql` added expert-authored Hypothesis, Assumption, InformationGap, Finding and Argument objects, typed semantic/causal/contextual/genealogical relations, and joint/alternative grounding structures;
+- `src/epistemic_workbench.rs`, API endpoints and the frontend Workbench expose the structured expert-authoring slice;
+- the investigator free-text compiler is deliberately post-MVP.
+
+The next architectural work should deepen **selective revision/downstream reassessment and reasoning over the explicit expert-authored graph**, while continuing to generalize persistent identity across older analysis-scoped objects.
