@@ -875,3 +875,175 @@ async fn snapshot_surfaces_recursive_support_without_inventing_independent_corro
     assert!(!cycle.has_external_anchor);
     assert!(cycle.unanchored_recursive_support);
 }
+
+#[tokio::test]
+async fn reassessment_walks_downstream_ground_dependencies_without_touching_unrelated_arguments() {
+    let f = fixture().await;
+    let sit = situation(
+        &f,
+        "Transitive reassessment follows only explicit grounding",
+    )
+    .await;
+    let old = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The approval hold remained active through the cutoff.",
+    )
+    .await;
+    let revised = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The approval hold ended before the cutoff.",
+    )
+    .await;
+    let middle = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "Approval timing materially affected transfer timing.",
+    )
+    .await;
+    let downstream = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The operating explanation should be reconsidered.",
+    )
+    .await;
+    let unrelated = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The source export contains a timestamp.",
+    )
+    .await;
+
+    let middle_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        middle_argument,
+        middle,
+        ArgumentMode::Abductive,
+        "The middle finding depends on the current approval-timing hypothesis.",
+    )
+    .await
+    .unwrap();
+    let middle_set = Uuid::new_v4();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        middle_argument,
+        middle_set,
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The old hypothesis is an explicit premise for the middle finding.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(old),
+            evidence_id: None,
+            rationale: "The timing hypothesis is the premise being revised.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let downstream_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        downstream_argument,
+        downstream,
+        ArgumentMode::Policy,
+        "The downstream finding depends on the middle finding.",
+    )
+    .await
+    .unwrap();
+    let downstream_set = Uuid::new_v4();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        downstream_argument,
+        downstream_set,
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The middle finding is an explicit premise for the downstream conclusion.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(middle),
+            evidence_id: None,
+            rationale: "The downstream conclusion depends on the middle finding.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let unrelated_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        unrelated_argument,
+        unrelated,
+        ArgumentMode::Inductive,
+        "Timestamp presence is independent of the approval-timing hypothesis.",
+    )
+    .await
+    .unwrap();
+
+    let trigger_relation = Uuid::new_v4();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        trigger_relation,
+        RelationFamily::Genealogy,
+        RelationKind::Supersedes,
+        revised,
+        old,
+        "The revised hypothesis replaces the prior approval-timing hypothesis.",
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let impacts = snapshot
+        .reassessment_impacts
+        .iter()
+        .filter(|impact| impact.trigger_relation_id == trigger_relation)
+        .collect::<Vec<_>>();
+    assert_eq!(impacts.len(), 2);
+    assert!(impacts.iter().any(|impact| {
+        impact.argument_id == middle_argument
+            && impact.grounding_set_id == Some(middle_set)
+            && impact.conclusion_object_id == middle
+            && impact.depth == 1
+    }));
+    assert!(impacts.iter().any(|impact| {
+        impact.argument_id == downstream_argument
+            && impact.grounding_set_id == Some(downstream_set)
+            && impact.conclusion_object_id == downstream
+            && impact.depth == 2
+    }));
+    assert!(
+        impacts
+            .iter()
+            .all(|impact| impact.argument_id != unrelated_argument)
+    );
+}
