@@ -306,6 +306,187 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
 }
 
 #[tokio::test]
+async fn gap_resolution_is_attributed_revision_not_an_answer_or_question_link() {
+    use epistemic_workbench::assessment::*;
+    let f = fixture().await;
+    let sit = situation(&f, "Resolve only explicitly supported aspects").await;
+    let other = situation(&f, "Other case").await;
+    let gap = node(
+        &f,
+        sit,
+        ExpertNodeKind::InformationGap,
+        "Whether approval preceded payment",
+    )
+    .await;
+    let question = node(
+        &f,
+        sit,
+        ExpertNodeKind::Question,
+        "When was the payment approved?",
+    )
+    .await;
+    let proposition = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The approval log records 09:00",
+    )
+    .await;
+    let foreign = node(&f, other, ExpertNodeKind::InformationGap, "Other gap").await;
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        Uuid::new_v4(),
+        RelationFamily::Contextual,
+        RelationKind::AddressesGap,
+        question,
+        gap,
+        "Investigate timing",
+    )
+    .await
+    .unwrap();
+    assert!(
+        epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+            .await
+            .unwrap()
+            .assessments
+            .is_empty()
+    );
+    let input = AssessmentInput {
+        target: AssessmentTarget::Object { object_id: gap },
+        dimension: AssessmentDimension::GapResolution,
+        result: AssessmentResult::Open,
+        confidence: AssessmentConfidence::Moderate,
+        criterion: "Timing of approval and payment".into(),
+        context: "Current investigation".into(),
+        rationale: "The sequence is not established".into(),
+        grounds: vec![],
+        revises_event_id: None,
+    };
+    let record = |id, value| {
+        epistemic_workbench::assessment::record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            value,
+        )
+    };
+    assert!(matches!(
+        record(
+            Uuid::new_v4(),
+            AssessmentInput {
+                target: AssessmentTarget::Object {
+                    object_id: question
+                },
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    assert!(matches!(
+        record(
+            Uuid::new_v4(),
+            AssessmentInput {
+                target: AssessmentTarget::Object { object_id: foreign },
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    for grounds in [
+        vec![],
+        vec![AssessmentGround::Object {
+            object_id: question,
+        }],
+        vec![AssessmentGround::Object { object_id: gap }],
+    ] {
+        assert!(matches!(
+            record(
+                Uuid::new_v4(),
+                AssessmentInput {
+                    result: AssessmentResult::Supported,
+                    grounds,
+                    ..input.clone()
+                }
+            )
+            .await,
+            Err(WorkbenchError::Invalid)
+        ));
+    }
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let third = Uuid::new_v4();
+    record(first, input.clone()).await.unwrap();
+    let partial = AssessmentInput {
+        result: AssessmentResult::PartiallyAddressed,
+        rationale: "Approval time supported, payment time missing".into(),
+        grounds: vec![AssessmentGround::Object {
+            object_id: proposition,
+        }],
+        revises_event_id: Some(first),
+        ..input.clone()
+    };
+    assert!(!record(second, partial.clone()).await.unwrap().replayed);
+    assert!(record(second, partial).await.unwrap().replayed);
+    record(
+        third,
+        AssessmentInput {
+            result: AssessmentResult::Contested,
+            rationale: "Another judgment questions the timestamp".into(),
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.assessments.len(), 3);
+    assert_eq!(snapshot.assessments[1].input.revises_event_id, Some(first));
+    assert_eq!(
+        snapshot.assessments[2].input.result,
+        AssessmentResult::Contested
+    );
+    assert!(
+        snapshot.question_inquiries[0]
+            .current_discriminatory_power_events
+            .is_empty()
+    );
+    assert!(snapshot.arguments.is_empty());
+    for (target, result, deferred) in [
+        (question, "OPEN", false),
+        (foreign, "OPEN", false),
+        (gap, "SUPPORTED", true),
+    ] {
+        let mut tx = f.service.begin().await.unwrap();
+        sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)")
+            .bind(f.workspace.to_string())
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let insert = sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,target_object_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'GAP_RESOLUTION',$5,'LOW','criterion','context','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(target).bind(result).bind(f.principal).execute(&mut *tx).await;
+        let err = if deferred {
+            insert.unwrap();
+            tx.commit().await.unwrap_err()
+        } else {
+            let err = insert.unwrap_err();
+            tx.rollback().await.unwrap();
+            err
+        };
+        assert_eq!(
+            err.as_database_error().unwrap().code().as_deref(),
+            Some("23514")
+        );
+    }
+}
+
+#[tokio::test]
 async fn investigative_question_is_distinct_from_gap_and_never_a_conclusion_or_premise() {
     let f = fixture().await;
     let sit = situation(&f, "Investigate an unverified allegation").await;

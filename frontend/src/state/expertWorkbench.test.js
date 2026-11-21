@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed } from './expertWorkbench.js';
+import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed, assessmentDimensionsForTarget } from './expertWorkbench.js';
 
 describe('contextual assessment request', () => {
   const draft = { dimension: 'RELIABILITY', result: 'RELIABLE', confidence: 'LOW', criterion: ' consistency ', context: ' current investigation ', rationale: ' because of provenance ' };
@@ -10,9 +10,22 @@ describe('contextual assessment request', () => {
     expect(assessmentKey({kind:'ROUTE', argument_id:'a', grounding_set_id:'g'})).toBe('ROUTE:a:g');
   });
   it('prevents cross-dimensional results and duplicate grounds', () => {
-    expect(Object.keys(assessmentResults)).toHaveLength(5);
+    expect(Object.keys(assessmentResults)).toHaveLength(6);
     expect(() => assessmentRequest({...draft, result:'CREDIBLE'}, target, [])).toThrow();
     expect(() => assessmentRequest(draft, target, [ground, ground])).toThrow();
+  });
+  it('restricts gap resolution to gaps and requires non-question grounds for a supported or partially addressed result', () => {
+    const nodes = [{object_id:'g',kind:'INFORMATION_GAP'},{object_id:'q',kind:'QUESTION'},{object_id:'p',kind:'PROPOSITION'}];
+    const gap = {kind:'OBJECT',object_id:'g'};
+    const q = {kind:'OBJECT',object_id:'q'};
+    const p = {kind:'OBJECT',object_id:'p'};
+    const resolution = {...draft,dimension:'GAP_RESOLUTION',result:'SUPPORTED'};
+    expect(assessmentDimensionsForTarget(gap,nodes)).toContain('GAP_RESOLUTION');
+    expect(assessmentDimensionsForTarget(q,nodes)).not.toContain('GAP_RESOLUTION');
+    expect(() => assessmentRequest(resolution,q,[p],nodes)).toThrow('information gap');
+    expect(() => assessmentRequest(resolution,gap,[q,gap],nodes)).toThrow('explicit ground');
+    expect(assessmentRequest(resolution,gap,[p],nodes).result).toBe('SUPPORTED');
+    expect(assessmentRequest({...resolution,result:'UNRESOLVED'},gap,[],nodes).grounds).toEqual([]);
   });
   it('pins an exact event and binds a review to the current revision', () => {
     expect(assessmentDependencyRequest({argument_id:'a', grounding_set_id:'g'}, 'old', ' reliance ')).toEqual({argument_id:'a', grounding_set_id:'g', assessment_event_id:'old', rationale:'reliance'});

@@ -55,7 +55,12 @@ export const assessmentResults = Object.freeze({
   RELIABILITY: ['RELIABLE', 'LIMITED_RELIABILITY', 'UNRELIABLE', 'UNKNOWN', 'CONTESTED'],
   INDEPENDENCE: ['INDEPENDENCE_SUPPORTED', 'DEPENDENCE_INDICATED', 'DEPENDENT', 'UNKNOWN', 'CONTESTED'],
   DISCRIMINATORY_POWER: ['HIGH_POWER', 'LIMITED_POWER', 'NO_POWER', 'UNKNOWN', 'CONTESTED'],
+  GAP_RESOLUTION: ['OPEN', 'PARTIALLY_ADDRESSED', 'SUPPORTED', 'CONTESTED', 'UNRESOLVED', 'UNRESOLVABLE', 'UNKNOWN'],
 });
+export function assessmentDimensionsForTarget(target, nodes) {
+  const isGap = target?.kind === 'OBJECT' && nodes.some(n => n.object_id === target.object_id && n.kind === 'INFORMATION_GAP');
+  return Object.keys(assessmentResults).filter(dimension => dimension !== 'GAP_RESOLUTION' || isGap);
+}
 export const assessmentConfidences = Object.freeze(['LOW', 'MODERATE', 'HIGH', 'UNKNOWN']);
 export function assessmentKey(target) {
   return target.kind === 'ROUTE' ? `ROUTE:${target.argument_id}:${target.grounding_set_id}` : `${target.kind}:${target.object_id ?? target.evidence_id ?? target.relation_id ?? target.assessment_event_id}`;
@@ -75,9 +80,13 @@ export function assessmentTargetRevision(target, history) {
   }
   return current === pinned ? null : current;
 }
-export function assessmentRequest(draft, target, grounds) {
+export function assessmentRequest(draft, target, grounds, nodes = []) {
   if (!target || !assessmentResults[draft.dimension]?.includes(draft.result) || !assessmentConfidences.includes(draft.confidence)) throw new Error('Choose a target, dimension-specific result and confidence.');
   if (grounds.length > 64 || new Set(grounds.map(assessmentKey)).size !== grounds.length) throw new Error('Choose at most 64 distinct grounds.');
+  if (draft.dimension === 'GAP_RESOLUTION') {
+    if (!assessmentDimensionsForTarget(target, nodes).includes(draft.dimension)) throw new Error('Gap resolution must target an information gap.');
+    if (['PARTIALLY_ADDRESSED','SUPPORTED'].includes(draft.result) && !grounds.some(g => g.kind === 'EVIDENCE' || (g.kind === 'OBJECT' && nodes.some(n => n.object_id === g.object_id && !['QUESTION','INFORMATION_GAP'].includes(n.kind))))) throw new Error('Choose an explicit ground other than a question or information gap.');
+  }
   return { target, dimension: draft.dimension, result: draft.result, confidence: draft.confidence, criterion: requireText(draft.criterion, 'Criterion', 2048), context: requireText(draft.context, 'Context', 2048), rationale: requireText(draft.rationale, 'Rationale'), grounds, revises_event_id: draft.revises_event_id ?? null };
 }
 

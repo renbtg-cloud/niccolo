@@ -18,6 +18,7 @@ pub enum AssessmentDimension {
     Reliability,
     Independence,
     DiscriminatoryPower,
+    GapResolution,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +39,11 @@ pub enum AssessmentResult {
     HighPower,
     LimitedPower,
     NoPower,
+    Open,
+    PartiallyAddressed,
+    Supported,
+    Unresolved,
+    Unresolvable,
     Unknown,
     Contested,
 }
@@ -55,6 +61,10 @@ impl AssessmentDimension {
                     IndependenceSupported | DependenceIndicated | Dependent
                 ),
                 Self::DiscriminatoryPower => matches!(result, HighPower | LimitedPower | NoPower),
+                Self::GapResolution => matches!(
+                    result,
+                    Open | PartiallyAddressed | Supported | Unresolved | Unresolvable
+                ),
             }
     }
 }
@@ -791,20 +801,45 @@ pub async fn record(
     if !input.target.visible(&mut tx, workspace, situation).await? {
         return Err(WorkbenchError::Invisible);
     }
+    if input.dimension == AssessmentDimension::GapResolution {
+        let AssessmentTarget::Object { object_id } = input.target else {
+            return Err(WorkbenchError::Invalid);
+        };
+        if object_available_in_situation(&mut tx, workspace, situation, object_id)
+            .await?
+            .as_deref()
+            != Some("INFORMATION_GAP")
+        {
+            return Err(WorkbenchError::Invalid);
+        }
+    }
+    let mut has_non_question_basis = false;
     for ground in &input.grounds {
         let visible = match *ground {
             AssessmentGround::Object { object_id } => {
-                object_available_in_situation(&mut tx, workspace, situation, object_id)
-                    .await?
-                    .is_some()
+                let kind =
+                    object_available_in_situation(&mut tx, workspace, situation, object_id).await?;
+                has_non_question_basis |= matches!(kind.as_deref(), Some(k) if !matches!(k, "QUESTION" | "INFORMATION_GAP"));
+                kind.is_some()
             }
             AssessmentGround::Evidence { evidence_id } => {
-                evidence_visible(&mut tx, workspace, situation, evidence_id).await?
+                let visible = evidence_visible(&mut tx, workspace, situation, evidence_id).await?;
+                has_non_question_basis |= visible;
+                visible
             }
         };
         if !visible {
             return Err(WorkbenchError::Invisible);
         }
+    }
+    if input.dimension == AssessmentDimension::GapResolution
+        && matches!(
+            input.result,
+            AssessmentResult::PartiallyAddressed | AssessmentResult::Supported
+        )
+        && !has_non_question_basis
+    {
+        return Err(WorkbenchError::Invalid);
     }
     if let Some(previous) = input.revises_event_id {
         let p = list_in_snapshot(&mut tx, workspace, situation, Some(previous))

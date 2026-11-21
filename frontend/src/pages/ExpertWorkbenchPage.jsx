@@ -6,7 +6,7 @@ import {
   argumentRequest,
   applicabilityAssessments,
   applicabilityRequest,
-  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest, assessmentTargetRevision,
+  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest, assessmentTargetRevision, assessmentDimensionsForTarget,
   assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest,
   groundingAdequacies,
   groundingEffects,
@@ -92,6 +92,8 @@ export function ExpertWorkbenchPage() {
   const assessmentDependencies = data.assessment_dependencies ?? [];
   const routeLabel = route => data.grounding_sets.find(g => g.argument_id === route.argument_id && g.grounding_set_id === route.grounding_set_id)?.rationale ?? `${route.argument_id}/${route.grounding_set_id}`;
   const supersededAssessments = new Set(assessmentHistory.map(a => a.input.revises_event_id).filter(Boolean));
+  const selectedAssessmentTarget = assessmentChoices.find(c => assessmentKey(c.target) === assessment.target)?.target;
+  const assessmentDimensions = assessmentDimensionsForTarget(selectedAssessmentTarget, data.nodes);
   const assessmentLabel = target => {
     const label = assessmentChoices.find(c => assessmentKey(c.target) === assessmentKey(target))?.label ?? assessmentKey(target);
     const successor = assessmentTargetRevision(target, assessmentHistory);
@@ -178,14 +180,19 @@ export function ExpertWorkbenchPage() {
       <form onSubmit={submit(() => {
         const previous = assessmentHistory.find(a => a.event_id === assessment.revises_event_id);
         const target = previous?.input.target ?? assessmentChoices.find(c => assessmentKey(c.target) === assessment.target)?.target;
-        recordAssessment.mutate(assessmentRequest(assessment, target, assessment.grounds), {onSuccess: () => setAssessment({target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: []})});
+        recordAssessment.mutate(assessmentRequest(assessment, target, assessment.grounds, [...data.nodes, ...data.arguments.map(a => ({object_id:a.argument_id, kind:'ARGUMENT'}))]), {onSuccess: () => setAssessment({target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: []})});
       })}>
         <h3>Record contextual epistemic assessment</h3>
         <p>One attributed dimension at a time. Confidence refers to the judgment, not the truth of the target.</p>
         <p>An assessment may itself be assessed. The judgment targets an exact event, not its later revisions or the truth of whatever it assessed.</p>
         {assessment.revises_event_id && <p>Revising {assessment.revises_event_id} <button type="button" onClick={() => setAssessment({...assessment, revises_event_id: null})}>Cancel revision</button></p>}
-        <label>Target<select disabled={!!assessment.revises_event_id} value={assessment.target} onChange={e => setAssessment({...assessment, target: e.target.value})}><option value="">Choose…</option>{assessmentChoices.map(c => <option key={assessmentKey(c.target)} value={assessmentKey(c.target)}>{c.label}</option>)}</select></label>
-        <label>Dimension<select disabled={!!assessment.revises_event_id} value={assessment.dimension} onChange={e => setAssessment({...assessment, dimension: e.target.value, result: 'UNKNOWN'})}>{Object.keys(assessmentResults).map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Target<select disabled={!!assessment.revises_event_id} value={assessment.target} onChange={e => {
+          const target = assessmentChoices.find(c => assessmentKey(c.target) === e.target.value)?.target;
+          const compatible = assessmentDimensionsForTarget(target, data.nodes).includes(assessment.dimension);
+          setAssessment({...assessment, target: e.target.value, ...(compatible ? {} : {dimension:'CREDIBILITY',result:'UNKNOWN'})});
+        }}><option value="">Choose…</option>{assessmentChoices.map(c => <option key={assessmentKey(c.target)} value={assessmentKey(c.target)}>{c.label}</option>)}</select></label>
+        <label>Dimension<select disabled={!!assessment.revises_event_id} value={assessment.dimension} onChange={e => setAssessment({...assessment, dimension: e.target.value, result: 'UNKNOWN'})}>{assessmentDimensions.map(x => <option key={x}>{x}</option>)}</select></label>
+        {assessment.dimension === 'GAP_RESOLUTION' && <p>Assess the missing aspect independently of questions or answers. PARTIALLY_ADDRESSED and SUPPORTED require an explicit ground other than a question or information gap. The assessment is not a truth verdict.</p>}
         <label>Result<select value={assessment.result} onChange={e => setAssessment({...assessment, result: e.target.value})}>{assessmentResults[assessment.dimension].map(x => <option key={x}>{x}</option>)}</select></label>
         <label>Confidence<select value={assessment.confidence} onChange={e => setAssessment({...assessment, confidence: e.target.value})}>{assessmentConfidences.map(x => <option key={x}>{x}</option>)}</select></label>
         <label>Criterion<input disabled={!!assessment.revises_event_id} value={assessment.criterion} maxLength={2048} onChange={e => setAssessment({...assessment, criterion: e.target.value})}/></label>
@@ -208,6 +215,10 @@ export function ExpertWorkbenchPage() {
     </div>
 
     <article><h3>Current structured model</h3>
+      {data.nodes.some(n => n.kind === 'INFORMATION_GAP') && <details open><summary>Information gaps — attributed resolution judgments</summary><p>A response or a question link does not resolve an information gap. Missing judgments are not findings.</p><ul>{data.nodes.filter(n => n.kind === 'INFORMATION_GAP').map(gap => {
+        const judgments = assessmentHistory.filter(a => a.input.dimension === 'GAP_RESOLUTION' && a.input.target.kind === 'OBJECT' && a.input.target.object_id === gap.object_id && !supersededAssessments.has(a.event_id));
+        return <li key={gap.object_id}><strong>{gap.text}</strong><p>{gap.rationale}</p>{judgments.length === 0 ? <p>No explicit gap resolution judgment recorded.</p> : <ul>{judgments.map(a => <li key={a.event_id}><strong>{a.input.result}</strong> · confidence {a.input.confidence}<p>{a.input.criterion} · {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.event_id}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}</li>)}</ul>}</li>;
+      })}</ul><small>Current judgments in their own revision chains remain separate, including disagreement. Earlier revisions are retained in assessment history.</small></details>}
       {(data.question_inquiries ?? []).length > 0 && <details open><summary>Investigative questions — explicit inquiry map</summary><p>Links record what to investigate, not answers or gap resolution. Testing multiple hypotheses does not establish discriminatory power.</p><ul>{data.question_inquiries.map(inquiry => {
         const question = data.nodes.find(n => n.object_id === inquiry.question_object_id);
         const linkGroups = [['Addressed gaps', inquiry.addressed_gaps], ['Tested hypotheses', inquiry.tested_hypotheses], ['Explicit presuppositions', inquiry.presuppositions]];
