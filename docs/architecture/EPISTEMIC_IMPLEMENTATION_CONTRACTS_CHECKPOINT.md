@@ -292,6 +292,8 @@ The Workbench comparison panel projects up to three explicitly selected question
 
 Migration 0116 adds a human-authored inquiry decision ledger. An explicit disposition (`PURSUE_NEXT`, `DEFER`, `DO_NOT_PURSUE`) names one considered question, the set of up to three considered questions, an optional list of exact selection-assessment events, and the recorder's rationale. The scoped write API and database both validate the question and basis identities. History remains append-only; a later assessment revision does not rewrite the consulted basis or silently change the decision. Recording a choice does not execute it, allocate a budget, grant authority, produce an answer or resolve a gap.
 
+Checkpoint 1.25 validation: real PostgreSQL authoring/replay, incompatible replay refusal, invisible and non-considered basis rejection, direct SQL constraint, bearer read/write separation, and retention of exact historical assessment references. Full regression passed (588 Rust, 130 React, 22 Python, 8 standalone JavaScript tests), including the rebuilt embedded frontend.
+
 Administrative closure remains independent from epistemic resolution. An investigation can legitimately be closed while epistemically unresolved.
 
 ## 12. Human epistemic state is not a boolean
