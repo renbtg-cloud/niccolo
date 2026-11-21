@@ -39,4 +39,17 @@ describe('investigator-selected question comparison',()=>{
     expect(()=>inquiryDecisionRequest(columns,draft,['stale'])).toThrow();
     expect(()=>inquiryDecisionRequest(columns,draft,['valid','valid'])).toThrow();
   });
+  it('selects only current integrity judgments of considered questions without vetoing a decision',()=>{
+    const old=event('old','a','INTEGRITY_QUESTION_FRAMING','CONCERN_INDICATED');
+    const fresh=event('fresh','a','INTEGRITY_QUESTION_FRAMING','COMPROMISE_INDICATED','old');
+    const unrelated=event('other','c','INTEGRITY_QUESTION_FRAMING','CONCERN_INDICATED');
+    const meta={...event('meta','a','INTEGRITY_REVIEWABILITY','CONTESTED'),input:{...event('meta','a','INTEGRITY_REVIEWABILITY','CONTESTED').input,target:{kind:'ASSESSMENT',assessment_event_id:'old'}}};
+    const columns=comparisonQuestions({...base,assessments:[old,fresh,unrelated,meta]},['a','b']);
+    expect(columns[0].integrityJudgments.map(e=>e.event_id)).toEqual(['fresh']);
+    expect(columns[1].integrityJudgments).toEqual([]);
+    const draft={question:'a',disposition:'PURSUE_NEXT',rationale:'Proceed after considering the concern.'};
+    expect(inquiryDecisionRequest(columns,draft,['fresh']).assessment_event_ids).toEqual(['fresh']);
+    expect(inquiryDecisionRequest(columns,draft,[]).disposition).toBe('PURSUE_NEXT');
+    for(const id of ['old','other','meta'])expect(()=>inquiryDecisionRequest(columns,draft,[id])).toThrow();
+  });
 });

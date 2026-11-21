@@ -533,6 +533,8 @@ Migration 0134 generalizes the existing exact-target assessment ledger with ten 
 
 Checkpoint 1.43: Migration 0134 applied successfully; 606 Rust tests, 152 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
 
+Migration 0135 allows the investigator to explicitly cite an exact integrity assessment event about a considered question in a recorded question decision. The comparison presents current integrity judgments separately from selection criteria; no assessment is preselected or converted into a veto or rank. Revising a cited judgment creates the existing selective decision-basis review obligation while leaving the historical decision and its original grounds intact.
+
 Detect self-sealing reasoning: a hypothesis for which supporting evidence, contrary evidence and absence of evidence are all reinterpreted as support is epistemically dangerous even if the hypothesis might happen to be true.
 
 Counterintelligence remains a vertical/stress-test over the general epistemic core, not a second epistemic engine.

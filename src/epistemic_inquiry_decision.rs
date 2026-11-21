@@ -158,7 +158,7 @@ pub async fn record(
     if assessment_count as usize != input.assessment_event_ids.len() {
         return Err(WorkbenchError::Invisible);
     }
-    let valid_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.epistemic_assessment_events WHERE workspace_id=$1 AND situation_id=$2 AND event_id=ANY($3) AND target_object_id=ANY($4) AND dimension IN ('RELEVANCE','DISCRIMINATORY_POWER','ACQUISITION_COST','ACCESSIBILITY','CONTAMINATION_RISK','URGENCY','AUTHORIZATION_STATUS','INVESTIGATION_COVERAGE')").bind(workspace).bind(situation).bind(&input.assessment_event_ids).bind(&input.considered_question_ids).fetch_one(&mut *tx).await?;
+    let valid_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.epistemic_assessment_events WHERE workspace_id=$1 AND situation_id=$2 AND event_id=ANY($3) AND target_object_id=ANY($4) AND (dimension IN ('RELEVANCE','DISCRIMINATORY_POWER','ACQUISITION_COST','ACCESSIBILITY','CONTAMINATION_RISK','URGENCY','AUTHORIZATION_STATUS','INVESTIGATION_COVERAGE') OR left(dimension,10)='INTEGRITY_')").bind(workspace).bind(situation).bind(&input.assessment_event_ids).bind(&input.considered_question_ids).fetch_one(&mut *tx).await?;
     if valid_count != assessment_count {
         return Err(WorkbenchError::Invalid);
     }

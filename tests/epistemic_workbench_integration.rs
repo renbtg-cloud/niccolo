@@ -2229,6 +2229,38 @@ async fn assessments_can_target_exact_prior_assessments_without_mutating_them() 
 }
 
 #[tokio::test]
+async fn pinned_integrity_decision_basis_preserves_concern_and_revision_without_veto() {
+    use epistemic_workbench::{assessment::*,inquiry_decision::{self,InquiryDecisionInput,InquiryDisposition}};
+    let f=fixture().await;
+    let sit=situation(&f,"Compare questions with integrity concerns").await;
+    let q=node(&f,sit,ExpertNodeKind::Question,"Inspect the ledger?").await;
+    let other=node(&f,sit,ExpertNodeKind::Question,"Interview another person?").await;
+    let input=AssessmentInput{target:AssessmentTarget::Object{object_id:q},dimension:AssessmentDimension::IntegrityEvidenceSelection,result:AssessmentResult::CompromiseIndicated,confidence:AssessmentConfidence::Low,criterion:"Sampling boundaries".into(),context:"Initial investigation".into(),rationale:"Possible exclusion of relevant entries".into(),grounds:vec![],revises_event_id:None};
+    let old=Uuid::new_v4();
+    let other_id=Uuid::new_v4();
+    let assess=|id,input|epistemic_workbench::assessment::record(&f.service,f.workspace,sit,f.principal,id,input);
+    assess(old,input.clone()).await.unwrap();
+    assess(other_id,AssessmentInput{target:AssessmentTarget::Object{object_id:other},..input.clone()}).await.unwrap();
+    let decision=InquiryDecisionInput{question_id:q,considered_question_ids:vec![q],assessment_event_ids:vec![old],disposition:InquiryDisposition::PursueNext,rationale:"Inspect to clarify the concern".into()};
+    let record=|id,input|inquiry_decision::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let decision_id=Uuid::new_v4();
+    assert_eq!(record(decision_id,decision.clone()).await.unwrap().input,decision);
+    assert!(matches!(record(Uuid::new_v4(),InquiryDecisionInput{assessment_event_ids:vec![other_id],..decision.clone()}).await,Err(WorkbenchError::Invalid)));
+    let new=Uuid::new_v4();
+    assess(new,AssessmentInput{result:AssessmentResult::Contested,revises_event_id:Some(old),..input.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.question_decisions[0].input,decision);
+    assert_eq!(snapshot.question_decision_basis_changes.len(),1);
+    let change=&snapshot.question_decision_basis_changes[0];
+    assert_eq!((change.decision_id,change.original_assessment_event_id,change.current_assessment_event_id),(decision_id,old,new));
+    assert!(change.requires_review);
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.epistemic_question_decisions(workspace_id,situation_id,decision_id,question_id,considered_question_ids,assessment_event_ids,disposition,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,'PURSUE_NEXT','invalid basis',$7)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(q).bind(vec![q]).bind(vec![other_id]).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn investigative_integrity_is_multidimensional_contestable_and_not_a_veto() {
     use epistemic_workbench::assessment::*;
     let f=fixture().await;

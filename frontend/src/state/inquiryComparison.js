@@ -1,5 +1,6 @@
 // The investigator chooses which questions to compare. This projection does
 // not order candidates by quality, infer a missing judgment or grant authority.
+import {integrityDimensions} from './expertWorkbench.js';
 export const inquiryCriteria = Object.freeze([
   ['RELEVANCE', 'Relevance'],
   ['DISCRIMINATORY_POWER', 'Discriminatory power'],
@@ -29,7 +30,8 @@ export function comparisonQuestions(snapshot, selectedIds) {
       });
       return {dimension,label,judgments:current.filter(Boolean),projectionIncomplete:projected == null || current.some(event=>!event)};
     });
-    return {question:nodes.get(id),criteria,links:{gaps:q.addressed_gaps ?? [],hypotheses:q.tested_hypotheses ?? [],presuppositions:q.presuppositions ?? []}};
+    const integrityJudgments = [...assessments.values()].filter(event => !superseded.has(event.event_id) && integrityDimensions.includes(event.input.dimension) && event.input.target.kind === 'OBJECT' && event.input.target.object_id === id);
+    return {question:nodes.get(id),criteria,integrityJudgments,links:{gaps:q.addressed_gaps ?? [],hypotheses:q.tested_hypotheses ?? [],presuppositions:q.presuppositions ?? []}};
   });
 }
 
@@ -39,7 +41,7 @@ export function inquiryDecisionRequest(columns, draft, basis) {
   if (!['PURSUE_NEXT','DEFER','DO_NOT_PURSUE'].includes(draft.disposition)) throw new Error('Choose a disposition.');
   const rationale = String(draft.rationale ?? '').trim();
   if (!rationale || rationale.length>4096) throw new Error('Explain this decision in 1–4096 characters.');
-  const available = new Set(columns.flatMap(c=>c.criteria.flatMap(k=>k.judgments.map(a=>a.event_id))));
+  const available = new Set(columns.flatMap(c=>[...c.criteria.flatMap(k=>k.judgments),...(c.integrityJudgments??[])].map(a=>a.event_id)));
   if (basis.length>64 || new Set(basis).size!==basis.length || basis.some(id=>!available.has(id))) throw new Error('Review the selected judgments; the comparison has changed or the basis is invalid.');
   return {question_id:draft.question,considered_question_ids:considered,assessment_event_ids:basis,disposition:draft.disposition,rationale};
 }
