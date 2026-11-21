@@ -32,6 +32,7 @@ export const nodeKinds = Object.freeze(['PROPOSITION', 'HYPOTHESIS', 'ASSUMPTION
 export const argumentModes = Object.freeze(['DEDUCTIVE', 'INDUCTIVE', 'ABDUCTIVE', 'CAUSAL', 'ANALOGICAL', 'POLICY', 'OTHER']);
 export const groundingEffects = Object.freeze(['SUPPORTS', 'WEAKENS', 'CHALLENGES', 'CONDITIONS']);
 export const groundingAdequacies = Object.freeze(['UNSPECIFIED', 'PARTIAL', 'SUFFICIENT', 'NECESSARY_CONDITION']);
+export const reassessmentDispositions = Object.freeze(['RETAINED', 'REVISION_REQUIRED', 'DEFERRED']);
 
 export function requireText(value, label, max = 4096) {
   const text = String(value ?? '').trim();
@@ -84,5 +85,14 @@ export function groundingRequest(effect, adequacy, rationale, selectedNodes, rol
         rationale: requireText(memberRationales[`evidence:${item.evidence_id}`], 'Evidence rationale'),
       })),
     ],
+  };
+}
+
+export function reassessmentReviewRequest(groundingSetId, disposition, note) {
+  if (!reassessmentDispositions.includes(disposition)) throw new Error('Choose a reassessment disposition.');
+  return {
+    grounding_set_id: groundingSetId || null,
+    disposition,
+    note: requireText(note, 'Review note'),
   };
 }

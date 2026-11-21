@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NiccoloClient } from '../api/client.js';
-import { groundingRequest, nodeRequest, relationRequest, relationSemantics } from '../state/expertWorkbench.js';
+import { groundingRequest, nodeRequest, relationRequest, relationSemantics, reassessmentReviewRequest } from '../state/expertWorkbench.js';
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
@@ -30,12 +30,14 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     await client.createExpertRelation('44444444-4444-4444-8444-444444444444', { family: 'SEMANTIC', kind: 'CONTRADICTS', left_object_id: 'a', right_object_id: 'b', rationale: 'R' });
     await client.createExpertArgument('55555555-5555-4555-8555-555555555555', { conclusion_object_id: 'a', mode: 'ABDUCTIVE', rationale: 'R' });
     await client.createExpertGrounding('55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666', { effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: 'R', members: [] });
-    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'GET', 'POST', 'POST', 'POST', 'POST']);
+    await client.reviewExpertReassessment('77777777-7777-4777-8777-777777777777', '55555555-5555-4555-8555-555555555555', '88888888-8888-4888-8888-888888888888', { grounding_set_id: null, disposition: 'RETAINED', note: 'Reviewed.' });
+    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'GET', 'POST', 'POST', 'POST', 'POST', 'POST']);
     expect(calls[1].url).toContain('/epistemic/workbench/evidence/search?q=approval%20hold');
     expect(calls[2].url).toContain('/epistemic/objects/');
     expect(calls[3].url).toContain('/epistemic/relations/');
     expect(calls[4].url).toContain('/epistemic/arguments/');
     expect(calls[5].url).toContain('/grounding/');
+    expect(calls[6].url).toContain('/epistemic/reassessment/77777777-7777-4777-8777-777777777777/arguments/55555555-5555-4555-8555-555555555555/reviews/');
   });
 
   it('lets a trained investigator author a proposition explicitly', () => {
@@ -52,8 +54,16 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('recursive support must not be treated as corroboration');
   });
 
+  it('records explicit reassessment review without silently rewriting the argument', () => {
+    expect(reassessmentReviewRequest(null, 'RETAINED', 'Still supported by an independent route.')).toEqual({
+      grounding_set_id: null, disposition: 'RETAINED', note: 'Still supported by an independent route.',
+    });
+    expect(page).toContain('Latest review:');
+    expect(page).toContain('Record review');
+  });
+
   it('surfaces selective reassessment rather than invalidating the whole Situation', () => {
-    expect(page).toContain('Direct reassessment impacts');
+    expect(page).toContain('Selective reassessment impacts');
     expect(page).toContain('data.reassessment_impacts');
     expect(page).toContain('review argument');
     expect(page).toContain('downstream depth');

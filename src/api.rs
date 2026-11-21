@@ -296,6 +296,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/arguments/{argument}/grounding/{grounding}",
             post(create_expert_grounding_set),
         )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/reassessment/{relation}/arguments/{argument}/reviews/{event}",
+            post(record_expert_reassessment_review),
+        )
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
@@ -3425,6 +3429,14 @@ struct ExpertGroundingSetRequest {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ExpertReassessmentReviewRequest {
+    grounding_set_id: Option<Uuid>,
+    disposition: epistemic_workbench::ReassessmentDisposition,
+    note: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ExpertEvidenceSearchQuery {
     q: String,
     limit: Option<i64>,
@@ -3564,6 +3576,34 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn record_expert_reassessment_review(
+    State(state): State<AppState>,
+    Path((workspace, situation, relation, argument, event)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertReassessmentReviewRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let review = epistemic_workbench::record_reassessment_review(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        relation,
+        argument,
+        input.grounding_set_id,
+        input.disposition,
+        &input.note,
+    )
+    .await?;
+    let status = if review.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"review":review}), status))
 }
 
 #[derive(Deserialize)]

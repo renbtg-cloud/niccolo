@@ -12,6 +12,8 @@ import {
   relationKinds,
   relationRequest,
   relationSemantics,
+  reassessmentDispositions,
+  reassessmentReviewRequest,
 } from '../state/expertWorkbench.js';
 
 function useWorkbenchMutation(client, workbenchQuery, fn) {
@@ -39,13 +41,15 @@ export function ExpertWorkbenchPage() {
   const [evidenceSearchText, setEvidenceSearchText] = useState('');
   const [groundRoles, setGroundRoles] = useState({});
   const [groundMemberRationales, setGroundMemberRationales] = useState({});
+  const [reassessmentDrafts, setReassessmentDrafts] = useState({});
 
   const searchEvidence = useMutation({ mutationFn: async (query) => (await client.searchExpertEvidence(query, 20)).value });
   const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
   const createRelation = useWorkbenchMutation(client, workbench, async (body) => client.createExpertRelation(crypto.randomUUID(), body));
   const createArgument = useWorkbenchMutation(client, workbench, async (body) => client.createExpertArgument(crypto.randomUUID(), body));
   const createGrounding = useWorkbenchMutation(client, workbench, async ({ argumentId, body }) => client.createExpertGrounding(argumentId, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding];
+  const reviewReassessment = useWorkbenchMutation(client, workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -134,7 +138,14 @@ export function ExpertWorkbenchPage() {
       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}
       {data.grounding_sets.length > 0 && <details><summary>Grounding</summary><ul>{data.grounding_sets.map((g) => <li key={g.grounding_set_id}>{g.effect}/{g.adequacy}: {g.members.length} joint member(s)</li>)}</ul></details>}
-      {data.reassessment_impacts.length > 0 && <details open><summary>Direct reassessment impacts</summary><ul>{data.reassessment_impacts.map((impact) => <li key={`${impact.trigger_relation_id}:${impact.argument_id}:${impact.grounding_set_id ?? 'conclusion'}`}><strong>{impact.relation_kind}</strong> changed object {impact.prior_object_id}; review argument {impact.argument_id}{impact.grounding_set_id ? ` / grounding set ${impact.grounding_set_id}` : ' / conclusion'}{impact.depth > 1 ? ` · downstream depth ${impact.depth}` : ''}.</li>)}</ul></details>}
+      {data.reassessment_impacts.length > 0 && <details open><summary>Selective reassessment impacts</summary><ul>{data.reassessment_impacts.map((impact) => {
+        const key = `${impact.trigger_relation_id}:${impact.argument_id}:${impact.grounding_set_id ?? 'conclusion'}`;
+        const draft = reassessmentDrafts[key] ?? { disposition: impact.latest_review?.disposition ?? 'DEFERRED', note: '' };
+        return <li key={key}><strong>{impact.relation_kind}</strong> changed object {impact.prior_object_id}; review argument {impact.argument_id}{impact.grounding_set_id ? ` / grounding set ${impact.grounding_set_id}` : ' / conclusion'}{impact.depth > 1 ? ` · downstream depth ${impact.depth}` : ''}.
+          {impact.latest_review && <small> Latest review: {impact.latest_review.disposition} — {impact.latest_review.note}</small>}
+          <div className="reassessment-review"><select aria-label="Reassessment disposition" value={draft.disposition} onChange={(e) => setReassessmentDrafts({ ...reassessmentDrafts, [key]: { ...draft, disposition: e.target.value } })}>{reassessmentDispositions.map((x) => <option key={x}>{x}</option>)}</select><input aria-label="Reassessment review note" placeholder="Why retain, revise, or defer this argument" value={draft.note} maxLength={4096} onChange={(e) => setReassessmentDrafts({ ...reassessmentDrafts, [key]: { ...draft, note: e.target.value } })} /><button type="button" disabled={busy} onClick={() => { try { reviewReassessment.mutate({ impact, body: reassessmentReviewRequest(impact.grounding_set_id, draft.disposition, draft.note) }); setError(''); } catch (e) { setError(e.message); } }}>Record review</button></div>
+        </li>;
+      })}</ul></details>}
       {data.grounding_cycles.length > 0 && <details open><summary>Grounding cycle diagnostics</summary><ul>{data.grounding_cycles.map((cycle) => <li key={cycle.object_ids.join(':')}><strong>Recursive support:</strong> {cycle.object_ids.length} object(s), {cycle.argument_ids.length} argument(s). {cycle.has_external_anchor ? 'External grounding exists; the cycle itself adds no independent corroboration.' : 'No external anchor is recorded; recursive support must not be treated as corroboration.'}</li>)}</ul></details>}
     </article>
   </section>;
