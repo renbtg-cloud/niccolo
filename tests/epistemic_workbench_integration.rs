@@ -512,6 +512,73 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
         .remove(0);
     assert!(!view.requires_review);
     assert_eq!(view.review_history.len(), 1);
+    assert_eq!(view.downstream_reviews.len(), 2);
+    assert!(view.downstream_reviews.iter().all(|r| r.requires_review));
+    let downstream_id = Uuid::new_v4();
+    let downstream = DownstreamReviewInput {
+        reviewed_assessment_event_id: revision,
+        argument_id: routes[2].0,
+        grounding_set_id: routes[2].1,
+        disposition: ReassessmentDisposition::Retained,
+        note: "This route remains supportable on its own terms".into(),
+    };
+    assert!(
+        !record_downstream_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            downstream_id,
+            downstream.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(
+        record_downstream_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            downstream_id,
+            downstream.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(matches!(
+        record_downstream_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            Uuid::new_v4(),
+            DownstreamReviewInput {
+                argument_id: routes[1].0,
+                grounding_set_id: routes[1].1,
+                ..downstream.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    let view = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap()
+        .assessment_dependencies
+        .remove(0);
+    assert_eq!(
+        view.downstream_reviews
+            .iter()
+            .filter(|r| r.requires_review)
+            .count(),
+        1
+    );
     let second = Uuid::new_v4();
     record(
         &f.service,
@@ -536,6 +603,61 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
     assert_eq!(view.current_assessment_event_id, second);
     assert!(view.latest_review.is_none());
     assert_eq!(view.review_history.len(), 1);
+    assert!(
+        view.downstream_reviews
+            .iter()
+            .all(|r| r.requires_review && r.latest_review.is_none())
+    );
+    assert_eq!(
+        view.downstream_reviews
+            .iter()
+            .map(|r| r.review_history.len())
+            .sum::<usize>(),
+        1
+    );
+    assert!(
+        record_downstream_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            downstream_id,
+            downstream.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(matches!(
+        record_downstream_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            Uuid::new_v4(),
+            downstream.clone()
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    assert!(matches!(
+        record_downstream_review(
+            &f.service,
+            f.workspace,
+            other,
+            f.principal,
+            id,
+            Uuid::new_v4(),
+            DownstreamReviewInput {
+                reviewed_assessment_event_id: second,
+                ..downstream
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
     assert!(
         record_dependency_review(
             &f.service,

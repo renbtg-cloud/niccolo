@@ -286,6 +286,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}", post(record_expert_assessment_dependency))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/reviews/{event}", post(record_expert_assessment_dependency_review))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/downstream-reviews/{event}", post(record_expert_assessment_downstream_review))
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}",
             post(create_expert_epistemic_node),
@@ -3652,6 +3653,31 @@ async fn record_expert_assessment_dependency_review(
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
     let review = epistemic_workbench::assessment::record_dependency_review(
+        &state.pool,
+        workspace,
+        situation,
+        actor,
+        dependency,
+        event,
+        input,
+    )
+    .await?;
+    let status = if review.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"review":review}), status))
+}
+
+async fn record_expert_assessment_downstream_review(
+    State(state): State<AppState>,
+    Path((workspace, situation, dependency, event)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::assessment::DownstreamReviewInput>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let review = epistemic_workbench::assessment::record_downstream_review(
         &state.pool,
         workspace,
         situation,

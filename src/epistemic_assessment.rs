@@ -159,6 +159,112 @@ pub struct AssessmentDependencyView {
     pub review_history: Vec<DependencyReview>,
     pub requires_review: bool,
     pub potential_downstream_routes: Vec<GroundingRouteRef>,
+    pub downstream_reviews: Vec<DownstreamReviewView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownstreamReviewInput {
+    pub reviewed_assessment_event_id: Uuid,
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+    pub disposition: ReassessmentDisposition,
+    pub note: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DownstreamReview {
+    pub review_event_id: Uuid,
+    pub dependency_id: Uuid,
+    pub input: DownstreamReviewInput,
+    pub recorded_by: Uuid,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DownstreamReviewView {
+    pub route: GroundingRouteRef,
+    pub latest_review: Option<DownstreamReview>,
+    pub review_history: Vec<DownstreamReview>,
+    pub requires_review: bool,
+}
+
+type DownstreamStored = (Uuid, Uuid, Uuid, Uuid, String, String, Uuid);
+
+pub async fn record_downstream_review(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    dependency_id: Uuid,
+    review_event_id: Uuid,
+    mut input: DownstreamReviewInput,
+) -> Result<DownstreamReview, WorkbenchError> {
+    if review_event_id.is_nil() || !valid_text(&input.note, 4096) {
+        return Err(WorkbenchError::Invalid);
+    }
+    input.note = input.note.trim().to_owned();
+    let expected = (
+        dependency_id,
+        input.reviewed_assessment_event_id,
+        input.argument_id,
+        input.grounding_set_id,
+        input.disposition.db_value().to_owned(),
+        input.note.clone(),
+        actor,
+    );
+    let mut tx = scoped(pool, workspace, false).await?;
+    let existing: Option<DownstreamStored> = sqlx::query_as("SELECT dependency_id,reviewed_assessment_event_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_downstream_reviews WHERE workspace_id=$1 AND situation_id=$2 AND review_event_id=$3").bind(workspace).bind(situation).bind(review_event_id).fetch_optional(&mut *tx).await?;
+    if let Some(stored) = existing {
+        if stored != expected {
+            return Err(WorkbenchError::Conflict);
+        }
+        tx.commit().await?;
+        return Ok(DownstreamReview {
+            review_event_id,
+            dependency_id,
+            input,
+            recorded_by: actor,
+            replayed: true,
+        });
+    }
+    // Validate the exact successor and actual reachable route against the same graph
+    // used by the workbench. A later concurrent revision cannot clear its own obligation.
+    tx.commit().await?;
+    let snapshot = super::snapshot(pool, workspace, situation).await?;
+    let view = snapshot
+        .assessment_dependencies
+        .iter()
+        .find(|d| d.dependency.dependency_id == dependency_id)
+        .ok_or(WorkbenchError::Invisible)?;
+    if !view.assessment_revised
+        || view.current_assessment_event_id != input.reviewed_assessment_event_id
+    {
+        return Err(WorkbenchError::Conflict);
+    }
+    if !view
+        .potential_downstream_routes
+        .contains(&GroundingRouteRef {
+            argument_id: input.argument_id,
+            grounding_set_id: input.grounding_set_id,
+        })
+    {
+        return Err(WorkbenchError::Invisible);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_assessment_downstream_reviews(workspace_id,situation_id,review_event_id,dependency_id,reviewed_assessment_event_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(review_event_id).bind(dependency_id).bind(input.reviewed_assessment_event_id).bind(input.argument_id).bind(input.grounding_set_id).bind(input.disposition.db_value()).bind(&input.note).bind(actor).execute(&mut *tx).await?.rows_affected()==1;
+    let stored: Option<DownstreamStored> = sqlx::query_as("SELECT dependency_id,reviewed_assessment_event_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_downstream_reviews WHERE workspace_id=$1 AND situation_id=$2 AND review_event_id=$3").bind(workspace).bind(situation).bind(review_event_id).fetch_optional(&mut *tx).await?;
+    if stored != Some(expected) {
+        return Err(WorkbenchError::Conflict);
+    }
+    tx.commit().await?;
+    Ok(DownstreamReview {
+        review_event_id,
+        dependency_id,
+        input,
+        recorded_by: actor,
+        replayed: !inserted,
+    })
 }
 
 pub async fn record_dependency(
@@ -343,6 +449,43 @@ pub(super) async fn dependency_views(
 ) -> Result<Vec<AssessmentDependencyView>, WorkbenchError> {
     let rows: Vec<(Uuid,Uuid,Uuid,Uuid,String,Uuid)> = sqlx::query_as("SELECT dependency_id,argument_id,grounding_set_id,assessment_event_id,rationale,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependencies WHERE workspace_id=$1 AND situation_id=$2 ORDER BY created_at,dependency_id").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
     let review_rows: Vec<(Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT review_event_id,dependency_id,reviewed_assessment_event_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependency_reviews WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
+    let downstream_rows: Vec<(Uuid,Uuid,Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT review_event_id,dependency_id,reviewed_assessment_event_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_downstream_reviews WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
+    let mut downstream_history =
+        BTreeMap::<(Uuid, GroundingRouteRef), Vec<DownstreamReview>>::new();
+    for (
+        review_event_id,
+        dependency_id,
+        reviewed_assessment_event_id,
+        argument_id,
+        grounding_set_id,
+        disposition,
+        note,
+        recorded_by,
+    ) in downstream_rows
+    {
+        downstream_history
+            .entry((
+                dependency_id,
+                GroundingRouteRef {
+                    argument_id,
+                    grounding_set_id,
+                },
+            ))
+            .or_default()
+            .push(DownstreamReview {
+                review_event_id,
+                dependency_id,
+                input: DownstreamReviewInput {
+                    reviewed_assessment_event_id,
+                    argument_id,
+                    grounding_set_id,
+                    disposition: ReassessmentDisposition::from_db(&disposition)?,
+                    note,
+                },
+                recorded_by,
+                replayed: false,
+            });
+    }
     let revisions = assessments
         .iter()
         .filter_map(|a| {
@@ -410,6 +553,30 @@ pub(super) async fn dependency_views(
                 } else {
                     vec![]
                 };
+                let downstream_reviews = potential_downstream_routes
+                    .iter()
+                    .map(|route| {
+                        let review_history = downstream_history
+                            .remove(&(dependency_id, *route))
+                            .unwrap_or_default();
+                        let latest_review = review_history
+                            .iter()
+                            .rev()
+                            .find(|r| {
+                                r.input.reviewed_assessment_event_id == current_assessment_event_id
+                            })
+                            .cloned();
+                        let requires_review = latest_review.as_ref().is_none_or(|r| {
+                            r.input.disposition != ReassessmentDisposition::Retained
+                        });
+                        DownstreamReviewView {
+                            route: *route,
+                            latest_review,
+                            review_history,
+                            requires_review,
+                        }
+                    })
+                    .collect();
                 AssessmentDependencyView {
                     dependency: AssessmentDependency {
                         dependency_id,
@@ -423,6 +590,7 @@ pub(super) async fn dependency_views(
                     review_history,
                     requires_review,
                     potential_downstream_routes,
+                    downstream_reviews,
                 }
             },
         )
