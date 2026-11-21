@@ -53,6 +53,10 @@ pub enum StateDimension {
     Constraint,
     Dependency,
     Leverage,
+    ThreatCapability,
+    ThreatIntent,
+    ThreatPerceivedCredibility,
+    ThreatOutcome,
 }
 impl StateDimension {
     pub fn is_contextual_pressure(self) -> bool {
@@ -66,7 +70,14 @@ impl StateDimension {
                 | Self::Constraint
                 | Self::Dependency
                 | Self::Leverage
+                | Self::ThreatCapability
+                | Self::ThreatIntent
+                | Self::ThreatPerceivedCredibility
+                | Self::ThreatOutcome
         )
+    }
+    pub fn requires_threat_counterparty(self) -> bool {
+        matches!(self, Self::ThreatCapability | Self::ThreatIntent)
     }
     pub fn is_contextual_autonomy(self) -> bool {
         matches!(
@@ -223,6 +234,7 @@ pub async fn record(
         || (input.dimension.is_protective_motive() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_autonomy() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_pressure() && input.target_object_id.is_none())
+        || (input.dimension.requires_threat_counterparty() && input.counterparty_actor_id.is_none())
         || (input.counterparty_actor_id.is_some()
             && (!input.dimension.is_contextual_pressure()
                 || input.counterparty_actor_id == Some(input.subject_actor_id)))

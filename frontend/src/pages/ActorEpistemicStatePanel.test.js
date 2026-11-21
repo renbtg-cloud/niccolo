@@ -1,9 +1,18 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
 const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('requires an alleged issuer for threat capability or intent, without inferring credibility or outcome',()=>{
+    expect(threatFacetDimensions).toHaveLength(4);
+    const capability={...draft,dimension:'THREAT_CAPABILITY',counterparty_actor_id:'b'};
+    expect(request(capability).dimension).toBe('THREAT_CAPABILITY');
+    expect(()=>request({...capability,counterparty_actor_id:null})).toThrow();
+    expect(()=>request({...capability,dimension:'THREAT_INTENT',counterparty_actor_id:null})).toThrow();
+    expect(request({...capability,dimension:'THREAT_PERCEIVED_CREDIBILITY',counterparty_actor_id:null,judgment:'UNKNOWN'}).judgment).toBe('UNKNOWN');
+    expect(request({...capability,dimension:'THREAT_OUTCOME',counterparty_actor_id:null,judgment:'NOT_INDICATED'}).judgment).toBe('NOT_INDICATED');
+  });
   it('pins an optional registered counterparty without changing the pressure target',()=>{
     const pressure={...draft,dimension:'PRESSURE',counterparty_actor_id:'b'};
     expect(request(pressure)).toMatchObject({target_object_id:'p',counterparty_actor_id:'b'});
