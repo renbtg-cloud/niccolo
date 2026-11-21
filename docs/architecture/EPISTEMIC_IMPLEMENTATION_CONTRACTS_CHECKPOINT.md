@@ -266,6 +266,8 @@ The Workbench now exposes the existing persistent utterance-interpretation subst
 
 Migration 0113 permits a route to explicitly pin an interpretation revision and its exact confirmation event, if any, with an attributed rationale. The pinned meaning may be provisional. A later interpretation revision, or changed confirmation context for the still-current revision, creates a structural reassessment obligation for the directly relying route and potentially dependent downstream routes. The snapshot reports these attention counts separately from assessment and relation reassessment, and does not mark unrelated or alternative routes solely because they share a conclusion. The original dependency and reasoning content remain intact; confirmation of meaning is not validation of the route or truth of its conclusion.
 
+Migration 0114 adds append-only interpretation-reliance reviews for the directly relying route and each structurally reachable downstream route separately. Each review identifies the exact revised meaning and current confirmation event (or absence), disposition (`RETAINED`, `REVISION_REQUIRED`, `DEFERRED`), recorder and note. Only retention for the current meaning context clears that route's attention; it does not clear downstream attention, alter its grounds or validate its conclusion. A subsequent meaning revision or confirmation event opens new review obligations and never overwrites earlier reviews.
+
 Interpretation should be conservative. Parse what was said and what the context supports; do not complete an implied chain such as received -> read -> understood -> believed without evidence. Unknown is preferable to unsupported semantic completion.
 
 ## 11. Choosing the next investigative step
