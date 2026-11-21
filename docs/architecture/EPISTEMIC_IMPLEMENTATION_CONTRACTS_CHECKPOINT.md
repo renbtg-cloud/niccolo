@@ -545,6 +545,8 @@ Checkpoint 1.45: 608 Rust tests, 154 frontend tests, 22 Python tests and 8 stand
 
 The projection also exposes an explicitly authored `INFORMATION_GAP` used as a non-contextual supporting ground, with the exact supporting route identities. An information gap is not verified evidence of absence or concealment; it may legitimately support a need for further inquiry. When both structural review candidates coexist, the workbench invites scrutiny of whether contrary outcomes remain meaningful, without inferring self-sealing reasoning, promoting a missingness assertion to evidence, or rejecting a conclusion.
 
+Checkpoint 1.46: 609 Rust tests, 155 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
+
 Counterintelligence remains a vertical/stress-test over the general epistemic core, not a second epistemic engine.
 
 ## 20. Compartmentalization and security
