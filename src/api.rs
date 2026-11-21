@@ -288,6 +288,8 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/questions/{question}/responses/{response}",
             post(record_expert_question_response),
         )
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}",post(record_expert_response_interpretation))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}/confirmations/{event}",post(confirm_expert_response_interpretation))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}", post(record_expert_assessment_dependency))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/reviews/{event}", post(record_expert_assessment_dependency_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/downstream-reviews/{event}", post(record_expert_assessment_downstream_review))
@@ -3599,6 +3601,76 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn record_expert_response_interpretation(
+    State(state): State<AppState>,
+    Path((workspace, situation, utterance, interpretation, revision)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::inquiry_response::InterpretationInput>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::inquiry_response::record_interpretation(
+        &state.pool,
+        workspace,
+        situation,
+        actor,
+        utterance,
+        interpretation,
+        revision,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"interpretation":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn confirm_expert_response_interpretation(
+    State(state): State<AppState>,
+    Path((workspace, situation, utterance, interpretation, revision, event)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::inquiry_response::ConfirmationInput>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::inquiry_response::confirm_interpretation(
+        &state.pool,
+        workspace,
+        situation,
+        actor,
+        utterance,
+        interpretation,
+        revision,
+        event,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"interpretation":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_question_response(

@@ -5,6 +5,7 @@ import { applicabilityRequest, groundingRequest, nodeRequest, relationRequest, r
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('./ExpertWorkbenchPage.jsx', import.meta.url), 'utf8');
+const meaningPanel = readFileSync(new URL('./ResponseInterpretationPanel.jsx', import.meta.url), 'utf8');
 const config = {
   workspace: '11111111-1111-4111-8111-111111111111',
   situation: '22222222-2222-4222-8222-222222222222',
@@ -13,6 +14,20 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('authors revision-pinned understanding and meaning confirmation without asserting truth', async () => {
+    const calls=[];
+    const client=new NiccoloClient(config,async(url,options)=>{calls.push({url,options});return response;});
+    await client.recordResponseInterpretation('u','i','r2',{expected_current_revision_id:'r1',interpretation_text:'Meaning',rationale:'Why'});
+    await client.confirmResponseInterpretation('u','i','r2','event',{state:'Confirmed',note:'Meaning only'});
+    expect(calls[0].url).toContain('/epistemic/utterances/u/interpretations/i/revisions/r2');
+    expect(calls[1].url).toContain('/revisions/r2/confirmations/event');
+    expect(JSON.parse(calls[0].options.body).expected_current_revision_id).toBe('r1');
+    expect(page).toContain('data.response_interpretations');
+    expect(meaningPanel).toContain('meaning remains provisional');
+    expect(meaningPanel).toContain('A new revision starts unconfirmed.');
+    expect(meaningPanel).toContain('Interpretation and meaning-confirmation history');
+    expect(meaningPanel).toContain('Confirmation concerns meaning, not the truth');
+  });
   it('records response occurrences with provenance and independent stable identities, never as facts', async () => {
     const body = questionResponseRequest({question:'q',text:'I do not know.',speaker:'actor',evidence:'source',rationale:'Interview reply'},'utterance');
     expect(body).toEqual({utterance_id:'utterance',utterance_text:'I do not know.',speaker_actor_id:'actor',source_evidence_id:'source',source_contribution_id:null,rationale:'Interview reply'});

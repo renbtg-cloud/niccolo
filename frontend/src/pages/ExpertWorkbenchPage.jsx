@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useClient } from '../hooks/useClient.js';
+import { ResponseInterpretationPanel } from './ResponseInterpretationPanel.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -234,6 +235,7 @@ export function ExpertWorkbenchPage() {
     </div>
 
     <article><h3>Current structured model</h3>
+      {(data.question_responses ?? []).length > 0 && <details open><summary>Utterance understanding — revisable meaning, not truth</summary>{[...new Map(data.question_responses.map(r => [r.utterance.utterance_id,r.utterance])).values()].map(utterance => <ResponseInterpretationPanel key={`${client.config.workspace}:${client.config.situation}:${utterance.utterance_id}`} utterance={utterance} view={(data.response_interpretations ?? []).find(v => v.utterance_id === utterance.utterance_id)} client={client} onChanged={() => workbench.refetch()}/>)}</details>}
       {data.nodes.some(n => n.kind === 'INFORMATION_GAP') && <details open><summary>Information gaps — attributed resolution judgments</summary><p>A response or a question link does not resolve an information gap. Missing judgments are not findings.</p><ul>{data.nodes.filter(n => n.kind === 'INFORMATION_GAP').map(gap => {
         const judgments = assessmentHistory.filter(a => a.input.dimension === 'GAP_RESOLUTION' && a.input.target.kind === 'OBJECT' && a.input.target.object_id === gap.object_id && !supersededAssessments.has(a.event_id));
         return <li key={gap.object_id}><strong>{gap.text}</strong><p>{gap.rationale}</p>{judgments.length === 0 ? <p>No explicit gap resolution judgment recorded.</p> : <ul>{judgments.map(a => <li key={a.event_id}><strong>{a.input.result}</strong> · confidence {a.input.confidence}<p>{a.input.criterion} · {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.event_id}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}</li>)}</ul>}</li>;

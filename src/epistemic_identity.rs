@@ -37,7 +37,7 @@ impl InterpretationProducer {
             Self::Deterministic => "DETERMINISTIC",
         }
     }
-    fn from_db(v: &str) -> Result<Self, EpistemicIdentityError> {
+    pub(crate) fn from_db(v: &str) -> Result<Self, EpistemicIdentityError> {
         match v {
             "MODEL" => Ok(Self::Model),
             "HUMAN" => Ok(Self::Human),
@@ -61,7 +61,7 @@ impl MeaningConfirmation {
             Self::Rejected => Some("REJECTED"),
         }
     }
-    fn from_db(v: Option<&str>) -> Result<Self, EpistemicIdentityError> {
+    pub(crate) fn from_db(v: Option<&str>) -> Result<Self, EpistemicIdentityError> {
         match v {
             None => Ok(Self::Unconfirmed),
             Some("CONFIRMED") => Ok(Self::Confirmed),

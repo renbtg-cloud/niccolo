@@ -306,6 +306,178 @@ async fn investigative_links_expose_presuppositions_without_asserting_them_or_re
 }
 
 #[tokio::test]
+async fn response_meaning_confirmation_is_revision_specific_and_never_truth() {
+    use epistemic_workbench::inquiry_response::*;
+    use niccolo_evidence::epistemic_identity::{InterpretationProducer, MeaningConfirmation};
+    let f = fixture().await;
+    let sit = situation(&f, "Meaning versus truth").await;
+    let other = situation(&f, "Unrelated Situation").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Who approved it?").await;
+    let q2 = node(
+        &f,
+        sit,
+        ExpertNodeKind::Question,
+        "What did the speaker say?",
+    )
+    .await;
+    let utterance = Uuid::new_v4();
+    let input = ResponseInput {
+        utterance_id: utterance,
+        utterance_text: "I don't know.".into(),
+        speaker_actor_id: None,
+        source_evidence_id: None,
+        source_contribution_id: None,
+        rationale: "Interview".into(),
+    };
+    for question in [q, q2] {
+        record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            question,
+            Uuid::new_v4(),
+            input.clone(),
+        )
+        .await
+        .unwrap();
+    }
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert!(snapshot.response_interpretations.is_empty());
+    let interpretation = Uuid::new_v4();
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let draft = InterpretationInput {
+        expected_current_revision_id: None,
+        interpretation_text: "The speaker claims ignorance.".into(),
+        rationale: "Do not infer actual ignorance".into(),
+    };
+    assert!(matches!(
+        record_interpretation(
+            &f.service,
+            f.workspace,
+            other,
+            f.principal,
+            utterance,
+            interpretation,
+            first,
+            draft.clone()
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    let add = |revision, input| {
+        record_interpretation(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            utterance,
+            interpretation,
+            revision,
+            input,
+        )
+    };
+    let initial = add(first, draft.clone()).await.unwrap();
+    assert!(initial.meaning_is_provisional && !initial.confirmation_establishes_truth);
+    assert_eq!(initial.producer, InterpretationProducer::Human);
+    assert!(add(first, draft.clone()).await.unwrap().replayed);
+    let event = Uuid::new_v4();
+    let confirmation = ConfirmationInput {
+        state: MeaningConfirmation::Confirmed,
+        note: "Accurate description of wording only".into(),
+    };
+    let confirm = |revision, event, input| {
+        confirm_interpretation(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            utterance,
+            interpretation,
+            revision,
+            event,
+            input,
+        )
+    };
+    assert!(matches!(
+        confirm(Uuid::new_v4(), event, confirmation.clone()).await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(
+        !confirm(first, event, confirmation.clone())
+            .await
+            .unwrap()
+            .meaning_is_provisional
+    );
+    assert!(
+        confirm(first, event, confirmation.clone())
+            .await
+            .unwrap()
+            .replayed
+    );
+    let revised = add(
+        second,
+        InterpretationInput {
+            expected_current_revision_id: Some(first),
+            interpretation_text: "The speaker claims not to know the identity of the approver."
+                .into(),
+            rationale: "Narrow the scope of the statement".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(revised.meaning_is_provisional);
+    let historical = confirm(first, Uuid::new_v4(), confirmation).await.unwrap();
+    assert_eq!(historical.revision_id, second);
+    assert!(historical.meaning_is_provisional && !historical.confirmation_establishes_truth);
+    assert!(matches!(
+        add(
+            Uuid::new_v4(),
+            InterpretationInput {
+                expected_current_revision_id: Some(first),
+                ..draft.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    let final_snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(final_snapshot.response_interpretations.len(), 1);
+    let view = &final_snapshot.response_interpretations[0];
+    assert_eq!(view.current_revision_id, second);
+    assert_eq!(view.revisions.len(), 2);
+    assert_eq!(
+        view.revisions[0].meaning_confirmation,
+        MeaningConfirmation::Confirmed
+    );
+    assert_eq!(
+        view.revisions[1].meaning_confirmation,
+        MeaningConfirmation::Unconfirmed
+    );
+    assert_eq!(view.confirmations.len(), 2);
+    assert!(!view.confirmation_establishes_truth);
+    assert_eq!(
+        final_snapshot.question_responses[0]
+            .utterance
+            .utterance_text,
+        "I don't know."
+    );
+    assert!(final_snapshot.assessments.is_empty() && final_snapshot.arguments.is_empty());
+    assert!(
+        epistemic_workbench::snapshot(&f.service, f.workspace, other)
+            .await
+            .unwrap()
+            .response_interpretations
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn response_occurrences_preserve_original_text_and_do_not_resolve_gaps() {
     use epistemic_workbench::inquiry_response::*;
     let f = fixture().await;
@@ -902,6 +1074,44 @@ async fn question_authoring_respects_authenticated_http_and_workspace_boundaries
                 .status(),
             status
         );
+    }
+    let interpretation_path = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/utterances/{}/interpretations/{}/revisions/{}",
+        f.workspace,
+        sit,
+        payload["utterance_id"].as_str().unwrap(),
+        Uuid::new_v4(),
+        Uuid::new_v4()
+    );
+    let confirmation_path = format!("{interpretation_path}/confirmations/{}", Uuid::new_v4());
+    for (uri, payload) in [
+        (
+            interpretation_path,
+            serde_json::json!({"interpretation_text":"The speaker claims ignorance","rationale":"Interpret the utterance only"}),
+        ),
+        (
+            confirmation_path,
+            serde_json::json!({"state":"Confirmed","note":"Meaning only"}),
+        ),
+    ] {
+        for (token, status) in [
+            (&reader, StatusCode::FORBIDDEN),
+            (&outsider, StatusCode::FORBIDDEN),
+            (&writer, StatusCode::CREATED),
+            (&writer, StatusCode::OK),
+        ] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(&uri)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap();
+            assert_eq!(
+                router.clone().oneshot(request).await.unwrap().status(),
+                status
+            );
+        }
     }
 }
 

@@ -641,6 +641,7 @@ pub struct WorkbenchSnapshot {
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
     pub question_inquiries: Vec<QuestionInquiryView>,
     pub question_responses: Vec<inquiry_response::QuestionResponse>,
+    pub response_interpretations: Vec<inquiry_response::ResponseInterpretationView>,
     pub assessments: Vec<assessment::AssessmentEvent>,
     pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
     pub investigator_free_text_compiler_enabled: bool,
@@ -2289,6 +2290,8 @@ pub async fn snapshot(
     let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     let question_responses =
         inquiry_response::list_in_snapshot(&mut tx, workspace, situation, None).await?;
+    let response_interpretations =
+        inquiry_response::interpretations_in_snapshot(&mut tx, workspace, situation).await?;
     let assessment_dependencies = assessment::dependency_views(
         &mut tx,
         workspace,
@@ -2428,6 +2431,7 @@ pub async fn snapshot(
         reasoning_diagnostics,
         question_inquiries,
         question_responses,
+        response_interpretations,
         assessments,
         assessment_dependencies,
         investigator_free_text_compiler_enabled: false,
@@ -2461,6 +2465,7 @@ mod tests {
             reasoning_diagnostics: vec![],
             question_inquiries: vec![],
             question_responses: vec![],
+            response_interpretations: vec![],
             assessments: vec![],
             assessment_dependencies: vec![],
             investigator_free_text_compiler_enabled: false,
