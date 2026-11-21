@@ -583,6 +583,8 @@ Vulnerability is actor/resource/circumstance/consequence specific and may be act
 
 Migration 0137 adds independent actual, potential, perceived and misattributed vulnerability dimensions, all attributed judgments rather than established facts; unknown remains an explicit judgment for any dimension. Each requires an exact resource or other Situation object, actor, circumstance, temporal scope and rationale (including intended consequence), with an optional distinct attributed counterparty. These qualifications do not imply exploitation, compromise, consent or a protective response.
 
+Checkpoint 1.49 validation: full regression passed (612 Rust, 22 Python and 8 standalone JavaScript tests); the tested source snapshot matches the published 1.49 implementation.
+
 Vulnerabilities may emerge compositionally. Several individually innocuous data points can jointly expose sensitive information.
 
 Protective actions can introduce new vulnerabilities: centralization can reduce diffusion while creating a single point of failure, dependency or capture risk.
