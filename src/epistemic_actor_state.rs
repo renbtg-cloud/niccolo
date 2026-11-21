@@ -93,8 +93,21 @@ pub enum StateDimension {
     SelectiveAttention,
     MotivatedInterpretation,
     ConflictingEvidenceAvoidance,
+    ModeledSecrecyExistence,
+    ModeledSecrecyContent,
+    ModeledSecrecySourceIdentity,
+    ModeledSecrecyOrigin,
+    ModeledSecrecyRationale,
+    ModeledSecrecyConclusions,
+    ModeledSecrecyPartialContent,
 }
 impl StateDimension {
+    pub fn is_modeled_secrecy_facet(self) -> bool {
+        matches!(self, Self::ModeledSecrecyExistence | Self::ModeledSecrecyContent |
+            Self::ModeledSecrecySourceIdentity | Self::ModeledSecrecyOrigin |
+            Self::ModeledSecrecyRationale | Self::ModeledSecrecyConclusions |
+            Self::ModeledSecrecyPartialContent)
+    }
     pub fn is_self_deception_facet(self) -> bool {
         matches!(
             self,
@@ -369,7 +382,7 @@ pub async fn record(
         || (input.dimension.is_epistemic_power() && input.target_object_id.is_none())
         || (input.dimension.is_narrative_means() && input.target_object_id.is_none())
         || (input.dimension.is_deception_facet() && input.target_object_id.is_none())
-        || (input.dimension.is_self_deception_facet() && input.target_object_id.is_none())
+        || ((input.dimension.is_self_deception_facet() || input.dimension.is_modeled_secrecy_facet()) && input.target_object_id.is_none())
         || (input.dimension.requires_deception_audience() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_asymmetry() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_influence() != input.influence_target.is_some())

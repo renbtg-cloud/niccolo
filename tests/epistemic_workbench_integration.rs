@@ -267,6 +267,39 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn modeled_secrecy_does_not_establish_knowledge_or_change_access() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Review compartmentalization").await;
+    let other_sit=situation(&f,"Unrelated situation").await;
+    let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"A confidential account exists").await;
+    let actor=Uuid::new_v4();let other=Uuid::new_v4();
+    for (id,label) in [(actor,"Excluded audience"),(other,"Observer")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::ModeledSecrecyExistence,judgment:StateJudgment::Indicated,context:"Investigation".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported withholding expectation".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let prior=Uuid::new_v4();record(prior,item.clone()).await.unwrap();
+    for dimension in [StateDimension::ModeledSecrecyContent,StateDimension::ModeledSecrecySourceIdentity,StateDimension::ModeledSecrecyOrigin,StateDimension::ModeledSecrecyRationale,StateDimension::ModeledSecrecyConclusions,StateDimension::ModeledSecrecyPartialContent] {
+        record(Uuid::new_v4(),StateInput{dimension,judgment:StateJudgment::Contested,..item.clone()}).await.unwrap();
+    }
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:StateDimension::Access,revises_event_id:Some(prior),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{counterparty_actor_id:Some(other),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{target_object_id:None,target_state_event_id:Some(prior),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),7);
+    assert!(snapshot.actor_epistemic_states.iter().all(|e|e.input.dimension.is_modeled_secrecy_facet()));
+    assert!(snapshot.nodes.iter().any(|n|n.object_id==issue));
+    assert!(epistemic_workbench::snapshot(&f.service,f.workspace,other_sit).await.unwrap().actor_epistemic_states.is_empty());
+    record(Uuid::new_v4(),StateInput{dimension:StateDimension::Access,..item.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),8);
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'MODELED_SECRECY_EXISTENCE','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(actor).bind(prior).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn possible_internal_mechanisms_do_not_establish_self_deception() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;
