@@ -2363,11 +2363,15 @@ The complete epistemological model must be representable without requiring every
 
 ### Human interaction
 
-The ontology is an internal representation, not the investigator's data-entry model. Internal representational complexity must not become interaction complexity. Investigators should normally work with evidence, people, timelines, questions, explanations, findings, risks and actions rather than manually populating dozens of epistemic abstractions.
+The complete ontology remains richer than any single screen, but the MVP deliberately exposes core epistemic abstractions as an **expert workbench**. The intended user is a cultivated, domain-trained professional who can explicitly author hypotheses, assumptions, information gaps, findings, arguments, typed relations and grounding structures.
+
+This is not a promise that every internal distinction becomes a form field. The UI should expose abstractions when explicit human authorship is useful and hide machinery that does not improve the investigation.
 
 ### AI proposal boundary
 
-A language model may propose an interpretation, relationship, hypothesis, hidden premise or other structure. Proposal is not canonical epistemic fact. Proposed structure should be materialized only when it preserves a necessary distinction or has identifiable investigative value; plausible but operationally useless elaboration is epistemic spam.
+Model-generated reasoning inside Niccolò may propose hypotheses, challenges, questions or other structure. Proposal is not canonical epistemic fact. Proposed structure should be materialized only when it preserves a necessary distinction or has identifiable investigative value; plausible but operationally useless elaboration is epistemic spam.
+
+Automatic interpretation of the investigator's own free text into epistemic abstractions is a separate capability and is **outside the MVP**.
 
 ### Uncertainty
 
@@ -2576,37 +2580,43 @@ Representability does not mean the software is authorized to perform, facilitate
 
 Information supplied by users about images or video can participate as evidence. Autonomous image and video understanding remains outside the initial product scope.
 
-### 30.5 MVP language boundary: English only
+### 30.5 MVP interaction model: structured expert authoring
 
-The MVP epistemic interpretation layer operates in **English only**.
+The MVP assumes a **cultivated, domain-trained investigator** who understands the reasoning distinctions relevant to the professional domain and explicitly authors the epistemic structure through the UI.
 
-Non-English material may be stored as source evidence or attached as an opaque artifact, but Niccolò does not claim to understand it semantically in the MVP. Material that must participate in structured reasoning must first be supplied in English. Translation is outside the MVP epistemic contract and must not be silently performed as though linguistic ambiguity had disappeared.
+The investigator can create and connect objects such as:
 
-This boundary is deliberate. Slang, idiom, regional usage, cultural references and pragmatic meaning can change the event or intent represented by a sentence. Restricting the MVP to English narrows the semantic validation problem rather than hiding multilingual uncertainty behind a generic translation call.
+- hypotheses;
+- assumptions;
+- information gaps;
+- findings;
+- arguments;
+- typed semantic, causal, contextual and genealogical relations;
+- grounding structures, including joint and alternative routes.
 
-### 30.6 Complete model, progressive formalization
+Free text may of course appear **inside an explicitly selected abstraction** - for example, the text of a Hypothesis or Finding. The important point is that the user selected the semantic role. Niccolò does not infer that role from an unstructured investigator narrative in the MVP.
 
-"Complete model in the MVP" means **complete semantic capability**, not eager maximal decomposition of every sentence, person or relationship.
+This makes the MVP an expert epistemic workbench rather than a general-purpose natural-language front end.
 
-A statement may initially remain shallow. Niccolò expands it only when a distinction becomes useful to reasoning - for example, when a question depends on whether document receipt implied examination, comprehension or belief. The richer distinction must be available when needed, but absent evidence must remain absent rather than being filled with plausible detail.
+### 30.6 Complete model, progressive expert formalization
 
-The graph is a data structure, not the primary user interface. The ontology is a compiler target for reasoning, not a form the investigator is expected to populate manually.
+"Complete model in the MVP" means **complete semantic capability**, not eager maximal decomposition of every fact, person or relationship.
 
-### 30.7 Conservative AI proposals and human clarification
+The trained investigator decides when a richer distinction is useful. A simple representation may remain simple until conflict, consequence, ambiguity, revision or investigative purpose requires a deeper structure. The system validates the resulting contracts, preserves provenance and dependencies, and helps reason over the explicit model.
 
-LLMs may help parse English, extract candidate structure and suggest interpretations. They do not silently promote ambiguous language into canonical fact.
+Unknown remains preferable to invented detail. Receiving a document, for example, does not imply reading, comprehension or belief unless the investigator explicitly represents or grounds those additional states.
 
-The preferred behavior is:
+The graph is a data structure, not necessarily the primary visual interface. The workbench may expose important ontology concepts directly without forcing the user to manipulate every internal implementation detail.
 
-- preserve the original utterance;
-- derive the strongest interpretation justified by language and context, no stronger;
-- mark that interpretation unconfirmed until the user confirms or corrects the understanding;
-- preserve material ambiguity;
-- prefer inexpensive clarification over speculative formalization when clarification matters;
-- retain downstream dependency on provisional interpretations;
-- suppress low-value speculative structure before it becomes a human curation burden.
+### 30.7 Post-MVP: investigator free-text interpretation
 
-A rich ontology must not become a larger surface for hallucination. Unknown is a legitimate and often superior state.
+Automatic interpretation of the investigator's free text into epistemic abstractions is **outside the MVP**.
+
+A later capability may act as a compiler from ordinary language into proposed structured objects and relations. It should explain why each mapping was proposed, preserve ambiguity, distinguish observable text from inferred structure, and allow the user to accept, modify or reject proposals - including bulk acceptance as an observable UI action.
+
+That future layer must never pretend to know whether a user carefully read a proposal, understood it instantly or accepted it mechanically. It can record only observable actions and their provenance.
+
+The current MVP is intentionally useful without this compiler: **structured reasoning first; natural-language interpretation later**.
 
 ---
 
