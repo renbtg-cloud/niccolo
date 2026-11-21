@@ -1,0 +1,31 @@
+name: Apply reasoning diagnostics WIP 02
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-reasoning-diagnostics-wip02-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: test "$(git rev-parse HEAD)" = "4494672da1fe700814e3eb2106c1f252d5a6acb6"
+      - name: Apply patch
+        run: |
+          echo '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' | base64 -d | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/epistemic_workbench.rs tests/epistemic_workbench_integration.rs frontend/src/pages/ExpertWorkbenchPage.jsx frontend/src/pages/ExpertWorkbench.product.test.js
+          git commit -m "WIP 02: explicit reasoning diagnostics"
+          git push origin HEAD:main
