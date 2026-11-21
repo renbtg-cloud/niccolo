@@ -880,6 +880,65 @@ async fn snapshot_surfaces_recursive_support_without_inventing_independent_corro
     assert!(cycle.argument_ids.contains(&argument_b));
     assert!(!cycle.has_external_anchor);
     assert!(cycle.unanchored_recursive_support);
+    assert!(cycle.external_grounding_routes.is_empty());
+    let outside = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The transaction date was recorded separately.",
+    )
+    .await;
+    let contextual_set = Uuid::new_v4();
+    for (id, role) in [
+        (contextual_set, GroundingMemberRole::Context),
+        (Uuid::new_v4(), GroundingMemberRole::Premise),
+    ] {
+        epistemic_workbench::create_grounding_set(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            argument_a,
+            id,
+            GroundingEffect::Supports,
+            GroundingAdequacy::Partial,
+            "An authored route outside the cycle.",
+            &[NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role,
+                ground_object_id: Some(outside),
+                evidence_id: None,
+                rationale: "Separate date record.".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+            .await
+            .unwrap();
+        let cycle = &snapshot.grounding_cycles[0];
+        let route = snapshot
+            .reasoning_diagnostics
+            .iter()
+            .flat_map(|d| d.routes.iter())
+            .find(|r| r.argument_id == argument_a && r.grounding_set_id == id)
+            .unwrap();
+        assert!(!route.recursive_support_cycle);
+        if role == GroundingMemberRole::Context {
+            assert!(cycle.unanchored_recursive_support);
+            assert!(cycle.external_grounding_routes.is_empty());
+            assert_eq!(route.non_context_member_count, 0);
+        } else {
+            assert!(cycle.has_external_anchor);
+            assert_eq!(
+                cycle.external_only_grounding_routes,
+                vec![epistemic_workbench::GroundingRouteRef {
+                    argument_id: argument_a,
+                    grounding_set_id: id
+                }]
+            );
+        }
+    }
 }
 
 #[tokio::test]

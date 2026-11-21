@@ -158,6 +158,12 @@ Grounding can include:
 
 Necessity for one argument is not necessity for the conclusion itself.
 
+### Structural cycle diagnostics
+
+Explicit supporting routes can form cycles. Context members provide circumstances for interpretation but do not establish a supporting edge, an external anchor, or directional grounding by themselves. A route with grounds outside a strongly connected component may still depend jointly on members inside it. Distinguish those mixed routes from routes with only external non-context grounds. Neither distinction establishes independence, reliability, or sufficiency; the cycle itself supplies no additional corroboration.
+
+Exact reuse of the same object or evidence fragment across authored routes must be visible, using the composite argument and grounding-set identity. This is a structural diagnostic, not a complete provenance-independence test: different grounds may still share ancestry. Support and opposition remain separate, and no numerical confidence or truth verdict is inferred from route counts.
+
 ## 8. Selective epistemic revision
 
 Changes propagate as **obligations to reassess**, not as automatic global falsification.

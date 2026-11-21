@@ -52,6 +52,8 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Grounding cycle diagnostics');
     expect(page).toContain('the cycle itself adds no independent corroboration');
     expect(page).toContain('recursive support must not be treated as corroboration');
+    expect(page).toContain('external grounds do not establish independence, reliability or sufficiency');
+    expect(page).toContain('Context alone is not support.');
   });
 
   it('shows explicit reasoning routes without netting support against opposition', () => {
@@ -59,6 +61,9 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('does not net opposing routes into a truth or confidence score');
     expect(page).toContain('Support and opposition coexist; neither cancels the other.');
     expect(page).toContain('unanchored recursive support');
+    expect(page).toContain('Shared grounds — route reuse is not independent corroboration');
+    expect(page).toContain('Inspect authored grounds and rationales');
+    expect(page).toContain('Exact identity reuse only; different grounds may still share provenance.');
   });
 
   it('records explicit reassessment review without silently rewriting the argument', () => {

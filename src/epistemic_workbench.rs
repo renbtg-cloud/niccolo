@@ -356,10 +356,18 @@ pub struct ReassessmentImpact {
     pub latest_review: Option<ReassessmentReview>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GroundingRouteRef {
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroundingCycleDiagnostic {
     pub object_ids: Vec<Uuid>,
     pub argument_ids: Vec<Uuid>,
+    pub external_grounding_routes: Vec<GroundingRouteRef>,
+    pub external_only_grounding_routes: Vec<GroundingRouteRef>,
     pub has_external_anchor: bool,
     pub unanchored_recursive_support: bool,
 }
@@ -380,9 +388,17 @@ pub struct ReasoningRouteDiagnostic {
     pub effect: GroundingEffect,
     pub adequacy: GroundingAdequacy,
     pub member_count: usize,
+    pub non_context_member_count: usize,
     pub reassessment: ReassessmentAttentionSummary,
     pub recursive_support_cycle: bool,
     pub unanchored_recursive_support: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedGroundDiagnostic {
+    pub ground_object_id: Option<Uuid>,
+    pub evidence_id: Option<Uuid>,
+    pub routes: Vec<GroundingRouteRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,6 +406,7 @@ pub struct ConclusionReasoningDiagnostic {
     pub conclusion_object_id: Uuid,
     pub argument_ids: Vec<Uuid>,
     pub routes: Vec<ReasoningRouteDiagnostic>,
+    pub shared_grounds: Vec<SharedGroundDiagnostic>,
     pub has_supporting_routes: bool,
     pub has_opposing_routes: bool,
     pub has_mixed_directional_grounding: bool,
@@ -1401,6 +1418,9 @@ fn grounding_cycle_diagnostics(
         };
         nodes.insert(conclusion);
         for member in &set.members {
+            if member.role == GroundingMemberRole::Context {
+                continue;
+            }
             if let Some(ground) = member.ground_object_id {
                 nodes.insert(ground);
                 adjacency.entry(ground).or_default().insert(conclusion);
@@ -1451,7 +1471,8 @@ fn grounding_cycle_diagnostics(
         }
 
         let mut argument_ids = BTreeSet::new();
-        let mut has_external_anchor = false;
+        let mut external_grounding_routes = BTreeSet::new();
+        let mut external_only_grounding_routes = BTreeSet::new();
         for set in grounding_sets
             .iter()
             .filter(|s| s.effect == GroundingEffect::Supports)
@@ -1463,23 +1484,35 @@ fn grounding_cycle_diagnostics(
                 continue;
             }
             let participates = set.members.iter().any(|m| {
-                m.ground_object_id
-                    .is_some_and(|ground| component.contains(&ground))
+                m.role != GroundingMemberRole::Context
+                    && m.ground_object_id
+                        .is_some_and(|ground| component.contains(&ground))
             });
             if participates {
                 argument_ids.insert(set.argument_id);
             }
             if set.members.iter().any(|m| {
-                m.evidence_id.is_some()
-                    || m.ground_object_id
-                        .is_some_and(|ground| !component.contains(&ground))
+                m.role != GroundingMemberRole::Context
+                    && (m.evidence_id.is_some()
+                        || m.ground_object_id
+                            .is_some_and(|ground| !component.contains(&ground)))
             }) {
-                has_external_anchor = true;
+                let route = GroundingRouteRef {
+                    argument_id: set.argument_id,
+                    grounding_set_id: set.grounding_set_id,
+                };
+                external_grounding_routes.insert(route);
+                if !participates {
+                    external_only_grounding_routes.insert(route);
+                }
             }
         }
+        let has_external_anchor = !external_grounding_routes.is_empty();
         diagnostics.push(GroundingCycleDiagnostic {
             object_ids: component.into_iter().collect(),
             argument_ids: argument_ids.into_iter().collect(),
+            external_grounding_routes: external_grounding_routes.into_iter().collect(),
+            external_only_grounding_routes: external_only_grounding_routes.into_iter().collect(),
             has_external_anchor,
             unanchored_recursive_support: !has_external_anchor,
         });
@@ -1534,10 +1567,28 @@ fn reasoning_diagnostics(
         argument_ids.sort();
         let argument_id_set = argument_ids.iter().copied().collect::<BTreeSet<_>>();
         let mut routes = Vec::new();
+        let mut ground_routes =
+            BTreeMap::<(Option<Uuid>, Option<Uuid>), BTreeSet<GroundingRouteRef>>::new();
         for set in grounding_sets
             .iter()
             .filter(|set| argument_id_set.contains(&set.argument_id))
         {
+            let route_ref = GroundingRouteRef {
+                argument_id: set.argument_id,
+                grounding_set_id: set.grounding_set_id,
+            };
+            for member in set
+                .members
+                .iter()
+                .filter(|m| m.role != GroundingMemberRole::Context)
+            {
+                if member.ground_object_id.is_some() || member.evidence_id.is_some() {
+                    ground_routes
+                        .entry((member.ground_object_id, member.evidence_id))
+                        .or_default()
+                        .insert(route_ref);
+                }
+            }
             let cycle_matches = grounding_cycles.iter().filter(|cycle| {
                 if set.effect != GroundingEffect::Supports
                     || !cycle.argument_ids.contains(&set.argument_id)
@@ -1549,9 +1600,10 @@ fn reasoning_diagnostics(
                 };
                 cycle.object_ids.contains(conclusion)
                     && set.members.iter().any(|member| {
-                        member
-                            .ground_object_id
-                            .is_some_and(|ground| cycle.object_ids.contains(&ground))
+                        member.role != GroundingMemberRole::Context
+                            && member
+                                .ground_object_id
+                                .is_some_and(|ground| cycle.object_ids.contains(&ground))
                     })
             });
             let cycle_matches = cycle_matches.collect::<Vec<_>>();
@@ -1565,6 +1617,11 @@ fn reasoning_diagnostics(
                 effect: set.effect,
                 adequacy: set.adequacy,
                 member_count: set.members.len(),
+                non_context_member_count: set
+                    .members
+                    .iter()
+                    .filter(|m| m.role != GroundingMemberRole::Context)
+                    .count(),
                 reassessment: reassessment_attention(route_impacts),
                 recursive_support_cycle: !cycle_matches.is_empty(),
                 unanchored_recursive_support: cycle_matches
@@ -1573,14 +1630,15 @@ fn reasoning_diagnostics(
             });
         }
         routes.sort_by_key(|route| (route.argument_id, route.grounding_set_id));
-        let has_supporting_routes = routes
-            .iter()
-            .any(|route| route.effect == GroundingEffect::Supports);
+        let has_supporting_routes = routes.iter().any(|route| {
+            route.non_context_member_count > 0 && route.effect == GroundingEffect::Supports
+        });
         let has_opposing_routes = routes.iter().any(|route| {
-            matches!(
-                route.effect,
-                GroundingEffect::Weakens | GroundingEffect::Challenges
-            )
+            route.non_context_member_count > 0
+                && matches!(
+                    route.effect,
+                    GroundingEffect::Weakens | GroundingEffect::Challenges
+                )
         });
         let conclusion_reassessment =
             reassessment_attention(reassessment_impacts.iter().filter(|impact| {
@@ -1590,6 +1648,17 @@ fn reasoning_diagnostics(
             conclusion_object_id,
             argument_ids,
             routes,
+            shared_grounds: ground_routes
+                .into_iter()
+                .filter(|(_, routes)| routes.len() > 1)
+                .map(
+                    |((ground_object_id, evidence_id), routes)| SharedGroundDiagnostic {
+                        ground_object_id,
+                        evidence_id,
+                        routes: routes.into_iter().collect(),
+                    },
+                )
+                .collect(),
             has_supporting_routes,
             has_opposing_routes,
             has_mixed_directional_grounding: has_supporting_routes && has_opposing_routes,
@@ -2143,6 +2212,33 @@ mod tests {
         assert_eq!(cycles.len(), 1);
         assert!(cycles[0].has_external_anchor);
         assert!(!cycles[0].unanchored_recursive_support);
+        assert_eq!(
+            cycles[0].external_grounding_routes,
+            vec![GroundingRouteRef {
+                argument_id: arg_a,
+                grounding_set_id: Uuid::from_u128(21)
+            }]
+        );
+        assert!(cycles[0].external_only_grounding_routes.is_empty());
+        let mut contextual = sets.clone();
+        contextual[0].members[1].role = GroundingMemberRole::Context;
+        assert!(!grounding_cycle_diagnostics(&arguments, &contextual)[0].has_external_anchor);
+        contextual[1].members[0].role = GroundingMemberRole::Context;
+        assert!(grounding_cycle_diagnostics(&arguments, &contextual).is_empty());
+        let mut alternative = sets[0].clone();
+        alternative.grounding_set_id = Uuid::from_u128(23);
+        alternative.members.remove(0);
+        let mut alternatives = sets.clone();
+        alternatives.push(alternative);
+        let cycles = grounding_cycle_diagnostics(&arguments, &alternatives);
+        assert_eq!(cycles[0].external_grounding_routes.len(), 2);
+        assert_eq!(
+            cycles[0].external_only_grounding_routes,
+            vec![GroundingRouteRef {
+                argument_id: arg_a,
+                grounding_set_id: Uuid::from_u128(23)
+            }]
+        );
     }
     #[test]
     fn reasoning_diagnostics_keep_support_and_opposition_separate_without_scoring() {
@@ -2227,6 +2323,41 @@ mod tests {
         assert_eq!(diagnostic.routes[0].reassessment.unreviewed, 1);
         assert_eq!(diagnostic.routes[1].effect, GroundingEffect::Challenges);
         assert_eq!(diagnostic.routes[1].reassessment.impacted, 0);
+        assert!(diagnostic.shared_grounds.is_empty());
+        let mut shared = sets.clone();
+        shared[1].members[0].ground_object_id = Some(premise);
+        shared[1].grounding_set_id = support_set;
+        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[]);
+        assert_eq!(
+            diagnostics[0].shared_grounds[0].ground_object_id,
+            Some(premise)
+        );
+        assert_eq!(
+            diagnostics[0].shared_grounds[0].routes,
+            vec![
+                GroundingRouteRef {
+                    argument_id: support_argument,
+                    grounding_set_id: support_set
+                },
+                GroundingRouteRef {
+                    argument_id: challenge_argument,
+                    grounding_set_id: support_set
+                }
+            ]
+        );
+        shared[1].members[0].role = GroundingMemberRole::Context;
+        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[]);
+        assert!(!diagnostics[0].has_opposing_routes);
+        assert!(!diagnostics[0].has_mixed_directional_grounding);
+        assert_eq!(diagnostics[0].routes[1].non_context_member_count, 0);
+        assert!(diagnostics[0].shared_grounds.is_empty());
+        for set in &mut shared {
+            set.members[0].role = GroundingMemberRole::Evidence;
+            set.members[0].ground_object_id = None;
+            set.members[0].evidence_id = Some(premise);
+        }
+        let diagnostics = reasoning_diagnostics(&arguments, &shared, &impacts, &[]);
+        assert_eq!(diagnostics[0].shared_grounds[0].evidence_id, Some(premise));
 
         let serialized = serde_json::to_value(diagnostic).unwrap();
         assert!(serialized.get("score").is_none());
