@@ -385,6 +385,25 @@ pub struct ReassessmentAttentionSummary {
     pub retained: usize,
 }
 
+impl ReassessmentAttentionSummary {
+    fn record(&mut self, disposition: Option<ReassessmentDisposition>) {
+        self.impacted += 1;
+        match disposition {
+            None => self.unreviewed += 1,
+            Some(ReassessmentDisposition::Deferred) => self.deferred += 1,
+            Some(ReassessmentDisposition::RevisionRequired) => self.revision_required += 1,
+            Some(ReassessmentDisposition::Retained) => self.retained += 1,
+        }
+    }
+}
+
+/// Counts distinct dependency/revision obligations, not strength or validity.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssessmentReassessmentAttention {
+    pub directly_relying: ReassessmentAttentionSummary,
+    pub downstream: ReassessmentAttentionSummary,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReasoningRouteDiagnostic {
     pub argument_id: Uuid,
@@ -395,6 +414,7 @@ pub struct ReasoningRouteDiagnostic {
     pub non_context_member_count: usize,
     pub applicability_conditions: Vec<RouteApplicabilityAssessment>,
     pub reassessment: ReassessmentAttentionSummary,
+    pub assessment_reassessment: AssessmentReassessmentAttention,
     pub recursive_support_cycle: bool,
     pub unanchored_recursive_support: bool,
 }
@@ -1718,17 +1738,12 @@ fn reassessment_attention<'a>(
 ) -> ReassessmentAttentionSummary {
     let mut summary = ReassessmentAttentionSummary::default();
     for impact in impacts {
-        summary.impacted += 1;
-        match impact
-            .latest_review
-            .as_ref()
-            .map(|review| review.disposition)
-        {
-            None => summary.unreviewed += 1,
-            Some(ReassessmentDisposition::Deferred) => summary.deferred += 1,
-            Some(ReassessmentDisposition::RevisionRequired) => summary.revision_required += 1,
-            Some(ReassessmentDisposition::Retained) => summary.retained += 1,
-        }
+        summary.record(
+            impact
+                .latest_review
+                .as_ref()
+                .map(|review| review.disposition),
+        );
     }
     summary
 }
@@ -1816,6 +1831,7 @@ fn reasoning_diagnostics(
                     .count(),
                 applicability_conditions: Vec::new(),
                 reassessment: reassessment_attention(route_impacts),
+                assessment_reassessment: AssessmentReassessmentAttention::default(),
                 recursive_support_cycle: !cycle_matches.is_empty(),
                 unanchored_recursive_support: cycle_matches
                     .iter()
@@ -2207,12 +2223,51 @@ pub async fn snapshot(
             .or_default()
             .push(condition);
     }
+    let mut assessment_attention_by_route =
+        BTreeMap::<GroundingRouteRef, AssessmentReassessmentAttention>::new();
+    for dependency in assessment_dependencies
+        .iter()
+        .filter(|d| d.assessment_revised)
+    {
+        let route = GroundingRouteRef {
+            argument_id: dependency.dependency.input.argument_id,
+            grounding_set_id: dependency.dependency.input.grounding_set_id,
+        };
+        assessment_attention_by_route
+            .entry(route)
+            .or_default()
+            .directly_relying
+            .record(
+                dependency
+                    .latest_review
+                    .as_ref()
+                    .map(|r| r.input.disposition),
+            );
+        for downstream in &dependency.downstream_reviews {
+            assessment_attention_by_route
+                .entry(downstream.route)
+                .or_default()
+                .downstream
+                .record(
+                    downstream
+                        .latest_review
+                        .as_ref()
+                        .map(|r| r.input.disposition),
+                );
+        }
+    }
     for route in reasoning_diagnostics
         .iter_mut()
         .flat_map(|diagnostic| &mut diagnostic.routes)
     {
         route.applicability_conditions = conditions_by_route
             .remove(&(route.argument_id, route.grounding_set_id))
+            .unwrap_or_default();
+        route.assessment_reassessment = assessment_attention_by_route
+            .remove(&GroundingRouteRef {
+                argument_id: route.argument_id,
+                grounding_set_id: route.grounding_set_id,
+            })
             .unwrap_or_default();
     }
     direct_evidence_lineage(

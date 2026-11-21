@@ -485,6 +485,26 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
             .any(|r| r.argument_id == routes[1].0)
     );
     assert_eq!(snapshot.grounding_sets.len(), 4);
+    for (index, (argument_id, grounding_set_id)) in routes.iter().enumerate() {
+        let diagnostic = snapshot
+            .reasoning_diagnostics
+            .iter()
+            .flat_map(|d| &d.routes)
+            .find(|r| r.argument_id == *argument_id && r.grounding_set_id == *grounding_set_id)
+            .unwrap();
+        assert_eq!(
+            diagnostic
+                .assessment_reassessment
+                .directly_relying
+                .unreviewed,
+            usize::from(index == 0)
+        );
+        assert_eq!(
+            diagnostic.assessment_reassessment.downstream.unreviewed,
+            usize::from(index >= 2)
+        );
+        assert_eq!(diagnostic.reassessment.impacted, 0);
+    }
     let review_id = Uuid::new_v4();
     let review = DependencyReviewInput {
         reviewed_assessment_event_id: revision,
@@ -514,6 +534,17 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
     assert_eq!(view.review_history.len(), 1);
     assert_eq!(view.downstream_reviews.len(), 2);
     assert!(view.downstream_reviews.iter().all(|r| r.requires_review));
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let route = snapshot
+        .reasoning_diagnostics
+        .iter()
+        .flat_map(|d| &d.routes)
+        .find(|r| r.argument_id == routes[0].0)
+        .unwrap();
+    assert_eq!(route.assessment_reassessment.directly_relying.retained, 1);
+    assert_eq!(route.assessment_reassessment.directly_relying.unreviewed, 0);
     let downstream_id = Uuid::new_v4();
     let downstream = DownstreamReviewInput {
         reviewed_assessment_event_id: revision,
