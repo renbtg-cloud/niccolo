@@ -947,3 +947,88 @@ Expected behavior: legitimate objections remain representable, but formal repres
 
 This refinement changes the adversarial corpus from AT-01–AT-25 to **AT-01–AT-26**.
 
+## 29. Owner scope refinement: expert-authored MVP
+
+**Status:** Product-owner-approved and **superseding the MVP parser assumptions in sections 28.2–28.4** where they concern automatic interpretation of the investigator's own free text.
+
+The MVP is now deliberately an **expert epistemic workbench**. Its intended user is a cultivated, domain-trained professional who can explicitly author the reasoning structure relevant to the case.
+
+### 29.1 The investigator authors structure explicitly
+
+The MVP does not need to infer ontology from an unstructured investigator narrative.
+
+The investigator explicitly chooses semantic roles and creates objects such as:
+
+- Hypothesis;
+- Assumption;
+- InformationGap;
+- Finding;
+- Argument;
+- typed semantic, causal, contextual and genealogical relations;
+- grounding structures, including jointly required and alternative routes.
+
+A text field inside one of those explicitly chosen objects is not "free-text interpretation". The user has already supplied the semantic classification by choosing the object type.
+
+This changes the interaction assumption without weakening the epistemological model. The complete model remains available; the trained human performs the semantic authoring that a later compiler may automate.
+
+### 29.2 Investigator free-text interpretation is post-MVP
+
+Automatic conversion of the investigator's ordinary prose into epistemic abstractions is **outside the MVP**.
+
+Post-MVP, Niccolò may add a compiler-like layer:
+
+```text
+investigator free text
+        |
+        v
+proposed epistemic objects + relations
+        |
+        v
+explanation of each proposed mapping
+        |
+        v
+accept / modify / reject / accept all
+        |
+        v
+canonical structured model
+```
+
+That future layer should explain why a phrase was mapped into a particular abstraction and what remains unresolved. For example, a lexical assertion of deception may motivate a proposed Deception structure while still leaving mechanism, intention, success and consequences unresolved. A statement that someone "could have seen" something may support possible visual access without silently asserting that the person actually saw, attended to, comprehended or remembers it.
+
+These are post-MVP design concerns, not current implementation requirements.
+
+### 29.3 Bulk acceptance does not prove cognition
+
+A future parser may offer individual or bulk acceptance.
+
+Niccolò may record observable facts such as:
+
+- which proposal was shown;
+- which parser/model/version produced it;
+- whether the user accepted, modified or rejected it;
+- whether acceptance occurred through an individual or bulk UI action;
+- when the action occurred.
+
+It must not infer from interaction speed whether the user carefully read the proposal, understood it instantly, relied on prior knowledge or clicked mechanically. Those are unobserved human epistemic states.
+
+### 29.4 Consequence for current implementation order
+
+The MVP implementation order is therefore:
+
+1. persistent epistemic identity;
+2. expert-authored typed objects;
+3. typed relation contracts;
+4. explicit argument and grounding/dependency structures;
+5. expert authoring API and UI;
+6. selective revision and downstream reassessment;
+7. reasoning behavior over the explicit model;
+8. only post-MVP: investigator free-text interpretation/compiler.
+
+Migration `0098` remains useful for persistent identity and as anticipatory infrastructure. Migration `0099` remains useful as an auditable proposal ledger for model-generated reasoning. Neither requires the investigator free-text compiler to be on the MVP critical path.
+
+Migration `0100_expert_epistemic_workbench.sql` and the corresponding Rust/API/frontend work implement the first expert-authoring slice: Hypothesis, Assumption, InformationGap, Finding, Argument, typed relations and joint/alternative grounding structures.
+
+The product principle is now:
+
+> **Structured expert reasoning first. Natural-language interpretation later.**
+
