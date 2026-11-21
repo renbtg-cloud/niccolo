@@ -64,6 +64,7 @@ async fn real_loopback_web_and_persistent_situation_smoke() {
     let bundle = raw_http(port, "GET", "/assets/app.js", None, "").await;
     assert!(bundle.contains("200 OK"));
     assert!(bundle.contains("Record recommendation only"));
+    assert!(bundle.contains("Add qualified basis group"));
     assert!(bundle.contains("epistemic/action-recommendations/"));
     assert!(bundle.contains("Record action decision only"));
     assert!(bundle.contains("epistemic/action-decisions/"));

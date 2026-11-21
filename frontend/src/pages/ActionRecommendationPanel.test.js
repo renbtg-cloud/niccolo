@@ -63,4 +63,26 @@ describe('non-executable action recommendation records', () => {
     expect(html).toContain('Privileges remain broad');
     expect(html).toContain('Expected consequences, not observed outcomes');
   });
+  it('preserves optional qualified groups and rejects incomplete or duplicate coverage', () => {
+    const moreGrounds = [...grounds, {object_id: 's', kind: 'HYPOTHESIS', text: 'Suspected leak'}];
+    const qualified = { ...draft, ground_object_ids: ['g', 's'], qualified_basis: [{kind: 'ALTERNATIVE_SUFFICIENT', ground_object_ids: ['g'], rationale: 'Structural risk'}, {kind: 'CONTEXT_ONLY', ground_object_ids: ['s'], rationale: 'Motivating suspicion'}] };
+    const build = input => recommendationRequest(input, actors, moreGrounds, []);
+    expect(build(qualified).qualified_basis).toEqual(qualified.qualified_basis);
+    expect(() => build({...qualified, qualified_basis: qualified.qualified_basis.slice(0, 1)})).toThrow();
+    expect(() => build({...qualified, qualified_basis: [{kind: 'COMPLEMENTARY', ground_object_ids: ['s', 's', 'g'], rationale: 'Duplicate'}]})).toThrow();
+    expect(() => build({...qualified, qualified_basis: [{kind: 'COMPLEMENTARY', ground_object_ids: ['other'], rationale: 'Foreign'}]})).toThrow();
+    expect(build({...qualified, qualified_basis: []})).not.toHaveProperty('qualified_basis');
+  });
+  it('renders affected groups and alternatives not linked to a change without deciding appropriateness', () => {
+    const moreGrounds = [...grounds, {object_id: 's', kind: 'HYPOTHESIS', text: 'Suspected leak'}];
+    const qualified = { ...draft, ground_object_ids: ['g', 's'], qualified_basis: [{kind: 'ALTERNATIVE_SUFFICIENT', ground_object_ids: ['g'], rationale: 'Structural risk'}, {kind: 'CONTEXT_ONLY', ground_object_ids: ['s'], rationale: 'Motivating suspicion'}] };
+    const record = {recommendation_id: 'rec', input: recommendationRequest(qualified, actors, moreGrounds, []), recorded_by: 'author', recorded_at: 'today'};
+    const impact = {recommendation_id: 'rec', trigger_relation_id: 'revision', affected_ground_object_ids: ['s'], affected_basis_indices: [1], alternative_basis_indices_not_linked_to_trigger: [0], grounds_unqualified: false, historical_recommendation: false};
+    const html = renderToStaticMarkup(createElement(ActionRecommendationPanel, {snapshot: {nodes: moreGrounds, action_recommendations: [record], recommendation_basis_impacts: [impact]}, actors, client: {}, onChanged: () => {}}));
+    expect(html).toContain('Basis 1: Declared alternatively sufficient');
+    expect(html).toContain('Affected groups: 2');
+    expect(html).toContain('Declared sufficient alternatives not linked to this trigger: 1');
+    expect(html).toContain('does not confirm independence, current adequacy or appropriateness');
+    expect(html).toContain('reconsider appropriateness without automatically invalidating the recommendation');
+  });
 });

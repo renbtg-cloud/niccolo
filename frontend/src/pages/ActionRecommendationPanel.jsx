@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 
 export const recommendationKinds = ['PRESERVE_EVIDENCE', 'REVIEW_PRIVILEGES', 'SEPARATE_DUTIES', 'INDEPENDENT_REVIEW', 'VERIFY_PROVENANCE', 'GATHER_INFORMATION', 'DELAY', 'INACTION'];
 export const reversibilities = ['REVERSIBLE', 'PARTIALLY_REVERSIBLE', 'IRREVERSIBLE', 'UNKNOWN'];
+const basisKinds = { JOINTLY_NECESSARY: 'Jointly necessary', ALTERNATIVE_SUFFICIENT: 'Declared alternatively sufficient', COMPLEMENTARY: 'Complementary', CONTEXT_ONLY: 'Context only' };
+const basisDraft = () => ({ kind: '', ground_object_ids: [], rationale: '' });
 const textFields = [
   ['purpose', 'Purpose'], ['context', 'Circumstances and scope'], ['rationale', 'Rationale'],
   ['conditions', 'Conditions (including any separate authorization needed)'],
@@ -11,7 +13,7 @@ const textFields = [
 const label = code => code.replaceAll('_', ' ').toLowerCase();
 const alternativeDraft = () => ({ kind: '', rationale: '', expected_consequences: '' });
 const emptyDraft = () => ({
-  kind: '', recipient_actor_id: '', ground_object_ids: [], reversibility: '',
+  kind: '', recipient_actor_id: '', ground_object_ids: [], qualified_basis: [], reversibility: '',
   alternatives: [alternativeDraft()], revises_recommendation_id: null,
   ...Object.fromEntries(textFields.map(([key]) => [key, ''])),
 });
@@ -35,6 +37,16 @@ export function recommendationRequest(draft, actors, grounds, history) {
     throw new Error('Choose 1–64 distinct visible grounding objects.');
   }
   if (!Array.isArray(draft.alternatives) || !draft.alternatives.length || draft.alternatives.length > 8) throw new Error('Compare 1–8 explicit alternatives.');
+  const groups = draft.qualified_basis ?? [];
+  if (!Array.isArray(groups) || groups.length > 16) throw new Error('At most 16 qualified basis groups are supported.');
+  const covered = new Set();
+  const qualified = groups.map(group => {
+    const members = group.ground_object_ids;
+    if (!Object.hasOwn(basisKinds, group.kind) || !Array.isArray(members) || !members.length || new Set(members).size !== members.length || members.some(id => !ids.includes(id))) throw new Error('Each basis group must use distinct selected grounds and an explicit role.');
+    members.forEach(id => covered.add(id));
+    return { kind: group.kind, ground_object_ids: [...members], rationale: requiredText(group.rationale, 'Basis rationale') };
+  });
+  if (qualified.length && ids.some(id => !covered.has(id))) throw new Error('Qualify every selected ground when supplying basis groups.');
   const alternatives = draft.alternatives.map(alternative => {
     if (!recommendationKinds.includes(alternative.kind) || alternative.kind === draft.kind) throw new Error('Each alternative must have a different kind from the proposed recommendation.');
     return {
@@ -52,7 +64,7 @@ export function recommendationRequest(draft, actors, grounds, history) {
   }
   return {
     kind: draft.kind, recipient_actor_id: draft.recipient_actor_id,
-    ground_object_ids: [...ids], alternatives, reversibility: draft.reversibility,
+    ground_object_ids: [...ids], ...(qualified.length ? { qualified_basis: qualified } : {}), alternatives, reversibility: draft.reversibility,
     revises_recommendation_id: revision,
     ...Object.fromEntries(textFields.map(([key, name]) => [key, requiredText(draft[key], name)])),
   };
@@ -64,12 +76,15 @@ export function ActionRecommendationPanel({ snapshot, actors, client, onChanged 
   const [error, setError] = useState('');
   const pending = useRef(null);
   const history = snapshot.action_recommendations ?? [];
+  const impacts = snapshot.recommendation_basis_impacts ?? [];
   const grounds = [...(snapshot.nodes ?? []), ...(snapshot.arguments ?? []).map(argument => ({ object_id: argument.argument_id, kind: 'ARGUMENT', text: argument.rationale }))];
   const revised = new Set(history.map(item => item.input.revises_recommendation_id));
   const recipientLabel = id => actors.find(actor => actor.actor_id === id)?.display_label ?? id;
   const groundLabel = id => grounds.find(ground => ground.object_id === id)?.text ?? id;
   const change = (field, value) => setDraft(current => ({ ...current, [field]: value }));
   const changeAlternative = (index, field, value) => setDraft(current => ({ ...current, alternatives: current.alternatives.map((alternative, i) => i === index ? { ...alternative, [field]: value } : alternative) }));
+  const changeBasis = (index, field, value) => setDraft(current => ({ ...current, qualified_basis: (current.qualified_basis ?? []).map((group, i) => i === index ? { ...group, [field]: value } : group) }));
+  const changeGround = (id, checked) => setDraft(current => ({ ...current, ground_object_ids: checked ? [...current.ground_object_ids, id] : current.ground_object_ids.filter(g => g !== id), qualified_basis: checked ? (current.qualified_basis ?? []) : (current.qualified_basis ?? []).map(group => ({ ...group, ground_object_ids: group.ground_object_ids.filter(g => g !== id) })) }));
   const reset = () => { pending.current = null; setDraft(emptyDraft()); setError(''); };
   async function save(event) {
     event.preventDefault();
@@ -103,7 +118,16 @@ export function ActionRecommendationPanel({ snapshot, actors, client, onChanged 
           <option value="">Choose…</option>{reversibilities.map(value => <option key={value} value={value}>{label(value)}</option>)}
         </select></label>
         <fieldset><legend>Explicit grounds ({draft.ground_object_ids.length}/64)</legend>
-          {grounds.map(ground => <label key={ground.object_id}><input type="checkbox" checked={draft.ground_object_ids.includes(ground.object_id)} disabled={draft.ground_object_ids.length >= 64 && !draft.ground_object_ids.includes(ground.object_id)} onChange={event => setDraft(current => ({ ...current, ground_object_ids: event.target.checked ? [...current.ground_object_ids, ground.object_id] : current.ground_object_ids.filter(id => id !== ground.object_id) }))}/> {ground.kind}: {ground.text}</label>)}
+          {grounds.map(ground => <label key={ground.object_id}><input type="checkbox" checked={draft.ground_object_ids.includes(ground.object_id)} disabled={draft.ground_object_ids.length >= 64 && !draft.ground_object_ids.includes(ground.object_id)} onChange={event => changeGround(ground.object_id, event.target.checked)}/> {ground.kind}: {ground.text}</label>)}
+        </fieldset>
+        <fieldset><legend>Optional qualified basis groups</legend><p>Specify which grounds must work together, which are declared sufficient alternatives, and which are complementary or contextual. These are authored qualifications, not verified sufficiency or independence. If you add groups, cover every selected ground.</p>
+          {(draft.qualified_basis ?? []).map((group, index) => <div key={index}>
+            <label>Group {index + 1} role<select required value={group.kind} onChange={e => changeBasis(index, 'kind', e.target.value)}><option value="">Choose…</option>{Object.entries(basisKinds).map(([code, caption]) => <option key={code} value={code}>{caption}</option>)}</select></label>
+            {draft.ground_object_ids.map(id => <label key={id}><input type="checkbox" checked={group.ground_object_ids.includes(id)} onChange={e => changeBasis(index, 'ground_object_ids', e.target.checked ? [...group.ground_object_ids, id] : group.ground_object_ids.filter(g => g !== id))}/> {groundLabel(id)}</label>)}
+            <label>Basis rationale<textarea required maxLength={4096} value={group.rationale} onChange={e => changeBasis(index, 'rationale', e.target.value)}/></label>
+            <button type="button" onClick={() => setDraft(current => ({ ...current, qualified_basis: current.qualified_basis.filter((_, i) => i !== index) }))}>Remove basis group {index + 1}</button>
+          </div>)}
+          <button type="button" disabled={(draft.qualified_basis ?? []).length >= 16 || !draft.ground_object_ids.length} onClick={() => setDraft(current => ({ ...current, qualified_basis: [...(current.qualified_basis ?? []), basisDraft()] }))}>Add qualified basis group</button>
         </fieldset>
         <fieldset><legend>Compare alternatives (including inaction, delay or further inquiry where relevant)</legend>
           {draft.alternatives.map((alternative, index) => <div key={index}>
@@ -126,6 +150,12 @@ export function ActionRecommendationPanel({ snapshot, actors, client, onChanged 
       <p>{item.input.purpose}</p><p>Reversibility: {label(item.input.reversibility)}</p>
       <dl>{textFields.slice(1).map(([field, title]) => <div key={field}><dt>{title}</dt><dd>{item.input[field]}</dd></div>)}</dl>
       <p>Grounds: {item.input.ground_object_ids.map(groundLabel).join(' · ')}</p>
+      {item.input.qualified_basis?.length ? <ul>{item.input.qualified_basis.map((group, index) => <li key={index}><strong>Basis {index + 1}: {basisKinds[group.kind]}</strong><p>{group.ground_object_ids.map(groundLabel).join(' · ')}</p><p>{group.rationale}</p></li>)}</ul> : <p>Grounds unqualified — no roles inferred.</p>}
+      {impacts.filter(impact => impact.recommendation_id === item.recommendation_id).map(impact => <div key={impact.trigger_relation_id}>
+        <p role="status">{impact.historical_recommendation ? 'Historical recommendation: recorded basis change.' : 'Recommendation basis changed; reconsider appropriateness without automatically invalidating the recommendation.'}</p>
+        <p>Trigger relation: {impact.trigger_relation_id} · Affected grounds: {impact.affected_ground_object_ids.map(groundLabel).join(' · ')}</p>
+        {impact.grounds_unqualified ? <p>Ground roles are unqualified; no unaffected alternative can be inferred.</p> : <><p>Affected groups: {impact.affected_basis_indices.map(i => i + 1).join(', ')}</p><p>Declared sufficient alternatives not linked to this trigger: {impact.alternative_basis_indices_not_linked_to_trigger.map(i => i + 1).join(', ') || 'none'}. This does not confirm independence, current adequacy or appropriateness.</p></>}
+      </div>)}
       <ul>{item.input.alternatives.map((alternative, index) => <li key={index}><strong>{label(alternative.kind)}</strong><p>{alternative.rationale}</p><p>Expected: {alternative.expected_consequences}</p></li>)}</ul>
       <small>Recorded by {item.recorded_by} · {item.recorded_at} · {item.recommendation_id}{item.input.revises_recommendation_id && ` · revises ${item.input.revises_recommendation_id}`}</small>
       {revised.has(item.recommendation_id) ? <p>Historical — explicitly revised; original retained.</p> : <button type="button" disabled={saving} onClick={() => { pending.current = null; setError(''); setDraft({ ...item.input, revises_recommendation_id: item.recommendation_id }); }}>Propose revision</button>}
