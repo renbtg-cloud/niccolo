@@ -435,6 +435,8 @@ Vulnerability is contextual exposure to an adverse consequence, not a personal d
 
 Migration 0128 adds independent contextual vulnerability, coercion susceptibility, compliance, consent and submission judgments about a registered actor and visible Situation object, with optional exact counterparty. They distinguish exposure or susceptibility to an adverse consequence from a response to pressure; no judgment derives a personal defect, consent from compliance, loyalty from submission, or deterministic authorization for Niccolò. These are attributed descriptions and do not determine legal validity.
 
+Checkpoint 1.37 validation: migration 0128, independent vulnerability/susceptibility and compliance/consent/submission, cross-dimension revision refusal, direct SQL target qualification and absence of inferred loyalty or execution verified. Full regression passed (600 Rust, 146 React, 22 Python, 8 standalone JavaScript tests).
+
 ## 17. Epistemic influence and power
 
 Epistemic influence can target more than belief. It can target:
