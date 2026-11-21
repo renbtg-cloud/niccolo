@@ -118,3 +118,13 @@ export function applicabilityRequest(conditionObjectId, assessment, rationale) {
   if (!conditionObjectId || !applicabilityAssessments.includes(assessment)) throw new Error('Choose a condition and applicability assessment.');
   return { condition_object_id: conditionObjectId, assessment, rationale: requireText(rationale, 'Assessment rationale') };
 }
+
+export function assessmentDependencyRequest(route, assessmentEventId, rationale) {
+  if (!route?.argument_id || !route?.grounding_set_id || !assessmentEventId) throw new Error('Choose a grounding route and exact assessment event.');
+  return {argument_id: route.argument_id, grounding_set_id: route.grounding_set_id, assessment_event_id: assessmentEventId, rationale: requireText(rationale, 'Reliance rationale')};
+}
+
+export function assessmentDependencyReviewRequest(view, disposition, note) {
+  if (!view.assessment_revised || !reassessmentDispositions.includes(disposition)) throw new Error('Choose a revised assessment and review disposition.');
+  return {reviewed_assessment_event_id: view.current_assessment_event_id, disposition, note: requireText(note, 'Review note')};
+}

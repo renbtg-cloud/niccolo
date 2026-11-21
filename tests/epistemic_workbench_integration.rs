@@ -570,6 +570,113 @@ async fn pinned_assessment_revisions_require_selective_review_without_rewriting_
             .assessment_dependencies
             .is_empty()
     );
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+    };
+    use tower::ServiceExt;
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1)
+        .await
+        .unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let secure = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let router = niccolo_evidence::api::router(secure);
+    let http_dependency = Uuid::new_v4();
+    let path = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/assessment-dependencies/{}",
+        f.workspace, sit, http_dependency
+    );
+    let request = |token: &str, path: &str, body: String| {
+        Request::builder()
+            .method("POST")
+            .uri(path)
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body))
+            .unwrap()
+    };
+    let body = serde_json::to_string(&dependency).unwrap();
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&reader, &path, body.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&writer, &path, body.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&writer, &path, body))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let review_path = format!("{path}/reviews/{}", Uuid::new_v4());
+    let body = serde_json::to_string(&DependencyReviewInput {
+        reviewed_assessment_event_id: second,
+        disposition: ReassessmentDisposition::Deferred,
+        note: "Need further inspection".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&reader, &review_path, body.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&writer, &review_path, body.clone()))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        router
+            .oneshot(request(&writer, &review_path, body))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let view = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap()
+        .assessment_dependencies
+        .into_iter()
+        .find(|v| v.dependency.dependency_id == http_dependency)
+        .unwrap();
+    assert!(view.requires_review);
+    assert_eq!(
+        view.latest_review.unwrap().input.disposition,
+        ReassessmentDisposition::Deferred
+    );
 }
 
 #[tokio::test]

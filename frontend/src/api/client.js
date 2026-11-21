@@ -86,6 +86,8 @@ export class NiccoloClient {
   createExpertGrounding(argumentId, groundingId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}/grounding/${groundingId}`, { body }); }
   recordExpertApplicability(argumentId, groundingId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}/grounding/${groundingId}/applicability/${eventId}`, { body }); }
   recordExpertAssessment(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessments/${eventId}`, { body }); }
+  recordExpertAssessmentDependency(dependencyId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessment-dependencies/${dependencyId}`, { body }); }
+  reviewExpertAssessmentDependency(dependencyId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/assessment-dependencies/${dependencyId}/reviews/${eventId}`, { body }); }
   reviewExpertReassessment(triggerRelationId, argumentId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/reassessment/${triggerRelationId}/arguments/${argumentId}/reviews/${eventId}`, { body }); }
 
   reasoningInput(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/reasoning-input`); }

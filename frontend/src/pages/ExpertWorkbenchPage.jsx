@@ -7,6 +7,7 @@ import {
   applicabilityAssessments,
   applicabilityRequest,
   assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest,
+  assessmentDependencyRequest, assessmentDependencyReviewRequest,
   groundingAdequacies,
   groundingEffects,
   groundingRequest,
@@ -36,6 +37,8 @@ export function ExpertWorkbenchPage() {
   const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
   const [error, setError] = useState('');
   const [assessment, setAssessment] = useState({ target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: [] });
+  const [dependency, setDependency] = useState({route: '', assessment: '', rationale: ''});
+  const [dependencyReviews, setDependencyReviews] = useState({});
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
@@ -56,7 +59,9 @@ export function ExpertWorkbenchPage() {
   const reviewReassessment = useWorkbenchMutation(client, workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
   const recordApplicability = useWorkbenchMutation(client, workbench, async ({route, body}) => client.recordExpertApplicability(route.argument_id, route.grounding_set_id, crypto.randomUUID(), body));
   const recordAssessment = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment];
+  const recordDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessmentDependency(crypto.randomUUID(), body));
+  const reviewDependency = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDependency(id, crypto.randomUUID(), body));
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordDependency, reviewDependency];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -81,6 +86,8 @@ export function ExpertWorkbenchPage() {
     ...data.grounding_sets.map(g => ({target: {kind: 'ROUTE', argument_id: g.argument_id, grounding_set_id: g.grounding_set_id}, label: `ROUTE ${g.effect}: ${g.rationale}`})),
   ];
   const assessmentHistory = data.assessments ?? [];
+  const assessmentDependencies = data.assessment_dependencies ?? [];
+  const routeLabel = route => data.grounding_sets.find(g => g.argument_id === route.argument_id && g.grounding_set_id === route.grounding_set_id)?.rationale ?? `${route.argument_id}/${route.grounding_set_id}`;
   const supersededAssessments = new Set(assessmentHistory.map(a => a.input.revises_event_id).filter(Boolean));
   const assessmentLabel = target => assessmentChoices.find(c => assessmentKey(c.target) === assessmentKey(target))?.label ?? assessmentKey(target);
   const submit = (action) => (event) => {
@@ -179,9 +186,26 @@ export function ExpertWorkbenchPage() {
         <fieldset><legend>Explicit grounds (optional)</legend>{assessmentChoices.filter(c => ['OBJECT','EVIDENCE'].includes(c.target.kind)).map(c => <label key={assessmentKey(c.target)}><input type="checkbox" checked={assessment.grounds.some(g => assessmentKey(g) === assessmentKey(c.target))} onChange={e => setAssessment({...assessment, grounds: e.target.checked ? [...assessment.grounds,c.target] : assessment.grounds.filter(g => assessmentKey(g) !== assessmentKey(c.target))})}/>{c.label}</label>)}</fieldset>
         <button disabled={busy}>Record assessment</button>
       </form>
+      <form onSubmit={submit(() => {
+        const route = data.grounding_sets.find(g => `${g.argument_id}:${g.grounding_set_id}` === dependency.route);
+        recordDependency.mutate(assessmentDependencyRequest(route, dependency.assessment, dependency.rationale));
+      })}>
+        <h3>Declare reliance on an assessment</h3>
+        <p>Pin the exact attributed assessment used by a route. Merely assessing an object does not establish reliance.</p>
+        <label>Route<select value={dependency.route} onChange={e => setDependency({...dependency,route:e.target.value})}><option value="">Choose…</option>{data.grounding_sets.map(g => <option key={`${g.argument_id}:${g.grounding_set_id}`} value={`${g.argument_id}:${g.grounding_set_id}`}>{g.rationale}</option>)}</select></label>
+        <label>Assessment event<select value={dependency.assessment} onChange={e => setDependency({...dependency,assessment:e.target.value})}><option value="">Choose…</option>{assessmentHistory.map(a => <option key={a.event_id} value={a.event_id}>{a.input.dimension}: {a.input.result} — {a.input.criterion} ({a.event_id})</option>)}</select></label>
+        <label>Why this route relies on this judgment<textarea value={dependency.rationale} maxLength={4096} onChange={e => setDependency({...dependency,rationale:e.target.value})}/></label>
+        <button disabled={busy}>Record reliance</button>
+      </form>
     </div>
 
     <article><h3>Current structured model</h3>
+      {assessmentDependencies.length > 0 && <details open><summary>Assessment reliance and selective review</summary><p>Revision of a pinned assessment creates a review obligation, not a revised truth value. Potential downstream routes are not automatically reviewed by retaining this route.</p><ul>{assessmentDependencies.map(view => {
+        const d = view.dependency;
+        const draftKey = `${d.dependency_id}:${view.current_assessment_event_id}`;
+        const draft = dependencyReviews[draftKey] ?? {disposition:'DEFERRED',note:''};
+        return <li key={d.dependency_id}><strong>{routeLabel(d.input)}</strong><p>{d.input.rationale}</p><small>Relies on {d.input.assessment_event_id} · recorded by {d.recorded_by}</small><p>{view.assessment_revised ? `Latest revision: ${view.current_assessment_event_id} — ${view.requires_review ? 'review required' : 'route retained after review'}` : 'No revision of pinned assessment recorded.'}</p>{view.potential_downstream_routes.length > 0 && <details><summary>Potential downstream routes ({view.potential_downstream_routes.length})</summary><ul>{view.potential_downstream_routes.map(r => <li key={`${r.argument_id}:${r.grounding_set_id}`}>{routeLabel(r)}</li>)}</ul></details>}{view.review_history.length > 0 && <details><summary>Review history</summary><ul>{view.review_history.map(r => <li key={r.review_event_id}>{r.input.disposition} — {r.input.note} · {r.recorded_by} · assessment {r.input.reviewed_assessment_event_id}</li>)}</ul></details>}{view.assessment_revised && <div className="reassessment-review"><select aria-label="Assessment reliance disposition" value={draft.disposition} onChange={e => setDependencyReviews({...dependencyReviews,[draftKey]:{...draft,disposition:e.target.value}})}>{reassessmentDispositions.map(x => <option key={x}>{x}</option>)}</select><input aria-label="Assessment reliance review note" value={draft.note} maxLength={4096} onChange={e => setDependencyReviews({...dependencyReviews,[draftKey]:{...draft,note:e.target.value}})}/><button type="button" disabled={busy} onClick={() => {try {reviewDependency.mutate({id:d.dependency_id, body:assessmentDependencyReviewRequest(view,draft.disposition,draft.note)});setError('');} catch(e) {setError(e.message);}}}>Record review</button></div>}</li>;
+      })}</ul></details>}
       {assessmentHistory.length > 0 && <details open><summary>Attributed multidimensional assessments — no universal score</summary><p>Separate judgments and disagreements remain visible. A revision preserves its predecessor.</p><ul>{assessmentHistory.map(a => <li key={a.event_id}><strong>{a.input.dimension}: {a.input.result}</strong> · confidence {a.input.confidence} · {supersededAssessments.has(a.event_id) ? 'revised' : 'current in its own revision chain'}<p>{assessmentLabel(a.input.target)}</p><p>Criterion: {a.input.criterion} · Context: {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.recorded_at}{a.input.revises_event_id ? ` · revises ${a.input.revises_event_id}` : ''}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}{!supersededAssessments.has(a.event_id) && <button type="button" disabled={busy} onClick={() => setAssessment({...a.input, target: assessmentKey(a.input.target), revises_event_id: a.event_id})}>Revise own judgment</button>}</li>)}</ul></details>}
       <p>{data.nodes.length} objects · {data.evidence.length} visible evidence fragments · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
