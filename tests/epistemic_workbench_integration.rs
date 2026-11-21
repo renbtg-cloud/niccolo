@@ -608,3 +608,173 @@ async fn superseding_a_ground_surfaces_only_direct_reassessment_impacts() {
     assert_eq!(impact.impact_kind, epistemic_workbench::ReassessmentImpactKind::GroundMember);
     assert_ne!(impact.argument_id, unaffected_argument);
 }
+#[tokio::test]
+async fn refinement_alone_does_not_trigger_reassessment_but_reinterpretation_does() {
+    let f = fixture().await;
+    let sit = situation(&f, "Refinement versus reinterpretation reassessment").await;
+    let prior = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The delay may be related to approval timing.",
+    )
+    .await;
+    let revision = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The delay may be related specifically to approval arriving after the cutoff.",
+    )
+    .await;
+    let finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "Approval timing remains relevant to the delay.",
+    )
+    .await;
+    let argument_id = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_id,
+        finding,
+        ArgumentMode::Abductive,
+        "The argument depends on the current approval-timing hypothesis.",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_id,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The prior hypothesis is an explicit premise.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(prior),
+            evidence_id: None,
+            rationale: "This premise carries the original interpretation.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        Uuid::new_v4(),
+        RelationFamily::Genealogy,
+        RelationKind::Refines,
+        revision,
+        prior,
+        "The newer hypothesis is more specific but does not yet replace the prior one.",
+    )
+    .await
+    .unwrap();
+    let refined = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert!(refined.reassessment_impacts.is_empty());
+
+    let trigger_relation = Uuid::new_v4();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        trigger_relation,
+        RelationFamily::Genealogy,
+        RelationKind::Reinterprets,
+        revision,
+        prior,
+        "The investigator now intends this as a revised reading of the prior hypothesis.",
+    )
+    .await
+    .unwrap();
+    let reinterpreted = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(reinterpreted.reassessment_impacts.len(), 1);
+    assert_eq!(
+        reinterpreted.reassessment_impacts[0].trigger_relation_id,
+        trigger_relation
+    );
+    assert_eq!(
+        reinterpreted.reassessment_impacts[0].relation_kind,
+        RelationKind::Reinterprets
+    );
+}
+
+#[tokio::test]
+async fn retracting_an_argument_conclusion_surfaces_a_conclusion_impact() {
+    let f = fixture().await;
+    let sit = situation(&f, "Selective reassessment after a conclusion is retracted").await;
+    let prior_finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The approval hold caused the transfer delay.",
+    )
+    .await;
+    let retraction = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The causal finding is withdrawn pending review of the cutoff evidence.",
+    )
+    .await;
+    let argument_id = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_id,
+        prior_finding,
+        ArgumentMode::Causal,
+        "This argument previously concluded that the hold caused the delay.",
+    )
+    .await
+    .unwrap();
+
+    let trigger_relation = Uuid::new_v4();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        trigger_relation,
+        RelationFamily::Genealogy,
+        RelationKind::Retracts,
+        retraction,
+        prior_finding,
+        "The investigator explicitly withdraws the prior conclusion from active use.",
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.reassessment_impacts.len(), 1);
+    let impact = &snapshot.reassessment_impacts[0];
+    assert_eq!(impact.trigger_relation_id, trigger_relation);
+    assert_eq!(impact.relation_kind, RelationKind::Retracts);
+    assert_eq!(impact.argument_id, argument_id);
+    assert_eq!(impact.grounding_set_id, None);
+    assert_eq!(impact.conclusion_object_id, prior_finding);
+    assert_eq!(
+        impact.impact_kind,
+        epistemic_workbench::ReassessmentImpactKind::Conclusion
+    );
+}
