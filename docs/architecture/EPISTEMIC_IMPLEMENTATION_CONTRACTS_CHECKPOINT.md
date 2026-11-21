@@ -374,6 +374,8 @@ Loyalty is a qualified relation to a person, group, institution, cause or princi
 
 Migration 0122 generalizes the actor-state target to an exact registered actor for directed trust, and to a registered actor or Situation object for loyalty. Separate trust dimensions represent competence, confidentiality and truthfulness. An explicit `DISTRUST_INDICATED` differs from absent trust, `NOT_INDICATED`, `UNKNOWN` and `CONTESTED`; it is valid only in a trust dimension. Multiple concurrent trust/loyalty judgments are preserved, with context, temporal scope, rationale, basis and attribution; neither reciprocal trust nor authorization, reliability, obedience or truth is inferred. The existing deterministic workspace and bearer access-control rules are unchanged.
 
+Checkpoint 1.31 validation: migration 0122 applied on a fresh PostgreSQL 17.11 database. Directed trust/loyalty integration verified distinct dimensions, exact actor and object targets, explicit distrust, rejection of incompatible targets and revision identity. Regression passed in individually executed Rust suites (594 tests), React (140), Python (22) and standalone JavaScript (8). The parallel full-build command exceeded ephemeral disk space; the affected test binary was rebuilt separately, and the initial environment/concurrency failures passed on retry with the configured dedicated database and bounded test concurrency.
+
 Motives involving ego must be representable explicitly:
 
 - saving face;
