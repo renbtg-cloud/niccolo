@@ -267,6 +267,32 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn narrative_means_do_not_establish_deception_or_effect() {
+    use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Review how an account was composed").await;
+    let issue=node(&f,sit,ExpertNodeKind::Question,"Which ledger entries were included?").await;
+    let speaker=Uuid::new_v4();let audience=Uuid::new_v4();
+    for (id,label) in [(speaker,"Narrator"),(audience,"Listener")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:speaker,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::NarrativeOmission,judgment:StateJudgment::Contested,context:"Account review".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Entries may be omitted due to time pressure".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    for dimension in [StateDimension::NarrativeFalseStatement,StateDimension::NarrativeSelection,StateDimension::NarrativeOmission,StateDimension::NarrativeFraming,StateDimension::NarrativeOrdering,StateDimension::NarrativeTiming,StateDimension::NarrativeAggregation,StateDimension::NarrativeDecontextualization] {
+        let id=Uuid::new_v4();record(id,StateInput{dimension,..item.clone()}).await.unwrap();
+        assert!(matches!(record(Uuid::new_v4(),StateInput{dimension,target_object_id:None,target_state_event_id:Some(id),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    }
+    record(Uuid::new_v4(),StateInput{counterparty_actor_id:Some(audience),..item.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),9);
+    assert!(snapshot.actor_epistemic_states.iter().all(|e|e.input.judgment==StateJudgment::Contested));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_actor_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'NARRATIVE_OMISSION','INDICATED','context','scope','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(speaker).bind(audience).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn power_and_authority_do_not_imply_directed_asymmetry() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;

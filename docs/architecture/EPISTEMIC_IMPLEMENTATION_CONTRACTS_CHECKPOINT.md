@@ -486,6 +486,8 @@ Truthful propositions can be composed into a misleading narrative by:
 
 Omission is not automatically deceptive. Ignorance, forgetfulness, irrelevance, hierarchy, fear, limited access and time pressure are alternative explanations.
 
+Migration 0131 distinguishes eight attributed narrative means, including a false statement and each of the seven composition methods. A judgment is contextual to a registered narrator and visible Situation object, with an optional exact audience member. No deceptive intention, attempt or effect is inferred; competing explanations remain open. A contested omission is not an accusation.
+
 Separate:
 
 - deceptive intention;
