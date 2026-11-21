@@ -529,6 +529,8 @@ A procedurally competent investigation can therefore follow the wrong direction.
 
 `InvestigationIntegrity` should be multidimensional and contestable, considering matters such as independence, evidence selection/provenance, question framing, omitted hypotheses, discriminatory power, reasoning quality, criteria consistency, dissent preservation, historical traceability and reviewability.
 
+Migration 0134 generalizes the existing exact-target assessment ledger with ten independent investigation-integrity dimensions: investigative independence, evidence selection, provenance, question framing, hypothesis coverage, reasoning quality, criteria consistency, dissent preservation, historical traceability and reviewability. Discriminatory power remains its existing independent dimension. Each judgment is scoped to a visible object, relation, evidence fragment, grounding route or exact prior assessment, with criterion, context, confidence, rationale and optional grounds. No concern indicated is not proof of integrity; a concern or indicated compromise is not a general truth verdict, permission change, or automatic investigation veto. Explicit competing judgments and revisions retain their history.
+
 Detect self-sealing reasoning: a hypothesis for which supporting evidence, contrary evidence and absence of evidence are all reinterpreted as support is epistemically dangerous even if the hypothesis might happen to be true.
 
 Counterintelligence remains a vertical/stress-test over the general epistemic core, not a second epistemic engine.

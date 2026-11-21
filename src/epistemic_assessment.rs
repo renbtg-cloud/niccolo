@@ -25,6 +25,16 @@ pub enum AssessmentDimension {
     Urgency,
     AuthorizationStatus,
     InvestigationCoverage,
+    IntegrityInvestigativeIndependence,
+    IntegrityEvidenceSelection,
+    IntegrityProvenance,
+    IntegrityQuestionFraming,
+    IntegrityHypothesisCoverage,
+    IntegrityReasoningQuality,
+    IntegrityCriteriaConsistency,
+    IntegrityDissentPreservation,
+    IntegrityHistoricalTraceability,
+    IntegrityReviewability,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +78,9 @@ pub enum AssessmentResult {
     Unexamined,
     PartiallyExamined,
     Examined,
+    NoConcernIndicated,
+    ConcernIndicated,
+    CompromiseIndicated,
     Unknown,
     Contested,
 }
@@ -99,6 +112,16 @@ impl AssessmentDimension {
                 Self::Urgency => matches!(result, Urgent | TimeSensitive | Deferrable),
                 Self::AuthorizationStatus => matches!(result, AuthorizationReported | AuthorizationRequired | AuthorizationDenied),
                 Self::InvestigationCoverage => matches!(result, Unexamined | PartiallyExamined | Examined),
+                Self::IntegrityInvestigativeIndependence
+                | Self::IntegrityEvidenceSelection
+                | Self::IntegrityProvenance
+                | Self::IntegrityQuestionFraming
+                | Self::IntegrityHypothesisCoverage
+                | Self::IntegrityReasoningQuality
+                | Self::IntegrityCriteriaConsistency
+                | Self::IntegrityDissentPreservation
+                | Self::IntegrityHistoricalTraceability
+                | Self::IntegrityReviewability => matches!(result, NoConcernIndicated | ConcernIndicated | CompromiseIndicated),
             }
     }
 

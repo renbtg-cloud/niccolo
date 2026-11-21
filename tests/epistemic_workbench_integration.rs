@@ -2229,6 +2229,40 @@ async fn assessments_can_target_exact_prior_assessments_without_mutating_them() 
 }
 
 #[tokio::test]
+async fn investigative_integrity_is_multidimensional_contestable_and_not_a_veto() {
+    use epistemic_workbench::assessment::*;
+    let f=fixture().await;
+    let sit=situation(&f,"Review investigation quality").await;
+    let other=situation(&f,"Separate investigation").await;
+    let q=node(&f,sit,ExpertNodeKind::Question,"Was the omission intentional?").await;
+    let ground=node(&f,sit,ExpertNodeKind::Proposition,"A competing explanation was recorded").await;
+    let foreign=node(&f,other,ExpertNodeKind::Proposition,"Unrelated material").await;
+    let input=AssessmentInput{target:AssessmentTarget::Object{object_id:q},dimension:AssessmentDimension::IntegrityQuestionFraming,result:AssessmentResult::ConcernIndicated,confidence:AssessmentConfidence::Low,criterion:"Open framing".into(),context:"Before interviews".into(),rationale:"Question may presuppose an intention".into(),grounds:vec![AssessmentGround::Object{object_id:ground}],revises_event_id:None};
+    let record=|id,input|epistemic_workbench::assessment::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let framing=Uuid::new_v4();record(framing,input.clone()).await.unwrap();
+    for dimension in [AssessmentDimension::IntegrityInvestigativeIndependence,AssessmentDimension::IntegrityEvidenceSelection,AssessmentDimension::IntegrityProvenance,AssessmentDimension::IntegrityHypothesisCoverage,AssessmentDimension::IntegrityReasoningQuality,AssessmentDimension::IntegrityCriteriaConsistency,AssessmentDimension::IntegrityDissentPreservation,AssessmentDimension::IntegrityHistoricalTraceability,AssessmentDimension::IntegrityReviewability] {
+        record(Uuid::new_v4(),AssessmentInput{dimension,result:AssessmentResult::Unknown,..input.clone()}).await.unwrap();
+    }
+    record(Uuid::new_v4(),AssessmentInput{result:AssessmentResult::NoConcernIndicated,rationale:"Alternative assessment of wording".into(),..input.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),AssessmentInput{result:AssessmentResult::Unreliable,..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),AssessmentInput{grounds:vec![AssessmentGround::Object{object_id:foreign}],..input.clone()}).await,Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(),AssessmentInput{dimension:AssessmentDimension::IntegrityReviewability,revises_event_id:Some(framing),..input.clone()}).await,Err(WorkbenchError::Invalid)));
+    record(Uuid::new_v4(),AssessmentInput{target:AssessmentTarget::Assessment{assessment_event_id:framing},dimension:AssessmentDimension::IntegrityReviewability,result:AssessmentResult::Contested,..input.clone()}).await.unwrap();
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.assessments.len(),12);
+    assert!(snapshot.assessments.iter().any(|e|e.event_id==framing&&e.input.result==AssessmentResult::ConcernIndicated));
+    assert!(snapshot.assessments.iter().any(|e|e.input.dimension==AssessmentDimension::IntegrityQuestionFraming&&e.input.result==AssessmentResult::NoConcernIndicated));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_states.is_empty());
+    use epistemic_workbench::inquiry_decision::{self,InquiryDecisionInput,InquiryDisposition};
+    let decision=inquiry_decision::record(&f.service,f.workspace,sit,f.principal,Uuid::new_v4(),InquiryDecisionInput{question_id:q,considered_question_ids:vec![q],assessment_event_ids:vec![],disposition:InquiryDisposition::PursueNext,rationale:"Human elects to ask the question with the concern in mind".into()}).await.unwrap();
+    assert_eq!(decision.input.disposition,InquiryDisposition::PursueNext);
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,target_object_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,'INTEGRITY_QUESTION_FRAMING','RELIABLE','LOW','criterion','context','rationale',$5)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(q).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn multidimensional_assessments_preserve_revision_and_disagreement() {
     use epistemic_workbench::assessment::*;
     let f = fixture().await;

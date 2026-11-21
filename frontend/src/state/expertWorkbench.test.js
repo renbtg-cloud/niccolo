@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed, assessmentDimensionsForTarget } from './expertWorkbench.js';
+import { assessmentRequest, assessmentResults, assessmentKey, assessmentDependencyRequest, assessmentDependencyReviewRequest, assessmentDownstreamReviewRequest, assessmentTargetRevision, nodeRequest, defaultGroundRole, relationEndpointAllowed, assessmentDimensionsForTarget, integrityDimensions } from './expertWorkbench.js';
 
 describe('contextual assessment request', () => {
   const draft = { dimension: 'RELIABILITY', result: 'RELIABLE', confidence: 'LOW', criterion: ' consistency ', context: ' current investigation ', rationale: ' because of provenance ' };
@@ -10,7 +10,7 @@ describe('contextual assessment request', () => {
     expect(assessmentKey({kind:'ROUTE', argument_id:'a', grounding_set_id:'g'})).toBe('ROUTE:a:g');
   });
   it('prevents cross-dimensional results and duplicate grounds', () => {
-    expect(Object.keys(assessmentResults)).toHaveLength(12);
+    expect(Object.keys(assessmentResults)).toHaveLength(22);
     expect(() => assessmentRequest({...draft, result:'CREDIBLE'}, target, [])).toThrow();
     expect(() => assessmentRequest(draft, target, [ground, ground])).toThrow();
   });
@@ -23,6 +23,17 @@ describe('contextual assessment request', () => {
     expect(assessmentRequest(authorization,q,[],nodes).result).toBe('AUTHORIZATION_REPORTED');
     expect(() => assessmentRequest(authorization,target,[],nodes)).toThrow('investigative question');
     expect(() => assessmentRequest({...authorization,result:'LOW_COST'},q,[],nodes)).toThrow();
+  });
+  it('keeps ten investigation integrity aspects independently contestable without a score or veto', () => {
+    expect(integrityDimensions).toHaveLength(10);
+    for (const dimension of integrityDimensions) {
+      const item = {...draft, dimension, result:'CONCERN_INDICATED'};
+      expect(assessmentRequest(item,target,[ground])).toMatchObject({dimension,result:'CONCERN_INDICATED',target,grounds:[ground]});
+      expect(assessmentRequest({...item,result:'CONTESTED'},target,[]).result).toBe('CONTESTED');
+      expect(()=>assessmentRequest({...item,result:'UNRELIABLE'},target,[])).toThrow();
+    }
+    expect(()=>assessmentRequest({...draft,result:'COMPROMISE_INDICATED'},target,[])).toThrow();
+    expect(assessmentDimensionsForTarget({kind:'ASSESSMENT',assessment_event_id:'prior'},[])).toContain('INTEGRITY_REVIEWABILITY');
   });
   it('restricts gap resolution to gaps and requires non-question grounds for a supported or partially addressed result', () => {
     const nodes = [{object_id:'g',kind:'INFORMATION_GAP'},{object_id:'q',kind:'QUESTION'},{object_id:'p',kind:'PROPOSITION'}];
