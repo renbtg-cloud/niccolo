@@ -1,11 +1,11 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::{
     authz,
-    postgres_ingest::ingest_source,
     epistemic_workbench::{
         self, ArgumentMode, ExpertNodeKind, GroundingAdequacy, GroundingEffect,
         GroundingMemberRole, NewGroundingMember, RelationFamily, RelationKind, WorkbenchError,
     },
+    postgres_ingest::ingest_source,
     situation_store,
     source_import::SourceFormat,
 };
@@ -50,24 +50,13 @@ async fn fixture() -> Fixture {
 
 async fn situation(f: &Fixture, focus: &str) -> Uuid {
     let situation = Uuid::new_v4();
-    situation_store::create(
-        &f.service,
-        f.workspace,
-        f.principal,
-        situation,
-        focus,
-    )
-    .await
-    .unwrap();
+    situation_store::create(&f.service, f.workspace, f.principal, situation, focus)
+        .await
+        .unwrap();
     situation
 }
 
-async fn node(
-    f: &Fixture,
-    situation: Uuid,
-    kind: ExpertNodeKind,
-    text: &str,
-) -> Uuid {
+async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) -> Uuid {
     let id = Uuid::new_v4();
     epistemic_workbench::create_node(
         &f.service,
@@ -87,7 +76,11 @@ async fn node(
 #[tokio::test]
 async fn expert_authored_relations_and_joint_grounding_remain_explicit() {
     let f = fixture().await;
-    let sit = situation(&f, "Investigate whether the explanation survives contrary evidence").await;
+    let sit = situation(
+        &f,
+        "Investigate whether the explanation survives contrary evidence",
+    )
+    .await;
     let hypothesis = node(
         &f,
         sit,
@@ -301,7 +294,6 @@ async fn grounding_member_target_and_role_are_not_guessed() {
     assert!(matches!(invalid, Err(WorkbenchError::Invalid)));
 }
 
-
 #[tokio::test]
 async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     let f = fixture().await;
@@ -317,15 +309,9 @@ async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     )
     .await
     .unwrap();
-    situation_store::add_source(
-        &f.service,
-        f.workspace,
-        f.principal,
-        sit,
-        document_id,
-    )
-    .await
-    .unwrap();
+    situation_store::add_source(&f.service, f.workspace, f.principal, sit, document_id)
+        .await
+        .unwrap();
 
     let finding = node(
         &f,
@@ -356,7 +342,11 @@ async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     assert_eq!(snapshot.evidence[0].evidence_id, imported.fragment_ids[0]);
     assert_eq!(snapshot.evidence[0].document_id, document_id);
     assert_eq!(snapshot.evidence[0].speaker_label, "Ana");
-    assert!(snapshot.evidence[0].content.contains("approval was placed on hold"));
+    assert!(
+        snapshot.evidence[0]
+            .content
+            .contains("approval was placed on hold")
+    );
 
     let grounding = epistemic_workbench::create_grounding_set(
         &f.service,
@@ -380,9 +370,11 @@ async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     .unwrap();
     assert_eq!(grounding.members.len(), 1);
     assert_eq!(grounding.members[0].role, GroundingMemberRole::Evidence);
-    assert_eq!(grounding.members[0].evidence_id, Some(imported.fragment_ids[0]));
+    assert_eq!(
+        grounding.members[0].evidence_id,
+        Some(imported.fragment_ids[0])
+    );
 }
-
 
 #[tokio::test]
 async fn persistent_proposition_requires_explicit_situation_membership() {
@@ -430,11 +422,14 @@ async fn persistent_proposition_requires_explicit_situation_membership() {
     assert!(matches!(relation, Err(WorkbenchError::Invisible)));
 }
 
-
 #[tokio::test]
 async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
     let f = fixture().await;
-    let sit = situation(&f, "Search documentary evidence beyond the bounded Workbench list").await;
+    let sit = situation(
+        &f,
+        "Search documentary evidence beyond the bounded Workbench list",
+    )
+    .await;
     let document_id = Uuid::new_v4();
     let mut body = String::new();
     for minute in 0..300 {
@@ -460,25 +455,21 @@ async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
     .await
     .unwrap();
     assert_eq!(imported.fragment_ids.len(), 300);
-    situation_store::add_source(
-        &f.service,
-        f.workspace,
-        f.principal,
-        sit,
-        document_id,
-    )
-    .await
-    .unwrap();
+    situation_store::add_source(&f.service, f.workspace, f.principal, sit, document_id)
+        .await
+        .unwrap();
 
     let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
         .await
         .unwrap();
     assert_eq!(snapshot.evidence.len(), 256);
     assert!(snapshot.evidence_truncated);
-    assert!(snapshot
-        .evidence
-        .iter()
-        .all(|item| !item.content.contains("UNIQUESEARCHMARKER")));
+    assert!(
+        snapshot
+            .evidence
+            .iter()
+            .all(|item| !item.content.contains("UNIQUESEARCHMARKER"))
+    );
 
     let results = epistemic_workbench::search_evidence(
         &f.service,
@@ -493,7 +484,6 @@ async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
     assert_eq!(results[0].evidence_id, imported.fragment_ids[299]);
     assert!(results[0].content.contains("approval was suspended"));
 }
-
 
 #[tokio::test]
 async fn superseding_a_ground_surfaces_only_direct_reassessment_impacts() {
@@ -605,7 +595,10 @@ async fn superseding_a_ground_surfaces_only_direct_reassessment_impacts() {
     assert_eq!(impact.argument_id, impacted_argument);
     assert_eq!(impact.grounding_set_id, Some(impacted_set));
     assert_eq!(impact.conclusion_object_id, finding);
-    assert_eq!(impact.impact_kind, epistemic_workbench::ReassessmentImpactKind::GroundMember);
+    assert_eq!(
+        impact.impact_kind,
+        epistemic_workbench::ReassessmentImpactKind::GroundMember
+    );
     assert_ne!(impact.argument_id, unaffected_argument);
 }
 #[tokio::test]
@@ -777,4 +770,108 @@ async fn retracting_an_argument_conclusion_surfaces_a_conclusion_impact() {
         impact.impact_kind,
         epistemic_workbench::ReassessmentImpactKind::Conclusion
     );
+}
+
+#[tokio::test]
+async fn snapshot_surfaces_recursive_support_without_inventing_independent_corroboration() {
+    let f = fixture().await;
+    let sit = situation(
+        &f,
+        "Circular grounding remains visible without confidence inflation",
+    )
+    .await;
+    let a = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The approval hold explains the transfer delay.",
+    )
+    .await;
+    let b = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The transfer delay implies that the approval hold remained effective.",
+    )
+    .await;
+
+    let argument_a = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_a,
+        a,
+        ArgumentMode::Abductive,
+        "Argument A currently uses hypothesis B as support.",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_a,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "B is used as one route to A.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(b),
+            evidence_id: None,
+            rationale: "B is the explicit premise in this route.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let argument_b = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_b,
+        b,
+        ArgumentMode::Abductive,
+        "Argument B currently uses hypothesis A as support.",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_b,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "A is used as one route to B.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(a),
+            evidence_id: None,
+            rationale: "A is the explicit premise in this route.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.grounding_cycles.len(), 1);
+    let cycle = &snapshot.grounding_cycles[0];
+    assert_eq!(cycle.object_ids, vec![a.min(b), a.max(b)]);
+    assert_eq!(cycle.argument_ids.len(), 2);
+    assert!(cycle.argument_ids.contains(&argument_a));
+    assert!(cycle.argument_ids.contains(&argument_b));
+    assert!(!cycle.has_external_anchor);
+    assert!(cycle.unanchored_recursive_support);
 }
