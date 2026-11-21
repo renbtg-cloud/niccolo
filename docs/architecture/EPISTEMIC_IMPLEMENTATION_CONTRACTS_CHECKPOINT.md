@@ -653,6 +653,8 @@ Checkpoint 1.70 adds [the AT-01–AT-26 executable witness matrix](EPISTEMIC_ADV
 
 Checkpoint 1.71 adds an AT-08/AT-22 regression witness: two analyses of the same frozen catalogue examine reverse 90/10 and 10/90 allocations across two sources. Exact examination counts remain analysis-specific; neither examination completeness nor epistemic quality or prevalence is inferred, and the successor does not inherit the predecessor's examined-fragment claims. All nine coverage integration tests and 24 Python tests passed. The audit retains both cases as constituent coverage pending a compound fixture with actual findings and operation exhaustion.
 
+Checkpoint 1.72 adds six independent contextual response assessments for AT-19, distinguishing observed absence, actual nonresponse, expectation, opportunity, deliberate nonresponse and interpreted assent. Observed absence assertions require an exact evidence fragment; interpreted assent identifies its distinct interpreting actor. Neither establishes consent or actual nonresponse. Migration 0147 and a five-participant fixture passed alongside 289 Rust and 24 Python tests. Completeness of observation remains a human assessment, not a consequence of recording an observation.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

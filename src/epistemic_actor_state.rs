@@ -104,8 +104,19 @@ pub enum StateDimension {
     ModeledSecrecyRationale,
     ModeledSecrecyConclusions,
     ModeledSecrecyPartialContent,
+    ResponseObservedAbsence,
+    ResponseActualNonresponse,
+    ResponseExpectation,
+    ResponseOpportunity,
+    ResponseDeliberateNonresponse,
+    ResponseInterpretedAssent,
 }
 impl StateDimension {
+    pub fn is_response_silence_facet(self) -> bool {
+        matches!(self, Self::ResponseObservedAbsence | Self::ResponseActualNonresponse |
+            Self::ResponseExpectation | Self::ResponseOpportunity |
+            Self::ResponseDeliberateNonresponse | Self::ResponseInterpretedAssent)
+    }
     pub fn is_modeled_secrecy_facet(self) -> bool {
         matches!(self, Self::ModeledSecrecyExistence | Self::ModeledSecrecyContent |
             Self::ModeledSecrecySourceIdentity | Self::ModeledSecrecyOrigin |
@@ -391,6 +402,11 @@ pub async fn record(
         || (input.dimension.is_narrative_means() && input.target_object_id.is_none())
         || (input.dimension.is_deception_facet() && input.target_object_id.is_none())
         || ((input.dimension.is_self_deception_facet() || input.dimension.is_modeled_secrecy_facet()) && input.target_object_id.is_none())
+        || (input.dimension.is_response_silence_facet() && input.target_object_id.is_none())
+        || (input.dimension == StateDimension::ResponseInterpretedAssent && input.counterparty_actor_id.is_none())
+        || (input.dimension == StateDimension::ResponseObservedAbsence
+            && matches!(input.judgment, StateJudgment::Indicated | StateJudgment::NotIndicated)
+            && input.basis_evidence_id.is_none())
         || (input.dimension.requires_deception_audience() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_asymmetry() && input.counterparty_actor_id.is_none())
         || (input.dimension.is_epistemic_influence() != input.influence_target.is_some())
@@ -402,7 +418,8 @@ pub async fn record(
                 || input.dimension.is_epistemic_influence()
                 || input.dimension.is_epistemic_power()
                 || input.dimension.is_narrative_means()
-                || input.dimension.is_deception_facet())
+                || input.dimension.is_deception_facet()
+                || input.dimension.is_response_silence_facet())
                 || input.counterparty_actor_id == Some(input.subject_actor_id)))
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()

@@ -675,6 +675,72 @@ async fn distributed_actor_records_do_not_create_collective_knowledge() {
 }
 
 #[tokio::test]
+async fn silence_does_not_establish_assent_or_actual_nonresponse() {
+    use epistemic_workbench::{
+        actor_state::{self, StateDimension as D, StateInput, StateJudgment as J},
+        inquiry_response::{self, ResponseInput},
+    };
+    let f = fixture().await;
+    let sit = situation(&f, "AT-19: an executive equates no objection with agreement").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Do you agree with the proposed change?").await;
+    let executive = Uuid::new_v4();
+    let agree = Uuid::new_v4();
+    let dissent = Uuid::new_v4();
+    let silent = Uuid::new_v4();
+    let unread = Uuid::new_v4();
+    let fearful = Uuid::new_v4();
+    for (id, label) in [(executive,"Executive"),(agree,"Agrees"),(dissent,"Dissents"),(silent,"Silent"),(unread,"Unread"),(fearful,"Fearful")] {
+        niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();
+    }
+    let doc = Uuid::new_v4();
+    let imported = ingest_source(&f.service,f.workspace,doc,SourceFormat::WhatsappExport,"fixture://at19",b"[02/11/2026, 12:00] Executive: Do you agree with the proposed change?\n[02/11/2026, 12:01] Agrees: Yes\n[02/11/2026, 12:02] Dissents: No\n").await.unwrap();
+    situation_store::add_source(&f.service,f.workspace,f.principal,sit,doc).await.unwrap();
+    for (speaker,text,basis) in [(agree,"Yes",imported.fragment_ids[1]),(dissent,"No",imported.fragment_ids[2])] {
+        inquiry_response::record(&f.service,f.workspace,sit,f.principal,q,Uuid::new_v4(),ResponseInput{utterance_id:Uuid::new_v4(),utterance_text:text.into(),speaker_actor_id:Some(speaker),source_evidence_id:Some(basis),source_contribution_id:None,rationale:"Original response occurrence".into()}).await.unwrap();
+    }
+    let base = StateInput {subject_actor_id:silent,target_object_id:Some(q),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(executive),influence_target:None,dimension:D::ResponseObservedAbsence,judgment:J::Indicated,context:"Partial group chat export; other channels not collected".into(),temporal_scope:"12:00–12:02 on 2 November".into(),orientation_scope:None,orientation_goal:None,rationale:"No reply by this participant appears within the inspected export; this does not establish no reply elsewhere".into(),basis_evidence_id:Some(imported.fragment_ids[0]),revises_event_id:None};
+    let record = |id,input| actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let absence = Uuid::new_v4();
+    record(absence,base.clone()).await.unwrap();
+    assert!(record(absence,base.clone()).await.unwrap().replayed);
+    assert!(matches!(record(Uuid::new_v4(),StateInput{basis_evidence_id:None,..base.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{target_object_id:None,target_state_event_id:Some(absence),..base.clone()}).await,Err(WorkbenchError::Invalid)));
+    for (subject_actor_id,dimension,judgment,rationale) in [
+        (silent,D::ResponseActualNonresponse,J::Unknown,"Other channels have not been examined"),
+        (silent,D::ResponseExpectation,J::Indicated,"A reply was requested"),
+        (silent,D::ResponseOpportunity,J::Unknown,"Availability not known"),
+        (unread,D::Examination,J::NotIndicated,"Attributed report of unread proposal"),
+        (unread,D::ResponseOpportunity,J::Unknown,"No established opportunity"),
+        (fearful,D::Pressure,J::Indicated,"Attributed concern about retaliation"),
+        (fearful,D::ResponseDeliberateNonresponse,J::Contested,"Possible intentional avoidance; alternative explanations remain"),
+    ] {
+        // Examination is an undirected state; response and pressure facets may name a counterpart.
+        let counterparty_actor_id = (dimension != D::Examination).then_some(executive);
+        record(Uuid::new_v4(),StateInput{subject_actor_id,dimension,judgment,rationale:rationale.into(),counterparty_actor_id,basis_evidence_id:None,..base.clone()}).await.unwrap();
+    }
+    for subject_actor_id in [agree,silent,unread,fearful] {
+        record(Uuid::new_v4(),StateInput{subject_actor_id,dimension:D::ResponseInterpretedAssent,judgment:J::Indicated,rationale:"Executive interprets this participant as agreeing; not an actual consent finding".into(),basis_evidence_id:None,..base.clone()}).await.unwrap();
+    }
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:D::ResponseInterpretedAssent,counterparty_actor_id:None,..base.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{dimension:D::ResponseActualNonresponse,revises_event_id:Some(absence),..base.clone()}).await,Err(WorkbenchError::Invalid)));
+    let revision = Uuid::new_v4();
+    record(revision,StateInput{judgment:J::Contested,revises_event_id:Some(absence),rationale:"Another collection path may contain a reply".into(),..base.clone()}).await.unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.question_responses.len(),2);
+    assert_eq!(snapshot.actor_epistemic_states.len(),13);
+    assert_eq!(snapshot.actor_epistemic_states.iter().filter(|e|e.input.dimension==D::ResponseInterpretedAssent).count(),4);
+    assert!(!snapshot.actor_epistemic_states.iter().any(|e|matches!(e.input.dimension,D::Consent|D::Compliance|D::Loyalty|D::EvidenceSupportedKnowledge)));
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.event_id==absence&&e.input==base));
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.event_id==revision&&e.input.revises_event_id==Some(absence)));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty()&&snapshot.response_interpretations.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESPONSE_OBSERVED_ABSENCE','INDICATED','context','time','rationale',$6)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(silent).bind(q).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn actor_state_basis_and_writer_authority_are_checked_at_the_boundary() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
     use epistemic_workbench::actor_state::{self,StateInput,StateDimension,StateJudgment};
