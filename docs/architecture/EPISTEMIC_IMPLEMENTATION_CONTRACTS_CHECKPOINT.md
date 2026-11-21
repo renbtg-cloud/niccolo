@@ -504,6 +504,8 @@ A deception attempt can fail against its intended target yet mislead an unintend
 
 Migration 0132 records the alleged narrator's deception intention, attempt, intended target, intended effect, actual effect and perceived success as six independent facets. Each requires a visible Situation object and contextual rationale. Intended target, intended effect and actual effect require an exact registered audience member, allowing conflicting or different outcomes for distinct actors. Intention, attempt and perceived success can retain an unidentified audience; means remain independent as in migration 0131. No event automatically establishes deception, falsity, intent or success.
 
+Checkpoint 1.41: Migration 0132 verified in PostgreSQL; 604 Rust tests, 150 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
+
 Self-deception must remain an attributed hypothesis, not casual psychological diagnosis. Candidate mechanisms include rationalization, selective attention, motivated interpretation, ego protection, identity protection and avoidance of conflicting evidence.
 
 ## 19. Investigation-directed deception and integrity
