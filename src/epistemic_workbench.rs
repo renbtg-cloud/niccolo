@@ -148,6 +148,18 @@ impl RelationKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkbenchEvidence {
+    pub evidence_id: Uuid,
+    pub document_id: Uuid,
+    pub ordinal: i32,
+    pub speaker_label: String,
+    pub content: String,
+    pub source_class: String,
+    pub source_locator: String,
+    pub document_locator: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExpertRelation {
     pub relation_id: Uuid,
     pub situation_id: Uuid,
@@ -288,6 +300,8 @@ pub struct GroundingSetView {
 pub struct WorkbenchSnapshot {
     pub situation_id: Uuid,
     pub nodes: Vec<ExpertNode>,
+    pub evidence: Vec<WorkbenchEvidence>,
+    pub evidence_truncated: bool,
     pub relations: Vec<ExpertRelation>,
     pub arguments: Vec<ExpertArgument>,
     pub grounding_sets: Vec<GroundingSetView>,
@@ -1002,6 +1016,37 @@ pub async fn snapshot(
             replayed: false,
         });
     }
+    let evidence_rows: Vec<(Uuid, Uuid, i32, String, String, String, String, String)> = sqlx::query_as(
+        "SELECT f.evidence_id,f.document_id,f.ordinal,f.speaker_label,e.content,e.source_class,e.source_locator,d.locator \
+         FROM niccolo.situation_sources ss \
+         JOIN niccolo.source_fragments f ON f.workspace_id=ss.workspace_id AND f.document_id=ss.document_id \
+         JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
+         JOIN niccolo.source_documents d ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id \
+         WHERE ss.workspace_id=$1 AND ss.situation_id=$2 AND e.admissible \
+         ORDER BY d.created_at,f.document_id,f.ordinal LIMIT 257",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?;
+    let evidence_truncated = evidence_rows.len() > 256;
+    let evidence = evidence_rows
+        .into_iter()
+        .take(256)
+        .map(
+            |(evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator)| WorkbenchEvidence {
+                evidence_id,
+                document_id,
+                ordinal,
+                speaker_label,
+                content,
+                source_class,
+                source_locator,
+                document_locator,
+            },
+        )
+        .collect();
+
     let relation_rows: Vec<(Uuid, String, String, Uuid, Uuid, String, Uuid)> = sqlx::query_as(
         "SELECT relation_id,relation_family,relation_kind,left_object_id,right_object_id,rationale,recorded_by_principal_id \
          FROM niccolo.epistemic_relations WHERE workspace_id=$1 AND situation_id=$2 \
@@ -1102,6 +1147,8 @@ pub async fn snapshot(
     Ok(WorkbenchSnapshot {
         situation_id: situation,
         nodes,
+        evidence,
+        evidence_truncated,
         relations,
         arguments,
         grounding_sets,
@@ -1126,6 +1173,8 @@ mod tests {
         let value = serde_json::to_value(WorkbenchSnapshot {
             situation_id: Uuid::nil(),
             nodes: vec![],
+            evidence: vec![],
+            evidence_truncated: false,
             relations: vec![],
             arguments: vec![],
             grounding_sets: vec![],

@@ -1,11 +1,13 @@
 #![cfg(feature = "pg-integration")]
 use niccolo_evidence::{
     authz,
+    postgres_ingest::ingest_source,
     epistemic_workbench::{
         self, ArgumentMode, ExpertNodeKind, GroundingAdequacy, GroundingEffect,
         GroundingMemberRole, NewGroundingMember, RelationFamily, RelationKind, WorkbenchError,
     },
     situation_store,
+    source_import::SourceFormat,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -297,4 +299,86 @@ async fn grounding_member_target_and_role_are_not_guessed() {
     )
     .await;
     assert!(matches!(invalid, Err(WorkbenchError::Invalid)));
+}
+
+
+#[tokio::test]
+async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
+    let f = fixture().await;
+    let sit = situation(&f, "Ground a finding in documentary evidence").await;
+    let document_id = Uuid::new_v4();
+    let imported = ingest_source(
+        &f.service,
+        f.workspace,
+        document_id,
+        SourceFormat::WhatsappExport,
+        "fixture://expert-grounding-chat",
+        b"[02/11/2026, 12:00] Ana: approval was placed on hold\n",
+    )
+    .await
+    .unwrap();
+    situation_store::add_source(
+        &f.service,
+        f.workspace,
+        f.principal,
+        sit,
+        document_id,
+    )
+    .await
+    .unwrap();
+
+    let finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "A manual approval hold is documented in the supplied chat export.",
+    )
+    .await;
+    let argument_id = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_id,
+        finding,
+        ArgumentMode::Inductive,
+        "The finding is grounded in one explicitly selected source fragment.",
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.evidence.len(), 1);
+    assert!(!snapshot.evidence_truncated);
+    assert_eq!(snapshot.evidence[0].evidence_id, imported.fragment_ids[0]);
+    assert_eq!(snapshot.evidence[0].document_id, document_id);
+    assert_eq!(snapshot.evidence[0].speaker_label, "Ana");
+    assert!(snapshot.evidence[0].content.contains("approval was placed on hold"));
+
+    let grounding = epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        argument_id,
+        Uuid::new_v4(),
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The source fragment is an explicit documentary member, not an inferred premise.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Evidence,
+            ground_object_id: None,
+            evidence_id: Some(imported.fragment_ids[0]),
+            rationale: "Investigator selected this exact fragment as documentary grounding.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+    assert_eq!(grounding.members.len(), 1);
+    assert_eq!(grounding.members[0].role, GroundingMemberRole::Evidence);
+    assert_eq!(grounding.members[0].evidence_id, Some(imported.fragment_ids[0]));
 }

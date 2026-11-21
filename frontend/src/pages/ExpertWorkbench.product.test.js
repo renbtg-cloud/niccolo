@@ -10,7 +10,7 @@ const config = {
   situation: '22222222-2222-4222-8222-222222222222',
   token: 'test-in-memory-credential',
 };
-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], relations: [], arguments: [], grounding_sets: [] }) };
+const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
@@ -41,6 +41,12 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(relationRequest('SEMANTIC', 'CONTRADICTS', 'a', 'b', 'R').kind).toBe('CONTRADICTS');
   });
 
+  it('makes Situation evidence available as an explicit grounding choice', () => {
+    expect(page).toContain('Documentary evidence');
+    expect(page).toContain('EVIDENCE · {item.document_locator}');
+    expect(page).toContain('first 256 admissible source fragments');
+  });
+
   it('represents multiple selected objects as one joint grounding set', () => {
     const oldCrypto = globalThis.crypto;
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => '77777777-7777-4777-8777-777777777777' } });
@@ -48,10 +54,11 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
       const body = groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [
         { object_id: 'a', kind: 'HYPOTHESIS' },
         { object_id: 'b', kind: 'ASSUMPTION' },
-      ], {});
-      expect(body.members).toHaveLength(2);
+      ], {}, [{ evidence_id: 'evidence-1' }]);
+      expect(body.members).toHaveLength(3);
       expect(body.members[0].role).toBe('PREMISE');
       expect(body.members[1].role).toBe('ASSUMPTION');
+      expect(body.members[2]).toMatchObject({ role: 'EVIDENCE', ground_object_id: null, evidence_id: 'evidence-1' });
       expect(body.adequacy).toBe('PARTIAL');
     } finally {
       Object.defineProperty(globalThis, 'crypto', { configurable: true, value: oldCrypto });
