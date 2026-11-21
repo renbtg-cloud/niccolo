@@ -33,3 +33,5 @@
 .epistemic-playground-results dd{margin:0;font-variant-numeric:tabular-nums}
 .epistemic-playground-results dt{color:#555}
 @media(max-width:720px){.epistemic-playground-results{grid-template-columns:1fr}}
+
+.expert-workbench-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;margin:1rem 0}.expert-workbench-grid form{border:1px solid #d8d8d8;border-radius:.35rem;padding:1rem}.expert-workbench-grid label{display:block;margin:.6rem 0}.expert-workbench-grid textarea,.expert-workbench-grid select{width:100%;box-sizing:border-box}.expert-workbench-grid textarea{min-height:5.5rem}.ground-member-row{display:grid;grid-template-columns:1fr minmax(110px,160px);gap:.5rem;align-items:center}.ground-member-row label{margin:.25rem 0}.expert-workbench article li{margin:.5rem 0}

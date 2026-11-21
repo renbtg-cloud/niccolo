@@ -21,6 +21,7 @@ use crate::decision_readiness::{
 };
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
+use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
@@ -128,6 +129,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             "/",
             get(frontend_index),
         )
+        .route("/workbench", get(frontend_index))
         .route("/analysis", get(frontend_index))
         .route("/reasoning", get(frontend_index))
         .route("/feedback", get(frontend_index))
@@ -270,6 +272,26 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/epistemic/policy", get(get_effective_epistemic_policy))
         .route("/v1/workspaces/{workspace}/epistemic/policies/{policy}", post(record_epistemic_policy))
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench",
+            get(get_expert_epistemic_workbench),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}",
+            post(create_expert_epistemic_node),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/relations/{relation}",
+            post(create_expert_epistemic_relation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/arguments/{argument}",
+            post(create_expert_epistemic_argument),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/arguments/{argument}/grounding/{grounding}",
+            post(create_expert_grounding_set),
+        )
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route(
@@ -3310,6 +3332,19 @@ async fn record_hypothesis_portfolio_event(
     ))
 }
 
+impl From<WorkbenchError> for ApiError {
+    fn from(error: WorkbenchError) -> Self {
+        match error {
+            WorkbenchError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid epistemic workbench request"),
+            WorkbenchError::Invisible => Self(StatusCode::NOT_FOUND, "epistemic workbench object unavailable"),
+            WorkbenchError::Conflict => Self(StatusCode::CONFLICT, "epistemic workbench identity conflict"),
+            WorkbenchError::Privileged | WorkbenchError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "epistemic workbench unavailable")
+            }
+        }
+    }
+}
+
 impl From<ActorError> for ApiError {
     fn from(error: ActorError) -> Self {
         match error {
@@ -3337,6 +3372,143 @@ impl From<ActorError> for ApiError {
 #[serde(deny_unknown_fields)]
 struct ActorCreateRequest {
     display_label: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpertNodeRequest {
+    kind: epistemic_workbench::ExpertNodeKind,
+    text: String,
+    rationale: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpertRelationRequest {
+    family: epistemic_workbench::RelationFamily,
+    kind: epistemic_workbench::RelationKind,
+    left_object_id: Uuid,
+    right_object_id: Uuid,
+    rationale: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpertArgumentRequest {
+    conclusion_object_id: Uuid,
+    mode: epistemic_workbench::ArgumentMode,
+    rationale: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpertGroundingSetRequest {
+    effect: epistemic_workbench::GroundingEffect,
+    adequacy: epistemic_workbench::GroundingAdequacy,
+    rationale: String,
+    members: Vec<epistemic_workbench::NewGroundingMember>,
+}
+
+async fn get_expert_epistemic_workbench(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
+    Ok(no_store(json!(snapshot), StatusCode::OK))
+}
+
+async fn create_expert_epistemic_node(
+    State(state): State<AppState>,
+    Path((workspace, situation, object)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertNodeRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let node = epistemic_workbench::create_node(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        object,
+        input.kind,
+        &input.text,
+        &input.rationale,
+    )
+    .await?;
+    let status = if node.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    Ok(no_store(json!({"node":node}), status))
+}
+
+async fn create_expert_epistemic_relation(
+    State(state): State<AppState>,
+    Path((workspace, situation, relation)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertRelationRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let relation = epistemic_workbench::create_relation(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        relation,
+        input.family,
+        input.kind,
+        input.left_object_id,
+        input.right_object_id,
+        &input.rationale,
+    )
+    .await?;
+    let status = if relation.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    Ok(no_store(json!({"relation":relation}), status))
+}
+
+async fn create_expert_epistemic_argument(
+    State(state): State<AppState>,
+    Path((workspace, situation, argument)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertArgumentRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let argument = epistemic_workbench::create_argument(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        argument,
+        input.conclusion_object_id,
+        input.mode,
+        &input.rationale,
+    )
+    .await?;
+    let status = if argument.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    Ok(no_store(json!({"argument":argument}), status))
+}
+
+async fn create_expert_grounding_set(
+    State(state): State<AppState>,
+    Path((workspace, situation, argument, grounding)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ExpertGroundingSetRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let grounding = epistemic_workbench::create_grounding_set(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        argument,
+        grounding,
+        input.effect,
+        input.adequacy,
+        &input.rationale,
+        &input.members,
+    )
+    .await?;
+    let status = if grounding.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    Ok(no_store(json!({"grounding":grounding}), status))
 }
 
 #[derive(Deserialize)]
