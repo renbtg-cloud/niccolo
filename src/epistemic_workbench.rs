@@ -364,6 +364,38 @@ pub struct GroundingCycleDiagnostic {
     pub unanchored_recursive_support: bool,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReassessmentAttentionSummary {
+    pub impacted: usize,
+    pub unreviewed: usize,
+    pub deferred: usize,
+    pub revision_required: usize,
+    pub retained: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReasoningRouteDiagnostic {
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+    pub effect: GroundingEffect,
+    pub adequacy: GroundingAdequacy,
+    pub member_count: usize,
+    pub reassessment: ReassessmentAttentionSummary,
+    pub recursive_support_cycle: bool,
+    pub unanchored_recursive_support: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConclusionReasoningDiagnostic {
+    pub conclusion_object_id: Uuid,
+    pub argument_ids: Vec<Uuid>,
+    pub routes: Vec<ReasoningRouteDiagnostic>,
+    pub has_supporting_routes: bool,
+    pub has_opposing_routes: bool,
+    pub has_mixed_directional_grounding: bool,
+    pub conclusion_reassessment: ReassessmentAttentionSummary,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkbenchSnapshot {
     pub situation_id: Uuid,
@@ -375,6 +407,7 @@ pub struct WorkbenchSnapshot {
     pub grounding_sets: Vec<GroundingSetView>,
     pub reassessment_impacts: Vec<ReassessmentImpact>,
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
+    pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
@@ -1455,6 +1488,118 @@ fn grounding_cycle_diagnostics(
     diagnostics
 }
 
+fn reassessment_attention<'a>(
+    impacts: impl Iterator<Item = &'a ReassessmentImpact>,
+) -> ReassessmentAttentionSummary {
+    let mut summary = ReassessmentAttentionSummary::default();
+    for impact in impacts {
+        summary.impacted += 1;
+        match impact
+            .latest_review
+            .as_ref()
+            .map(|review| review.disposition)
+        {
+            None => summary.unreviewed += 1,
+            Some(ReassessmentDisposition::Deferred) => summary.deferred += 1,
+            Some(ReassessmentDisposition::RevisionRequired) => summary.revision_required += 1,
+            Some(ReassessmentDisposition::Retained) => summary.retained += 1,
+        }
+    }
+    summary
+}
+
+/// Deterministic structural reasoning over the expert-authored graph.
+///
+/// Routes stay separate: support is never arithmetically cancelled by weakening or challenge,
+/// review dispositions are not truth values, and recursive support is exposed as a warning rather
+/// than counted as additional corroboration.
+fn reasoning_diagnostics(
+    arguments: &[ExpertArgument],
+    grounding_sets: &[GroundingSetView],
+    reassessment_impacts: &[ReassessmentImpact],
+    grounding_cycles: &[GroundingCycleDiagnostic],
+) -> Vec<ConclusionReasoningDiagnostic> {
+    let mut argument_ids_by_conclusion = BTreeMap::<Uuid, Vec<Uuid>>::new();
+    let mut conclusion_by_argument = BTreeMap::new();
+    for argument in arguments {
+        argument_ids_by_conclusion
+            .entry(argument.conclusion_object_id)
+            .or_default()
+            .push(argument.argument_id);
+        conclusion_by_argument.insert(argument.argument_id, argument.conclusion_object_id);
+    }
+
+    let mut diagnostics = Vec::with_capacity(argument_ids_by_conclusion.len());
+    for (conclusion_object_id, mut argument_ids) in argument_ids_by_conclusion {
+        argument_ids.sort();
+        let argument_id_set = argument_ids.iter().copied().collect::<BTreeSet<_>>();
+        let mut routes = Vec::new();
+        for set in grounding_sets
+            .iter()
+            .filter(|set| argument_id_set.contains(&set.argument_id))
+        {
+            let cycle_matches = grounding_cycles.iter().filter(|cycle| {
+                if set.effect != GroundingEffect::Supports
+                    || !cycle.argument_ids.contains(&set.argument_id)
+                {
+                    return false;
+                }
+                let Some(conclusion) = conclusion_by_argument.get(&set.argument_id) else {
+                    return false;
+                };
+                cycle.object_ids.contains(conclusion)
+                    && set.members.iter().any(|member| {
+                        member
+                            .ground_object_id
+                            .is_some_and(|ground| cycle.object_ids.contains(&ground))
+                    })
+            });
+            let cycle_matches = cycle_matches.collect::<Vec<_>>();
+            let route_impacts = reassessment_impacts.iter().filter(|impact| {
+                impact.argument_id == set.argument_id
+                    && impact.grounding_set_id == Some(set.grounding_set_id)
+            });
+            routes.push(ReasoningRouteDiagnostic {
+                argument_id: set.argument_id,
+                grounding_set_id: set.grounding_set_id,
+                effect: set.effect,
+                adequacy: set.adequacy,
+                member_count: set.members.len(),
+                reassessment: reassessment_attention(route_impacts),
+                recursive_support_cycle: !cycle_matches.is_empty(),
+                unanchored_recursive_support: cycle_matches
+                    .iter()
+                    .any(|cycle| cycle.unanchored_recursive_support),
+            });
+        }
+        routes.sort_by_key(|route| (route.argument_id, route.grounding_set_id));
+        let has_supporting_routes = routes
+            .iter()
+            .any(|route| route.effect == GroundingEffect::Supports);
+        let has_opposing_routes = routes.iter().any(|route| {
+            matches!(
+                route.effect,
+                GroundingEffect::Weakens | GroundingEffect::Challenges
+            )
+        });
+        let conclusion_reassessment =
+            reassessment_attention(reassessment_impacts.iter().filter(|impact| {
+                argument_id_set.contains(&impact.argument_id) && impact.grounding_set_id.is_none()
+            }));
+        diagnostics.push(ConclusionReasoningDiagnostic {
+            conclusion_object_id,
+            argument_ids,
+            routes,
+            has_supporting_routes,
+            has_opposing_routes,
+            has_mixed_directional_grounding: has_supporting_routes && has_opposing_routes,
+            conclusion_reassessment,
+        });
+    }
+    diagnostics.sort_by_key(|diagnostic| diagnostic.conclusion_object_id);
+    diagnostics
+}
+
 pub async fn snapshot(
     pool: &PgPool,
     workspace: Uuid,
@@ -1697,6 +1842,12 @@ pub async fn snapshot(
             .cloned();
     }
     let grounding_cycles = grounding_cycle_diagnostics(&arguments, &grounding_sets);
+    let reasoning_diagnostics = reasoning_diagnostics(
+        &arguments,
+        &grounding_sets,
+        &reassessment_impacts,
+        &grounding_cycles,
+    );
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
         situation_id: situation,
@@ -1708,6 +1859,7 @@ pub async fn snapshot(
         grounding_sets,
         reassessment_impacts,
         grounding_cycles,
+        reasoning_diagnostics,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -1736,6 +1888,7 @@ mod tests {
             grounding_sets: vec![],
             reassessment_impacts: vec![],
             grounding_cycles: vec![],
+            reasoning_diagnostics: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();
