@@ -1,0 +1,29 @@
+name: Apply evidence grounding WIP 01 patch once
+
+on:
+  push:
+    branches:
+      - tmp/evidence-grounding-wip01-20261120
+    paths:
+      - .github/workflows/apply-evidence-grounding-wip01-patch-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Apply patch from staging branch
+        run: |
+          git fetch origin tmp/evidence-grounding-wip01-20261120:tmp/evidence-grounding-wip01-20261120
+          git show tmp/evidence-grounding-wip01-20261120:wip01.patch > /tmp/wip01.patch
+          git am /tmp/wip01.patch
+          git push origin HEAD:main
