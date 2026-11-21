@@ -675,6 +675,73 @@ async fn distributed_actor_records_do_not_create_collective_knowledge() {
 }
 
 #[tokio::test]
+async fn conflicting_norms_do_not_collapse_authorization_obedience_or_loyalty() {
+    use axum::{body::Body,http::{Request,StatusCode,header}};
+    use tower::ServiceExt;
+    use epistemic_workbench::normative_assessment::{self, NormativeDimension as D, NormativeInput, NormativeJudgment as J};
+    let f = fixture().await;
+    let sit = situation(&f,"AT-20: an auditor receives confidential information despite supervisory prohibition").await;
+    let other = situation(&f,"Unrelated investigation").await;
+    let foreign = node(&f,other,ExpertNodeKind::Proposition,"Unrelated policy").await;
+    let action = node(&f,sit,ExpertNodeKind::Proposition,"Subordinate disclosed confidential records to appointed auditor").await;
+    let prohibition = node(&f,sit,ExpertNodeKind::Proposition,"Supervisor orders subordinate not to disclose records").await;
+    let duty = node(&f,sit,ExpertNodeKind::Proposition,"Institutional policy requires cooperation with appointed auditors").await;
+    let appointment = node(&f,sit,ExpertNodeKind::Proposition,"Audit mandate permits access to the records").await;
+    let subject = Uuid::new_v4(); let supervisor = Uuid::new_v4(); let institution = Uuid::new_v4(); let auditor = Uuid::new_v4();
+    for (id,label) in [(subject,"Subordinate"),(supervisor,"Supervisor"),(institution,"Institution"),(auditor,"Auditor")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let doc=Uuid::new_v4();
+    let imported=ingest_source(&f.service,f.workspace,doc,SourceFormat::WhatsappExport,"fixture://at20",b"[02/11/2026, 12:00] Supervisor: Do not disclose the records\n[02/11/2026, 12:01] Institution: Cooperate with appointed auditors\n[02/11/2026, 12:02] Subordinate: I fear retaliation\n").await.unwrap();
+    situation_store::add_source(&f.service,f.workspace,f.principal,sit,doc).await.unwrap();
+    let base=NormativeInput{subject_actor_id:subject,action_object_id:action,norm_object_id:prohibition,issuer_actor_id:supervisor,competing_norm_object_id:None,competing_issuer_actor_id:None,dimension:D::Prohibition,judgment:J::Indicated,context:"Disclosure to auditor within audit mandate; reported fear of retaliation".into(),temporal_scope:"At time of disclosure".into(),rationale:"Supervisor's specific order reportedly forbids disclosure".into(),basis_evidence_id:Some(imported.fragment_ids[0]),revises_event_id:None};
+    let record=|event,input|normative_assessment::record(&f.service,f.workspace,sit,f.principal,event,input);
+    let prohibition_id=Uuid::new_v4();
+    record(prohibition_id,base.clone()).await.unwrap();
+    assert!(record(prohibition_id,base.clone()).await.unwrap().replayed);
+    for (norm_object_id,issuer_actor_id,dimension,judgment,basis_evidence_id,rationale) in [
+        (prohibition,supervisor,D::Applicability,J::Indicated,Some(imported.fragment_ids[0]),"Reported order addresses exactly these records"),
+        (prohibition,supervisor,D::Violation,J::Indicated,Some(imported.fragment_ids[0]),"Disclosure contradicts the supervisor's order"),
+        (duty,institution,D::Obligation,J::Indicated,Some(imported.fragment_ids[1]),"Institutional duty requires cooperation"),
+        (duty,institution,D::Compliance,J::Indicated,Some(imported.fragment_ids[1]),"Providing records may satisfy the duty"),
+        (appointment,institution,D::Authorization,J::Indicated,None,"Reported formal appointment; authority not independently verified"),
+        (appointment,institution,D::Applicability,J::Contested,None,"Actual scope of audit mandate disputed"),
+    ] {record(Uuid::new_v4(),NormativeInput{norm_object_id,issuer_actor_id,dimension,judgment,basis_evidence_id,rationale:rationale.into(),..base.clone()}).await.unwrap();}
+    let precedence=NormativeInput{norm_object_id:duty,issuer_actor_id:institution,competing_norm_object_id:Some(prohibition),competing_issuer_actor_id:Some(supervisor),dimension:D::Precedence,judgment:J::Indicated,rationale:"Institutional duty is claimed to take precedence over supervisor's order".into(),basis_evidence_id:Some(imported.fragment_ids[1]),..base.clone()};
+    let p=Uuid::new_v4();record(p,precedence.clone()).await.unwrap();
+    record(Uuid::new_v4(),NormativeInput{dimension:D::Exception,judgment:J::Contested,rationale:"The exception to confidentiality is disputed".into(),..precedence.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),NormativeInput{competing_norm_object_id:None,..precedence.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),NormativeInput{norm_object_id:foreign,..base.clone()}).await,Err(WorkbenchError::Invisible)));
+    assert!(matches!(record(Uuid::new_v4(),NormativeInput{norm_object_id:action,..base.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),NormativeInput{issuer_actor_id:auditor,revises_event_id:Some(p),..precedence.clone()}).await,Err(WorkbenchError::Invalid)));
+    let admin=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let second=Uuid::new_v4();
+    let writer=authz::provision_token(&admin,second,f.workspace,true,true,1).await.unwrap();
+    let reader=authz::provision_token(&admin,Uuid::new_v4(),f.workspace,true,false,1).await.unwrap();
+    let secure=PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();
+    let router=niccolo_evidence::api::router(secure);
+    let competing=NormativeInput{judgment:J::Contested,rationale:"Other assessor disputes precedence".into(),..precedence.clone()};
+    let independent=Uuid::new_v4();
+    let path=format!("/v1/workspaces/{}/situations/{}/epistemic/normative-assessments/{}",f.workspace,sit,independent);
+    let request=|token:&str|Request::builder().method("POST").uri(&path).header(header::AUTHORIZATION,format!("Bearer {token}")).header(header::CONTENT_TYPE,"application/json").body(Body::from(serde_json::to_string(&competing).unwrap())).unwrap();
+    assert_eq!(router.clone().oneshot(request(&reader)).await.unwrap().status(),StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&writer)).await.unwrap().status(),StatusCode::CREATED);
+    assert_eq!(router.oneshot(request(&writer)).await.unwrap().status(),StatusCode::OK);
+    assert!(matches!(normative_assessment::record(&f.service,f.workspace,sit,second,Uuid::new_v4(),NormativeInput{revises_event_id:Some(p),..competing.clone()}).await,Err(WorkbenchError::Invalid)));
+    let revision=Uuid::new_v4();record(revision,NormativeInput{revises_event_id:Some(p),judgment:J::Unknown,rationale:"Precedence requires further review".into(),..precedence.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),NormativeInput{revises_event_id:Some(p),..precedence.clone()}).await,Err(WorkbenchError::Conflict)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.normative_assessments.len(),11);
+    assert!(snapshot.normative_assessments.iter().any(|e|e.event_id==p&&e.input==precedence));
+    assert!(snapshot.normative_assessments.iter().any(|e|e.event_id==independent&&e.recorded_by==second&&e.input==competing));
+    assert!(snapshot.normative_assessments.iter().any(|e|e.event_id==revision&&e.input.revises_event_id==Some(p)));
+    assert!(snapshot.actor_epistemic_states.is_empty()&&snapshot.actor_epistemic_acts.is_empty()&&snapshot.action_decisions.is_empty()&&snapshot.intervention_records.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.epistemic_normative_assessments(workspace_id,situation_id,event_id,subject_actor_id,action_object_id,norm_object_id,issuer_actor_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,'OBLIGATION','INDICATED','context','time','rationale',$8)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(subject).bind(action).bind(foreign).bind(institution).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn silence_does_not_establish_assent_or_actual_nonresponse() {
     use epistemic_workbench::{
         actor_state::{self, StateDimension as D, StateInput, StateJudgment as J},

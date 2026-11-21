@@ -23,6 +23,8 @@ pub mod action_decision;
 pub mod intervention;
 #[path = "epistemic_actor_state.rs"]
 pub mod actor_state;
+#[path = "epistemic_normative_assessment.rs"]
+pub mod normative_assessment;
 #[path = "epistemic_actor_act.rs"]
 pub mod actor_act;
 #[path = "epistemic_interpretation_dependency.rs"]
@@ -703,6 +705,7 @@ pub struct WorkbenchSnapshot {
     pub intervention_records: Vec<intervention::InterventionRecord>,
     pub intervention_causal_assessments: Vec<intervention::CausalAssessmentView>,
     pub actor_epistemic_states: Vec<actor_state::StateEvent>,
+    pub normative_assessments: Vec<normative_assessment::NormativeEvent>,
     pub actor_epistemic_acts: Vec<actor_act::ActEvent>,
     pub question_responses: Vec<inquiry_response::QuestionResponse>,
     pub response_interpretations: Vec<inquiry_response::ResponseInterpretationView>,
@@ -2400,6 +2403,7 @@ pub async fn snapshot(
     let action_decisions = action_decision::list_in_snapshot(&mut tx, workspace, situation).await?;
     let (intervention_records, intervention_causal_assessments) = intervention::list_in_snapshot(&mut tx, workspace, situation).await?;
     let actor_epistemic_states = actor_state::list_in_snapshot(&mut tx, workspace, situation).await?;
+    let normative_assessments = normative_assessment::list_in_snapshot(&mut tx, workspace, situation).await?;
     let actor_epistemic_acts = actor_act::list_in_snapshot(&mut tx, workspace, situation).await?;
     let question_responses =
         inquiry_response::list_in_snapshot(&mut tx, workspace, situation, None).await?;
@@ -2603,6 +2607,7 @@ pub async fn snapshot(
         intervention_records,
         intervention_causal_assessments,
         actor_epistemic_states,
+        normative_assessments,
         actor_epistemic_acts,
         question_responses,
         response_interpretations,
@@ -2647,6 +2652,7 @@ mod tests {
             intervention_records: vec![],
             intervention_causal_assessments: vec![],
             actor_epistemic_states: vec![],
+            normative_assessments: vec![],
             actor_epistemic_acts: vec![],
             question_responses: vec![],
             response_interpretations: vec![],

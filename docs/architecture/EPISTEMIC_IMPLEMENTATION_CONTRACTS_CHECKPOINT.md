@@ -657,6 +657,8 @@ Checkpoint 1.72 adds six independent contextual response assessments for AT-19, 
 
 Checkpoint 1.73 exposes these six independently attributed response assessments in the React Workbench with exact communication, interpreting actor, observation scope, evidence and revision identity checks. All 148 migrations applied to a fresh PostgreSQL database; 634 Rust tests across 47 groups, 182 React tests, 24 Python tests and eight standalone JavaScript tests passed, including the served bundle smoke test.
 
+Checkpoint 1.74 introduces independent normative assessments for AT-20. An attributed judgment identifies a subject actor, exact action statement, exact norm statement, issuing actor, context and temporal scope; precedence and exception judgments additionally pin a distinct competing norm and issuer. Applicability, authorization, obligation, prohibition, compliance and violation are not derived from one another. Multiple assessors may disagree, and revisions preserve the original pins and attribution. These records never issue authority, grant permissions, execute actions or determine legality or loyalty. Migration 0148 and the adversarial audit-disclosure fixture passed with 290 Rust tests, including the secure API gates.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

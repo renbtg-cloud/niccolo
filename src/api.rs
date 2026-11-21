@@ -296,6 +296,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/intervention-causal-assessments/{assessment}",post(record_expert_intervention_assessment))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/intervention-causal-reviews/{review}",post(record_expert_intervention_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/actor-states/{event}",post(record_expert_actor_state))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/normative-assessments/{event}",post(record_expert_normative_assessment))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/actor-acts/{event}",post(record_expert_actor_act))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}",post(record_expert_response_interpretation))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}/confirmations/{event}",post(confirm_expert_response_interpretation))
@@ -3816,6 +3817,17 @@ async fn record_expert_intervention_review(
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
     let view = epistemic_workbench::intervention::review(&state.pool, workspace, situation, recorder, review, input).await?;
     Ok(no_store(json!({"review":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+}
+
+async fn record_expert_normative_assessment(
+    State(state): State<AppState>,
+    Path((workspace, situation, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::normative_assessment::NormativeInput>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::normative_assessment::record(&state.pool, workspace, situation, recorder, event, input).await?;
+    Ok(no_store(json!({"assessment":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
 }
 
 async fn record_expert_actor_state(
