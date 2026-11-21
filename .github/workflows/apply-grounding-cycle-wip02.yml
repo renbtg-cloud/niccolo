@@ -1,0 +1,36 @@
+name: Apply grounding cycle WIP 02
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-grounding-cycle-wip02-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "27d21fd3460c3b6cde975765cfbc794b35b1e33a"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          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
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/epistemic_workbench_integration.rs
+          git commit -m "WIP 02: grounding cycle diagnostics"
+          git push origin HEAD:main
