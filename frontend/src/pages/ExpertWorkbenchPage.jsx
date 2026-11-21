@@ -28,7 +28,7 @@ export function ExpertWorkbenchPage() {
     enabled: !!client,
     queryFn: async () => (await client.expertWorkbench()).value,
   });
-  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] };
+  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [] };
   const [error, setError] = useState('');
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
@@ -134,6 +134,7 @@ export function ExpertWorkbenchPage() {
       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}
       {data.grounding_sets.length > 0 && <details><summary>Grounding</summary><ul>{data.grounding_sets.map((g) => <li key={g.grounding_set_id}>{g.effect}/{g.adequacy}: {g.members.length} joint member(s)</li>)}</ul></details>}
+      {data.reassessment_impacts.length > 0 && <details open><summary>Direct reassessment impacts</summary><ul>{data.reassessment_impacts.map((impact) => <li key={`${impact.trigger_relation_id}:${impact.argument_id}:${impact.grounding_set_id ?? 'conclusion'}`}><strong>{impact.relation_kind}</strong> changed object {impact.prior_object_id}; review argument {impact.argument_id}{impact.grounding_set_id ? ` / grounding set ${impact.grounding_set_id}` : ' / conclusion'}.</li>)}</ul></details>}
     </article>
   </section>;
 }

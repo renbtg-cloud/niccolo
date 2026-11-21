@@ -10,7 +10,7 @@ const config = {
   situation: '22222222-2222-4222-8222-222222222222',
   token: 'test-in-memory-credential',
 };
-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [] }) };
+const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
@@ -44,6 +44,12 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
       text: 'The transfer occurred after approval.',
       rationale: 'A proposition to be tested in this Situation.',
     });
+  });
+
+  it('surfaces selective reassessment rather than invalidating the whole Situation', () => {
+    expect(page).toContain('Direct reassessment impacts');
+    expect(page).toContain('data.reassessment_impacts');
+    expect(page).toContain('review argument');
   });
 
   it('makes directed relation semantics explicit before the investigator selects endpoints', () => {

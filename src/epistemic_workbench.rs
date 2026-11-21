@@ -298,6 +298,25 @@ pub struct GroundingSetView {
     pub replayed: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReassessmentImpactKind {
+    GroundMember,
+    Conclusion,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReassessmentImpact {
+    pub trigger_relation_id: Uuid,
+    pub relation_kind: RelationKind,
+    pub revision_object_id: Uuid,
+    pub prior_object_id: Uuid,
+    pub argument_id: Uuid,
+    pub grounding_set_id: Option<Uuid>,
+    pub conclusion_object_id: Uuid,
+    pub impact_kind: ReassessmentImpactKind,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkbenchSnapshot {
     pub situation_id: Uuid,
@@ -307,10 +326,12 @@ pub struct WorkbenchSnapshot {
     pub relations: Vec<ExpertRelation>,
     pub arguments: Vec<ExpertArgument>,
     pub grounding_sets: Vec<GroundingSetView>,
+    pub reassessment_impacts: Vec<ReassessmentImpact>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
 type WorkbenchEvidenceRow = (Uuid, Uuid, i32, String, String, String, String, String);
+type ReassessmentImpactRow = (Uuid, String, Uuid, Uuid, Uuid, Option<Uuid>, Uuid, String);
 type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
 type GroundingMemberSnapshotRow = (
     Uuid,
@@ -1250,6 +1271,50 @@ pub async fn snapshot(
             replayed: false,
         });
     }
+    let impact_rows: Vec<ReassessmentImpactRow> = sqlx::query_as(
+        "SELECT r.relation_id,r.relation_kind,r.left_object_id,r.right_object_id, \
+                a.argument_id,gm.grounding_set_id,a.conclusion_object_id,'GROUND_MEMBER'::text \
+           FROM niccolo.epistemic_relations r \
+           JOIN niccolo.epistemic_grounding_members gm \
+             ON gm.workspace_id=r.workspace_id AND gm.ground_object_id=r.right_object_id \
+           JOIN niccolo.epistemic_arguments a \
+             ON a.workspace_id=gm.workspace_id AND a.argument_id=gm.argument_id \
+          WHERE r.workspace_id=$1 AND r.situation_id=$2 AND a.situation_id=$2 \
+            AND r.relation_family='GENEALOGY' \
+            AND r.relation_kind IN ('SUPERSEDES','RETRACTS','REINTERPRETS') \
+         UNION ALL \
+         SELECT r.relation_id,r.relation_kind,r.left_object_id,r.right_object_id, \
+                a.argument_id,NULL::uuid,a.conclusion_object_id,'CONCLUSION'::text \
+           FROM niccolo.epistemic_relations r \
+           JOIN niccolo.epistemic_arguments a \
+             ON a.workspace_id=r.workspace_id AND a.conclusion_object_id=r.right_object_id \
+          WHERE r.workspace_id=$1 AND r.situation_id=$2 AND a.situation_id=$2 \
+            AND r.relation_family='GENEALOGY' \
+            AND r.relation_kind IN ('SUPERSEDES','RETRACTS','REINTERPRETS') \
+         ORDER BY argument_id,grounding_set_id NULLS LAST,relation_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut reassessment_impacts = Vec::with_capacity(impact_rows.len());
+    for (trigger_relation_id, relation_kind, revision_object_id, prior_object_id, argument_id, grounding_set_id, conclusion_object_id, impact_kind) in impact_rows {
+        reassessment_impacts.push(ReassessmentImpact {
+            trigger_relation_id,
+            relation_kind: relation_kind_from_db(&relation_kind)?,
+            revision_object_id,
+            prior_object_id,
+            argument_id,
+            grounding_set_id,
+            conclusion_object_id,
+            impact_kind: match impact_kind.as_str() {
+                "GROUND_MEMBER" => ReassessmentImpactKind::GroundMember,
+                "CONCLUSION" => ReassessmentImpactKind::Conclusion,
+                _ => return Err(WorkbenchError::Invalid),
+            },
+        });
+    }
+
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
         situation_id: situation,
@@ -1259,6 +1324,7 @@ pub async fn snapshot(
         relations,
         arguments,
         grounding_sets,
+        reassessment_impacts,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -1285,6 +1351,7 @@ mod tests {
             relations: vec![],
             arguments: vec![],
             grounding_sets: vec![],
+            reassessment_impacts: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();

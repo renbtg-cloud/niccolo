@@ -493,3 +493,118 @@ async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
     assert_eq!(results[0].evidence_id, imported.fragment_ids[299]);
     assert!(results[0].content.contains("approval was suspended"));
 }
+
+
+#[tokio::test]
+async fn superseding_a_ground_surfaces_only_direct_reassessment_impacts() {
+    let f = fixture().await;
+    let sit = situation(&f, "Selective reassessment after a premise changes").await;
+    let prior = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The payment was delayed because approval was missing.",
+    )
+    .await;
+    let replacement = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The payment was delayed because approval arrived after the cutoff.",
+    )
+    .await;
+    let finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "Approval timing materially affected payment timing.",
+    )
+    .await;
+    let unaffected_finding = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The source export contains a timestamp.",
+    )
+    .await;
+
+    let impacted_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        impacted_argument,
+        finding,
+        ArgumentMode::Abductive,
+        "Compare approval-timing explanations.",
+    )
+    .await
+    .unwrap();
+    let impacted_set = Uuid::new_v4();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        impacted_argument,
+        impacted_set,
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The prior hypothesis is an explicit premise.",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(prior),
+            evidence_id: None,
+            rationale: "This premise carries the old approval-timing explanation.".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let unaffected_argument = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        unaffected_argument,
+        unaffected_finding,
+        ArgumentMode::Inductive,
+        "Timestamp presence does not depend on the timing hypothesis.",
+    )
+    .await
+    .unwrap();
+
+    let trigger_relation = Uuid::new_v4();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        trigger_relation,
+        RelationFamily::Genealogy,
+        RelationKind::Supersedes,
+        replacement,
+        prior,
+        "The replacement hypothesis incorporates newly established cutoff timing.",
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.reassessment_impacts.len(), 1);
+    let impact = &snapshot.reassessment_impacts[0];
+    assert_eq!(impact.trigger_relation_id, trigger_relation);
+    assert_eq!(impact.relation_kind, RelationKind::Supersedes);
+    assert_eq!(impact.revision_object_id, replacement);
+    assert_eq!(impact.prior_object_id, prior);
+    assert_eq!(impact.argument_id, impacted_argument);
+    assert_eq!(impact.grounding_set_id, Some(impacted_set));
+    assert_eq!(impact.conclusion_object_id, finding);
+    assert_eq!(impact.impact_kind, epistemic_workbench::ReassessmentImpactKind::GroundMember);
+    assert_ne!(impact.argument_id, unaffected_argument);
+}
