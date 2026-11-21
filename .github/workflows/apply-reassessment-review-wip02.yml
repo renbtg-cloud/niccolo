@@ -1,0 +1,109 @@
+name: Apply reassessment review WIP 02
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-reassessment-review-wip02-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "35d126b0669d508b2257c0ddc3d455381a69441a"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          H4sIAAAAAAAAA+0b23LiyPXdX9FxNiNRCHExtjGDmSUYz5C1MQv2TG25XEwjNVgzQtLqYptlqcpT
+          PiCVf8l7PmW/JKcvuiKwZzK7T1G5hNTqPrc+fW7dPnftBTppHB/WplPt8JgczWo1jA9xrXKkVQ+m
+          +HB60Kg2plqFHFen6NK20Jg4qHqMKpUm+0O1SqW6dw5gmujKIVanj1qW7RLHXH5vwzs2VM1etPfO
+          sE+aaIx9BdWqaGA/wMDaEaocNA+rzVoNFStw7Y2D6Sei+U10O+xcd9/doQ/9IarUmsgl2POI5y2I
+          5cPLg0Ee0aPtfp6Z9uPe3p5uzGaoVJobPsLlmWtbPrH0sudqZewYZc00YJj6yUPTHR/3DEsnT2ha
+          qR/WZkeq2sCHRNM0VK1Ujur1vVKptBP2XrFY3A3/++9RqVFXjlAR7scIXsmTY7s+0kxgDg0MTbNN
+          u8v6o9UeQkgDtn3Se3KI64+IiX3DtmRXPPR1BU1tfVlAK5CIH7gW8u8NT3XJzwHxfFkaXo2vJQV9
+          /G7lGX7Axgyxfy+zXpptzYx5YV0mjuH5ZGFo5RCwV/5uFSNZf1QAAUWE1oXXaJ2lq+POAzorMhYP
+          35yuEDClK0byHF1vXTuwdMOapwibh61/FJXlCCO0J7BvkF9EQq/D6Y4VXvZdYz4n7igx80mmyMPv
+          IfbkkgPaN2hYb2WZ80FbBWWbc0VniyKwLSoNywl82dC3kv62JyjHFjaXnuFlCVdg8Lo8nc3KEdCS
+          QaF+DFUjan+HLd2ezb4RunsOjaPZboUcPCdemc/sBzBbU2Jp96rj2nqg+aoPWHOs04sGCaulHR9V
+          qrOGqlZO8AxreIfVehnYHGv2soHUylXBvBWrzMbtIWPBjNwK6cTTXGNKFGr3wMorCAS1RjPqgqQH
+          gwKQXif6w5Tp54ZJxktLi/pZtk6aMy/VMW05w56qmra/MKQUDYlW4ohPuoIo4OglNH8bDWOywJZv
+          aF4SjeeD1SmTjGAYxuK3w6iknOCIrTHR+4XEwKoD/YXu2HHQaUq+sgUO9WZ0IVMQHceBAU+wBjj1
+          6oL4WA1cs6AgKfBnDanwOgRFlWI7rKy2DKH386CpCh1UlCpEBfSnTl1lqDyyxFlDkaFCEXT029//
+          hTzfBXUMXKKjy/dDhAP/3nZB7IBSLqDTNvesCOFHbFDXy7Qj19FKdXGV4lsjfAoviVq2GV4Y5rKJ
+          pHHvsjO47neh9TMsTGjpXg2uR52zfvd6DI0mmfkTm8U4E4N+xtAIhvU+3TqlrYwIbELUJI0kajef
+          oTtyxNKhuErsVqe3RvgaXoxumELNDDzAs0HUgq4zJHX+enbTve6/730NRbELfilJ0pG4SuxWp7dG
+          +BpejHQym7FAURrfDIdXIyZdrMNywBqdiGFndN3vXGxQDYyRxZS4HoSYd4yFEmWBGyRZw6bpqQvs
+          yPIT05Un1XZYSET19N7WCwXVt3uAxJRvhZsIf4R7zf+9A0TFDVlt9ffSsbhK7Fant0b4Gl4U+EvF
+          2hBXid3q0VMjcTGxRlZq4hGuDVZgmgrSDc+xIW4AWVA59q47/UHvTKJGzGeSZawQXeV6UfwjhJoU
+          LsoivK3eMbMCoLvgw7AB6zkR3DyGNqMMhOvwQMoewa52/+bnU7COrv2Azb/UKve2qUu54Gs7wfPV
+          5JXzxx7sHBuH4fmj6ztHxzFZ/ujDnNFxiCrlzd3t0TP0JuLElyhugsaX6G8UTgqGmN2hDwYsFJP4
+          HsLId4EqsPiG9QDu0Jhj33aF6YevMJ2h8lLGTEMzfHOZcAjU4RzWlAYqHtaV6tHv4m+ERKm/TEnS
+          JVrgesYDQV7gsFhhEYBfhXWFpgQYo+ZUR9gDY+269tTm9iwliyKXBUCyXd2LWMxPmg2gL/CRB87a
+          AilA+6MLorHmEASTKK1IUJ/Uh60RiMzNRNIySGPfMM2QK+BhukTYQjRedSCkZDQBJUSVEgZAoENf
+          bYhejFThmLLWamN+LjANTIX4mtkFstF9xCZBdBe9GY5QY73AhQCdeMgjJkCgE5+eJ8g1iAuTwcgG
+          M2ToOJqeRzBIBI3D/C0xS6VdRJ0ZoBsZfYD4C4OJepahcT6ZieE71RuIx2py5OSlI4XCRhr5LCb7
+          EQJSQLWAxev493TAF2ZkYXj6oswn7CwysGrjZNbQD1RVPzw+xMfkSzOwCNxLM69oAMu4arSuVKU2
+          DF7DpIMnvtyd/ABkekqyJUw1km1xtsELEvG8ncULb/NjyhYAwBfnI7PA0phdDjwSfb0MfB6B8zhJ
+          QZG3/jEg7lJBM6sgrPbBiVI9QMV6VakeJipqEdgcmckFUVxj+ctt6P/HzP1fkyfAByant9F8B2kO
+          UDmm/MiSUEcBhFurESxOj41+G7+nhq3WOcMuWUQ6CuPUJITsp01gxQhYarJcPPM5oNFGcw5FMU08
+          Cgq55z2j+ViBb+KP52B9sUcTc/lnOifMCsmp6FZAYhMQwuOdFVSrgM0H2xYQlJIIzx4GkHtwzC9Q
+          CSWkgxe/gIycTIRClDV36fi26tKSzeLmpn8mF0TJbJOEMAn8tmREqeWXkBLmdd+WlChb/BJSooTu
+          y2lZoWx9GGZ+C235pdudhJZCQkMF9YDE21idlMy8KhnhKlkO7xJLyxXWLeH+voJ/7vfyeN+aB/Ih
+          qii9TkIjDeGQIsCpoYRY204RFb+1iJQcwdwldCbE04O41QVcEV51Br5IlhdMBguV0O+FN/w3MX4a
+          eMvUMM9ekHiY4Q0Jo4MZMOYED+qs8HjQEEWjL/AG9GoFZnvFAhZamhM5q8XQtUwDfSbL05WlRpWS
+          dbsF8YZtzdvQSss961ZZNLDMAFp98Bvr1tQtQ9cF5FK0Z1SQoN1ZY6tsGu0CvAL+kJaVCJxELqhC
+          tD7371EbVdCrV6ilEwh6TA/ABosFdpftcNY8ACqaYnZiMIwlN82SqyYUa92Gd17PWpfhkfHVRPCU
+          rl2t0W//+CdtzlSv1klmWuWQznWar1R0/zxzkcrlMZeBxTicpzmcq9l0Aticq7yGBGzO1bB0RFmd
+          q6JGJOhao0+2AWuet8peYRuLpfTUbca8WxhFdKM05nZHtJ4/uTmImBT4S1oUH79bbbcq62b0NWFX
+          Eq1ZMaI3b5AUVxGl9cfEohBjIviZJaJBhjOHDI2rDgq7O65huwl9eo0yiQDKI3E7gegjKsfZJI2I
+          0FZ21h8RpJDQP8lS2JklFTB1VQbzP/9G2YQjhsteOTBprW5Tl+K3UZfdCdpXa0yUiYfmGNQHrPHv
+          rT+vs2h1GrPyHYZMHHsLFN1RCKt0VUDgMlniPuHa80ZNdGFYz3rnvdEoWTqQ0DqBXewMRgsHbv/X
+          7Q3djuWFItpTgmeKy90cSpdS8vsn52nN3WhuNzpnkQNdJ8lo6cYDP1IxwAtyup9UnBIfvQ8TyVYN
+          CN7AJRNPiXm6nwrwEmTsI5apnK6YKqYJtK0um+rTlUzYssnNuCD6U1V1U4MVxHQYREG/M/CZChdR
+          fVAF4ofJEgSO1ENvycuTVfYWL7Jz5X2CQU8gLt7GjBEXQLvFtsm3y0HMIhX3PnJMrBFaEyfu6f6H
+          e1o8pLUXHgh6EEFCnKeTGStfGV6k1RkBsqlDC/x0wczb6apeOTn6XUTJF3aeDBFEZNPA90FA/tIB
+          LeEv+1T6eGoS/XRFw09GlWlon4EobhWR7y7Z3nQ28lVZnEoygX5ze5lE3rJQFbShZ2ET5afAjlDQ
+          CgUNl1khAljSsK/dIyq4VfyNQCDjebRORrus1+1UcbJV5jxTn2Q8tOMlxPxVZAnXL4/ltKVmkhd6
+          rTiVZKNA7nhu2R4tPe0O8gQSpunsOR3fsKY4RvdUGrvJUlMqxNZ7lC25N2PLvQkgDAJ5E4R/Stgp
+          YaTjbmEjdFTDjvfYm0AmQFwI+ycYMg9YJ+CCeqIpYcLJk+H53mtW7OWCMXxYqTOEdd0DfU5VslM7
+          AqpETfLARiEiJBDBQuQ7A0Sn/uZrdhtUaXdY3ypjF2bOJCx9obaF5VvtXQXYbXXBbO1zWz9Rdj2q
+          6NOTaUVV61r1CNcPdpRdt0LKqbhu7cuKjqzYCvfUIT4WrdDEkVVaIWK5YgqjzlxCfiHyrTQcXQ2v
+          xv3r/tWAbo+8+2l4df2uN+7TrWupMx7fXA7pt700xFCfLmlKmgP1rBfv0Ev9QeIluXcvdTs3Y7Yf
+          LnUGnYurt/0ufxteXfS7P9EnSsyIb6amCIiUs8fSpTwaEnvw0ode54fegD1233UuLnqDtz3+djU4
+          Y8yPdyHp8ETMyOX1ZjAe9rr98z7fYIo3+YGC8/N+t98bsG3hQa/bG487o58mEVK+BZ/Cuc2L5iBO
+          bmuNeu/7Y4A4GfV+vOnzCDKOJu94OTVbeaBnyyCto3VkmbkhBTFvq1A/CAipC0zVpWnlANrHPt1L
+          5ENY2CoVaOC9kMUxmcaRcoCKjWN6WCan4JE9dCTzlDc+KpE4H6GIHSmi02oQPW5km3x537EtAgiO
+          6THFSIgJ3rZ5uAj9mLASXsqlcWfG0gxjhuQ/bQ1qDBqvAkVyYnihACbStSEwgeBEeMLuvW17BOF0
+          HpQYpIrNLhHaiwxnc6cxTTb69Ve+98i7J3ngLTzKSM4wbVHCQxHsu1RgnWmCkTknKM4Jqy61fPFL
+          uKuEyXR6oqtq9QTXSCVzri/RnduwRAPVjtrJEbVU9KdaofrhBFM0s/gWqDuhe8ETetDHlB3bNpto
+          OB/CLz/8A68dV2vpSwuNwrOT1AaZ7QIqtdGIgQgjAX7tlx+q7GSF59AdzvIqel6XozOn0Bw955+f
+          jc6SJg/Pxmdn1/tKGi1MBy1jU9c14RZ7kprTQqJ/IQ5zVCYFOZk6/I8spE5CREeo1/mshaca+BlZ
+          ylSKEMYU99shU6m0nQ8vJEYVYi4Fa7uYMQnWvX2F4+EHJMiENRa+DJBnBy60ASgIsWUTZDERTTmA
+          uPus1w6YA63XjkWhlh+iQJny/5gmAPyAo6jRRoe33hOtFQl+EpXbm80BeYzG892zNt2PpKck/nwL
+          eQuEPvIZ8eABm8YvpHBH2+FVJzLEVMtJYH22IPedzAxigizgc4q20TZbt92aXLGcq3UTGHp704Y0
+          US4bo3xjmLI43Dco1KIU99AW7tBu7tKST296ss3WcJ/18IiZkoPD44ZywOaMb2yANdmx9GQ+bVef
+          wSROPN92ifwJTMmf5NV+1G+/GS9tiK1p5BUw3WGTFmF5di2Ilcy3NVn8Vmjyt1bHcdhDKH92nluO
+          lBiQhss5PncbH7EXB+wLAI4ObMl0KhWUfy+EOO5hLTFVfcceLrEjPvwNBCCzrBsA0pfWM6pFIXKb
+          S7zA9Fvw44ARArI7jsF8X1StM4kfBvt0x2UeYFeXXzFhKOiVIIlvTwnOu9jBU8M0/GWz+cE1QGgq
+          28V98zoJkfmx03xVFROzfUboxWlQqZtJmKyYjrgtnopkLY6zlGhiU5LqYmZHRfMXNzGxb2bc2Q6b
+          Pp7xwD8y585bhTfZlBhXYpAYRDaiYEX/JQovIblKFFbHrFuXHrVtXv0gDiQhYkIUs6VXd9TrXPfO
+          RFeBMW95iUJXk/+mFta3sBcdDbDRRCc2f/8F8fnUQ0s2AAA=
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/api.rs frontend/src/api/client.js frontend/src/state/expertWorkbench.js frontend/src/pages/ExpertWorkbenchPage.jsx frontend/src/pages/ExpertWorkbench.product.test.js
+          git commit -m "WIP 02: reassessment review workflow"
+          git push origin HEAD:main
