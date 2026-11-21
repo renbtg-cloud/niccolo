@@ -74,22 +74,11 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
     id
 }
 
-#[tokio::test]
-async fn action_recommendations_are_attributed_revisable_and_not_authorizations() {
+fn recommendation_input(ground: Uuid, recipient: Uuid) -> epistemic_workbench::action_recommendation::RecommendationInput {
     use epistemic_workbench::action_recommendation::{
-        self, RecommendationAlternative, RecommendationInput, RecommendationKind, Reversibility,
+        RecommendationAlternative, RecommendationInput, RecommendationKind, Reversibility,
     };
-    let f = fixture().await;
-    let sit = situation(&f, "Possible exposure of sensitive records").await;
-    let other = situation(&f, "Unrelated investigation").await;
-    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Privileges remain broad").await;
-    let foreign = node(&f, other, ExpertNodeKind::Proposition, "Unrelated record").await;
-    let recipient = Uuid::new_v4();
-    let another_recipient = Uuid::new_v4();
-    for actor in [recipient, another_recipient] {
-        niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, actor, "Reviewer").await.unwrap();
-    }
-    let input = RecommendationInput {
+    RecommendationInput {
         kind: RecommendationKind::ReviewPrivileges,
         recipient_actor_id: recipient,
         purpose: "Inspect access without presuming misconduct".into(),
@@ -107,7 +96,23 @@ async fn action_recommendations_are_attributed_revisable_and_not_authorizations(
         risk: "Investigation may become visible".into(),
         reversibility: Reversibility::Reversible,
         revises_recommendation_id: None,
-    };
+    }
+}
+
+#[tokio::test]
+async fn action_recommendations_are_attributed_revisable_and_not_authorizations() {
+    use epistemic_workbench::action_recommendation::{self, RecommendationInput};
+    let f = fixture().await;
+    let sit = situation(&f, "Possible exposure of sensitive records").await;
+    let other = situation(&f, "Unrelated investigation").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Privileges remain broad").await;
+    let foreign = node(&f, other, ExpertNodeKind::Proposition, "Unrelated record").await;
+    let recipient = Uuid::new_v4();
+    let another_recipient = Uuid::new_v4();
+    for actor in [recipient, another_recipient] {
+        niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, actor, "Reviewer").await.unwrap();
+    }
+    let input = recommendation_input(ground, recipient);
     let before = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
     let record = |id, input| action_recommendation::record(&f.service, f.workspace, sit, f.principal, id, input);
     let id = Uuid::new_v4();
@@ -135,6 +140,7 @@ async fn action_recommendations_are_attributed_revisable_and_not_authorizations(
     assert_eq!(before.arguments, after.arguments);
     assert_eq!(before.assessments, after.assessments);
     assert!(after.question_decisions.is_empty());
+    assert_eq!(after.action_recommendations, items);
 
     // Direct SQL cannot inject authority, foreign grounds, or update historical records.
     let mut tx = f.service.begin().await.unwrap();
@@ -165,6 +171,58 @@ async fn action_recommendations_are_attributed_revisable_and_not_authorizations(
     let rejected = sqlx::query("UPDATE niccolo.epistemic_action_recommendations SET payload=payload WHERE recommendation_id=$1").bind(id).execute(&mut *tx).await.unwrap_err();
     assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("42501"));
     tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn action_recommendation_api_requires_write_and_snapshot_requires_read() {
+    use axum::{body::{Body, to_bytes}, http::{Request, StatusCode, header}};
+    use tower::ServiceExt;
+    let f = fixture().await;
+    let sit = situation(&f, "Review a proposed preventive intervention").await;
+    let other = situation(&f, "Separate investigation").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Privileges remain broad").await;
+    let recipient = Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, recipient, "Reviewer").await.unwrap();
+    let input = recommendation_input(ground, recipient);
+    let admin = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1).await.unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1).await.unwrap();
+    let stranger = fixture().await;
+    let stranger_token = authz::provision_token(&admin, stranger.principal, stranger.workspace, true, true, 1).await.unwrap();
+    let secure = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();
+    let router = niccolo_evidence::api::router(secure);
+    let id = Uuid::new_v4();
+    let path = format!("/v1/workspaces/{}/situations/{}/epistemic/action-recommendations/{}", f.workspace, sit, id);
+    let request = |token: &str, body: serde_json::Value| Request::builder().method("POST").uri(&path)
+        .header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string())).unwrap();
+    let body = serde_json::to_value(&input).unwrap();
+    assert_eq!(router.clone().oneshot(request(&reader, body.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&stranger_token, body.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    let mut invalid = body.clone();
+    invalid["execute"] = true.into();
+    assert_eq!(router.clone().oneshot(request(&writer, invalid)).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let created = router.clone().oneshot(request(&writer, body.clone())).await.unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    assert_eq!(created.headers()[header::CACHE_CONTROL], "no-store");
+    let record: serde_json::Value = serde_json::from_slice(&to_bytes(created.into_body(), 1024*1024).await.unwrap()).unwrap();
+    assert_eq!(record["recommendation"]["recorded_by"], serde_json::json!(f.principal));
+    assert_eq!(record["recommendation"]["input"], body);
+    assert_eq!(router.clone().oneshot(request(&writer, body)).await.unwrap().status(), StatusCode::OK);
+    let snapshot_request = |token: &str, situation| Request::builder().uri(format!("/v1/workspaces/{}/situations/{}/epistemic/workbench", f.workspace, situation))
+        .header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::empty()).unwrap();
+    assert_eq!(router.clone().oneshot(snapshot_request(&stranger_token, sit)).await.unwrap().status(), StatusCode::FORBIDDEN);
+    for (situation, count) in [(sit, 1), (other, 0)] {
+        let response = router.clone().oneshot(snapshot_request(&reader, situation)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let snapshot: serde_json::Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024*1024).await.unwrap()).unwrap();
+        assert_eq!(snapshot["action_recommendations"].as_array().unwrap().len(), count);
+        assert_eq!(snapshot["question_decisions"], serde_json::json!([]));
+        if count == 1 {
+            assert_eq!(snapshot["action_recommendations"][0]["recommendation_id"], serde_json::json!(id));
+        }
+    }
 }
 
 #[tokio::test]
