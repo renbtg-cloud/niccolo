@@ -1,0 +1,116 @@
+From f9f8dc56a65a1e677dc3183d336fc26c3407ed65 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Sat, 21 Nov 2026 02:57:59 +0000
+Subject: [PATCH] WIP 01: explicit grounding member rationales
+
+---
+ .../src/pages/ExpertWorkbench.product.test.js | 22 +++++++++++++++----
+ frontend/src/pages/ExpertWorkbenchPage.jsx    |  7 +++---
+ frontend/src/state/expertWorkbench.js         |  6 ++---
+ 3 files changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/frontend/src/pages/ExpertWorkbench.product.test.js b/frontend/src/pages/ExpertWorkbench.product.test.js
+index 4afb815..af58c12 100644
+--- a/frontend/src/pages/ExpertWorkbench.product.test.js
++++ b/frontend/src/pages/ExpertWorkbench.product.test.js
+@@ -47,6 +47,16 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+     expect(page).toContain('first 256 admissible source fragments');
+   });
+ 
++
++  it('requires the investigator to explain each selected ground instead of fabricating rationale', () => {
++    expect(() => groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [
++      { object_id: 'a', kind: 'HYPOTHESIS' },
++    ], {}, [], {})).toThrow('Ground rationale');
++    expect(() => groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [], {}, [
++      { evidence_id: 'evidence-1' },
++    ], {})).toThrow('Evidence rationale');
++  });
++
+   it('represents multiple selected objects as one joint grounding set', () => {
+     const oldCrypto = globalThis.crypto;
+     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => '77777777-7777-4777-8777-777777777777' } });
+@@ -54,11 +64,15 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
+       const body = groundingRequest('SUPPORTS', 'PARTIAL', 'Joint reasoning', [
+         { object_id: 'a', kind: 'HYPOTHESIS' },
+         { object_id: 'b', kind: 'ASSUMPTION' },
+-      ], {}, [{ evidence_id: 'evidence-1' }]);
++      ], {}, [{ evidence_id: 'evidence-1' }], {
++        'object:a': 'This hypothesis is a necessary premise for the inference.',
++        'object:b': 'This assumption is being adopted explicitly for this argument.',
++        'evidence:evidence-1': 'This fragment directly documents the approval hold.',
++      });
+       expect(body.members).toHaveLength(3);
+-      expect(body.members[0].role).toBe('PREMISE');
+-      expect(body.members[1].role).toBe('ASSUMPTION');
+-      expect(body.members[2]).toMatchObject({ role: 'EVIDENCE', ground_object_id: null, evidence_id: 'evidence-1' });
++      expect(body.members[0]).toMatchObject({ role: 'PREMISE', rationale: 'This hypothesis is a necessary premise for the inference.' });
++      expect(body.members[1]).toMatchObject({ role: 'ASSUMPTION', rationale: 'This assumption is being adopted explicitly for this argument.' });
++      expect(body.members[2]).toMatchObject({ role: 'EVIDENCE', ground_object_id: null, evidence_id: 'evidence-1', rationale: 'This fragment directly documents the approval hold.' });
+       expect(body.adequacy).toBe('PARTIAL');
+     } finally {
+       Object.defineProperty(globalThis, 'crypto', { configurable: true, value: oldCrypto });
+diff --git a/frontend/src/pages/ExpertWorkbenchPage.jsx b/frontend/src/pages/ExpertWorkbenchPage.jsx
+index b0ee1dc..3867c8a 100644
+--- a/frontend/src/pages/ExpertWorkbenchPage.jsx
++++ b/frontend/src/pages/ExpertWorkbenchPage.jsx
+@@ -36,6 +36,7 @@ export function ExpertWorkbenchPage() {
+   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
+   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState([]);
+   const [groundRoles, setGroundRoles] = useState({});
++  const [groundMemberRationales, setGroundMemberRationales] = useState({});
+ 
+   const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
+   const createRelation = useWorkbenchMutation(client, workbench, async (body) => client.createExpertRelation(crypto.randomUUID(), body));
+@@ -98,7 +99,7 @@ export function ExpertWorkbenchPage() {
+       </form>
+ 
+       <form onSubmit={submit(() => {
+-        const body = groundingRequest(grounding.effect, grounding.adequacy, grounding.rationale, selectedGroundNodes, groundRoles, selectedGroundEvidence);
++        const body = groundingRequest(grounding.effect, grounding.adequacy, grounding.rationale, selectedGroundNodes, groundRoles, selectedGroundEvidence, groundMemberRationales);
+         if (!grounding.argument) throw new Error('Choose an argument.');
+         createGrounding.mutate({ argumentId: grounding.argument, body });
+       })}>
+@@ -107,8 +108,8 @@ export function ExpertWorkbenchPage() {
+         <label>Effect<select value={grounding.effect} onChange={(e) => setGrounding({ ...grounding, effect: e.target.value })}>{groundingEffects.map((x) => <option key={x}>{x}</option>)}</select></label>
+         <label>Adequacy<select value={grounding.adequacy} onChange={(e) => setGrounding({ ...grounding, adequacy: e.target.value })}>{groundingAdequacies.map((x) => <option key={x}>{x}</option>)}</select></label>
+         <fieldset><legend>Joint grounds</legend>
+-          {data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <select value={groundRoles[n.object_id] ?? (n.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE')} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}><option>PREMISE</option><option>ASSUMPTION</option><option>CONTEXT</option></select>}</div>)}
+-          {data.evidence.length > 0 && <><p><strong>Documentary evidence</strong></p>{data.evidence.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label></div>)}</>}
++          {data.nodes.map((n) => <div key={n.object_id} className="ground-member-row"><label><input type="checkbox" checked={selectedGroundIds.includes(n.object_id)} onChange={(e) => setSelectedGroundIds((current) => e.target.checked ? [...current, n.object_id] : current.filter((id) => id !== n.object_id))} /> {n.kind}: {n.text}</label>{selectedGroundIds.includes(n.object_id) && <><select value={groundRoles[n.object_id] ?? (n.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE')} onChange={(e) => setGroundRoles({ ...groundRoles, [n.object_id]: e.target.value })}><option>PREMISE</option><option>ASSUMPTION</option><option>CONTEXT</option></select><input aria-label={`Why ${n.kind} is a ground`} placeholder="Why this object belongs in this grounding set" value={groundMemberRationales[`object:${n.object_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`object:${n.object_id}`]: e.target.value })} /></>}</div>)}
++          {data.evidence.length > 0 && <><p><strong>Documentary evidence</strong></p>{data.evidence.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label>{selectedEvidenceIds.includes(item.evidence_id) && <input aria-label="Why this evidence is a ground" placeholder="Why this exact fragment belongs in this grounding set" value={groundMemberRationales[`evidence:${item.evidence_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`evidence:${item.evidence_id}`]: e.target.value })} />}</div>)}</>}
+           {data.evidence_truncated && <small>Showing the first 256 admissible source fragments attached to this Situation. Use source inspection for material outside this bounded Workbench list.</small>}
+         </fieldset>
+         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
+diff --git a/frontend/src/state/expertWorkbench.js b/frontend/src/state/expertWorkbench.js
+index ab34e6b..19af45e 100644
+--- a/frontend/src/state/expertWorkbench.js
++++ b/frontend/src/state/expertWorkbench.js
+@@ -38,7 +38,7 @@ export function argumentRequest(conclusionObjectId, mode, rationale) {
+   return { conclusion_object_id: conclusionObjectId, mode, rationale: requireText(rationale, 'Rationale') };
+ }
+ 
+-export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles, selectedEvidence = []) {
++export function groundingRequest(effect, adequacy, rationale, selectedNodes, roles, selectedEvidence = [], memberRationales = {}) {
+   if (!groundingEffects.includes(effect) || !groundingAdequacies.includes(adequacy)) throw new Error('Choose grounding semantics.');
+   if (!selectedNodes.length && !selectedEvidence.length) throw new Error('Choose at least one joint ground.');
+   return {
+@@ -51,14 +51,14 @@ export function groundingRequest(effect, adequacy, rationale, selectedNodes, rol
+         role: roles[node.object_id] ?? (node.kind === 'ASSUMPTION' ? 'ASSUMPTION' : 'PREMISE'),
+         ground_object_id: node.object_id,
+         evidence_id: null,
+-        rationale: `Explicit ${node.kind.toLowerCase()} selected by the investigator as a grounding member.`,
++        rationale: requireText(memberRationales[`object:${node.object_id}`], 'Ground rationale'),
+       })),
+       ...selectedEvidence.map((item) => ({
+         member_id: crypto.randomUUID(),
+         role: 'EVIDENCE',
+         ground_object_id: null,
+         evidence_id: item.evidence_id,
+-        rationale: 'Explicit source fragment selected by the investigator as documentary evidence in this grounding set.',
++        rationale: requireText(memberRationales[`evidence:${item.evidence_id}`], 'Evidence rationale'),
+       })),
+     ],
+   };
+-- 
+2.47.3
