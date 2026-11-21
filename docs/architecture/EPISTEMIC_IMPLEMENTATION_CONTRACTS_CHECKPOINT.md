@@ -510,6 +510,8 @@ Self-deception must remain an attributed hypothesis, not casual psychological di
 
 Migration 0133 adds independent attributed contextual judgments for self-deception, rationalization, selective attention, motivated interpretation and avoidance of conflicting evidence. Ego and identity protection retain their existing independent dimensions. A possible mechanism does not establish self-deception, knowledge of a contradiction, or a general psychological disposition. No distinct counterparty is attached; each judgment requires an explicit visible Situation object, time, context and rationale.
 
+Checkpoint 1.42: Migration 0133 applied successfully; 605 Rust tests, 151 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
+
 ## 19. Investigation-directed deception and integrity
 
 A sophisticated adversary need not alter evidence. They may manipulate:
