@@ -1,0 +1,64 @@
+name: Apply reassessment review WIP 03
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-reassessment-review-wip03-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "5db4905c0084ac8cc86126ca0e270e4953d93050"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          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
+          fwDqeXZlWxYAAA==
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/epistemic_workbench_integration.rs
+          git commit -m "WIP 03: reassessment review workflow"
+          git push origin HEAD:main
