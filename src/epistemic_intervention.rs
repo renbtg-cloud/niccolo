@@ -113,6 +113,26 @@ pub struct AttributedRecord<T> {
 pub type InterventionRecord = AttributedRecord<InterventionInput>;
 pub type CausalAssessment = AttributedRecord<CausalAssessmentInput>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CausalReviewDisposition {
+    Retained,
+    ReconsiderationRequired,
+    Deferred,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CausalReviewInput {
+    pub assessment_id: Uuid,
+    pub reviewed_execution_record_id: Uuid,
+    pub reviewed_event_record_id: Uuid,
+    pub disposition: CausalReviewDisposition,
+    pub note: String,
+}
+
+pub type CausalReview = AttributedRecord<CausalReviewInput>;
+
 /// Review cues only; supersession does not invalidate a historical assessment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CausalAssessmentView {
@@ -121,16 +141,40 @@ pub struct CausalAssessmentView {
     pub event_observation_revised: bool,
     pub requires_review: bool,
     pub superseded: bool,
+    pub current_execution_record_id: Uuid,
+    pub current_event_record_id: Uuid,
+    pub latest_review: Option<CausalReview>,
+    pub review_history: Vec<CausalReview>,
+}
+
+fn current_record(original: Uuid, revisions: &std::collections::BTreeMap<Uuid, Uuid>) -> Uuid {
+    let mut id = original;
+    let mut seen = std::collections::BTreeSet::new();
+    while seen.insert(id) {
+        let Some(next) = revisions.get(&id) else {
+            break;
+        };
+        id = *next;
+    }
+    id
 }
 
 pub fn assessment_views(
     records: &[InterventionRecord],
     assessments: Vec<CausalAssessment>,
+    reviews: Vec<CausalReview>,
 ) -> Vec<CausalAssessmentView> {
-    let revised: std::collections::BTreeSet<_> = records
+    let revised: std::collections::BTreeMap<_, _> = records
         .iter()
-        .filter_map(|r| r.input.revises_record_id)
+        .filter_map(|r| r.input.revises_record_id.map(|prior| (prior, r.id)))
         .collect();
+    let mut grouped = std::collections::BTreeMap::<Uuid, Vec<CausalReview>>::new();
+    for review in reviews {
+        grouped
+            .entry(review.input.assessment_id)
+            .or_default()
+            .push(review);
+    }
     let superseded: std::collections::BTreeSet<_> = assessments
         .iter()
         .filter_map(|a| a.input.revises_assessment_id)
@@ -138,16 +182,39 @@ pub fn assessment_views(
     assessments
         .into_iter()
         .map(|assessment| {
-            let execution_revised = revised.contains(&assessment.input.execution_record_id);
+            let current_execution_record_id =
+                current_record(assessment.input.execution_record_id, &revised);
+            let current_event_record_id =
+                current_record(assessment.input.event_observation_record_id, &revised);
+            let execution_revised =
+                current_execution_record_id != assessment.input.execution_record_id;
             let event_observation_revised =
-                revised.contains(&assessment.input.event_observation_record_id);
+                current_event_record_id != assessment.input.event_observation_record_id;
             let superseded = superseded.contains(&assessment.id);
+            let review_history = grouped.remove(&assessment.id).unwrap_or_default();
+            let latest_review = review_history
+                .iter()
+                .rev()
+                .find(|r| {
+                    r.input.reviewed_execution_record_id == current_execution_record_id
+                        && r.input.reviewed_event_record_id == current_event_record_id
+                })
+                .cloned();
+            let retained = latest_review
+                .as_ref()
+                .is_some_and(|r| r.input.disposition == CausalReviewDisposition::Retained);
             CausalAssessmentView {
                 assessment,
                 execution_revised,
                 event_observation_revised,
-                requires_review: !superseded && (execution_revised || event_observation_revised),
+                requires_review: !superseded
+                    && (execution_revised || event_observation_revised)
+                    && !retained,
                 superseded,
+                current_execution_record_id,
+                current_event_record_id,
+                latest_review,
+                review_history,
             }
         })
         .collect()
@@ -159,7 +226,11 @@ pub(super) async fn list_in_snapshot(
     situation: Uuid,
 ) -> Result<(Vec<InterventionRecord>, Vec<CausalAssessmentView>), WorkbenchError> {
     let records = records(tx, workspace, situation, None).await?;
-    let views = assessment_views(&records, assessments(tx, workspace, situation, None).await?);
+    let views = assessment_views(
+        &records,
+        assessments(tx, workspace, situation, None).await?,
+        reviews(tx, workspace, situation, None).await?,
+    );
     Ok((records, views))
 }
 
@@ -204,6 +275,65 @@ async fn assessments(
     id: Option<Uuid>,
 ) -> Result<Vec<CausalAssessment>, WorkbenchError> {
     decode(sqlx::query_as("SELECT assessment_id,to_jsonb(r)-ARRAY['workspace_id','situation_id','assessment_id','assessment_no','recorded_by_principal_id','created_at'],recorded_by_principal_id,created_at::text FROM niccolo.epistemic_intervention_causal_assessments r WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR assessment_id=$3) ORDER BY assessment_no").bind(workspace).bind(situation).bind(id).fetch_all(&mut **tx).await?)
+}
+
+async fn reviews(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    id: Option<Uuid>,
+) -> Result<Vec<CausalReview>, WorkbenchError> {
+    decode(sqlx::query_as("SELECT review_id,to_jsonb(r)-ARRAY['workspace_id','situation_id','review_id','review_no','recorded_by_principal_id','created_at'],recorded_by_principal_id,created_at::text FROM niccolo.epistemic_intervention_causal_reviews r WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR review_id=$3) ORDER BY review_no").bind(workspace).bind(situation).bind(id).fetch_all(&mut **tx).await?)
+}
+
+pub async fn review(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    recorder: Uuid,
+    id: Uuid,
+    input: CausalReviewInput,
+) -> Result<CausalReview, WorkbenchError> {
+    if id.is_nil()
+        || input.assessment_id.is_nil()
+        || input.reviewed_execution_record_id.is_nil()
+        || input.reviewed_event_record_id.is_nil()
+        || !valid_text(&input.note, 4096)
+    {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    check_scope(&mut tx, workspace, situation, None).await?;
+    if let Some(prior) = reviews(&mut tx, workspace, situation, Some(id))
+        .await?
+        .pop()
+    {
+        let result = check_replay(prior, &input, recorder, true)?;
+        tx.commit().await?;
+        return Ok(result);
+    }
+    let assessment = assessments(&mut tx, workspace, situation, Some(input.assessment_id))
+        .await?
+        .pop()
+        .ok_or(WorkbenchError::Invisible)?;
+    let record_history = records(&mut tx, workspace, situation, None).await?;
+    let view = assessment_views(&record_history, vec![assessment], vec![])
+        .pop()
+        .ok_or(WorkbenchError::Invisible)?;
+    if !(view.execution_revised || view.event_observation_revised)
+        || view.current_execution_record_id != input.reviewed_execution_record_id
+        || view.current_event_record_id != input.reviewed_event_record_id
+    {
+        return Err(WorkbenchError::Invalid);
+    }
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_intervention_causal_reviews(workspace_id,situation_id,review_id,assessment_id,reviewed_execution_record_id,reviewed_event_record_id,disposition,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(id).bind(input.assessment_id).bind(input.reviewed_execution_record_id).bind(input.reviewed_event_record_id).bind(code(input.disposition)).bind(&input.note).bind(recorder).execute(&mut *tx).await?.rows_affected()==1;
+    let stored = reviews(&mut tx, workspace, situation, Some(id))
+        .await?
+        .pop()
+        .ok_or(WorkbenchError::Conflict)?;
+    let result = check_replay(stored, &input, recorder, !inserted)?;
+    tx.commit().await?;
+    Ok(result)
 }
 
 async fn check_scope(

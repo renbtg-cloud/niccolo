@@ -664,6 +664,8 @@ Checkpoint 1.59 exposes these ledgers through authenticated, non-executing autho
 
 Checkpoint 1.60 connects both independent authoring forms and their attributed revision histories to the React Workbench. The user explicitly selects the event stage, source and causal pins, and can compare historical records without automatic rebinding. The rebuilt bundle is served by the real HTTP backend; 172 frontend tests and 283 Rust tests passed after applying all 143 migrations to a fresh PostgreSQL database.
 
+Checkpoint 1.61 adds attributed, append-only causal review events with authenticated authoring. Each review pins the current execution and event revisions after a basis change, retaining the original assessment; retention can acknowledge the exact changed basis, while deferral or requested reconsideration keeps review pending. Later changes reopen the review without deleting earlier review history. The database independently rejects stale or unrelated pins. Migration 0143 passed; 212 unit, 58 Workbench integration and 13 security/readiness tests passed. Review authoring in React is pending.
+
 ## 24. Implementation stance
 
 The approved model does not mandate one Rust type, SQL table or service per conceptual noun.

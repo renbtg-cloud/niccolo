@@ -294,6 +294,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/action-decisions/{decision}",post(record_expert_action_decision))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/intervention-records/{record}",post(record_expert_intervention))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/intervention-causal-assessments/{assessment}",post(record_expert_intervention_assessment))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/intervention-causal-reviews/{review}",post(record_expert_intervention_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/actor-states/{event}",post(record_expert_actor_state))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/actor-acts/{event}",post(record_expert_actor_act))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}",post(record_expert_response_interpretation))
@@ -3804,6 +3805,17 @@ async fn record_expert_intervention_assessment(
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
     let view = epistemic_workbench::intervention::assess(&state.pool, workspace, situation, recorder, assessment, input).await?;
     Ok(no_store(json!({"assessment":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+}
+
+async fn record_expert_intervention_review(
+    State(state): State<AppState>,
+    Path((workspace, situation, review)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::intervention::CausalReviewInput>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::intervention::review(&state.pool, workspace, situation, recorder, review, input).await?;
+    Ok(no_store(json!({"review":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
 }
 
 async fn record_expert_actor_state(

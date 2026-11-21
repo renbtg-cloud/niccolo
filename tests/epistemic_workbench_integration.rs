@@ -349,6 +349,50 @@ async fn intervention_records_preserve_occurrence_and_causality_independently() 
 }
 
 #[tokio::test]
+async fn causal_reviews_pin_changed_basis_and_reopen_only_on_new_changes() {
+    use epistemic_workbench::intervention::{self, CausalAssessmentInput, CausalAssessmentKind, CausalReviewDisposition, CausalReviewInput, Characterization, InterventionInput, RecordKind};
+    let f = fixture().await;
+    let sit = situation(&f, "Intervention review").await;
+    let other = situation(&f, "Unrelated context").await;
+    let execution = Uuid::new_v4(); let event = Uuid::new_v4(); let assessment_id = Uuid::new_v4();
+    let record = |id, input| intervention::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let base = InterventionInput { kind: RecordKind::ExecutionOccurrence, linked_decision_id: None, characterization: Characterization::Reported, description: "Review reported".into(), event_temporal_scope: "January".into(), acquisition_temporal_scope: "March".into(), basis_evidence_id: None, revises_record_id: None };
+    let observed = InterventionInput { kind: RecordKind::EventObservation, description: "Employee reportedly explores other work".into(), ..base.clone() };
+    record(execution, base.clone()).await.unwrap(); record(event, observed.clone()).await.unwrap();
+    let causal = CausalAssessmentInput { execution_record_id: execution, event_observation_record_id: event, assessment: CausalAssessmentKind::Undetermined, rationale: "Limited timing information".into(), alternative_explanations: "Prior plans".into(), uncertainty: "Onset unknown".into(), basis_evidence_id: None, revises_assessment_id: None };
+    intervention::assess(&f.service, f.workspace, sit, f.principal, assessment_id, causal.clone()).await.unwrap();
+    let review = |id, input| intervention::review(&f.service, f.workspace, sit, f.principal, id, input);
+    let first = CausalReviewInput { assessment_id, reviewed_execution_record_id: execution, reviewed_event_record_id: event, disposition: CausalReviewDisposition::Retained, note: "Retain historical judgment as undetermined".into() };
+    assert!(matches!(review(Uuid::new_v4(), first.clone()).await, Err(WorkbenchError::Invalid)));
+    let revised = Uuid::new_v4();
+    record(revised, InterventionInput { revises_record_id: Some(event), event_temporal_scope: "December".into(), ..observed.clone() }).await.unwrap();
+    assert!(matches!(review(Uuid::new_v4(), first.clone()).await, Err(WorkbenchError::Invalid)));
+    let review_input = CausalReviewInput { reviewed_event_record_id: revised, ..first };
+    let review_id = Uuid::new_v4();
+    assert!(!review(review_id, review_input.clone()).await.unwrap().replayed);
+    assert!(review(review_id, review_input.clone()).await.unwrap().replayed);
+    let get = || epistemic_workbench::snapshot(&f.service, f.workspace, sit);
+    let view = get().await.unwrap().intervention_causal_assessments.pop().unwrap();
+    assert!(!view.requires_review); assert!(view.event_observation_revised); assert_eq!(view.latest_review.unwrap().id, review_id); assert_eq!(view.assessment.input, causal);
+    let deferred = CausalReviewInput { disposition: CausalReviewDisposition::Deferred, ..review_input.clone() };
+    review(Uuid::new_v4(), deferred).await.unwrap();
+    assert!(get().await.unwrap().intervention_causal_assessments[0].requires_review);
+    review(Uuid::new_v4(), review_input.clone()).await.unwrap();
+    let revised_again = Uuid::new_v4();
+    record(revised_again, InterventionInput { revises_record_id: Some(revised), event_temporal_scope: "November".into(), ..observed.clone() }).await.unwrap();
+    let view = get().await.unwrap().intervention_causal_assessments.pop().unwrap();
+    assert!(view.requires_review); assert!(view.latest_review.is_none()); assert_eq!(view.review_history.len(), 3); assert_eq!(view.current_event_record_id, revised_again);
+    assert!(matches!(review(Uuid::new_v4(), review_input.clone()).await, Err(WorkbenchError::Invalid)));
+    assert!(review(review_id, review_input.clone()).await.unwrap().replayed);
+    let foreign = Uuid::new_v4(); intervention::record(&f.service, f.workspace, other, f.principal, foreign, observed).await.unwrap();
+    assert!(matches!(review(Uuid::new_v4(), CausalReviewInput { reviewed_event_record_id: foreign, ..review_input.clone() }).await, Err(WorkbenchError::Invalid)));
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_intervention_causal_reviews(workspace_id,situation_id,review_id,assessment_id,reviewed_execution_record_id,reviewed_event_record_id,disposition,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,'RETAINED','Stale',$7)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(assessment_id).bind(execution).bind(revised).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514")); tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn intervention_api_preserves_attribution_and_selective_reassessment() {
     use axum::{body::{Body, to_bytes}, http::{Request, StatusCode, header}};
     use tower::ServiceExt;
@@ -388,8 +432,9 @@ async fn intervention_api_preserves_attribution_and_selective_reassessment() {
     let mut independent = causal.clone(); independent["event_observation_record_id"] = serde_json::json!(unrelated);
     assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-causal-assessments", Uuid::new_v4(), independent)).await.unwrap().status(), StatusCode::CREATED);
     observation["revises_record_id"] = serde_json::json!(event); observation["event_temporal_scope"] = "December".into();
-    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-records", Uuid::new_v4(), observation)).await.unwrap().status(), StatusCode::CREATED);
-    let snapshot = router.oneshot(Request::builder().uri(format!("/v1/workspaces/{}/situations/{}/epistemic/workbench", f.workspace, sit)).header(header::AUTHORIZATION, format!("Bearer {reader}")).body(Body::empty()).unwrap()).await.unwrap();
+    let revised_event = Uuid::new_v4();
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-records", revised_event, observation)).await.unwrap().status(), StatusCode::CREATED);
+    let snapshot = router.clone().oneshot(Request::builder().uri(format!("/v1/workspaces/{}/situations/{}/epistemic/workbench", f.workspace, sit)).header(header::AUTHORIZATION, format!("Bearer {reader}")).body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(snapshot.status(), StatusCode::OK);
     let data: serde_json::Value = serde_json::from_slice(&to_bytes(snapshot.into_body(), 1024*1024).await.unwrap()).unwrap();
     assert_eq!(data["intervention_records"].as_array().unwrap().len(), 4);
@@ -399,6 +444,15 @@ async fn intervention_api_preserves_attribution_and_selective_reassessment() {
     assert_eq!(assessments[0]["requires_review"], true);
     assert_eq!(assessments[1]["requires_review"], false);
     assert_eq!(data["action_decisions"], serde_json::json!([]));
+    let review_id = Uuid::new_v4();
+    let review = serde_json::json!({"assessment_id":assessment_id,"reviewed_execution_record_id":execution,"reviewed_event_record_id":revised_event,"disposition":"RETAINED","note":"Historical judgment still justified as tentative"});
+    assert_eq!(router.clone().oneshot(request(&reader, sit, "intervention-causal-reviews", review_id, review.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-causal-reviews", review_id, review.clone())).await.unwrap().status(), StatusCode::CREATED);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, "intervention-causal-reviews", review_id, review)).await.unwrap().status(), StatusCode::OK);
+    let snapshot = router.oneshot(Request::builder().uri(format!("/v1/workspaces/{}/situations/{}/epistemic/workbench", f.workspace, sit)).header(header::AUTHORIZATION, format!("Bearer {reader}")).body(Body::empty()).unwrap()).await.unwrap();
+    let data: serde_json::Value = serde_json::from_slice(&to_bytes(snapshot.into_body(), 1024*1024).await.unwrap()).unwrap();
+    assert_eq!(data["intervention_causal_assessments"][0]["requires_review"], false);
+    assert_eq!(data["intervention_causal_assessments"][0]["latest_review"]["recorded_by"], serde_json::json!(author));
 }
 
 #[tokio::test]
