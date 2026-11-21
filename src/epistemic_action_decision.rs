@@ -132,6 +132,14 @@ pub async fn list(
     Ok(result)
 }
 
+pub(super) async fn list_in_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<Vec<Decision>, WorkbenchError> {
+    list_filtered(tx, workspace, situation, None).await
+}
+
 pub async fn record(
     pool: &PgPool,
     workspace: Uuid,

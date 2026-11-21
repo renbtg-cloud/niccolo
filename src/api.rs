@@ -291,6 +291,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/question-decisions/{decision}",post(record_expert_question_decision))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/question-decisions/{decision}/reviews/{event}",post(record_expert_decision_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/action-recommendations/{recommendation}",post(record_expert_action_recommendation))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/action-decisions/{decision}",post(record_expert_action_decision))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/actor-states/{event}",post(record_expert_actor_state))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/actor-acts/{event}",post(record_expert_actor_act))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}",post(record_expert_response_interpretation))
@@ -3768,6 +3769,17 @@ async fn record_expert_action_recommendation(
         &state.pool, workspace, situation, recorder, recommendation, input,
     ).await?;
     Ok(no_store(json!({"recommendation":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+}
+
+async fn record_expert_action_decision(
+    State(state): State<AppState>,
+    Path((workspace, situation, decision)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::action_decision::DecisionInput>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::action_decision::record(&state.pool, workspace, situation, recorder, decision, input).await?;
+    Ok(no_store(json!({"decision":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
 }
 
 async fn record_expert_actor_state(

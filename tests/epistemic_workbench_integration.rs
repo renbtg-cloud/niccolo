@@ -280,6 +280,7 @@ async fn action_decisions_pin_actual_options_without_authorizing_or_executing() 
     assert_eq!(before.arguments, after.arguments);
     assert!(after.question_decisions.is_empty());
     assert_eq!(after.action_recommendations.len(), 2);
+    assert_eq!(after.action_decisions, history);
 
     let mut tx = f.service.begin().await.unwrap();
     sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
@@ -292,6 +293,66 @@ async fn action_decisions_pin_actual_options_without_authorizing_or_executing() 
     let rejected = sqlx::query("UPDATE niccolo.epistemic_action_decisions SET disposition='DECLINE' WHERE decision_id=$1").bind(first_id).execute(&mut *tx).await.unwrap_err();
     assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("42501"));
     tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn action_decision_api_authenticates_the_decider_and_preserves_pinned_history() {
+    use axum::{body::{Body, to_bytes}, http::{Request, StatusCode, header}};
+    use epistemic_workbench::{action_decision::{DecisionDisposition, DecisionInput}, action_recommendation};
+    use tower::ServiceExt;
+    let f = fixture().await;
+    let sit = situation(&f, "Decide whether to review privileges").await;
+    let other = situation(&f, "Separate investigation").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Privileges remain broad").await;
+    let recipient = Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, recipient, "Reviewer").await.unwrap();
+    let recommendation = Uuid::new_v4();
+    let rec_input = recommendation_input(ground, recipient);
+    action_recommendation::record(&f.service, f.workspace, sit, f.principal, recommendation, rec_input.clone()).await.unwrap();
+    let admin = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap()).await.unwrap();
+    let decider = Uuid::new_v4();
+    let writer = authz::provision_token(&admin, decider, f.workspace, true, true, 1).await.unwrap();
+    let other_writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1).await.unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1).await.unwrap();
+    let stranger = fixture().await;
+    let stranger_token = authz::provision_token(&admin, stranger.principal, stranger.workspace, true, true, 1).await.unwrap();
+    let secure = PgPoolOptions::new().connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap()).await.unwrap();
+    let router = niccolo_evidence::api::router(secure);
+    let id = Uuid::new_v4();
+    let choice = DecisionInput { recommendation_id: recommendation, disposition: DecisionDisposition::SelectAlternative, alternative_index: Some(0), rationale: "Prefer the recorded alternative".into(), revises_decision_id: None };
+    let request = |token: &str, situation, id, body: serde_json::Value| Request::builder().method("POST")
+        .uri(format!("/v1/workspaces/{}/situations/{}/epistemic/action-decisions/{}", f.workspace, situation, id))
+        .header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string())).unwrap();
+    let body = serde_json::to_value(&choice).unwrap();
+    assert_eq!(router.clone().oneshot(request(&reader, sit, id, body.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&stranger_token, sit, id, body.clone())).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(router.clone().oneshot(request(&writer, other, id, body.clone())).await.unwrap().status(), StatusCode::NOT_FOUND);
+    let mut invalid = body.clone(); invalid["authorize"] = true.into();
+    assert_eq!(router.clone().oneshot(request(&writer, sit, id, invalid)).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let created = router.clone().oneshot(request(&writer, sit, id, body.clone())).await.unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    assert_eq!(created.headers()[header::CACHE_CONTROL], "no-store");
+    let stored: serde_json::Value = serde_json::from_slice(&to_bytes(created.into_body(), 1024*1024).await.unwrap()).unwrap();
+    assert_eq!(stored["decision"]["recorded_by"], serde_json::json!(decider));
+    assert_eq!(stored["decision"]["input"], body);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, id, body)).await.unwrap().status(), StatusCode::OK);
+    let revised_rec = Uuid::new_v4();
+    action_recommendation::record(&f.service, f.workspace, sit, f.principal, revised_rec, action_recommendation::RecommendationInput { revises_recommendation_id: Some(recommendation), ..rec_input }).await.unwrap();
+    let revision = serde_json::to_value(DecisionInput { disposition: DecisionDisposition::Defer, alternative_index: None, revises_decision_id: Some(id), ..choice }).unwrap();
+    let revision_id = Uuid::new_v4();
+    assert_eq!(router.clone().oneshot(request(&other_writer, sit, revision_id, revision.clone())).await.unwrap().status(), StatusCode::BAD_REQUEST);
+    assert_eq!(router.clone().oneshot(request(&writer, sit, revision_id, revision)).await.unwrap().status(), StatusCode::CREATED);
+    let snapshot = router.oneshot(Request::builder().uri(format!("/v1/workspaces/{}/situations/{}/epistemic/workbench", f.workspace, sit))
+        .header(header::AUTHORIZATION, format!("Bearer {reader}")).body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(snapshot.status(), StatusCode::OK);
+    assert_eq!(snapshot.headers()[header::CACHE_CONTROL], "no-store");
+    let data: serde_json::Value = serde_json::from_slice(&to_bytes(snapshot.into_body(), 1024*1024).await.unwrap()).unwrap();
+    assert_eq!(data["action_decisions"].as_array().unwrap().len(), 2);
+    assert_eq!(data["action_decisions"][0]["input"]["recommendation_id"], serde_json::json!(recommendation));
+    assert_eq!(data["action_decisions"][1]["input"]["recommendation_id"], serde_json::json!(recommendation));
+    assert_eq!(data["action_recommendations"].as_array().unwrap().len(), 2);
+    assert_eq!(data["question_decisions"], serde_json::json!([]));
 }
 
 #[tokio::test]

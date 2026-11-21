@@ -696,6 +696,7 @@ pub struct WorkbenchSnapshot {
     pub question_decisions: Vec<inquiry_decision::InquiryDecision>,
     pub question_decision_basis_changes: Vec<inquiry_decision_review::DecisionBasisChange>,
     pub action_recommendations: Vec<action_recommendation::Recommendation>,
+    pub action_decisions: Vec<action_decision::Decision>,
     pub actor_epistemic_states: Vec<actor_state::StateEvent>,
     pub actor_epistemic_acts: Vec<actor_act::ActEvent>,
     pub question_responses: Vec<inquiry_response::QuestionResponse>,
@@ -2391,6 +2392,7 @@ pub async fn snapshot(
     let question_decisions = inquiry_decision::list_in_snapshot(&mut tx, workspace, situation).await?;
     let question_decision_basis_changes = inquiry_decision_review::changes_in_snapshot(&mut tx, workspace, situation, &question_decisions, &assessments).await?;
     let action_recommendations = action_recommendation::list_in_snapshot(&mut tx, workspace, situation).await?;
+    let action_decisions = action_decision::list_in_snapshot(&mut tx, workspace, situation).await?;
     let actor_epistemic_states = actor_state::list_in_snapshot(&mut tx, workspace, situation).await?;
     let actor_epistemic_acts = actor_act::list_in_snapshot(&mut tx, workspace, situation).await?;
     let question_responses =
@@ -2589,6 +2591,7 @@ pub async fn snapshot(
         question_decisions,
         question_decision_basis_changes,
         action_recommendations,
+        action_decisions,
         actor_epistemic_states,
         actor_epistemic_acts,
         question_responses,
@@ -2629,6 +2632,7 @@ mod tests {
             question_decisions: vec![],
             question_decision_basis_changes: vec![],
             action_recommendations: vec![],
+            action_decisions: vec![],
             actor_epistemic_states: vec![],
             actor_epistemic_acts: vec![],
             question_responses: vec![],
