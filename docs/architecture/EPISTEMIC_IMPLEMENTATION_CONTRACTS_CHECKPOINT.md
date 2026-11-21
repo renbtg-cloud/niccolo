@@ -224,6 +224,8 @@ There is no mandatory UNKNOWN -> InformationGap -> Question pipeline.
 
 Initial structured authoring of investigative questions (migration 0109): a Situation-scoped `QUESTION` object preserves the investigator's wording, rationale and attribution independently of `INFORMATION_GAP` and hypothesis objects. A question may exist without a gap, is linked explicitly by contextual relevance, and can have question-to-question genealogy. The Workbench/API do not allow a question itself to be a proposition-like entailment, causal claim, conclusion, premise, assumption or applicability condition. It may be contextual material or a target of an attributed assessment. No answer, presupposition, evidentiary support or gap resolution is inferred from authoring a question.
 
+Typed investigative links (migration 0110) let an investigator record `ADDRESSES_GAP` from a question to one or several information gaps, `TESTS_HYPOTHESIS` to one or several candidate explanations, and `PRESUPPOSES` to explicitly identified propositions, assumptions or hypotheses. Endpoint types, direction and Situation visibility are validated by the API and by a caller-scoped SQL trigger. These links preserve the original question, do not resolve a gap or endorse a hidden premise, and do not imply that testing several hypotheses discriminates between them.
+
 A question should be evaluable in terms of what it could change. Discriminatory power is a core dimension: information can be relevant yet fail to distinguish between competing hypotheses.
 
 Initial qualitative scales are acceptable, for example negligible / low / moderate / high / very_high, provided rationale and context are preserved.
