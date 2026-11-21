@@ -117,6 +117,8 @@ Explicit assessment reliance (migration 0106): an investigator may pin an exact 
 
 Downstream assessment review (migration 0107): each currently reachable downstream grounding route has a separate attributed review history pinned to the dependency and exact assessment successor. Retaining the directly relying route or a sibling downstream route does not clear its obligation. Later assessment revisions reopen the corresponding obligations without discarding historical reviews. Unreachable routes cannot be reviewed through this mechanism. The reachability diagnostic reflects the current explicitly authored graph; it is not a historical graph reconstruction or a determination that any conclusion is false.
 
+Route-level reasoning diagnostics distinguish ordinary object-genealogy reassessment from assessment-revision attention and distinguish directly relying routes from downstream routes. Counts enumerate current review obligations by disposition, not independent evidence, truth, probability or confidence. A single route can have multiple distinct obligations and retaining one cannot clear another.
+
 ## 6. Temporal separation
 
 The implementation must be able to distinguish, when relevant:

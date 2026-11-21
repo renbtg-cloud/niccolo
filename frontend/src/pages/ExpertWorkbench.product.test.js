@@ -80,6 +80,13 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Recorded lineage could not be resolved');
   });
 
+  it('separates assessment-dependent attention from ordinary relation reassessment and truth', () => {
+    expect(page).toContain('Pinned assessment revisions');
+    expect(page).toContain('Downstream assessment revisions');
+    expect(page).toContain('Review counts are not confidence scores.');
+    expect(page).toContain('Retaining one route does not clear another.');
+  });
+
   it('records explicit reassessment review without silently rewriting the argument', () => {
     expect(reassessmentReviewRequest(null, 'RETAINED', 'Still supported by an independent route.')).toEqual({
       grounding_set_id: null, disposition: 'RETAINED', note: 'Still supported by an independent route.',
