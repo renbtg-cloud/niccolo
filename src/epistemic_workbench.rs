@@ -7,6 +7,9 @@ use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+#[path = "epistemic_assessment.rs"]
+pub mod assessment;
+
 #[derive(Debug, thiserror::Error)]
 pub enum WorkbenchError {
     #[error("database unavailable: {0}")]
@@ -510,6 +513,7 @@ pub struct WorkbenchSnapshot {
     pub reassessment_impacts: Vec<ReassessmentImpact>,
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
+    pub assessments: Vec<assessment::AssessmentEvent>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
@@ -2206,6 +2210,7 @@ pub async fn snapshot(
         &mut reasoning_diagnostics,
     )
     .await?;
+    let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
         situation_id: situation,
@@ -2218,6 +2223,7 @@ pub async fn snapshot(
         reassessment_impacts,
         grounding_cycles,
         reasoning_diagnostics,
+        assessments,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -2247,6 +2253,7 @@ mod tests {
             reassessment_impacts: vec![],
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],
+            assessments: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();

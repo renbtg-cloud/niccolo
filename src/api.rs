@@ -281,6 +281,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(search_expert_workbench_evidence),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessments/{event}",
+            post(record_expert_assessment),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}",
             post(create_expert_epistemic_node),
         )
@@ -3588,6 +3592,30 @@ async fn create_expert_grounding_set(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"grounding":grounding}), status))
+}
+
+async fn record_expert_assessment(
+    State(state): State<AppState>,
+    Path((workspace, situation, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::assessment::AssessmentInput>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let assessment = epistemic_workbench::assessment::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        input,
+    )
+    .await?;
+    let status = if assessment.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"assessment": assessment}), status))
 }
 
 async fn record_expert_route_applicability(
