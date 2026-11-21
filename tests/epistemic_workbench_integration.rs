@@ -147,6 +147,14 @@ async fn action_recommendations_are_attributed_revisable_and_not_authorizations(
     tx.rollback().await.unwrap();
     let mut tx = f.service.begin().await.unwrap();
     sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let mut payload = serde_json::to_value(&input).unwrap();
+    payload["purpose"] = "\t\u{00a0}\u{3000}".into();
+    let rejected = sqlx::query("INSERT INTO niccolo.epistemic_action_recommendations(workspace_id,situation_id,recommendation_id,recipient_actor_id,ground_object_ids,payload,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)")
+        .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(recipient).bind(vec![ground]).bind(payload.to_string()).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(rejected.as_database_error().unwrap().code().as_deref(), Some("23514"));
+    tx.rollback().await.unwrap();
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
     let payload = serde_json::to_string(&RecommendationInput { ground_object_ids: vec![foreign], ..input.clone() }).unwrap();
     let rejected = sqlx::query("INSERT INTO niccolo.epistemic_action_recommendations(workspace_id,situation_id,recommendation_id,recipient_actor_id,ground_object_ids,payload,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)")
         .bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(recipient).bind(vec![foreign]).bind(payload).bind(f.principal).execute(&mut *tx).await.unwrap_err();
