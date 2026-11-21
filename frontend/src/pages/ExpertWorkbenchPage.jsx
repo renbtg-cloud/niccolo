@@ -6,6 +6,7 @@ import { InterpretationRelianceReview } from './InterpretationRelianceReview.jsx
 import { InquiryComparisonPanel } from './InquiryComparisonPanel.jsx';
 import { ActorEpistemicStatePanel } from './ActorEpistemicStatePanel.jsx';
 import { ActorEpistemicActPanel } from './ActorEpistemicActPanel.jsx';
+import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -264,6 +265,7 @@ export function ExpertWorkbenchPage() {
       <InquiryComparisonPanel key={`${client.config.workspace}:${client.config.situation}`} snapshot={data} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicStatePanel key={`actor-states:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicActPanel key={`actor-acts:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
+      <ActionRecommendationPanel key={`action-recommendations:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       {(data.question_inquiries ?? []).length > 0 && <details open><summary>Investigative questions — explicit inquiry map</summary><p>Links record what to investigate, not answers or gap resolution. Testing multiple hypotheses does not establish discriminatory power.</p><ul>{data.question_inquiries.map(inquiry => {
         const question = data.nodes.find(n => n.object_id === inquiry.question_object_id);
         const linkGroups = [['Addressed gaps', inquiry.addressed_gaps], ['Tested hypotheses', inquiry.tested_hypotheses], ['Explicit presuppositions', inquiry.presuppositions]];

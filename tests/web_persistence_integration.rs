@@ -58,6 +58,13 @@ async fn real_loopback_web_and_persistent_situation_smoke() {
     let js = raw_http(port, "GET", "/api.js", None, "").await;
     assert!(js.contains("200 OK"));
     assert!(js.contains("addPersistentContribution"));
+    let workbench = raw_http(port, "GET", "/workbench", None, "").await;
+    assert!(workbench.contains("200 OK"));
+    assert!(workbench.contains("/assets/app.js"));
+    let bundle = raw_http(port, "GET", "/assets/app.js", None, "").await;
+    assert!(bundle.contains("200 OK"));
+    assert!(bundle.contains("Record recommendation only"));
+    assert!(bundle.contains("epistemic/action-recommendations/"));
     let s = Uuid::new_v4();
     let base = format!("/v1/workspaces/{w}/situations/{s}");
     let created = raw_http(
