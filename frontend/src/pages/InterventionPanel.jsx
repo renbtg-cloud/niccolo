@@ -3,6 +3,8 @@ import { useRef, useState } from 'react';
 const stages = { AUTHORIZATION_REPORT: 'Reported authorization (not a grant)', EXISTING_PLAN_REPORT: 'Report of an existing plan', EXECUTION_OCCURRENCE: 'Execution occurrence', EVENT_OBSERVATION: 'Event observation' };
 const characterizations = ['REPORTED', 'OBSERVED', 'INFERRED', 'CONTESTED'];
 const causes = { PREDATED_INTERVENTION: 'Assessed to predate intervention', POSSIBLY_INDUCED: 'Possibly induced', POSSIBLY_INTENSIFIED: 'Possibly intensified', POSSIBLY_INDEPENDENT: 'Possibly independent', UNDETERMINED: 'Undetermined' };
+const reviewDispositions = { RETAINED: 'Retain historical assessment after examining change', RECONSIDERATION_REQUIRED: 'Reconsideration required', DEFERRED: 'Defer review' };
+const emptyReview = () => ({ disposition: '', note: '' });
 const emptyRecord = () => ({ kind: '', linked_decision_id: null, characterization: '', description: '', event_temporal_scope: '', acquisition_temporal_scope: '', basis_evidence_id: null, revises_record_id: null });
 const emptyAssessment = () => ({ execution_record_id: '', event_observation_record_id: '', assessment: '', rationale: '', alternative_explanations: '', uncertainty: '', basis_evidence_id: null, revises_assessment_id: null });
 const text = (value, max) => {
@@ -35,6 +37,12 @@ export function causalAssessmentRequest(draft, records, assessments, evidence) {
   return { execution_record_id: draft.execution_record_id, event_observation_record_id: draft.event_observation_record_id, assessment: draft.assessment, rationale: text(draft.rationale, 4096), alternative_explanations: text(draft.alternative_explanations, 4096), uncertainty: text(draft.uncertainty, 4096), basis_evidence_id: draft.basis_evidence_id || null, revises_assessment_id: draft.revises_assessment_id || null };
 }
 
+export function causalReviewRequest(draft, view) {
+  if (!view || !(view.execution_revised || view.event_observation_revised) || !view.current_execution_record_id || !view.current_event_record_id) throw new Error('A changed causal basis is required.');
+  if (!Object.hasOwn(reviewDispositions, draft.disposition)) throw new Error('Choose an explicit review disposition.');
+  return { assessment_id: view.assessment.id, reviewed_execution_record_id: view.current_execution_record_id, reviewed_event_record_id: view.current_event_record_id, disposition: draft.disposition, note: text(draft.note, 4096) };
+}
+
 function useAuthoring(empty, client, onChanged) {
   const [draft, setDraft] = useState(empty);
   const [error, setError] = useState('');
@@ -65,6 +73,25 @@ function EvidenceField({ form, evidence, required = false }) {
 }
 function Attribution({ record, revisionField }) {
   return <small>Recorded by {record.recorded_by} · {record.recorded_at} · {record.id}{record.input[revisionField] && ` · revises ${record.input[revisionField]}`}</small>;
+}
+
+function CausalReviewPanel({ view, recordLabel, client, onChanged }) {
+  const form = useAuthoring(emptyReview, client, onChanged);
+  const changes = view.execution_revised || view.event_observation_revised;
+  if (!changes) return null;
+  return <div>
+    <p>Current execution revision: {recordLabel(view.current_execution_record_id)}</p>
+    <p>Current event revision: {recordLabel(view.current_event_record_id)}</p>
+    {view.latest_review && <p>Latest review of these exact versions: {reviewDispositions[view.latest_review.input.disposition]} · {view.latest_review.input.note} · {view.latest_review.recorded_by}</p>}
+    {!view.superseded && <form onSubmit={e => form.save(e, draft => causalReviewRequest(draft, view), (id, body) => client.recordInterventionReview(id, body))}>
+      <fieldset disabled={form.saving}><legend>Review the changed causal basis (original pins remain unchanged)</legend>
+        <label>Review disposition<select required value={form.draft.disposition} onChange={e => form.change('disposition', e.target.value)}><option value="">Choose…</option>{Object.entries(reviewDispositions).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+        <TextField form={form} field="note" label="Reason for review disposition"/>
+        <button>Record causal basis review only</button>
+      </fieldset>{form.error && <p className="error" role="alert">{form.error}</p>}
+    </form>}
+    {!!view.review_history?.length && <details><summary>Attributed causal review history</summary><ul>{view.review_history.map(r => <li key={r.id}><strong>{reviewDispositions[r.input.disposition]}</strong><p>{r.input.note}</p><p>Reviewed execution: {recordLabel(r.input.reviewed_execution_record_id)}</p><p>Reviewed event: {recordLabel(r.input.reviewed_event_record_id)}</p><Attribution record={r}/></li>)}</ul></details>}
+  </div>;
 }
 
 export function InterventionPanel({ snapshot, evidence = [], client, onChanged }) {
@@ -103,6 +130,6 @@ export function InterventionPanel({ snapshot, evidence = [], client, onChanged }
       </fieldset>{causalForm.error && <p className="error" role="alert">{causalForm.error}</p>}
     </form>
     <h4>Attributed causal assessment history</h4>
-    {views.length ? <ul>{views.map(view => { const a = view.assessment; return <li key={a.id}><strong>{causes[a.input.assessment]}</strong><p>Execution pin: {recordLabel(a.input.execution_record_id)}</p><p>Observation pin: {recordLabel(a.input.event_observation_record_id)}</p><p>{a.input.rationale}</p><p>Alternatives: {a.input.alternative_explanations}</p><p>Uncertainty: {a.input.uncertainty}</p><p>Evidence pin: {a.input.basis_evidence_id ?? 'none'}</p><Attribution record={a} revisionField="revises_assessment_id"/>{view.requires_review && <p role="status">Pinned record revised; review required. Original assessment retained, not automatically invalidated. Record a new assessment to explicitly pin newer records.</p>}{view.superseded ? <p>Historical assessment — original retained.</p> : <button type="button" disabled={causalForm.saving} onClick={() => causalForm.revise({ ...a.input, revises_assessment_id: a.id })}>Propose assessment revision (original recorder only)</button>}</li>; })}</ul> : <p>No causal assessment recorded.</p>}
+    {views.length ? <ul>{views.map(view => { const a = view.assessment; return <li key={a.id}><strong>{causes[a.input.assessment]}</strong><p>Execution pin: {recordLabel(a.input.execution_record_id)}</p><p>Observation pin: {recordLabel(a.input.event_observation_record_id)}</p><p>{a.input.rationale}</p><p>Alternatives: {a.input.alternative_explanations}</p><p>Uncertainty: {a.input.uncertainty}</p><p>Evidence pin: {a.input.basis_evidence_id ?? 'none'}</p><Attribution record={a} revisionField="revises_assessment_id"/>{view.requires_review && <p role="status">Pinned record revised; review required. Original assessment retained, not automatically invalidated. A new assessment can explicitly pin newer records.</p>}{!view.requires_review && !view.superseded && (view.execution_revised || view.event_observation_revised) && <p>Changed causal basis reviewed; original assessment and exact pins retained.</p>}<CausalReviewPanel key={`${a.id}:${view.current_execution_record_id}:${view.current_event_record_id}`} view={view} recordLabel={recordLabel} client={client} onChanged={onChanged}/>{view.superseded ? <p>Historical assessment — original retained.</p> : <button type="button" disabled={causalForm.saving} onClick={() => causalForm.revise({ ...a.input, revises_assessment_id: a.id })}>Propose assessment revision (original recorder only)</button>}</li>; })}</ul> : <p>No causal assessment recorded.</p>}
   </details>;
 }

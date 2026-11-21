@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { InterventionPanel, interventionRequest, causalAssessmentRequest } from './InterventionPanel.jsx';
+import { InterventionPanel, interventionRequest, causalAssessmentRequest, causalReviewRequest } from './InterventionPanel.jsx';
 import { NiccoloClient } from '../api/client.js';
 
 const draft = { kind: 'EXECUTION_OCCURRENCE', linked_decision_id: null, characterization: 'REPORTED', description: 'Manager reports access review', event_temporal_scope: 'January', acquisition_temporal_scope: 'March', basis_evidence_id: null, revises_record_id: null };
@@ -51,7 +51,7 @@ describe('intervention and causal assessment authoring', () => {
   });
   it('renders exact historical pins, attributed record history and selective review without causal certainty', () => {
     const updated = row('new-observation', {...observation, revises_record_id: 'observation', event_temporal_scope: 'December'});
-    const view = {assessment: row('assessment', causal), execution_revised: false, event_observation_revised: true, requires_review: true, superseded: false};
+    const view = {assessment: row('assessment', causal), execution_revised: false, event_observation_revised: true, requires_review: true, superseded: false, current_execution_record_id: 'execution', current_event_record_id: 'new-observation'};
     const markup = renderToStaticMarkup(createElement(InterventionPanel, {snapshot: {intervention_records: [...records, updated], intervention_causal_assessments: [view]}, client: {}, onChanged: () => {}}));
     expect(markup).toContain('Sequence alone does not establish causation');
     expect(markup).toContain('Historical record — original retained');
@@ -59,5 +59,24 @@ describe('intervention and causal assessment authoring', () => {
     expect(markup).toContain('Employee explores other work · historical · observation');
     expect(markup).toContain('Record causal assessment only');
     expect(markup).toContain('Recorded by author');
+    expect(markup).toContain('Record causal basis review only');
+    expect(markup).toContain('Current event revision: Employee explores other work · current · new-observation');
+  });
+  it('pins reviews to the current changed basis and renders previous review history', async () => {
+    const view = {assessment: row('assessment', causal), execution_revised: false, event_observation_revised: true, requires_review: false, superseded: false, current_execution_record_id: 'execution', current_event_record_id: 'revised'};
+    const body = causalReviewRequest({disposition: 'RETAINED', note: 'Tentative judgment remains justified'}, view);
+    expect(body).toEqual({assessment_id: 'assessment', reviewed_execution_record_id: 'execution', reviewed_event_record_id: 'revised', disposition: 'RETAINED', note: 'Tentative judgment remains justified'});
+    expect(() => causalReviewRequest({disposition: 'RETAINED', note: ''}, view)).toThrow();
+    expect(() => causalReviewRequest({disposition: 'RETAINED', note: 'Note'}, {...view, event_observation_revised: false})).toThrow();
+    const priorReview = row('review', body);
+    const markup = renderToStaticMarkup(createElement(InterventionPanel, {snapshot: {intervention_records: [...records, row('revised', {...observation, revises_record_id: 'observation'})], intervention_causal_assessments: [{...view, latest_review: priorReview, review_history: [priorReview]}]}, client: {}, onChanged: () => {}}));
+    expect(markup).toContain('Changed causal basis reviewed; original assessment and exact pins retained');
+    expect(markup).toContain('Attributed causal review history');
+    expect(markup).toContain('Tentative judgment remains justified');
+    const calls = [];
+    const client = new NiccoloClient({workspace: 'w', situation: 's', token: 'token'}, async (url, options) => { calls.push({url, options}); return {status: 201, ok: true, headers: {get: () => null}, json: async () => ({})}; });
+    await client.recordInterventionReview('review', body);
+    expect(calls[0].url).toContain('/epistemic/intervention-causal-reviews/review');
+    expect(JSON.parse(calls[0].options.body)).toEqual(body);
   });
 });
