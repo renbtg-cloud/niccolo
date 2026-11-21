@@ -541,6 +541,8 @@ Detect self-sealing reasoning: a hypothesis for which supporting evidence, contr
 
 The structural reasoning projection now surfaces a narrow review candidate: an explicitly authored `CONTRADICTS` relation whose two endpoints occur as non-contextual grounds in supporting routes for the same conclusion. Exact relation and route identities remain inspectable; unrelated conclusions, opposition routes, contextual-only grounds and textually similar but unlinked objects do not trigger the candidate. This is not a detector of motive, a falsifiability proof, or an automatic rejection. Different conditional interpretations can legitimately support a conclusion under alternative circumstances. Missing evidence and absence claims are never inferred from silence; a complete self-sealing analysis still requires an explicitly modeled absence and investigation of competing explanations.
 
+Checkpoint 1.45: 608 Rust tests, 154 frontend tests, 22 Python tests and 8 standalone JavaScript tests passed.
+
 Counterintelligence remains a vertical/stress-test over the general epistemic core, not a second epistemic engine.
 
 ## 20. Compartmentalization and security
