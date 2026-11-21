@@ -1,0 +1,36 @@
+name: Apply transitive reassessment WIP 01
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-transitive-reassessment-wip01-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "95c58f982cb3c203fbbfa34ba9853904f9be5516"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          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
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/epistemic_workbench.rs frontend/src/pages/ExpertWorkbenchPage.jsx frontend/src/pages/ExpertWorkbench.product.test.js
+          git commit -m "WIP 01: transitive selective reassessment"
+          git push origin HEAD:main
