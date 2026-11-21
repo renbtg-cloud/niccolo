@@ -649,6 +649,8 @@ Checkpoint 1.68 implements the AT-26 objection-attention contract using existing
 
 Checkpoint 1.69 exposes the AT-26 dimensions and a contextual attention view grouped by exact explicitly triaged target, retaining competing unrevised judgments and historic revisions without ranking or automatic closure. All 147 migrations applied on a new PostgreSQL database. Full regression passed: 632 Rust, 181 React, 22 Python and 8 standalone JavaScript tests (843 total).
 
+Checkpoint 1.70 adds [the AT-01–AT-26 executable witness matrix](EPISTEMIC_ADVERSARIAL_TEST_TRACEABILITY.md), distinguishing focused tests, constituent safeguards and open contracts. The matrix is guarded by two tests that require each case to remain individually traceable and every listed witness to refer to a real Rust integration test. All 24 Python tests and the documentation link check passed. This is a scoped implementation audit, not a declaration that all adversarial scenarios have been fully reproduced.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
@@ -735,7 +737,7 @@ Prioritize shared semantic substrate before proliferating feature-specific objec
 
 Then reconcile the six functional slices already defined in the main architecture review.
 
-The AT-01 through AT-26 adversarial cases remain candidates for executable contract, invariant, property and integration tests. AT-26 specifically tests weaponized formalism: formally valid but low-value objections must remain representable without acquiring automatic veto power over investigation progress.
+The AT-01 through AT-26 adversarial cases remain individual regression obligations. See the [executable witness matrix](EPISTEMIC_ADVERSARIAL_TEST_TRACEABILITY.md) for implemented focused and constituent tests, open contracts, and remaining composed-scenario challenges. AT-26 specifically tests weaponized formalism: formally valid but low-value objections must remain representable without acquiring automatic veto power over investigation progress.
 
 ---
 
