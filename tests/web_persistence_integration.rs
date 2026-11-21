@@ -65,6 +65,8 @@ async fn real_loopback_web_and_persistent_situation_smoke() {
     assert!(bundle.contains("200 OK"));
     assert!(bundle.contains("Record recommendation only"));
     assert!(bundle.contains("epistemic/action-recommendations/"));
+    assert!(bundle.contains("Record action decision only"));
+    assert!(bundle.contains("epistemic/action-decisions/"));
     let s = Uuid::new_v4();
     let base = format!("/v1/workspaces/{w}/situations/{s}");
     let created = raw_http(

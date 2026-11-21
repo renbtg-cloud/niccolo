@@ -618,6 +618,8 @@ Migration 0140 adds a distinct immutable action-decision ledger. A principal exp
 
 Checkpoint 1.56 exposes action decisions through the authenticated Workbench API and consistent read-only snapshot. Read-only or foreign credentials cannot record decisions; authenticated principal identity provides attribution, and another principal cannot revise a decision. Revisions of recommendations never rebind prior decisions. Verified with 210 Rust library tests and 55 Workbench integrations, including the complete authenticated choice/revision/read flow.
 
+The React Workbench now separates recommendation authoring from explicit decision authoring. The decision surface selects an exact recommendation revision and its primary or enumerated alternative, or records deferral or decline. It shows pinned historical recommendations and attributed decision revisions without silently adopting a successor, and distinguishes choosing inaction from deferring the decision. The 167 frontend tests pass; full backend regression is in progress for checkpoint 1.57.
+
 Keep structurally distinct:
 
 ```text
