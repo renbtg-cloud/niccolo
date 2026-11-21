@@ -10,7 +10,7 @@ const config = {
   situation: '22222222-2222-4222-8222-222222222222',
   token: 'test-in-memory-credential',
 };
-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [] }) };
+const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
@@ -44,6 +44,12 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
       text: 'The transfer occurred after approval.',
       rationale: 'A proposition to be tested in this Situation.',
     });
+  });
+
+  it('surfaces epistemic support cycles without counting them as corroboration', () => {
+    expect(page).toContain('Grounding cycle diagnostics');
+    expect(page).toContain('the cycle itself adds no independent corroboration');
+    expect(page).toContain('recursive support must not be treated as corroboration');
   });
 
   it('surfaces selective reassessment rather than invalidating the whole Situation', () => {

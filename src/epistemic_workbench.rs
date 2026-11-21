@@ -318,6 +318,14 @@ pub struct ReassessmentImpact {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroundingCycleDiagnostic {
+    pub object_ids: Vec<Uuid>,
+    pub argument_ids: Vec<Uuid>,
+    pub has_external_anchor: bool,
+    pub unanchored_recursive_support: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkbenchSnapshot {
     pub situation_id: Uuid,
     pub nodes: Vec<ExpertNode>,
@@ -327,6 +335,7 @@ pub struct WorkbenchSnapshot {
     pub arguments: Vec<ExpertArgument>,
     pub grounding_sets: Vec<GroundingSetView>,
     pub reassessment_impacts: Vec<ReassessmentImpact>,
+    pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
@@ -519,7 +528,8 @@ pub async fn create_node(
     if !situation_visible(&mut tx, workspace, situation).await? {
         return Err(WorkbenchError::Invisible);
     }
-    let object_inserted = ensure_object(&mut tx, workspace, object_id, kind.db_value(), actor).await?;
+    let object_inserted =
+        ensure_object(&mut tx, workspace, object_id, kind.db_value(), actor).await?;
     let mut request_replayed = !object_inserted;
     if kind == ExpertNodeKind::Proposition {
         sqlx::query(
@@ -644,9 +654,7 @@ pub async fn create_relation(
     mut right_object_id: Uuid,
     rationale: &str,
 ) -> Result<ExpertRelation, WorkbenchError> {
-    if kind.family() != family
-        || left_object_id == right_object_id
-        || !valid_text(rationale, 4096)
+    if kind.family() != family || left_object_id == right_object_id || !valid_text(rationale, 4096)
     {
         return Err(WorkbenchError::Invalid);
     }
@@ -736,13 +744,8 @@ pub async fn create_argument(
     }
     let rationale = rationale.trim();
     let mut tx = scoped(pool, workspace, false).await?;
-    let conclusion_kind = object_available_in_situation(
-        &mut tx,
-        workspace,
-        situation,
-        conclusion_object_id,
-    )
-    .await?;
+    let conclusion_kind =
+        object_available_in_situation(&mut tx, workspace, situation, conclusion_object_id).await?;
     if conclusion_kind.is_none() || conclusion_kind.as_deref() == Some("ARGUMENT") {
         return Err(WorkbenchError::Invisible);
     }
@@ -809,7 +812,12 @@ pub async fn create_grounding_set(
     if !valid_text(rationale, 4096)
         || members.is_empty()
         || members.len() > 64
-        || members.iter().map(|m| m.member_id).collect::<BTreeSet<_>>().len() != members.len()
+        || members
+            .iter()
+            .map(|m| m.member_id)
+            .collect::<BTreeSet<_>>()
+            .len()
+            != members.len()
     {
         return Err(WorkbenchError::Invalid);
     }
@@ -1088,10 +1096,134 @@ pub async fn search_evidence(
     tx.commit().await?;
     Ok(rows
         .into_iter()
-        .map(|(evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator)| WorkbenchEvidence {
-            evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator
-        })
+        .map(
+            |(
+                evidence_id,
+                document_id,
+                ordinal,
+                speaker_label,
+                content,
+                source_class,
+                source_locator,
+                document_locator,
+            )| WorkbenchEvidence {
+                evidence_id,
+                document_id,
+                ordinal,
+                speaker_label,
+                content,
+                source_class,
+                source_locator,
+                document_locator,
+            },
+        )
         .collect())
+}
+
+fn grounding_cycle_diagnostics(
+    arguments: &[ExpertArgument],
+    grounding_sets: &[GroundingSetView],
+) -> Vec<GroundingCycleDiagnostic> {
+    let conclusion_by_argument = arguments
+        .iter()
+        .map(|a| (a.argument_id, a.conclusion_object_id))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut adjacency = std::collections::BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
+    let mut nodes = BTreeSet::new();
+    for set in grounding_sets
+        .iter()
+        .filter(|s| s.effect == GroundingEffect::Supports)
+    {
+        let Some(&conclusion) = conclusion_by_argument.get(&set.argument_id) else {
+            continue;
+        };
+        nodes.insert(conclusion);
+        for member in &set.members {
+            if let Some(ground) = member.ground_object_id {
+                nodes.insert(ground);
+                adjacency.entry(ground).or_default().insert(conclusion);
+            }
+        }
+    }
+
+    fn reachable(
+        start: Uuid,
+        target: Uuid,
+        adjacency: &std::collections::BTreeMap<Uuid, BTreeSet<Uuid>>,
+    ) -> bool {
+        let mut seen = BTreeSet::new();
+        let mut stack = vec![start];
+        while let Some(node) = stack.pop() {
+            if node == target {
+                return true;
+            }
+            if !seen.insert(node) {
+                continue;
+            }
+            if let Some(next) = adjacency.get(&node) {
+                stack.extend(next.iter().copied());
+            }
+        }
+        false
+    }
+
+    let mut remaining = nodes;
+    let mut diagnostics = Vec::new();
+    while let Some(seed) = remaining.iter().next().copied() {
+        let component = remaining
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                reachable(seed, *candidate, &adjacency) && reachable(*candidate, seed, &adjacency)
+            })
+            .collect::<BTreeSet<_>>();
+        for node in &component {
+            remaining.remove(node);
+        }
+        let self_loop = component.len() == 1
+            && adjacency
+                .get(&seed)
+                .is_some_and(|targets| targets.contains(&seed));
+        if component.len() < 2 && !self_loop {
+            continue;
+        }
+
+        let mut argument_ids = BTreeSet::new();
+        let mut has_external_anchor = false;
+        for set in grounding_sets
+            .iter()
+            .filter(|s| s.effect == GroundingEffect::Supports)
+        {
+            let Some(&conclusion) = conclusion_by_argument.get(&set.argument_id) else {
+                continue;
+            };
+            if !component.contains(&conclusion) {
+                continue;
+            }
+            let participates = set.members.iter().any(|m| {
+                m.ground_object_id
+                    .is_some_and(|ground| component.contains(&ground))
+            });
+            if participates {
+                argument_ids.insert(set.argument_id);
+            }
+            if set.members.iter().any(|m| {
+                m.evidence_id.is_some()
+                    || m.ground_object_id
+                        .is_some_and(|ground| !component.contains(&ground))
+            }) {
+                has_external_anchor = true;
+            }
+        }
+        diagnostics.push(GroundingCycleDiagnostic {
+            object_ids: component.into_iter().collect(),
+            argument_ids: argument_ids.into_iter().collect(),
+            has_external_anchor,
+            unanchored_recursive_support: !has_external_anchor,
+        });
+    }
+    diagnostics.sort_by_key(|d| d.object_ids.first().copied());
+    diagnostics
 }
 
 pub async fn snapshot(
@@ -1162,7 +1294,16 @@ pub async fn snapshot(
         .into_iter()
         .take(256)
         .map(
-            |(evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator)| WorkbenchEvidence {
+            |(
+                evidence_id,
+                document_id,
+                ordinal,
+                speaker_label,
+                content,
+                source_class,
+                source_locator,
+                document_locator,
+            )| WorkbenchEvidence {
                 evidence_id,
                 document_id,
                 ordinal,
@@ -1243,7 +1384,17 @@ pub async fn snapshot(
         .fetch_all(&mut *tx)
         .await?;
     let mut grouped: BTreeMap<(Uuid, Uuid), Vec<GroundingMemberView>> = BTreeMap::new();
-    for (argument_id, grounding_set_id, member_id, role, ground_object_id, evidence_id, rationale, recorded_by) in member_rows {
+    for (
+        argument_id,
+        grounding_set_id,
+        member_id,
+        role,
+        ground_object_id,
+        evidence_id,
+        rationale,
+        recorded_by,
+    ) in member_rows
+    {
         grouped
             .entry((argument_id, grounding_set_id))
             .or_default()
@@ -1298,7 +1449,17 @@ pub async fn snapshot(
     .fetch_all(&mut *tx)
     .await?;
     let mut reassessment_impacts = Vec::with_capacity(impact_rows.len());
-    for (trigger_relation_id, relation_kind, revision_object_id, prior_object_id, argument_id, grounding_set_id, conclusion_object_id, impact_kind) in impact_rows {
+    for (
+        trigger_relation_id,
+        relation_kind,
+        revision_object_id,
+        prior_object_id,
+        argument_id,
+        grounding_set_id,
+        conclusion_object_id,
+        impact_kind,
+    ) in impact_rows
+    {
         reassessment_impacts.push(ReassessmentImpact {
             trigger_relation_id,
             relation_kind: relation_kind_from_db(&relation_kind)?,
@@ -1315,6 +1476,7 @@ pub async fn snapshot(
         });
     }
 
+    let grounding_cycles = grounding_cycle_diagnostics(&arguments, &grounding_sets);
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
         situation_id: situation,
@@ -1325,6 +1487,7 @@ pub async fn snapshot(
         arguments,
         grounding_sets,
         reassessment_impacts,
+        grounding_cycles,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -1352,6 +1515,7 @@ mod tests {
             arguments: vec![],
             grounding_sets: vec![],
             reassessment_impacts: vec![],
+            grounding_cycles: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();
@@ -1359,5 +1523,133 @@ mod tests {
             value["investigator_free_text_compiler_enabled"],
             serde_json::Value::Bool(false)
         );
+    }
+    #[test]
+    fn support_cycles_are_diagnostic_not_additional_corroboration() {
+        let a = Uuid::from_u128(1);
+        let b = Uuid::from_u128(2);
+        let arg_a = Uuid::from_u128(11);
+        let arg_b = Uuid::from_u128(12);
+        let arguments = vec![
+            ExpertArgument {
+                argument_id: arg_a,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: a,
+                mode: ArgumentMode::Deductive,
+                rationale: "A".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+            ExpertArgument {
+                argument_id: arg_b,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: b,
+                mode: ArgumentMode::Deductive,
+                rationale: "B".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+        ];
+        let member = |id, ground| GroundingMemberView {
+            member_id: id,
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(ground),
+            evidence_id: None,
+            rationale: "premise".into(),
+            recorded_by: Uuid::nil(),
+        };
+        let sets = vec![
+            GroundingSetView {
+                argument_id: arg_a,
+                grounding_set_id: Uuid::from_u128(21),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "B supports A".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(31), b)],
+                replayed: false,
+            },
+            GroundingSetView {
+                argument_id: arg_b,
+                grounding_set_id: Uuid::from_u128(22),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "A supports B".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(32), a)],
+                replayed: false,
+            },
+        ];
+        let cycles = grounding_cycle_diagnostics(&arguments, &sets);
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(cycles[0].object_ids, vec![a, b]);
+        assert!(cycles[0].unanchored_recursive_support);
+        assert!(!cycles[0].has_external_anchor);
+    }
+
+    #[test]
+    fn support_cycle_reports_external_anchor_without_erasing_cycle() {
+        let a = Uuid::from_u128(1);
+        let b = Uuid::from_u128(2);
+        let external = Uuid::from_u128(3);
+        let arg_a = Uuid::from_u128(11);
+        let arg_b = Uuid::from_u128(12);
+        let arguments = vec![
+            ExpertArgument {
+                argument_id: arg_a,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: a,
+                mode: ArgumentMode::Deductive,
+                rationale: "A".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+            ExpertArgument {
+                argument_id: arg_b,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: b,
+                mode: ArgumentMode::Deductive,
+                rationale: "B".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+        ];
+        let make = |id, ground| GroundingMemberView {
+            member_id: id,
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(ground),
+            evidence_id: None,
+            rationale: "premise".into(),
+            recorded_by: Uuid::nil(),
+        };
+        let sets = vec![
+            GroundingSetView {
+                argument_id: arg_a,
+                grounding_set_id: Uuid::from_u128(21),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "B and external support A".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![
+                    make(Uuid::from_u128(31), b),
+                    make(Uuid::from_u128(33), external),
+                ],
+                replayed: false,
+            },
+            GroundingSetView {
+                argument_id: arg_b,
+                grounding_set_id: Uuid::from_u128(22),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "A supports B".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![make(Uuid::from_u128(32), a)],
+                replayed: false,
+            },
+        ];
+        let cycles = grounding_cycle_diagnostics(&arguments, &sets);
+        assert_eq!(cycles.len(), 1);
+        assert!(cycles[0].has_external_anchor);
+        assert!(!cycles[0].unanchored_recursive_support);
     }
 }
