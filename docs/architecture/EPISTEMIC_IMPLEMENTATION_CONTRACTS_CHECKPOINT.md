@@ -372,6 +372,8 @@ Trust is distinct from dependence, reliability, support and benevolence.
 
 Loyalty is a qualified relation to a person, group, institution, cause or principle and is distinct from obedience, agreement, compliance, fear, dependency and aligned interests. Multiple loyalties can conflict.
 
+Migration 0122 generalizes the actor-state target to an exact registered actor for directed trust, and to a registered actor or Situation object for loyalty. Separate trust dimensions represent competence, confidentiality and truthfulness. An explicit `DISTRUST_INDICATED` differs from absent trust, `NOT_INDICATED`, `UNKNOWN` and `CONTESTED`; it is valid only in a trust dimension. Multiple concurrent trust/loyalty judgments are preserved, with context, temporal scope, rationale, basis and attribution; neither reciprocal trust nor authorization, reliability, obedience or truth is inferred. The existing deterministic workspace and bearer access-control rules are unchanged.
+
 Motives involving ego must be representable explicitly:
 
 - saving face;
