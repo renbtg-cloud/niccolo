@@ -1033,6 +1033,46 @@ fn member_role_from_db(value: &str) -> Result<GroundingMemberRole, WorkbenchErro
     }
 }
 
+pub async fn search_evidence(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<WorkbenchEvidence>, WorkbenchError> {
+    if !valid_text(query, 512) || !(1..=50).contains(&limit) {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, true).await?;
+    if !situation_visible(&mut tx, workspace, situation).await? {
+        return Err(WorkbenchError::Invisible);
+    }
+    let rows: Vec<WorkbenchEvidenceRow> = sqlx::query_as(
+        "SELECT f.evidence_id,f.document_id,f.ordinal,f.speaker_label,e.content,e.source_class,e.source_locator,d.locator \
+         FROM niccolo.situation_sources ss \
+         JOIN niccolo.source_fragments f ON f.workspace_id=ss.workspace_id AND f.document_id=ss.document_id \
+         JOIN niccolo.evidence e ON e.workspace_id=f.workspace_id AND e.evidence_id=f.evidence_id \
+         JOIN niccolo.source_documents d ON d.workspace_id=f.workspace_id AND d.document_id=f.document_id \
+         WHERE ss.workspace_id=$1 AND ss.situation_id=$2 AND e.admissible \
+           AND to_tsvector('simple',e.content) @@ plainto_tsquery('simple',$3) \
+         ORDER BY ts_rank_cd(to_tsvector('simple',e.content),plainto_tsquery('simple',$3)) DESC, \
+                  d.created_at,f.document_id,f.ordinal LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(query.trim())
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(|(evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator)| WorkbenchEvidence {
+            evidence_id, document_id, ordinal, speaker_label, content, source_class, source_locator, document_locator
+        })
+        .collect())
+}
+
 pub async fn snapshot(
     pool: &PgPool,
     workspace: Uuid,

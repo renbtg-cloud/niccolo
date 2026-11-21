@@ -25,15 +25,17 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     const calls = [];
     const client = new NiccoloClient(config, async (url, options) => { calls.push({ url, options }); return response; });
     await client.expertWorkbench();
+    await client.searchExpertEvidence('approval hold');
     await client.createExpertNode('33333333-3333-4333-8333-333333333333', { kind: 'HYPOTHESIS', text: 'H', rationale: 'R' });
     await client.createExpertRelation('44444444-4444-4444-8444-444444444444', { family: 'SEMANTIC', kind: 'CONTRADICTS', left_object_id: 'a', right_object_id: 'b', rationale: 'R' });
     await client.createExpertArgument('55555555-5555-4555-8555-555555555555', { conclusion_object_id: 'a', mode: 'ABDUCTIVE', rationale: 'R' });
     await client.createExpertGrounding('55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666', { effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: 'R', members: [] });
-    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'POST', 'POST', 'POST', 'POST']);
-    expect(calls[1].url).toContain('/epistemic/objects/');
-    expect(calls[2].url).toContain('/epistemic/relations/');
-    expect(calls[3].url).toContain('/epistemic/arguments/');
-    expect(calls[4].url).toContain('/grounding/');
+    expect(calls.map((x) => x.options.method)).toEqual(['GET', 'GET', 'POST', 'POST', 'POST', 'POST']);
+    expect(calls[1].url).toContain('/epistemic/workbench/evidence/search?q=approval%20hold');
+    expect(calls[2].url).toContain('/epistemic/objects/');
+    expect(calls[3].url).toContain('/epistemic/relations/');
+    expect(calls[4].url).toContain('/epistemic/arguments/');
+    expect(calls[5].url).toContain('/grounding/');
   });
 
   it('lets a trained investigator author a proposition explicitly', () => {
@@ -53,6 +55,7 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Documentary evidence');
     expect(page).toContain('EVIDENCE · {item.document_locator}');
     expect(page).toContain('first 256 admissible source fragments');
+    expect(page).toContain('Search all attached admissible fragments');
   });
 
 

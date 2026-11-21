@@ -277,6 +277,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_expert_epistemic_workbench),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/evidence/search",
+            get(search_expert_workbench_evidence),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}",
             post(create_expert_epistemic_node),
         )
@@ -3417,6 +3421,31 @@ struct ExpertGroundingSetRequest {
     adequacy: epistemic_workbench::GroundingAdequacy,
     rationale: String,
     members: Vec<epistemic_workbench::NewGroundingMember>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpertEvidenceSearchQuery {
+    q: String,
+    limit: Option<i64>,
+}
+
+async fn search_expert_workbench_evidence(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    Query(input): Query<ExpertEvidenceSearchQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let results = epistemic_workbench::search_evidence(
+        &state.pool,
+        workspace,
+        situation,
+        &input.q,
+        input.limit.unwrap_or(20),
+    )
+    .await?;
+    Ok(no_store(json!({ "results": results }), StatusCode::OK))
 }
 
 async fn get_expert_epistemic_workbench(
