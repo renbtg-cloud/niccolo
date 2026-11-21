@@ -1,0 +1,22 @@
+name: Export main 20261120 2323
+
+on:
+  push:
+    branches:
+      - tmp/export-main-20261120-2323
+    paths:
+      - .github/workflows/export-main-20261120-2323.yml
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: git archive --format=zip --output=niccolo-main.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-main-2323
+          path: niccolo-main.zip
+          retention-days: 1
