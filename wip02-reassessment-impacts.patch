@@ -1,6 +1,6 @@
 From 8bcdd8e137145e671b7d2b031c8ec8e4fb9c6bc3 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
-Date: Sat, 21 Nov 2026 03:24:00 +0000
+Date: Sat, 21 Nov 2026 03:21:14 +0000
 Subject: [PATCH] WIP 02: selective reassessment impacts
 
 ---
@@ -8,7 +8,7 @@ Subject: [PATCH] WIP 02: selective reassessment impacts
  1 file changed, 170 insertions(+)
 
 diff --git a/tests/epistemic_workbench_integration.rs b/tests/epistemic_workbench_integration.rs
-index 4860b7b..d9e130a 100644
+index 4860b7b..2c0e990 100644
 --- a/tests/epistemic_workbench_integration.rs
 +++ b/tests/epistemic_workbench_integration.rs
 @@ -608,3 +608,173 @@ async fn superseding_a_ground_surfaces_only_direct_reassessment_impacts() {
@@ -112,8 +112,14 @@ index 4860b7b..d9e130a 100644
 +        .await
 +        .unwrap();
 +    assert_eq!(reinterpreted.reassessment_impacts.len(), 1);
-+    assert_eq!(reinterpreted.reassessment_impacts[0].trigger_relation_id, trigger_relation);
-+    assert_eq!(reinterpreted.reassessment_impacts[0].relation_kind, RelationKind::Reinterprets);
++    assert_eq!(
++        reinterpreted.reassessment_impacts[0].trigger_relation_id,
++        trigger_relation
++    );
++    assert_eq!(
++        reinterpreted.reassessment_impacts[0].relation_kind,
++        RelationKind::Reinterprets
++    );
 +}
 +
 +#[tokio::test]
@@ -174,7 +180,10 @@ index 4860b7b..d9e130a 100644
 +    assert_eq!(impact.argument_id, argument_id);
 +    assert_eq!(impact.grounding_set_id, None);
 +    assert_eq!(impact.conclusion_object_id, prior_finding);
-+    assert_eq!(impact.impact_kind, epistemic_workbench::ReassessmentImpactKind::Conclusion);
++    assert_eq!(
++        impact.impact_kind,
++        epistemic_workbench::ReassessmentImpactKind::Conclusion
++    );
 +}
 -- 
 2.47.3
