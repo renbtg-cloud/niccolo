@@ -514,6 +514,7 @@ pub struct WorkbenchSnapshot {
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
     pub assessments: Vec<assessment::AssessmentEvent>,
+    pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
@@ -2135,6 +2136,17 @@ pub async fn snapshot(
         });
     }
     let applicability = latest_route_applicability(&mut tx, workspace, situation).await?;
+    let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
+    let assessment_dependencies = assessment::dependency_views(
+        &mut tx,
+        workspace,
+        situation,
+        &assessments,
+        &arguments,
+        &grounding_sets,
+        &applicability,
+    )
+    .await?;
     let mut reassessment_impacts =
         selective_reassessment_impacts(&relations, &arguments, &grounding_sets, &applicability);
     let review_rows: Vec<ReassessmentReviewRow> = sqlx::query_as(
@@ -2210,7 +2222,6 @@ pub async fn snapshot(
         &mut reasoning_diagnostics,
     )
     .await?;
-    let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
         situation_id: situation,
@@ -2224,6 +2235,7 @@ pub async fn snapshot(
         grounding_cycles,
         reasoning_diagnostics,
         assessments,
+        assessment_dependencies,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -2254,6 +2266,7 @@ mod tests {
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],
             assessments: vec![],
+            assessment_dependencies: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();

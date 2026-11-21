@@ -284,6 +284,8 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessments/{event}",
             post(record_expert_assessment),
         )
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}", post(record_expert_assessment_dependency))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/assessment-dependencies/{dependency}/reviews/{event}", post(record_expert_assessment_dependency_review))
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}",
             post(create_expert_epistemic_node),
@@ -3616,6 +3618,55 @@ async fn record_expert_assessment(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"assessment": assessment}), status))
+}
+
+async fn record_expert_assessment_dependency(
+    State(state): State<AppState>,
+    Path((workspace, situation, dependency)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::assessment::DependencyInput>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let dependency = epistemic_workbench::assessment::record_dependency(
+        &state.pool,
+        workspace,
+        situation,
+        actor,
+        dependency,
+        input,
+    )
+    .await?;
+    let status = if dependency.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"dependency":dependency}), status))
+}
+
+async fn record_expert_assessment_dependency_review(
+    State(state): State<AppState>,
+    Path((workspace, situation, dependency, event)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::assessment::DependencyReviewInput>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let review = epistemic_workbench::assessment::record_dependency_review(
+        &state.pool,
+        workspace,
+        situation,
+        actor,
+        dependency,
+        event,
+        input,
+    )
+    .await?;
+    let status = if review.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(no_store(json!({"review":review}), status))
 }
 
 async fn record_expert_route_applicability(

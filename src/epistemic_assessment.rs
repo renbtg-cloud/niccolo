@@ -1,6 +1,10 @@
 //! Explicit expert-authored epistemic assessments. No aggregation, truth
 //! promotion, or inference of independence from the assessor's judgment.
-use super::{WorkbenchError, object_available_in_situation, scoped, valid_text};
+use super::{
+    ExpertArgument, GroundingRouteRef, GroundingSetView, ReassessmentDisposition,
+    RouteApplicabilityAssessment, WorkbenchError, object_available_in_situation, scoped,
+    valid_text,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{BTreeMap, BTreeSet};
@@ -110,6 +114,319 @@ pub struct AssessmentEvent {
     pub recorded_by: Uuid,
     pub recorded_at: String,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DependencyInput {
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+    pub assessment_event_id: Uuid,
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssessmentDependency {
+    pub dependency_id: Uuid,
+    pub input: DependencyInput,
+    pub recorded_by: Uuid,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DependencyReviewInput {
+    pub reviewed_assessment_event_id: Uuid,
+    pub disposition: ReassessmentDisposition,
+    pub note: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DependencyReview {
+    pub review_event_id: Uuid,
+    pub dependency_id: Uuid,
+    pub input: DependencyReviewInput,
+    pub recorded_by: Uuid,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssessmentDependencyView {
+    pub dependency: AssessmentDependency,
+    pub current_assessment_event_id: Uuid,
+    pub assessment_revised: bool,
+    pub latest_review: Option<DependencyReview>,
+    pub review_history: Vec<DependencyReview>,
+    pub requires_review: bool,
+    pub potential_downstream_routes: Vec<GroundingRouteRef>,
+}
+
+pub async fn record_dependency(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    dependency_id: Uuid,
+    mut input: DependencyInput,
+) -> Result<AssessmentDependency, WorkbenchError> {
+    if dependency_id.is_nil() || !valid_text(&input.rationale, 4096) {
+        return Err(WorkbenchError::Invalid);
+    }
+    input.rationale = input.rationale.trim().to_owned();
+    let mut tx = scoped(pool, workspace, false).await?;
+    let route = AssessmentTarget::Route {
+        argument_id: input.argument_id,
+        grounding_set_id: input.grounding_set_id,
+    };
+    if !route.visible(&mut tx, workspace, situation).await?
+        || list_in_snapshot(
+            &mut tx,
+            workspace,
+            situation,
+            Some(input.assessment_event_id),
+        )
+        .await?
+        .is_empty()
+    {
+        return Err(WorkbenchError::Invisible);
+    }
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_assessment_dependencies(workspace_id,situation_id,dependency_id,argument_id,grounding_set_id,assessment_event_id,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        .bind(workspace).bind(situation).bind(dependency_id).bind(input.argument_id).bind(input.grounding_set_id).bind(input.assessment_event_id).bind(&input.rationale).bind(actor).execute(&mut *tx).await?.rows_affected()==1;
+    let stored: Option<(Uuid,Uuid,Uuid,String,Uuid)> = sqlx::query_as("SELECT argument_id,grounding_set_id,assessment_event_id,rationale,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependencies WHERE workspace_id=$1 AND situation_id=$2 AND dependency_id=$3").bind(workspace).bind(situation).bind(dependency_id).fetch_optional(&mut *tx).await?;
+    if stored
+        != Some((
+            input.argument_id,
+            input.grounding_set_id,
+            input.assessment_event_id,
+            input.rationale.clone(),
+            actor,
+        ))
+    {
+        return Err(WorkbenchError::Conflict);
+    }
+    tx.commit().await?;
+    Ok(AssessmentDependency {
+        dependency_id,
+        input,
+        recorded_by: actor,
+        replayed: !inserted,
+    })
+}
+
+fn current_event(original: Uuid, revisions: &BTreeMap<Uuid, Uuid>) -> Uuid {
+    let mut current = original;
+    let mut seen = BTreeSet::new();
+    while seen.insert(current) {
+        let Some(next) = revisions.get(&current) else {
+            break;
+        };
+        current = *next;
+    }
+    current
+}
+
+pub async fn record_dependency_review(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    dependency_id: Uuid,
+    review_event_id: Uuid,
+    mut input: DependencyReviewInput,
+) -> Result<DependencyReview, WorkbenchError> {
+    if review_event_id.is_nil() || !valid_text(&input.note, 4096) {
+        return Err(WorkbenchError::Invalid);
+    }
+    input.note = input.note.trim().to_owned();
+    let mut tx = scoped(pool, workspace, false).await?;
+    let original: Option<Uuid> = sqlx::query_scalar("SELECT assessment_event_id FROM niccolo.epistemic_assessment_dependencies WHERE workspace_id=$1 AND situation_id=$2 AND dependency_id=$3").bind(workspace).bind(situation).bind(dependency_id).fetch_optional(&mut *tx).await?;
+    let original = original.ok_or(WorkbenchError::Invisible)?;
+    let expected = (
+        dependency_id,
+        input.reviewed_assessment_event_id,
+        input.disposition.db_value().to_owned(),
+        input.note.clone(),
+        actor,
+    );
+    let existing: Option<(Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT dependency_id,reviewed_assessment_event_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependency_reviews WHERE workspace_id=$1 AND situation_id=$2 AND review_event_id=$3").bind(workspace).bind(situation).bind(review_event_id).fetch_optional(&mut *tx).await?;
+    if let Some(stored) = existing {
+        if stored != expected {
+            return Err(WorkbenchError::Conflict);
+        }
+        tx.commit().await?;
+        return Ok(DependencyReview {
+            review_event_id,
+            dependency_id,
+            input,
+            recorded_by: actor,
+            replayed: true,
+        });
+    }
+    let revisions: Vec<(Uuid,Uuid)> = sqlx::query_as("SELECT revises_event_id,event_id FROM niccolo.epistemic_assessment_events WHERE workspace_id=$1 AND situation_id=$2 AND revises_event_id IS NOT NULL").bind(workspace).bind(situation).fetch_all(&mut *tx).await?;
+    let current = current_event(original, &revisions.into_iter().collect());
+    if current == original || current != input.reviewed_assessment_event_id {
+        return Err(WorkbenchError::Conflict);
+    }
+    let inserted = sqlx::query("INSERT INTO niccolo.epistemic_assessment_dependency_reviews(workspace_id,situation_id,review_event_id,dependency_id,reviewed_assessment_event_id,disposition,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(review_event_id).bind(dependency_id).bind(current).bind(input.disposition.db_value()).bind(&input.note).bind(actor).execute(&mut *tx).await?.rows_affected()==1;
+    let stored: Option<(Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT dependency_id,reviewed_assessment_event_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependency_reviews WHERE workspace_id=$1 AND situation_id=$2 AND review_event_id=$3").bind(workspace).bind(situation).bind(review_event_id).fetch_optional(&mut *tx).await?;
+    if stored != Some(expected) {
+        return Err(WorkbenchError::Conflict);
+    }
+    tx.commit().await?;
+    Ok(DependencyReview {
+        review_event_id,
+        dependency_id,
+        input,
+        recorded_by: actor,
+        replayed: !inserted,
+    })
+}
+
+// Potential downstream routes, not a claim that their inferred conclusions change.
+fn downstream_routes(
+    input: &DependencyInput,
+    arguments: &[ExpertArgument],
+    sets: &[GroundingSetView],
+    applicability: &[RouteApplicabilityAssessment],
+) -> Vec<GroundingRouteRef> {
+    let conclusions: BTreeMap<_, _> = arguments
+        .iter()
+        .map(|a| (a.argument_id, a.conclusion_object_id))
+        .collect();
+    let mut visited = BTreeSet::new();
+    let initial = GroundingRouteRef {
+        argument_id: input.argument_id,
+        grounding_set_id: input.grounding_set_id,
+    };
+    let mut routes = BTreeSet::from([initial]);
+    let mut pending = std::collections::VecDeque::new();
+    if let Some(conclusion) = conclusions.get(&input.argument_id) {
+        pending.push_back(*conclusion);
+    }
+    while let Some(object) = pending.pop_front() {
+        if !visited.insert(object) {
+            continue;
+        }
+        for set in sets.iter().filter(|set| {
+            set.members
+                .iter()
+                .any(|m| m.ground_object_id == Some(object))
+                || applicability.iter().any(|c| {
+                    c.argument_id == set.argument_id
+                        && c.grounding_set_id == set.grounding_set_id
+                        && c.condition_object_id == object
+                })
+        }) {
+            let route = GroundingRouteRef {
+                argument_id: set.argument_id,
+                grounding_set_id: set.grounding_set_id,
+            };
+            if routes.insert(route)
+                && let Some(conclusion) = conclusions.get(&set.argument_id)
+            {
+                pending.push_back(*conclusion);
+            }
+        }
+    }
+    routes.remove(&initial);
+    routes.into_iter().collect()
+}
+
+pub(super) async fn dependency_views(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    assessments: &[AssessmentEvent],
+    arguments: &[ExpertArgument],
+    sets: &[GroundingSetView],
+    applicability: &[RouteApplicabilityAssessment],
+) -> Result<Vec<AssessmentDependencyView>, WorkbenchError> {
+    let rows: Vec<(Uuid,Uuid,Uuid,Uuid,String,Uuid)> = sqlx::query_as("SELECT dependency_id,argument_id,grounding_set_id,assessment_event_id,rationale,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependencies WHERE workspace_id=$1 AND situation_id=$2 ORDER BY created_at,dependency_id").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
+    let review_rows: Vec<(Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT review_event_id,dependency_id,reviewed_assessment_event_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependency_reviews WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
+    let revisions = assessments
+        .iter()
+        .filter_map(|a| {
+            a.input
+                .revises_event_id
+                .map(|previous| (previous, a.event_id))
+        })
+        .collect();
+    let mut reviews = BTreeMap::<Uuid, Vec<DependencyReview>>::new();
+    for (
+        review_event_id,
+        dependency_id,
+        reviewed_assessment_event_id,
+        disposition,
+        note,
+        recorded_by,
+    ) in review_rows
+    {
+        reviews
+            .entry(dependency_id)
+            .or_default()
+            .push(DependencyReview {
+                review_event_id,
+                dependency_id,
+                input: DependencyReviewInput {
+                    reviewed_assessment_event_id,
+                    disposition: ReassessmentDisposition::from_db(&disposition)?,
+                    note,
+                },
+                recorded_by,
+                replayed: false,
+            });
+    }
+    Ok(rows
+        .into_iter()
+        .map(
+            |(
+                dependency_id,
+                argument_id,
+                grounding_set_id,
+                assessment_event_id,
+                rationale,
+                recorded_by,
+            )| {
+                let input = DependencyInput {
+                    argument_id,
+                    grounding_set_id,
+                    assessment_event_id,
+                    rationale,
+                };
+                let current_assessment_event_id = current_event(assessment_event_id, &revisions);
+                let assessment_revised = current_assessment_event_id != assessment_event_id;
+                let review_history = reviews.remove(&dependency_id).unwrap_or_default();
+                let latest_review = review_history
+                    .iter()
+                    .rev()
+                    .find(|r| r.input.reviewed_assessment_event_id == current_assessment_event_id)
+                    .cloned();
+                let requires_review = assessment_revised
+                    && latest_review
+                        .as_ref()
+                        .is_none_or(|r| r.input.disposition != ReassessmentDisposition::Retained);
+                let potential_downstream_routes = if assessment_revised {
+                    downstream_routes(&input, arguments, sets, applicability)
+                } else {
+                    vec![]
+                };
+                AssessmentDependencyView {
+                    dependency: AssessmentDependency {
+                        dependency_id,
+                        input,
+                        recorded_by,
+                        replayed: false,
+                    },
+                    current_assessment_event_id,
+                    assessment_revised,
+                    latest_review,
+                    review_history,
+                    requires_review,
+                    potential_downstream_routes,
+                }
+            },
+        )
+        .collect())
 }
 
 fn code<T: Serialize>(value: T) -> String {

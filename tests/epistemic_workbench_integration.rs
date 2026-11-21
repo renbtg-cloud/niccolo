@@ -286,6 +286,293 @@ async fn multidimensional_assessments_preserve_revision_and_disagreement() {
 }
 
 #[tokio::test]
+async fn pinned_assessment_revisions_require_selective_review_without_rewriting_routes() {
+    use epistemic_workbench::assessment::*;
+    let f = fixture().await;
+    let sit = situation(&f, "Investigate reliance on an assessed premise").await;
+    let other = situation(&f, "Other investigation").await;
+    let premise = node(&f, sit, ExpertNodeKind::Proposition, "Observed premise").await;
+    let alternate = node(&f, sit, ExpertNodeKind::Proposition, "Independent premise").await;
+    let conclusion = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "Intermediate explanation",
+    )
+    .await;
+    let final_node = node(&f, sit, ExpertNodeKind::Finding, "Consequence").await;
+    let mut routes = vec![];
+    for (ground, result) in [
+        (premise, conclusion),
+        (alternate, conclusion),
+        (conclusion, final_node),
+        (final_node, conclusion),
+    ] {
+        let argument_id = Uuid::new_v4();
+        let grounding_set_id = Uuid::new_v4();
+        epistemic_workbench::create_argument(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            argument_id,
+            result,
+            ArgumentMode::Abductive,
+            "An explicitly authored route",
+        )
+        .await
+        .unwrap();
+        epistemic_workbench::create_grounding_set(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            argument_id,
+            grounding_set_id,
+            GroundingEffect::Supports,
+            GroundingAdequacy::Partial,
+            "Explicit ground",
+            &[NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role: GroundingMemberRole::Premise,
+                ground_object_id: Some(ground),
+                evidence_id: None,
+                rationale: "Ground for this route".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        routes.push((argument_id, grounding_set_id));
+    }
+    let original = Uuid::new_v4();
+    let assessment = AssessmentInput {
+        target: AssessmentTarget::Object { object_id: premise },
+        dimension: AssessmentDimension::Reliability,
+        result: AssessmentResult::Reliable,
+        confidence: AssessmentConfidence::Moderate,
+        criterion: "Record continuity".into(),
+        context: "Current question".into(),
+        rationale: "No known break in continuity".into(),
+        grounds: vec![],
+        revises_event_id: None,
+    };
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        original,
+        assessment.clone(),
+    )
+    .await
+    .unwrap();
+    let id = Uuid::new_v4();
+    let dependency = DependencyInput {
+        argument_id: routes[0].0,
+        grounding_set_id: routes[0].1,
+        assessment_event_id: original,
+        rationale: "Continuity matters for this route".into(),
+    };
+    assert!(
+        !record_dependency(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            dependency.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(
+        record_dependency(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            dependency.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(matches!(
+        record_dependency(
+            &f.service,
+            f.workspace,
+            other,
+            f.principal,
+            Uuid::new_v4(),
+            dependency.clone()
+        )
+        .await,
+        Err(WorkbenchError::Invisible)
+    ));
+    assert!(matches!(
+        record_dependency(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            DependencyInput {
+                rationale: "Different".into(),
+                ..dependency.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert!(!snapshot.assessment_dependencies[0].requires_review);
+    // A divergent, independently authored judgment never revises the pinned one.
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        Uuid::new_v4(),
+        AssessmentInput {
+            result: AssessmentResult::Unreliable,
+            ..assessment.clone()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        !epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+            .await
+            .unwrap()
+            .assessment_dependencies[0]
+            .requires_review
+    );
+    let revision = Uuid::new_v4();
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        revision,
+        AssessmentInput {
+            result: AssessmentResult::LimitedReliability,
+            revises_event_id: Some(original),
+            ..assessment.clone()
+        },
+    )
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let view = &snapshot.assessment_dependencies[0];
+    assert!(view.requires_review);
+    assert_eq!(view.current_assessment_event_id, revision);
+    assert_eq!(view.potential_downstream_routes.len(), 2);
+    assert!(
+        view.potential_downstream_routes
+            .iter()
+            .any(|r| r.argument_id == routes[2].0)
+    );
+    assert!(
+        !view
+            .potential_downstream_routes
+            .iter()
+            .any(|r| r.argument_id == routes[1].0)
+    );
+    assert_eq!(snapshot.grounding_sets.len(), 4);
+    let review_id = Uuid::new_v4();
+    let review = DependencyReviewInput {
+        reviewed_assessment_event_id: revision,
+        disposition: ReassessmentDisposition::Retained,
+        note: "Other aspects of the same route still suffice for partial support".into(),
+    };
+    assert!(
+        !record_dependency_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            review_id,
+            review.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    let view = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap()
+        .assessment_dependencies
+        .remove(0);
+    assert!(!view.requires_review);
+    assert_eq!(view.review_history.len(), 1);
+    let second = Uuid::new_v4();
+    record(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second,
+        AssessmentInput {
+            result: AssessmentResult::Unknown,
+            revises_event_id: Some(revision),
+            ..assessment
+        },
+    )
+    .await
+    .unwrap();
+    let view = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap()
+        .assessment_dependencies
+        .remove(0);
+    assert!(view.requires_review);
+    assert_eq!(view.current_assessment_event_id, second);
+    assert!(view.latest_review.is_none());
+    assert_eq!(view.review_history.len(), 1);
+    assert!(
+        record_dependency_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            review_id,
+            review.clone()
+        )
+        .await
+        .unwrap()
+        .replayed
+    );
+    assert!(matches!(
+        record_dependency_review(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            Uuid::new_v4(),
+            review
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    assert!(
+        epistemic_workbench::snapshot(&f.service, f.workspace, other)
+            .await
+            .unwrap()
+            .assessment_dependencies
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn expert_authored_relations_and_joint_grounding_remain_explicit() {
     let f = fixture().await;
     let sit = situation(
