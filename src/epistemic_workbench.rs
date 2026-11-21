@@ -305,6 +305,43 @@ pub enum ReassessmentImpactKind {
     Conclusion,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReassessmentDisposition {
+    Retained,
+    RevisionRequired,
+    Deferred,
+}
+impl ReassessmentDisposition {
+    fn db_value(self) -> &'static str {
+        match self {
+            Self::Retained => "RETAINED",
+            Self::RevisionRequired => "REVISION_REQUIRED",
+            Self::Deferred => "DEFERRED",
+        }
+    }
+    fn from_db(value: &str) -> Result<Self, WorkbenchError> {
+        match value {
+            "RETAINED" => Ok(Self::Retained),
+            "REVISION_REQUIRED" => Ok(Self::RevisionRequired),
+            "DEFERRED" => Ok(Self::Deferred),
+            _ => Err(WorkbenchError::Invalid),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReassessmentReview {
+    pub review_event_id: Uuid,
+    pub trigger_relation_id: Uuid,
+    pub argument_id: Uuid,
+    pub grounding_set_id: Option<Uuid>,
+    pub disposition: ReassessmentDisposition,
+    pub note: String,
+    pub recorded_by: Uuid,
+    pub replayed: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReassessmentImpact {
     pub trigger_relation_id: Uuid,
@@ -316,6 +353,7 @@ pub struct ReassessmentImpact {
     pub conclusion_object_id: Uuid,
     pub impact_kind: ReassessmentImpactKind,
     pub depth: u16,
+    pub latest_review: Option<ReassessmentReview>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1120,6 +1158,94 @@ pub async fn search_evidence(
         .collect())
 }
 
+pub async fn record_reassessment_review(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    review_event_id: Uuid,
+    trigger_relation_id: Uuid,
+    argument_id: Uuid,
+    grounding_set_id: Option<Uuid>,
+    disposition: ReassessmentDisposition,
+    note: &str,
+) -> Result<ReassessmentReview, WorkbenchError> {
+    if !valid_text(note, 4096) {
+        return Err(WorkbenchError::Invalid);
+    }
+    let snapshot = snapshot(pool, workspace, situation).await?;
+    let impact_visible = snapshot.reassessment_impacts.iter().any(|impact| {
+        impact.trigger_relation_id == trigger_relation_id
+            && impact.argument_id == argument_id
+            && impact.grounding_set_id == grounding_set_id
+    });
+    if !impact_visible {
+        return Err(WorkbenchError::Invisible);
+    }
+
+    let note = note.trim();
+    let mut tx = scoped(pool, workspace, false).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.epistemic_reassessment_review_events \
+         (workspace_id,situation_id,review_event_id,trigger_relation_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id) \
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(review_event_id)
+    .bind(trigger_relation_id)
+    .bind(argument_id)
+    .bind(grounding_set_id)
+    .bind(disposition.db_value())
+    .bind(note)
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    let stored: Option<(Uuid, Uuid, Option<Uuid>, String, String, Uuid)> = sqlx::query_as(
+        "SELECT trigger_relation_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id \
+         FROM niccolo.epistemic_reassessment_review_events \
+         WHERE workspace_id=$1 AND situation_id=$2 AND review_event_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(review_event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((
+        stored_trigger,
+        stored_argument,
+        stored_grounding,
+        stored_disposition,
+        stored_note,
+        stored_actor,
+    )) = stored
+    else {
+        return Err(WorkbenchError::Invisible);
+    };
+    if stored_trigger != trigger_relation_id
+        || stored_argument != argument_id
+        || stored_grounding != grounding_set_id
+        || stored_disposition != disposition.db_value()
+        || stored_note != note
+        || stored_actor != actor
+    {
+        return Err(WorkbenchError::Conflict);
+    }
+    tx.commit().await?;
+    Ok(ReassessmentReview {
+        review_event_id,
+        trigger_relation_id,
+        argument_id,
+        grounding_set_id,
+        disposition,
+        note: note.to_owned(),
+        recorded_by: actor,
+        replayed: !inserted,
+    })
+}
+
 fn selective_reassessment_impacts(
     relations: &[ExpertRelation],
     arguments: &[ExpertArgument],
@@ -1162,6 +1288,7 @@ fn selective_reassessment_impacts(
                     conclusion_object_id: argument.conclusion_object_id,
                     impact_kind: ReassessmentImpactKind::Conclusion,
                     depth: 0,
+                    latest_review: None,
                 });
             }
         }
@@ -1197,6 +1324,7 @@ fn selective_reassessment_impacts(
                         conclusion_object_id: conclusion,
                         impact_kind: ReassessmentImpactKind::GroundMember,
                         depth,
+                        latest_review: None,
                     });
                 }
                 if !seen_objects.contains(&conclusion) {
@@ -1518,8 +1646,51 @@ pub async fn snapshot(
             replayed: false,
         });
     }
-    let reassessment_impacts =
+    let mut reassessment_impacts =
         selective_reassessment_impacts(&relations, &arguments, &grounding_sets);
+    let review_rows: Vec<(Uuid, Uuid, Option<Uuid>, Uuid, String, String, Uuid)> = sqlx::query_as(
+        "SELECT trigger_relation_id,argument_id,grounding_set_id,review_event_id,disposition,note,recorded_by_principal_id \
+         FROM niccolo.epistemic_reassessment_review_events \
+         WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut latest_reviews = BTreeMap::new();
+    for (
+        trigger_relation_id,
+        argument_id,
+        grounding_set_id,
+        review_event_id,
+        disposition,
+        note,
+        recorded_by,
+    ) in review_rows
+    {
+        latest_reviews.insert(
+            (trigger_relation_id, argument_id, grounding_set_id),
+            ReassessmentReview {
+                review_event_id,
+                trigger_relation_id,
+                argument_id,
+                grounding_set_id,
+                disposition: ReassessmentDisposition::from_db(&disposition)?,
+                note,
+                recorded_by,
+                replayed: false,
+            },
+        );
+    }
+    for impact in &mut reassessment_impacts {
+        impact.latest_review = latest_reviews
+            .get(&(
+                impact.trigger_relation_id,
+                impact.argument_id,
+                impact.grounding_set_id,
+            ))
+            .cloned();
+    }
     let grounding_cycles = grounding_cycle_diagnostics(&arguments, &grounding_sets);
     tx.commit().await?;
     Ok(WorkbenchSnapshot {
@@ -1567,6 +1738,21 @@ mod tests {
             value["investigator_free_text_compiler_enabled"],
             serde_json::Value::Bool(false)
         );
+    }
+
+    #[test]
+    fn reassessment_dispositions_are_closed() {
+        for disposition in [
+            ReassessmentDisposition::Retained,
+            ReassessmentDisposition::RevisionRequired,
+            ReassessmentDisposition::Deferred,
+        ] {
+            assert_eq!(
+                ReassessmentDisposition::from_db(disposition.db_value()).unwrap(),
+                disposition
+            );
+        }
+        assert!(ReassessmentDisposition::from_db("CONFIRMED").is_err());
     }
 
     #[test]
