@@ -567,6 +567,8 @@ Compartmentalization may protect:
 
 Migration 0136 records these seven independent modeled-world withholding expectations as attributed actor judgments. The subject is the actor from whom information is intended to be withheld, not necessarily an actor who actually lacks it; a visible Situation object, context, time and rationale identify the target. This record neither grants nor revokes product access and does not establish actual exposure, access or knowledge. Workspace-scoped product permissions remain separate. Per-object secrecy and its complete non-leakage guarantees are not implemented by this modeled-world record.
 
+Checkpoint 1.47: Migration 0136 applied successfully; 48 focused PostgreSQL workbench tests and 156 frontend tests passed.
+
 If existence is protected, indirect signals through graphs, search results, counts, recommendations, notifications, metadata, summaries or LLM context must not leak it.
 
 Distributed fragments may permit an authorized Niccolò analysis to formulate a hypothesis no individual actor can formulate. That does not justify saying “the organization knew”.
