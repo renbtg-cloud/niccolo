@@ -85,6 +85,7 @@ fn recommendation_input(ground: Uuid, recipient: Uuid) -> epistemic_workbench::a
         context: "A suspected leak remains unresolved".into(),
         rationale: "Broad privileges are a separate structural concern".into(),
         ground_object_ids: vec![ground],
+        qualified_basis: vec![],
         conditions: "Requires separate human approval".into(),
         alternatives: vec![RecommendationAlternative {
             kind: RecommendationKind::Inaction,
@@ -97,6 +98,36 @@ fn recommendation_input(ground: Uuid, recipient: Uuid) -> epistemic_workbench::a
         reversibility: Reversibility::Reversible,
         revises_recommendation_id: None,
     }
+}
+
+#[tokio::test]
+async fn recommendation_qualified_basis_preserves_alternative_structural_grounds() {
+    use epistemic_workbench::action_recommendation::{self, BasisKind, QualifiedBasis, RecommendationInput};
+    let f = fixture().await;
+    let sit = situation(&f, "Protect access without prejudging a suspected leak").await;
+    let suspicion = node(&f, sit, ExpertNodeKind::Hypothesis, "Possible unauthorized disclosure").await;
+    let structural = node(&f, sit, ExpertNodeKind::Proposition, "Excessively broad privileges").await;
+    let recipient = Uuid::new_v4();
+    niccolo_evidence::actors::create(&f.service, f.workspace, f.principal, recipient, "Reviewer").await.unwrap();
+    let base = recommendation_input(suspicion, recipient);
+    let record = |id, input| action_recommendation::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let original = Uuid::new_v4();
+    assert!(record(original, base.clone()).await.unwrap().input.qualified_basis.is_empty());
+    let groups = vec![QualifiedBasis {kind: BasisKind::ContextOnly, ground_object_ids: vec![suspicion], rationale: "Suspicion prompted investigation".into()}, QualifiedBasis {kind: BasisKind::AlternativeSufficient, ground_object_ids: vec![structural], rationale: "Structural risk justifies review regardless of misconduct".into()}];
+    let input = RecommendationInput {ground_object_ids: vec![suspicion, structural], qualified_basis: groups.clone(), revises_recommendation_id: Some(original), ..base};
+    let id = Uuid::new_v4();
+    assert_eq!(record(id, input.clone()).await.unwrap().input.qualified_basis, groups);
+    assert!(record(id, input.clone()).await.unwrap().replayed);
+    assert!(matches!(record(Uuid::new_v4(), RecommendationInput { qualified_basis: vec![groups[0].clone()], revises_recommendation_id: None, ..input.clone() }).await, Err(WorkbenchError::Invalid)));
+    let history = action_recommendation::list(&f.service, f.workspace, sit).await.unwrap();
+    assert!(history[0].input.qualified_basis.is_empty());
+    assert_eq!(history[1].input, input);
+    let mut tx = f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let mut payload = serde_json::to_value(&input).unwrap(); payload.as_object_mut().unwrap().remove("qualified_basis"); payload["revises_recommendation_id"] = serde_json::Value::Null;
+    let invalid = serde_json::json!([{"kind":"ALTERNATIVE_SUFFICIENT","ground_object_ids":[Uuid::new_v4()],"rationale":"Unknown ground"}]);
+    let result = sqlx::query("INSERT INTO niccolo.epistemic_action_recommendations(workspace_id,situation_id,recommendation_id,recipient_actor_id,ground_object_ids,payload,recorded_by_principal_id,qualified_basis) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(recipient).bind(&input.ground_object_ids).bind(payload).bind(f.principal).bind(invalid).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(result.as_database_error().unwrap().code().as_deref(), Some("23514")); tx.rollback().await.unwrap();
 }
 
 #[tokio::test]

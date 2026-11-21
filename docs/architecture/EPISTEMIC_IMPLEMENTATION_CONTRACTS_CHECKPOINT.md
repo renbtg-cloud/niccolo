@@ -635,6 +635,8 @@ Confidence in a suspicion is not the same as recommendation strength. A low-conf
 
 Recommendations should compare alternatives where meaningful, including inaction, delay and gathering more discriminatory information first.
 
+Checkpoint 1.63 extends the existing recommendation contract with optional, explicitly authored qualified basis groups: jointly necessary, alternatively sufficient, complementary and contextual. Every listed ground must be covered when qualification is supplied; overlap across groups is allowed without claiming independent origin. Legacy recommendations retain their unqualified flat list. Migration 0144 stores this alongside the unchanged historical payload with SQL and Rust validation, preserving immutable decision pins. The AT-17 structural-risk example can now distinguish a motivating suspicion from an independently declared sufficient protective rationale. The 213 unit, 59 Workbench integration and 13 security/readiness tests passed. Selective review projection and UI are pending.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
