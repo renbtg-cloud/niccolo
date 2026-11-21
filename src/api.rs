@@ -21,8 +21,8 @@ use crate::decision_readiness::{
 };
 use crate::discovery;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
-use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
@@ -3335,12 +3335,22 @@ async fn record_hypothesis_portfolio_event(
 impl From<WorkbenchError> for ApiError {
     fn from(error: WorkbenchError) -> Self {
         match error {
-            WorkbenchError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid epistemic workbench request"),
-            WorkbenchError::Invisible => Self(StatusCode::NOT_FOUND, "epistemic workbench object unavailable"),
-            WorkbenchError::Conflict => Self(StatusCode::CONFLICT, "epistemic workbench identity conflict"),
-            WorkbenchError::Privileged | WorkbenchError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "epistemic workbench unavailable")
-            }
+            WorkbenchError::Invalid => Self(
+                StatusCode::BAD_REQUEST,
+                "invalid epistemic workbench request",
+            ),
+            WorkbenchError::Invisible => Self(
+                StatusCode::NOT_FOUND,
+                "epistemic workbench object unavailable",
+            ),
+            WorkbenchError::Conflict => Self(
+                StatusCode::CONFLICT,
+                "epistemic workbench identity conflict",
+            ),
+            WorkbenchError::Privileged | WorkbenchError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "epistemic workbench unavailable",
+            ),
         }
     }
 }
@@ -3437,7 +3447,11 @@ async fn create_expert_epistemic_node(
         &input.rationale,
     )
     .await?;
-    let status = if node.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    let status = if node.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     Ok(no_store(json!({"node":node}), status))
 }
 
@@ -3461,7 +3475,11 @@ async fn create_expert_epistemic_relation(
         &input.rationale,
     )
     .await?;
-    let status = if relation.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    let status = if relation.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     Ok(no_store(json!({"relation":relation}), status))
 }
 
@@ -3483,7 +3501,11 @@ async fn create_expert_epistemic_argument(
         &input.rationale,
     )
     .await?;
-    let status = if argument.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    let status = if argument.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     Ok(no_store(json!({"argument":argument}), status))
 }
 
@@ -3507,7 +3529,11 @@ async fn create_expert_grounding_set(
         &input.members,
     )
     .await?;
-    let status = if grounding.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    let status = if grounding.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     Ok(no_store(json!({"grounding":grounding}), status))
 }
 
