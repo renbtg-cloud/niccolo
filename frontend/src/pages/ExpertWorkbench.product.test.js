@@ -10,7 +10,7 @@ const config = {
   situation: '22222222-2222-4222-8222-222222222222',
   token: 'test-in-memory-credential',
 };
-const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [] }) };
+const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
   it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
@@ -52,6 +52,13 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Grounding cycle diagnostics');
     expect(page).toContain('the cycle itself adds no independent corroboration');
     expect(page).toContain('recursive support must not be treated as corroboration');
+  });
+
+  it('shows explicit reasoning routes without netting support against opposition', () => {
+    expect(page).toContain('Reasoning diagnostics — structural, not a verdict');
+    expect(page).toContain('does not net opposing routes into a truth or confidence score');
+    expect(page).toContain('Support and opposition coexist; neither cancels the other.');
+    expect(page).toContain('unanchored recursive support');
   });
 
   it('records explicit reassessment review without silently rewriting the argument', () => {

@@ -30,7 +30,7 @@ export function ExpertWorkbenchPage() {
     enabled: !!client,
     queryFn: async () => (await client.expertWorkbench()).value,
   });
-  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [] };
+  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
   const [error, setError] = useState('');
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
@@ -147,6 +147,17 @@ export function ExpertWorkbenchPage() {
         </li>;
       })}</ul></details>}
       {data.grounding_cycles.length > 0 && <details open><summary>Grounding cycle diagnostics</summary><ul>{data.grounding_cycles.map((cycle) => <li key={cycle.object_ids.join(':')}><strong>Recursive support:</strong> {cycle.object_ids.length} object(s), {cycle.argument_ids.length} argument(s). {cycle.has_external_anchor ? 'External grounding exists; the cycle itself adds no independent corroboration.' : 'No external anchor is recorded; recursive support must not be treated as corroboration.'}</li>)}</ul></details>}
+      {data.reasoning_diagnostics.length > 0 && <details open><summary>Reasoning diagnostics — structural, not a verdict</summary><ul>{data.reasoning_diagnostics.map((diagnostic) => {
+        const conclusion = data.nodes.find((node) => node.object_id === diagnostic.conclusion_object_id);
+        const supports = diagnostic.routes.filter((route) => route.effect === 'SUPPORTS').length;
+        const opposes = diagnostic.routes.filter((route) => route.effect === 'WEAKENS' || route.effect === 'CHALLENGES').length;
+        const conditions = diagnostic.routes.filter((route) => route.effect === 'CONDITIONS').length;
+        return <li key={diagnostic.conclusion_object_id}><strong>{conclusion?.kind ?? 'CONCLUSION'}:</strong> {conclusion?.text ?? diagnostic.conclusion_object_id}<br/><small>{diagnostic.routes.length} authored route(s): {supports} support · {opposes} weaken/challenge · {conditions} condition. Niccolò does not net opposing routes into a truth or confidence score.</small>
+          {diagnostic.has_mixed_directional_grounding && <p className="epistemic-boundary">Support and opposition coexist; neither cancels the other.</p>}
+          {diagnostic.conclusion_reassessment.impacted > 0 && <p><small>Conclusion-level reassessment: {diagnostic.conclusion_reassessment.unreviewed} unreviewed · {diagnostic.conclusion_reassessment.deferred} deferred · {diagnostic.conclusion_reassessment.revision_required} revision required · {diagnostic.conclusion_reassessment.retained} retained.</small></p>}
+          <ul>{diagnostic.routes.map((route) => <li key={route.grounding_set_id}>{route.effect}/{route.adequacy} · {route.member_count} joint member(s){route.reassessment.impacted > 0 ? ` · reassessment: ${route.reassessment.unreviewed} unreviewed, ${route.reassessment.deferred} deferred, ${route.reassessment.revision_required} revision required, ${route.reassessment.retained} retained` : ''}{route.unanchored_recursive_support ? ' · WARNING: unanchored recursive support' : route.recursive_support_cycle ? ' · recursive support with external anchor' : ''}</li>)}</ul>
+        </li>;
+      })}</ul></details>}
     </article>
   </section>;
 }

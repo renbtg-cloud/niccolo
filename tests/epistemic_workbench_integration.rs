@@ -199,6 +199,11 @@ async fn expert_authored_relations_and_joint_grounding_remain_explicit() {
     assert_eq!(snapshot.arguments.len(), 1);
     assert_eq!(snapshot.grounding_sets.len(), 1);
     assert_eq!(snapshot.grounding_sets[0].members.len(), 2);
+    assert_eq!(snapshot.reasoning_diagnostics.len(), 1);
+    assert_eq!(snapshot.reasoning_diagnostics[0].routes.len(), 1);
+    assert!(snapshot.reasoning_diagnostics[0].has_supporting_routes);
+    assert!(!snapshot.reasoning_diagnostics[0].has_opposing_routes);
+    assert!(!snapshot.reasoning_diagnostics[0].has_mixed_directional_grounding);
     assert!(!snapshot.investigator_free_text_compiler_enabled);
 }
 

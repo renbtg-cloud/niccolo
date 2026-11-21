@@ -2144,4 +2144,93 @@ mod tests {
         assert!(cycles[0].has_external_anchor);
         assert!(!cycles[0].unanchored_recursive_support);
     }
+    #[test]
+    fn reasoning_diagnostics_keep_support_and_opposition_separate_without_scoring() {
+        let conclusion = Uuid::from_u128(100);
+        let premise = Uuid::from_u128(101);
+        let counter = Uuid::from_u128(102);
+        let support_argument = Uuid::from_u128(110);
+        let challenge_argument = Uuid::from_u128(111);
+        let support_set = Uuid::from_u128(120);
+        let challenge_set = Uuid::from_u128(121);
+        let arguments = vec![
+            ExpertArgument {
+                argument_id: support_argument,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: conclusion,
+                mode: ArgumentMode::Abductive,
+                rationale: "support route".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+            ExpertArgument {
+                argument_id: challenge_argument,
+                situation_id: Uuid::nil(),
+                conclusion_object_id: conclusion,
+                mode: ArgumentMode::Abductive,
+                rationale: "challenge route".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+        ];
+        let member = |id, ground| GroundingMemberView {
+            member_id: id,
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(ground),
+            evidence_id: None,
+            rationale: "explicit ground".into(),
+            recorded_by: Uuid::nil(),
+        };
+        let sets = vec![
+            GroundingSetView {
+                argument_id: support_argument,
+                grounding_set_id: support_set,
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Sufficient,
+                rationale: "authored support".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(130), premise)],
+                replayed: false,
+            },
+            GroundingSetView {
+                argument_id: challenge_argument,
+                grounding_set_id: challenge_set,
+                effect: GroundingEffect::Challenges,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "authored challenge".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(131), counter)],
+                replayed: false,
+            },
+        ];
+        let impacts = vec![ReassessmentImpact {
+            trigger_relation_id: Uuid::from_u128(140),
+            relation_kind: RelationKind::Supersedes,
+            revision_object_id: Uuid::from_u128(141),
+            prior_object_id: premise,
+            argument_id: support_argument,
+            grounding_set_id: Some(support_set),
+            conclusion_object_id: conclusion,
+            impact_kind: ReassessmentImpactKind::GroundMember,
+            depth: 1,
+            latest_review: None,
+        }];
+
+        let diagnostics = reasoning_diagnostics(&arguments, &sets, &impacts, &[]);
+        assert_eq!(diagnostics.len(), 1);
+        let diagnostic = &diagnostics[0];
+        assert!(diagnostic.has_supporting_routes);
+        assert!(diagnostic.has_opposing_routes);
+        assert!(diagnostic.has_mixed_directional_grounding);
+        assert_eq!(diagnostic.routes.len(), 2);
+        assert_eq!(diagnostic.routes[0].effect, GroundingEffect::Supports);
+        assert_eq!(diagnostic.routes[0].reassessment.unreviewed, 1);
+        assert_eq!(diagnostic.routes[1].effect, GroundingEffect::Challenges);
+        assert_eq!(diagnostic.routes[1].reassessment.impacted, 0);
+
+        let serialized = serde_json::to_value(diagnostic).unwrap();
+        assert!(serialized.get("score").is_none());
+        assert!(serialized.get("confidence").is_none());
+        assert!(serialized.get("truth").is_none());
+    }
 }
