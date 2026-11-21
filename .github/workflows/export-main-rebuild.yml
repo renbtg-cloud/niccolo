@@ -1,0 +1,27 @@
+name: Export current main for rebuild
+
+on:
+  push:
+    branches:
+      - 'tmp/export-main-rebuild-20261121'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Record commit
+        run: git rev-parse HEAD > CURRENT_COMMIT_SHA
+      - name: Create source zip
+        run: zip -qr niccolo-current-main.zip . -x '.git/*' 'niccolo-current-main.zip'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niccolo-main-rebuild
+          path: niccolo-current-main.zip
+          retention-days: 1
