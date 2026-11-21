@@ -37,7 +37,8 @@ pub enum StateJudgment {
 #[serde(deny_unknown_fields)]
 pub struct StateInput {
     pub subject_actor_id: Uuid,
-    pub target_object_id: Uuid,
+    pub target_object_id: Option<Uuid>,
+    pub target_state_event_id: Option<Uuid>,
     pub dimension: StateDimension,
     pub judgment: StateJudgment,
     pub context: String,
@@ -67,7 +68,8 @@ fn parse<T: for<'de> Deserialize<'de>>(value: String) -> Result<T, WorkbenchErro
 type StateRow = (
     Uuid,
     Uuid,
-    Uuid,
+    Option<Uuid>,
+    Option<Uuid>,
     String,
     String,
     String,
@@ -84,13 +86,14 @@ async fn list(
     situation: Uuid,
     event: Option<Uuid>,
 ) -> Result<Vec<StateEvent>, WorkbenchError> {
-    let rows:Vec<StateRow>=sqlx::query_as("SELECT event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,created_at::text FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no").bind(workspace).bind(situation).bind(event).fetch_all(&mut **tx).await?;
+    let rows:Vec<StateRow>=sqlx::query_as("SELECT event_id,subject_actor_id,target_object_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,created_at::text FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no").bind(workspace).bind(situation).bind(event).fetch_all(&mut **tx).await?;
     rows.into_iter()
         .map(
             |(
                 event_id,
                 subject_actor_id,
                 target_object_id,
+                target_state_event_id,
                 dimension,
                 judgment,
                 context,
@@ -106,6 +109,7 @@ async fn list(
                     input: StateInput {
                         subject_actor_id,
                         target_object_id,
+                        target_state_event_id,
                         dimension: parse(dimension)?,
                         judgment: parse(judgment)?,
                         context,
@@ -140,6 +144,8 @@ pub async fn record(
 ) -> Result<StateEvent, WorkbenchError> {
     if event.is_nil()
         || input.revises_event_id == Some(event)
+        || input.target_object_id.is_some() == input.target_state_event_id.is_some()
+        || input.target_state_event_id == Some(event)
         || !valid_text(&input.context, 2048)
         || !valid_text(&input.temporal_scope, 2048)
         || !valid_text(&input.rationale, 4096)
@@ -171,22 +177,25 @@ pub async fn record(
     .bind(input.subject_actor_id)
     .fetch_one(&mut *tx)
     .await?;
-    let target =
-        object_available_in_situation(&mut tx, workspace, situation, input.target_object_id)
-            .await?;
-    if !actor_exists
-        || !target.as_deref().is_some_and(|t| {
-            matches!(
-                t,
-                "PROPOSITION"
-                    | "HYPOTHESIS"
-                    | "ASSUMPTION"
-                    | "QUESTION"
-                    | "INFORMATION_GAP"
-                    | "FINDING"
-            )
-        })
-    {
+    let target_visible = if let Some(object_id) = input.target_object_id {
+        object_available_in_situation(&mut tx, workspace, situation, object_id)
+            .await?
+            .as_deref()
+            .is_some_and(|t| {
+                matches!(
+                    t,
+                    "PROPOSITION"
+                        | "HYPOTHESIS"
+                        | "ASSUMPTION"
+                        | "QUESTION"
+                        | "INFORMATION_GAP"
+                        | "FINDING"
+                )
+            })
+    } else {
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND event_id=$3)").bind(workspace).bind(situation).bind(input.target_state_event_id).fetch_one(&mut *tx).await?
+    };
+    if !actor_exists || !target_visible {
         return Err(WorkbenchError::Invisible);
     }
     if let Some(basis) = input.basis_evidence_id {
@@ -202,6 +211,7 @@ pub async fn record(
         if prior.recorded_by != recorder
             || prior.input.subject_actor_id != input.subject_actor_id
             || prior.input.target_object_id != input.target_object_id
+            || prior.input.target_state_event_id != input.target_state_event_id
             || prior.input.dimension != input.dimension
             || prior.input.context != input.context
             || prior.input.temporal_scope != input.temporal_scope
@@ -209,7 +219,7 @@ pub async fn record(
             return Err(WorkbenchError::Invalid);
         }
     }
-    let inserted=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(event).bind(input.subject_actor_id).bind(input.target_object_id).bind(code(input.dimension)).bind(code(input.judgment)).bind(&input.context).bind(&input.temporal_scope).bind(&input.rationale).bind(input.basis_evidence_id).bind(input.revises_event_id).bind(recorder).execute(&mut *tx).await?.rows_affected()==1;
+    let inserted=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,target_state_event_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(event).bind(input.subject_actor_id).bind(input.target_object_id).bind(input.target_state_event_id).bind(code(input.dimension)).bind(code(input.judgment)).bind(&input.context).bind(&input.temporal_scope).bind(&input.rationale).bind(input.basis_evidence_id).bind(input.revises_event_id).bind(recorder).execute(&mut *tx).await?.rows_affected()==1;
     let mut result = list(&mut tx, workspace, situation, Some(event))
         .await?
         .pop()

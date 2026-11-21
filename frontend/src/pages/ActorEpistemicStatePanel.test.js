@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {stateDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
-const draft={subject_actor_id:'a',target_object_id:'p',dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
+const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
@@ -23,5 +23,15 @@ describe('independent actor epistemic judgments',()=>{
     expect(()=>request({...next,dimension:'BELIEF'},[prior])).toThrow();
     expect(()=>request({...next,temporal_scope:'Today'},[prior])).toThrow();
     expect(()=>request(next,[prior,{event_id:'next',input:next}])).toThrow();
+  });
+  it('targets exact prior state events, including historical states, without an order limit',()=>{
+    const prior={event_id:'prior',input:request(draft)};
+    const revised={event_id:'revised',input:{...prior.input,revises_event_id:'prior'}};
+    const next={...draft,target_object_id:null,target_state_event_id:'prior',dimension:'BELIEF'};
+    expect(request(next,[prior,revised])).toMatchObject({target_object_id:null,target_state_event_id:'prior'});
+    expect(()=>request({...next,target_object_id:'p'},[prior])).toThrow();
+    expect(()=>request({...next,target_state_event_id:null},[prior])).toThrow();
+    expect(()=>request({...next,target_state_event_id:'unknown'},[prior])).toThrow();
+    expect(()=>request({...next,revises_event_id:'revised'},[prior,revised])).toThrow();
   });
 });

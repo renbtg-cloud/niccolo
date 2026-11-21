@@ -344,6 +344,8 @@ Niccolò must represent beliefs or knowledge about another actor's epistemic sta
 
 Conceptually, an epistemic state can itself become the object of another epistemic state.
 
+Migration 0119 generalizes the actor-state target from a Situation-scoped expert object to either that object or one exact, previously recorded actor-state event. The target is exclusive, workspace- and Situation-scoped, and immutable; the database requires the referenced state to preexist, preventing recursive cycles without a depth ceiling. The API and Workbench preserve historical targets even when subsequently revised; no automatic inference, transitive knowledge, or promotion of another actor's attributed judgment occurs. The display projects direct links rather than recursively expanding the entire ancestry.
+
 Computation is bounded by purpose, relevance and budget, not by an ontological depth ceiling.
 
 This enables representation of asymmetries such as:
