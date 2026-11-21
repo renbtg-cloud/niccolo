@@ -42,6 +42,10 @@ pub enum AssessmentDimension {
     DecisionContemporaneousReasonableness,
     DecisionActualCircumstancesAdequacy,
     DecisionReasonablyObtainableInformation,
+    ObjectionNovelty,
+    ObjectionMateriality,
+    ObjectionReviewCost,
+    ObjectionAttentionDisposition,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,6 +101,16 @@ pub enum AssessmentResult {
     Adequate,
     Inadequate,
     PartiallyAdequate,
+    Novel,
+    PartiallyNovel,
+    Duplicative,
+    Material,
+    LimitedMateriality,
+    Immaterial,
+    ReviewNow,
+    DeferReview,
+    Monitor,
+    NoFurtherReviewIndicated,
     Unknown,
     Contested,
 }
@@ -142,6 +156,10 @@ impl AssessmentDimension {
                 Self::RelianceContainment => matches!(result, PauseIndicated | LimitIndicated | NoPauseIndicated),
                 Self::RecoveryReadiness => matches!(result, RecoveryReady | RecoveryPartial | RecoveryNotReady),
                 Self::RecommendationAppropriateness | Self::DecisionContemporaneousReasonableness | Self::DecisionActualCircumstancesAdequacy | Self::DecisionReasonablyObtainableInformation => matches!(result, Adequate | Inadequate | PartiallyAdequate),
+                Self::ObjectionNovelty => matches!(result, Novel | PartiallyNovel | Duplicative),
+                Self::ObjectionMateriality => matches!(result, Material | LimitedMateriality | Immaterial),
+                Self::ObjectionReviewCost => matches!(result, LowCost | ModerateCost | HighCost),
+                Self::ObjectionAttentionDisposition => matches!(result, ReviewNow | DeferReview | Monitor | NoFurtherReviewIndicated),
             }
     }
 

@@ -2858,6 +2858,52 @@ async fn assessments_can_target_exact_prior_assessments_without_mutating_them() 
 }
 
 #[tokio::test]
+async fn low_value_objections_remain_representable_without_automatic_veto() {
+    use epistemic_workbench::{assessment::*, inquiry_decision::{self, InquiryDecisionInput, InquiryDisposition}};
+    let f = fixture().await;
+    let sit = situation(&f, "AT-26: repeated provenance challenges near a deadline").await;
+    let finding = node(&f, sit, ExpertNodeKind::Finding, "Ledger discrepancy warrants review").await;
+    let objection = node(&f, sit, ExpertNodeKind::Hypothesis, "The discrepancy might be an alternative export format").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "The alternative format was previously examined").await;
+    let q = node(&f, sit, ExpertNodeKind::Question, "Inspect the underlying ledger?").await;
+    let argument_id = Uuid::new_v4();
+    let grounding_set_id = Uuid::new_v4();
+    epistemic_workbench::create_argument(&f.service, f.workspace, sit, f.principal, argument_id, finding, ArgumentMode::Abductive, "Challenge the finding").await.unwrap();
+    epistemic_workbench::create_grounding_set(&f.service, f.workspace, sit, f.principal, argument_id, grounding_set_id, GroundingEffect::Challenges, GroundingAdequacy::Partial, "Alternative previously raised", &[NewGroundingMember {member_id: Uuid::new_v4(), role: GroundingMemberRole::Premise, ground_object_id: Some(objection), evidence_id: None, rationale: "Objection remains in the record".into()}]).await.unwrap();
+    let before = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    let input = AssessmentInput {target: AssessmentTarget::Route {argument_id, grounding_set_id}, dimension: AssessmentDimension::ObjectionNovelty, result: AssessmentResult::Duplicative, confidence: AssessmentConfidence::Moderate, criterion: "Whether the objection changes the already examined alternatives".into(), context: "Before collection deadline".into(), rationale: "Prior review is documented".into(), grounds: vec![AssessmentGround::Object {object_id: ground}], revises_event_id: None};
+    let assess = |id, input| epistemic_workbench::assessment::record(&f.service, f.workspace, sit, f.principal, id, input);
+    let first = Uuid::new_v4();
+    assess(first, input.clone()).await.unwrap();
+    for (dimension, result) in [(AssessmentDimension::ObjectionMateriality, AssessmentResult::LimitedMateriality), (AssessmentDimension::ObjectionReviewCost, AssessmentResult::HighCost), (AssessmentDimension::Relevance, AssessmentResult::LimitedRelevance), (AssessmentDimension::DiscriminatoryPower, AssessmentResult::LimitedPower), (AssessmentDimension::ObjectionAttentionDisposition, AssessmentResult::DeferReview)] {
+        assess(Uuid::new_v4(), AssessmentInput{dimension, result, ..input.clone()}).await.unwrap();
+    }
+    // A competing judgment about priority stays independently visible.
+    assess(Uuid::new_v4(), AssessmentInput{dimension: AssessmentDimension::ObjectionAttentionDisposition, result: AssessmentResult::ReviewNow, rationale: "Another criterion calls for immediate checking".into(), ..input.clone()}).await.unwrap();
+    assert!(matches!(assess(Uuid::new_v4(), AssessmentInput{result: AssessmentResult::ReviewNow, ..input.clone()}).await, Err(WorkbenchError::Invalid)));
+    // An explicit human inquiry decision can still proceed. No objection is erased.
+    let decision = InquiryDecisionInput{question_id:q, considered_question_ids:vec![q], assessment_event_ids:vec![], disposition:InquiryDisposition::PursueNext, rationale:"Collect potentially decisive information before deadline".into()};
+    inquiry_decision::record(&f.service,f.workspace,sit,f.principal,Uuid::new_v4(),decision.clone()).await.unwrap();
+    let revised = Uuid::new_v4();
+    assess(revised, AssessmentInput{result:AssessmentResult::PartiallyNovel,revises_event_id:Some(first),rationale:"A new aspect is now identified".into(),..input.clone()}).await.unwrap();
+    let after = epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(after.nodes,before.nodes);
+    assert_eq!(after.arguments,before.arguments);
+    assert_eq!(after.grounding_sets,before.grounding_sets);
+    assert_eq!(after.question_decisions[0].input,decision);
+    assert_eq!(after.assessments.len(),8);
+    assert!(after.assessments.iter().any(|a|a.event_id==first&&a.input.result==AssessmentResult::Duplicative));
+    assert!(after.assessments.iter().any(|a|a.event_id==revised&&a.input.revises_event_id==Some(first)));
+    assert!(after.assessment_dependencies.is_empty());
+    // Direct storage must not retarget an objection judgment to a different object.
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let invalid=sqlx::query("INSERT INTO niccolo.epistemic_assessment_events(workspace_id,situation_id,event_id,revises_event_id,target_object_id,dimension,result,confidence,criterion,context,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'OBJECTION_NOVELTY','NOVEL','LOW',$6,$7,'Retargeted',$8)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(revised).bind(objection).bind(&input.criterion).bind(&input.context).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn pinned_integrity_decision_basis_preserves_concern_and_revision_without_veto() {
     use epistemic_workbench::{assessment::*,inquiry_decision::{self,InquiryDecisionInput,InquiryDisposition}};
     let f=fixture().await;
