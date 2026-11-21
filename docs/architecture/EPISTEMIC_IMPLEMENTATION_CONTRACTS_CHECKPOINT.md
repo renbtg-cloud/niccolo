@@ -346,6 +346,8 @@ Conceptually, an epistemic state can itself become the object of another epistem
 
 Migration 0119 generalizes the actor-state target from a Situation-scoped expert object to either that object or one exact, previously recorded actor-state event. The target is exclusive, workspace- and Situation-scoped, and immutable; the database requires the referenced state to preexist, preventing recursive cycles without a depth ceiling. The API and Workbench preserve historical targets even when subsequently revised; no automatic inference, transitive knowledge, or promotion of another actor's attributed judgment occurs. The display projects direct links rather than recursively expanding the entire ancestry.
 
+Checkpoint 1.28 validation: a PostgreSQL chain of eight higher-order links preserved exact target identities after root revision; malformed, self-referential and cross-Situation targets were rejected, including direct SQL self-reference. Full regression passed (591 Rust, 136 React, 22 Python, 8 standalone JavaScript tests).
+
 Computation is bounded by purpose, relevance and budget, not by an ontological depth ceiling.
 
 This enables representation of asymmetries such as:
