@@ -82,7 +82,7 @@ async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
     let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
     let actor=Uuid::new_v4();
     niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Interviewee").await.unwrap();
-    let input=StateInput {subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::Exposure,judgment:StateJudgment::Indicated,context:"Delivery interview".into(),temporal_scope:"Before the hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported being shown the ledger".into(),basis_evidence_id:None,revises_event_id:None};
+    let input=StateInput {subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::Exposure,judgment:StateJudgment::Indicated,context:"Delivery interview".into(),temporal_scope:"Before the hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported being shown the ledger".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|event,input|actor_state::record(&f.service,f.workspace,sit,f.principal,event,input);
     let exposed=Uuid::new_v4();
     assert!(!record(exposed,input.clone()).await.unwrap().replayed);
@@ -121,7 +121,7 @@ async fn actor_state_basis_and_writer_authority_are_checked_at_the_boundary() {
     let document=Uuid::new_v4();
     let imported=ingest_source(&f.service,f.workspace,document,SourceFormat::WhatsappExport,"fixture://state-basis",b"[02/11/2026, 12:00] Witness: I read the ledger\n").await.unwrap();
     let basis=imported.fragment_ids[0];
-    let input=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::EvidenceSupportedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Explicit source report; not established fact".into(),basis_evidence_id:Some(basis),revises_event_id:None};
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::EvidenceSupportedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Explicit source report; not established fact".into(),basis_evidence_id:Some(basis),revises_event_id:None};
     let id=Uuid::new_v4();
     assert!(matches!(actor_state::record(&f.service,f.workspace,sit,f.principal,id,input.clone()).await,Err(WorkbenchError::Invisible)));
     situation_store::add_source(&f.service,f.workspace,f.principal,sit,document).await.unwrap();
@@ -153,7 +153,7 @@ async fn higher_order_actor_states_pin_exact_prior_events_without_depth_or_truth
     let target=node(&f,sit,ExpertNodeKind::Proposition,"The ledger was delivered").await;
     let a=Uuid::new_v4(); let b=Uuid::new_v4();
     for (actor,label) in [(a,"Actor A"),(b,"Actor B")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,label).await.unwrap();}
-    let base=StateInput{subject_actor_id:a,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::ClaimedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Attributed report".into(),basis_evidence_id:None,revises_event_id:None};
+    let base=StateInput{subject_actor_id:a,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::ClaimedKnowledge,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Attributed report".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|event,input|actor_state::record(&f.service,f.workspace,sit,f.principal,event,input);
     let root=Uuid::new_v4();record(root,base.clone()).await.unwrap();
     let mut previous=root;let mut chain=vec![];
@@ -182,7 +182,7 @@ async fn actor_epistemic_orientations_distinguish_immediate_reactions_from_persi
     let sit=situation(&f,"Investigate curiosity and aversion").await;
     let target=node(&f,sit,ExpertNodeKind::Question,"What did the ledger show?").await;
     let actor=Uuid::new_v4();niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Interviewee").await.unwrap();
-    let item=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::Curiosity,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"When asked".into(),orientation_scope:Some(OrientationScope::ImmediateReaction),orientation_goal:Some("Clarify the ledger".into()),rationale:"Asked a follow-up question".into(),basis_evidence_id:None,revises_event_id:None};
+    let item=StateInput{subject_actor_id:actor,target_object_id:Some(target),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::Curiosity,judgment:StateJudgment::Indicated,context:"Interview".into(),temporal_scope:"When asked".into(),orientation_scope:Some(OrientationScope::ImmediateReaction),orientation_goal:Some("Clarify the ledger".into()),rationale:"Asked a follow-up question".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let curiosity=Uuid::new_v4();record(curiosity,item.clone()).await.unwrap();
     assert!(matches!(record(Uuid::new_v4(),StateInput{orientation_scope:None,..item.clone()}).await,Err(WorkbenchError::Invalid)));
@@ -245,7 +245,7 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
     let cause=node(&f,sit,ExpertNodeKind::Proposition,"Protect whistleblower confidentiality").await;
     let a=Uuid::new_v4();let b=Uuid::new_v4();let c=Uuid::new_v4();
     for (id,label) in [(a,"Investigator"),(b,"Analyst"),(c,"Institution")]{niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
-    let input=StateInput{subject_actor_id:a,target_object_id:None,target_state_event_id:None,target_actor_id:Some(b),counterparty_actor_id:None,dimension:StateDimension::TrustCompetence,judgment:StateJudgment::Indicated,context:"Technical inquiry".into(),temporal_scope:"Current investigation".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported trust in technical skill".into(),basis_evidence_id:None,revises_event_id:None};
+    let input=StateInput{subject_actor_id:a,target_object_id:None,target_state_event_id:None,target_actor_id:Some(b),counterparty_actor_id:None,influence_target:None,dimension:StateDimension::TrustCompetence,judgment:StateJudgment::Indicated,context:"Technical inquiry".into(),temporal_scope:"Current investigation".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported trust in technical skill".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let competence=Uuid::new_v4();record(competence,input.clone()).await.unwrap();
     let confidentiality=Uuid::new_v4();record(confidentiality,StateInput{dimension:StateDimension::TrustConfidentiality,judgment:StateJudgment::DistrustIndicated,..input.clone()}).await.unwrap();
@@ -267,6 +267,33 @@ async fn directed_actor_trust_and_loyalty_remain_distinct_dimensions_not_permiss
 }
 
 #[tokio::test]
+async fn epistemic_influence_separates_facets_and_exact_targets() {
+    use epistemic_workbench::actor_state::{self,InfluenceTarget,StateDimension,StateInput,StateJudgment};
+    let f=fixture().await;
+    let sit=situation(&f,"Examine influence on investigation priorities").await;
+    let issue=node(&f,sit,ExpertNodeKind::Question,"Should the investigator inspect the payroll ledger?").await;
+    let affected=Uuid::new_v4();let other=Uuid::new_v4();
+    for (id,label) in [(affected,"Investigator"),(other,"Analyst")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
+    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(other),influence_target:Some(InfluenceTarget::InvestigationPriority),dimension:StateDimension::InfluenceAct,judgment:StateJudgment::Indicated,context:"Payroll investigation".into(),temporal_scope:"Before hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported request to examine different records".into(),basis_evidence_id:None,revises_event_id:None};
+    let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
+    let act=Uuid::new_v4();record(act,item.clone()).await.unwrap();
+    for (dimension,judgment,counterparty_actor_id) in [(StateDimension::InfluenceCapacity,StateJudgment::Contested,Some(other)),(StateDimension::InfluenceIntendedEffect,StateJudgment::Unknown,Some(other)),(StateDimension::InfluenceActualEffect,StateJudgment::NotIndicated,None),(StateDimension::InfluencePerceivedSuccess,StateJudgment::Unknown,Some(other))] {record(Uuid::new_v4(),StateInput{dimension,judgment,counterparty_actor_id,..item.clone()}).await.unwrap();}
+    record(Uuid::new_v4(),StateInput{influence_target:Some(InfluenceTarget::Attention),..item.clone()}).await.unwrap();
+    assert!(matches!(record(Uuid::new_v4(),StateInput{influence_target:None,..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{counterparty_actor_id:None,..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    assert!(matches!(record(Uuid::new_v4(),StateInput{influence_target:Some(InfluenceTarget::Attention),revises_event_id:Some(act),..item.clone()}).await,Err(WorkbenchError::Invalid)));
+    let snapshot=epistemic_workbench::snapshot(&f.service,f.workspace,sit).await.unwrap();
+    assert_eq!(snapshot.actor_epistemic_states.len(),6);
+    assert!(snapshot.actor_epistemic_states.iter().any(|e|e.input.dimension==StateDimension::InfluenceActualEffect&&e.input.judgment==StateJudgment::NotIndicated));
+    assert!(snapshot.question_decisions.is_empty()&&snapshot.actor_epistemic_acts.is_empty());
+    let mut tx=f.service.begin().await.unwrap();
+    sqlx::query("SELECT set_config('niccolo.workspace_id',$1,true)").bind(f.workspace.to_string()).execute(&mut *tx).await.unwrap();
+    let error=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,counterparty_actor_id,dimension,judgment,context,temporal_scope,rationale,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,'INFLUENCE_ACT','INDICATED','context','scope','rationale',$7)").bind(f.workspace).bind(sit).bind(Uuid::new_v4()).bind(affected).bind(issue).bind(other).bind(f.principal).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
 async fn vulnerability_and_compliance_do_not_establish_consent_or_loyalty() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
     let f=fixture().await;
@@ -274,7 +301,7 @@ async fn vulnerability_and_compliance_do_not_establish_consent_or_loyalty() {
     let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The employee accepted a change to the bonus").await;
     let affected=Uuid::new_v4();let other=Uuid::new_v4();
     for (id,label) in [(affected,"Employee"),(other,"Manager")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
-    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(other),dimension:StateDimension::Compliance,judgment:StateJudgment::Indicated,context:"Bonus review".into(),temporal_scope:"At decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported acceptance of the change".into(),basis_evidence_id:None,revises_event_id:None};
+    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(other),influence_target:None,dimension:StateDimension::Compliance,judgment:StateJudgment::Indicated,context:"Bonus review".into(),temporal_scope:"At decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported acceptance of the change".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let compliance=Uuid::new_v4();record(compliance,item.clone()).await.unwrap();
     for (dimension,judgment,counterparty_actor_id) in [(StateDimension::Consent,StateJudgment::NotIndicated,Some(other)),(StateDimension::Submission,StateJudgment::Contested,Some(other)),(StateDimension::Vulnerability,StateJudgment::Indicated,None),(StateDimension::CoercionSusceptibility,StateJudgment::Unknown,Some(other))] {record(Uuid::new_v4(),StateInput{dimension,judgment,counterparty_actor_id,..item.clone()}).await.unwrap();}
@@ -300,7 +327,7 @@ async fn threat_capability_intent_perceived_credibility_and_outcome_are_independ
     let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The employee was warned about a bonus").await;
     let affected=Uuid::new_v4();let issuer=Uuid::new_v4();
     for (id,label) in [(affected,"Employee"),(issuer,"Manager")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
-    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(issuer),dimension:StateDimension::ThreatCapability,judgment:StateJudgment::Contested,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Unclear whether manager controls the bonus".into(),basis_evidence_id:None,revises_event_id:None};
+    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(issuer),influence_target:None,dimension:StateDimension::ThreatCapability,judgment:StateJudgment::Contested,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Unclear whether manager controls the bonus".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let capability=Uuid::new_v4();record(capability,item.clone()).await.unwrap();
     for (dimension,judgment,counterparty_actor_id) in [(StateDimension::CommunicatedThreat,StateJudgment::Indicated,Some(issuer)),(StateDimension::ThreatIntent,StateJudgment::Unknown,Some(issuer)),(StateDimension::ThreatPerceivedCredibility,StateJudgment::Indicated,None),(StateDimension::ThreatOutcome,StateJudgment::NotIndicated,None)] {record(Uuid::new_v4(),StateInput{dimension,judgment,counterparty_actor_id,..item.clone()}).await.unwrap();}
@@ -326,7 +353,7 @@ async fn contextual_pressure_counterparty_is_optional_exact_and_workspace_scoped
     let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The employee was warned about a bonus").await;
     let affected=Uuid::new_v4();let source=Uuid::new_v4();let alternative=Uuid::new_v4();
     for (id,label) in [(affected,"Employee"),(source,"Manager"),(alternative,"Director")] {niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,id,label).await.unwrap();}
-    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(source),dimension:StateDimension::Pressure,judgment:StateJudgment::Contested,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Possible manager involvement".into(),basis_evidence_id:None,revises_event_id:None};
+    let item=StateInput{subject_actor_id:affected,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:Some(source),influence_target:None,dimension:StateDimension::Pressure,judgment:StateJudgment::Contested,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Possible manager involvement".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let first=Uuid::new_v4();record(first,item.clone()).await.unwrap();
     assert!(record(first,item.clone()).await.unwrap().replayed);
@@ -355,7 +382,7 @@ async fn contextual_pressure_does_not_establish_coercion_or_consent() {
     let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The employee was warned about losing a bonus").await;
     let actor=Uuid::new_v4();
     niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Employee").await.unwrap();
-    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::CommunicatedThreat,judgment:StateJudgment::Indicated,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported warning of adverse outcome".into(),basis_evidence_id:None,revises_event_id:None};
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::CommunicatedThreat,judgment:StateJudgment::Indicated,context:"Bonus review".into(),temporal_scope:"Before decision".into(),orientation_scope:None,orientation_goal:None,rationale:"Reported warning of adverse outcome".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let threat=Uuid::new_v4();record(threat,input.clone()).await.unwrap();
     for (dimension,judgment) in [(StateDimension::Incentive,StateJudgment::Indicated),(StateDimension::Pressure,StateJudgment::Contested),(StateDimension::AdverseCondition,StateJudgment::Unknown),(StateDimension::Coercion,StateJudgment::Unknown),(StateDimension::Constraint,StateJudgment::Indicated),(StateDimension::Dependency,StateJudgment::Contested),(StateDimension::Leverage,StateJudgment::Unknown)] {
@@ -382,7 +409,7 @@ async fn contextual_autonomy_is_independent_of_consent_and_system_permissions() 
     let issue=node(&f,sit,ExpertNodeKind::Question,"Can the employee challenge the decision?").await;
     let actor=Uuid::new_v4();
     niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Employee").await.unwrap();
-    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::AutonomyDecide,judgment:StateJudgment::Indicated,context:"Employment decision".into(),temporal_scope:"At hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Employee can choose between options".into(),basis_evidence_id:None,revises_event_id:None};
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::AutonomyDecide,judgment:StateJudgment::Indicated,context:"Employment decision".into(),temporal_scope:"At hearing".into(),orientation_scope:None,orientation_goal:None,rationale:"Employee can choose between options".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let decide=Uuid::new_v4();record(decide,input.clone()).await.unwrap();
     for (dimension,judgment) in [(StateDimension::AutonomyRefuse,StateJudgment::NotIndicated),(StateDimension::AutonomyDisagree,StateJudgment::Contested),(StateDimension::AutonomyExit,StateJudgment::Unknown),(StateDimension::AutonomySeekReview,StateJudgment::Indicated),(StateDimension::AutonomyAcquireInformation,StateJudgment::Unknown),(StateDimension::AutonomyReviseCommitments,StateJudgment::NotIndicated)] {
@@ -409,7 +436,7 @@ async fn protective_motives_are_distinct_attributed_hypotheses_not_diagnoses() {
     let issue=node(&f,sit,ExpertNodeKind::Hypothesis,"The analyst avoided disclosing a mistake").await;
     let actor=Uuid::new_v4();
     niccolo_evidence::actors::create(&f.service,f.workspace,f.principal,actor,"Analyst").await.unwrap();
-    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,dimension:StateDimension::EgoProtection,judgment:StateJudgment::Contested,context:"Review of disclosure".into(),temporal_scope:"At review".into(),orientation_scope:None,orientation_goal:None,rationale:"Possible avoidance of embarrassment".into(),basis_evidence_id:None,revises_event_id:None};
+    let input=StateInput{subject_actor_id:actor,target_object_id:Some(issue),target_state_event_id:None,target_actor_id:None,counterparty_actor_id:None,influence_target:None,dimension:StateDimension::EgoProtection,judgment:StateJudgment::Contested,context:"Review of disclosure".into(),temporal_scope:"At review".into(),orientation_scope:None,orientation_goal:None,rationale:"Possible avoidance of embarrassment".into(),basis_evidence_id:None,revises_event_id:None};
     let record=|id,input|actor_state::record(&f.service,f.workspace,sit,f.principal,id,input);
     let ego=Uuid::new_v4();
     record(ego,input.clone()).await.unwrap();

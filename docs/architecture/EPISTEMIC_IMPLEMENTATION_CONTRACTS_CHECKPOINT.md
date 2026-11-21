@@ -458,6 +458,8 @@ Separate:
 - actual effect;
 - perceived success.
 
+Migration 0129 records those five independent attributed influence facets with an explicit epistemic target: belief, attention, interest, curiosity, trust, acceptance, interpretation, investigation priority or willingness to examine. The affected actor and Situation object remain exact; capacity, act and intended effect also require an identified influencing actor, whereas actual effect and perceived success can retain an unknown source. A revision preserves the facet, target and counterparty. No recorded influence act changes the investigation, proves the actual effect or grants formal authority.
+
 Epistemic power is not formal authority. A person without formal rank may control who receives information, who understands it, which experts are consulted or which version reaches decision-makers.
 
 Epistemic asymmetry can concern information, access, understanding, meta-knowledge or influence.

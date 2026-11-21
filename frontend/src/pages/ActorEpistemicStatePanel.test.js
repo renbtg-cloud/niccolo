@@ -1,9 +1,21 @@
 import {describe,expect,it} from 'vitest';
-import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,stateRequest} from './ActorEpistemicStatePanel.jsx';
-const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
+import {stateDimensions,orientationDimensions,trustDimensions,protectiveMotiveDimensions,autonomyDimensions,contextualPressureDimensions,threatFacetDimensions,contextualVulnerabilityDimensions,influenceDimensions,influenceTargets,stateRequest} from './ActorEpistemicStatePanel.jsx';
+const draft={subject_actor_id:'a',target_object_id:'p',target_state_event_id:null,target_actor_id:null,counterparty_actor_id:null,influence_target:null,dimension:'EXPOSURE',judgment:'INDICATED',context:'Interview',temporal_scope:'Before hearing',orientation_scope:null,orientation_goal:null,rationale:' Reported exposure ',basis_evidence_id:'',revises_event_id:null};
 const actors=[{actor_id:'a'},{actor_id:'b'}],nodes=[{object_id:'p'}],evidence=[{evidence_id:'e'}];
 const request=(d,events=[])=>stateRequest(d,actors,nodes,evidence,events);
 describe('independent actor epistemic judgments',()=>{
+  it('qualifies influence on nine independent targets without inferring the actual effect',()=>{
+    expect(influenceDimensions).toHaveLength(5);
+    expect(influenceTargets).toHaveLength(9);
+    const act={...draft,dimension:'INFLUENCE_ACT',counterparty_actor_id:'b',influence_target:'ATTENTION'};
+    expect(request(act)).toMatchObject({counterparty_actor_id:'b',influence_target:'ATTENTION'});
+    expect(request({...act,dimension:'INFLUENCE_ACTUAL_EFFECT',counterparty_actor_id:null,judgment:'UNKNOWN'}).judgment).toBe('UNKNOWN');
+    expect(()=>request({...act,influence_target:null})).toThrow();
+    expect(()=>request({...act,counterparty_actor_id:null})).toThrow();
+    expect(()=>request({...draft,influence_target:'ATTENTION'})).toThrow();
+    const prior={event_id:'act',input:request(act)};
+    expect(()=>request({...act,revises_event_id:'act',influence_target:'BELIEF'},[prior])).toThrow();
+  });
   it('distinguishes contextual vulnerability, susceptibility, compliance, consent and submission',()=>{
     expect(contextualVulnerabilityDimensions).toHaveLength(5);
     const compliance={...draft,dimension:'COMPLIANCE',counterparty_actor_id:'b'};

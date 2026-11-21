@@ -62,8 +62,29 @@ pub enum StateDimension {
     Compliance,
     Consent,
     Submission,
+    InfluenceCapacity,
+    InfluenceAct,
+    InfluenceIntendedEffect,
+    InfluenceActualEffect,
+    InfluencePerceivedSuccess,
 }
 impl StateDimension {
+    pub fn is_epistemic_influence(self) -> bool {
+        matches!(
+            self,
+            Self::InfluenceCapacity
+                | Self::InfluenceAct
+                | Self::InfluenceIntendedEffect
+                | Self::InfluenceActualEffect
+                | Self::InfluencePerceivedSuccess
+        )
+    }
+    pub fn requires_influence_counterparty(self) -> bool {
+        matches!(
+            self,
+            Self::InfluenceCapacity | Self::InfluenceAct | Self::InfluenceIntendedEffect
+        )
+    }
     pub fn is_contextual_pressure(self) -> bool {
         matches!(
             self,
@@ -139,6 +160,19 @@ pub enum StateJudgment {
     Contested,
     DistrustIndicated,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum InfluenceTarget {
+    Belief,
+    Attention,
+    Interest,
+    Curiosity,
+    Trust,
+    Acceptance,
+    Interpretation,
+    InvestigationPriority,
+    WillingnessToExamine,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StateInput {
@@ -147,6 +181,7 @@ pub struct StateInput {
     pub target_state_event_id: Option<Uuid>,
     pub target_actor_id: Option<Uuid>,
     pub counterparty_actor_id: Option<Uuid>,
+    pub influence_target: Option<InfluenceTarget>,
     pub dimension: StateDimension,
     pub judgment: StateJudgment,
     pub context: String,
@@ -181,7 +216,7 @@ async fn list(
     situation: Uuid,
     event: Option<Uuid>,
 ) -> Result<Vec<StateEvent>, WorkbenchError> {
-    let rows=sqlx::query("SELECT event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,counterparty_actor_id,dimension,judgment,context,temporal_scope,orientation_scope,orientation_goal,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,created_at::text AS recorded_at FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no").bind(workspace).bind(situation).bind(event).fetch_all(&mut **tx).await?;
+    let rows=sqlx::query("SELECT event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,counterparty_actor_id,influence_target,dimension,judgment,context,temporal_scope,orientation_scope,orientation_goal,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,created_at::text AS recorded_at FROM niccolo.actor_epistemic_state_events WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR event_id=$3) ORDER BY event_no").bind(workspace).bind(situation).bind(event).fetch_all(&mut **tx).await?;
     rows.into_iter()
         .map(|row| {
             Ok(StateEvent {
@@ -192,6 +227,10 @@ async fn list(
                     target_state_event_id: row.try_get("target_state_event_id")?,
                     target_actor_id: row.try_get("target_actor_id")?,
                     counterparty_actor_id: row.try_get("counterparty_actor_id")?,
+                    influence_target: row
+                        .try_get::<Option<String>, _>("influence_target")?
+                        .map(parse)
+                        .transpose()?,
                     dimension: parse(row.try_get("dimension")?)?,
                     judgment: parse(row.try_get("judgment")?)?,
                     context: row.try_get("context")?,
@@ -244,9 +283,14 @@ pub async fn record(
         || (input.dimension.is_protective_motive() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_autonomy() && input.target_object_id.is_none())
         || (input.dimension.is_contextual_pressure() && input.target_object_id.is_none())
+        || (input.dimension.is_epistemic_influence() && input.target_object_id.is_none())
+        || (input.dimension.is_epistemic_influence() != input.influence_target.is_some())
+        || (input.dimension.requires_influence_counterparty()
+            && input.counterparty_actor_id.is_none())
         || (input.dimension.requires_threat_counterparty() && input.counterparty_actor_id.is_none())
         || (input.counterparty_actor_id.is_some()
-            && (!input.dimension.is_contextual_pressure()
+            && (!(input.dimension.is_contextual_pressure()
+                || input.dimension.is_epistemic_influence())
                 || input.counterparty_actor_id == Some(input.subject_actor_id)))
         || (input.dimension == StateDimension::Loyalty && input.target_state_event_id.is_some())
         || (!input.dimension.is_trust()
@@ -350,6 +394,7 @@ pub async fn record(
             || prior.input.target_state_event_id != input.target_state_event_id
             || prior.input.target_actor_id != input.target_actor_id
             || prior.input.counterparty_actor_id != input.counterparty_actor_id
+            || prior.input.influence_target != input.influence_target
             || prior.input.dimension != input.dimension
             || prior.input.context != input.context
             || prior.input.temporal_scope != input.temporal_scope
@@ -359,7 +404,7 @@ pub async fn record(
             return Err(WorkbenchError::Invalid);
         }
     }
-    let inserted=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,orientation_scope,orientation_goal,counterparty_actor_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(event).bind(input.subject_actor_id).bind(input.target_object_id).bind(input.target_state_event_id).bind(input.target_actor_id).bind(code(input.dimension)).bind(code(input.judgment)).bind(&input.context).bind(&input.temporal_scope).bind(&input.rationale).bind(input.basis_evidence_id).bind(input.revises_event_id).bind(recorder).bind(input.orientation_scope.map(code)).bind(&input.orientation_goal).bind(input.counterparty_actor_id).execute(&mut *tx).await?.rows_affected()==1;
+    let inserted=sqlx::query("INSERT INTO niccolo.actor_epistemic_state_events(workspace_id,situation_id,event_id,subject_actor_id,target_object_id,target_state_event_id,target_actor_id,dimension,judgment,context,temporal_scope,rationale,basis_evidence_id,revises_event_id,recorded_by_principal_id,orientation_scope,orientation_goal,counterparty_actor_id,influence_target) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT DO NOTHING").bind(workspace).bind(situation).bind(event).bind(input.subject_actor_id).bind(input.target_object_id).bind(input.target_state_event_id).bind(input.target_actor_id).bind(code(input.dimension)).bind(code(input.judgment)).bind(&input.context).bind(&input.temporal_scope).bind(&input.rationale).bind(input.basis_evidence_id).bind(input.revises_event_id).bind(recorder).bind(input.orientation_scope.map(code)).bind(&input.orientation_goal).bind(input.counterparty_actor_id).bind(input.influence_target.map(code)).execute(&mut *tx).await?.rows_affected()==1;
     let mut result = list(&mut tx, workspace, situation, Some(event))
         .await?
         .pop()
