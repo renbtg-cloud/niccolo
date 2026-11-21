@@ -289,6 +289,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_expert_question_response),
         )
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/question-decisions/{decision}",post(record_expert_question_decision))
+        .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/question-decisions/{decision}/reviews/{event}",post(record_expert_decision_review))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}",post(record_expert_response_interpretation))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/utterances/{utterance}/interpretations/{interpretation}/revisions/{revision}/confirmations/{event}",post(confirm_expert_response_interpretation))
         .route("/v1/workspaces/{workspace}/situations/{situation}/epistemic/interpretation-dependencies/{dependency}",post(record_expert_interpretation_dependency))
@@ -3740,6 +3741,17 @@ async fn record_expert_question_decision(
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
     let view = epistemic_workbench::inquiry_decision::record(&state.pool,workspace,situation,recorder,decision,input).await?;
     Ok(no_store(json!({"decision":view}),if view.replayed {StatusCode::OK} else {StatusCode::CREATED}))
+}
+
+async fn record_expert_decision_review(
+    State(state): State<AppState>,
+    Path((workspace, situation, decision, event)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<epistemic_workbench::inquiry_decision_review::DecisionBasisReviewInput>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::inquiry_decision_review::record(&state.pool, workspace, situation, recorder, decision, event, input).await?;
+    Ok(no_store(json!({"review":view}), if view.replayed {StatusCode::OK} else {StatusCode::CREATED}))
 }
 
 async fn record_expert_question_response(

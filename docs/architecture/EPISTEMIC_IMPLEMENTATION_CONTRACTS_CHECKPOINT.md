@@ -294,6 +294,8 @@ Migration 0116 adds a human-authored inquiry decision ledger. An explicit dispos
 
 Checkpoint 1.25 validation: real PostgreSQL authoring/replay, incompatible replay refusal, invisible and non-considered basis rejection, direct SQL constraint, bearer read/write separation, and retention of exact historical assessment references. Full regression passed (588 Rust, 130 React, 22 Python, 8 standalone JavaScript tests), including the rebuilt embedded frontend.
 
+Migration 0117 exposes changes to the exact cited assessment basis of a recorded inquiry decision. A human may retain the decision, require reconsideration, or defer review, with an attributed note attached to both the original and current assessment events. Retention clears attention only for that exact current successor; any subsequent revision reopens attention. Unrelated judgments do not trigger a review, and neither review nor revision rewrites the decision, changes allocation or executes an inquiry. PostgreSQL validates the cited original and current successor, and the Workbench retains the review history.
+
 Administrative closure remains independent from epistemic resolution. An investigation can legitimately be closed while epistemically unresolved.
 
 ## 12. Human epistemic state is not a boolean

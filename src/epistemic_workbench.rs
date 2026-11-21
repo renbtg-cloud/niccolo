@@ -13,6 +13,8 @@ pub mod assessment;
 pub mod inquiry_response;
 #[path = "epistemic_inquiry_decision.rs"]
 pub mod inquiry_decision;
+#[path = "epistemic_inquiry_decision_review.rs"]
+pub mod inquiry_decision_review;
 #[path = "epistemic_interpretation_dependency.rs"]
 pub mod interpretation_dependency;
 
@@ -660,6 +662,7 @@ pub struct WorkbenchSnapshot {
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
     pub question_inquiries: Vec<QuestionInquiryView>,
     pub question_decisions: Vec<inquiry_decision::InquiryDecision>,
+    pub question_decision_basis_changes: Vec<inquiry_decision_review::DecisionBasisChange>,
     pub question_responses: Vec<inquiry_response::QuestionResponse>,
     pub response_interpretations: Vec<inquiry_response::ResponseInterpretationView>,
     pub interpretation_dependencies: Vec<interpretation_dependency::InterpretationDependencyView>,
@@ -2311,6 +2314,7 @@ pub async fn snapshot(
     let applicability = latest_route_applicability(&mut tx, workspace, situation).await?;
     let assessments = assessment::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     let question_decisions = inquiry_decision::list_in_snapshot(&mut tx, workspace, situation).await?;
+    let question_decision_basis_changes = inquiry_decision_review::changes_in_snapshot(&mut tx, workspace, situation, &question_decisions, &assessments).await?;
     let question_responses =
         inquiry_response::list_in_snapshot(&mut tx, workspace, situation, None).await?;
     let response_interpretations =
@@ -2503,6 +2507,7 @@ pub async fn snapshot(
         reasoning_diagnostics,
         question_inquiries,
         question_decisions,
+        question_decision_basis_changes,
         question_responses,
         response_interpretations,
         interpretation_dependencies,
@@ -2539,6 +2544,7 @@ mod tests {
             reasoning_diagnostics: vec![],
             question_inquiries: vec![],
             question_decisions: vec![],
+            question_decision_basis_changes: vec![],
             question_responses: vec![],
             response_interpretations: vec![],
             interpretation_dependencies: vec![],
