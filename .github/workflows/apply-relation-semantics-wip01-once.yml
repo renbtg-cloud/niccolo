@@ -1,0 +1,28 @@
+name: Apply relation semantics WIP 01 once
+
+on:
+  push:
+    branches:
+      - tmp/relation-semantics-wip01-20261120
+    paths:
+      - .github/workflows/apply-relation-semantics-wip01-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - run: |
+          git fetch origin tmp/relation-semantics-wip01-20261120:tmp/relation-semantics-wip01-20261120
+          git show tmp/relation-semantics-wip01-20261120:wip01-relation-semantics.patch > /tmp/wip01.patch
+          git am /tmp/wip01.patch
+          git push origin HEAD:main
