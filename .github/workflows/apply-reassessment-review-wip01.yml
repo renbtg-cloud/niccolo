@@ -1,0 +1,36 @@
+name: Apply reassessment review WIP 01
+
+on:
+  push:
+    branches:
+      - 'tmp/apply-reassessment-review-wip01-20261121'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify expected head
+        run: |
+          test "$(git rev-parse HEAD)" = "fd67bad8f0583a3f3b5161b5bd7a1ffe71799582"
+      - name: Apply patch
+        run: |
+          cat > /tmp/patch.b64 <<'EOF'
+          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
+          EOF
+          sed -i 's/^          //' /tmp/patch.b64
+          base64 -d /tmp/patch.b64 | gunzip > /tmp/change.patch
+          git apply /tmp/change.patch
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sql/0102_epistemic_reassessment_reviews.sql src/epistemic_workbench.rs
+          git commit -m "WIP 01: reassessment review workflow"
+          git push origin HEAD:main
