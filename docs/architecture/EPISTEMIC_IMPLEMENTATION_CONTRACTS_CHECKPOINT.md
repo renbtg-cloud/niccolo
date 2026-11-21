@@ -417,6 +417,8 @@ Autonomy is contextual: ability to decide, refuse, disagree, exit, seek review, 
 
 Migration 0124 represents those seven capabilities as independent attributed contextual autonomy judgments about a visible Situation object. Each may be indicated, not indicated, contested or unknown, with its own rationale, time and optional evidence. One capability does not imply another; reporting capacity does not establish consent, execute an act, confer authorization or make a system-level permission change.
 
+Checkpoint 1.33 validation: migration 0124, all seven independent autonomy judgments, cross-dimension revision and incorrect-target refusal, direct SQL constraint and absence of inferred acts/decisions verified. Full regression passed (596 Rust, 142 React, 22 Python, 8 standalone JavaScript tests).
+
 Vulnerability is contextual exposure to an adverse consequence, not a personal defect.
 
 ## 17. Epistemic influence and power
