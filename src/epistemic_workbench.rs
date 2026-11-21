@@ -310,6 +310,7 @@ pub struct WorkbenchSnapshot {
     pub investigator_free_text_compiler_enabled: bool,
 }
 
+type WorkbenchEvidenceRow = (Uuid, Uuid, i32, String, String, String, String, String);
 type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
 type GroundingMemberSnapshotRow = (
     Uuid,
@@ -498,6 +499,7 @@ pub async fn create_node(
         return Err(WorkbenchError::Invisible);
     }
     let object_inserted = ensure_object(&mut tx, workspace, object_id, kind.db_value(), actor).await?;
+    let mut request_replayed = !object_inserted;
     if kind == ExpertNodeKind::Proposition {
         sqlx::query(
             "INSERT INTO niccolo.epistemic_propositions(workspace_id,proposition_id,statement_text,language) \
@@ -518,7 +520,7 @@ pub async fn create_node(
         if stored_text.as_deref() != Some(text) {
             return Err(WorkbenchError::Conflict);
         }
-        sqlx::query(
+        let membership_inserted = sqlx::query(
             "INSERT INTO niccolo.epistemic_situation_propositions \
              (workspace_id,situation_id,proposition_id,rationale,recorded_by_principal_id) \
              VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
@@ -529,7 +531,10 @@ pub async fn create_node(
         .bind(rationale)
         .bind(actor)
         .execute(&mut *tx)
-        .await?;
+        .await?
+        .rows_affected()
+            == 1;
+        request_replayed = !membership_inserted;
         let membership: Option<(String, Uuid)> = sqlx::query_as(
             "SELECT rationale,recorded_by_principal_id FROM niccolo.epistemic_situation_propositions \
              WHERE workspace_id=$1 AND situation_id=$2 AND proposition_id=$3",
@@ -598,7 +603,7 @@ pub async fn create_node(
         text: text.to_owned(),
         rationale: rationale.to_owned(),
         created_by: actor,
-        replayed: !object_inserted,
+        replayed: request_replayed,
     })
 }
 
@@ -1078,7 +1083,7 @@ pub async fn snapshot(
             replayed: false,
         });
     }
-    let evidence_rows: Vec<(Uuid, Uuid, i32, String, String, String, String, String)> = sqlx::query_as(
+    let evidence_rows: Vec<WorkbenchEvidenceRow> = sqlx::query_as(
         "SELECT f.evidence_id,f.document_id,f.ordinal,f.speaker_label,e.content,e.source_class,e.source_locator,d.locator \
          FROM niccolo.situation_sources ss \
          JOIN niccolo.source_fragments f ON f.workspace_id=ss.workspace_id AND f.document_id=ss.document_id \
