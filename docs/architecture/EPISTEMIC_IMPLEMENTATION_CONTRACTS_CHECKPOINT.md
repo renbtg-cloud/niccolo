@@ -111,6 +111,8 @@ Each dimension keeps its own semantics, qualitative values where appropriate, cr
 
 Ordinal enums do not imply equal intervals, ratios, additive arithmetic, probabilities or global comparability.
 
+Initial structured MVP implementation (migration 0105): credibility, relevance, reliability, independence and discriminatory power have distinct closed result vocabularies, plus explicit unknown and contested results. An investigator authors a judgment about a Situation-visible object (including an argument), evidence fragment, relation or grounding route. Each append-only event preserves criterion, context, rationale, confidence in the judgment, assessor, recorded time and optional ordered object/evidence grounds. A revision identifies its predecessor, retains the same assessor, target, dimension, criterion and context, and never overwrites history; competing judgments coexist. The workbench exposes the history and revisions without averaging results or inferring truth, independence or consensus. This is not yet a general assessment-dimension registry, an assessment-of-assessment model or automated propagation of assessments through inference.
+
 ## 6. Temporal separation
 
 The implementation must be able to distinguish, when relevant:

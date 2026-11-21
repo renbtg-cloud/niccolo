@@ -75,6 +75,217 @@ async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) ->
 }
 
 #[tokio::test]
+async fn multidimensional_assessments_preserve_revision_and_disagreement() {
+    use epistemic_workbench::assessment::*;
+    let f = fixture().await;
+    let sit = situation(&f, "Assess competing explanations").await;
+    let other = situation(&f, "Separate investigation").await;
+    let target = node(&f, sit, ExpertNodeKind::Hypothesis, "Explanation A").await;
+    let ground = node(&f, sit, ExpertNodeKind::Proposition, "Observed sequence").await;
+    let foreign = node(
+        &f,
+        other,
+        ExpertNodeKind::Proposition,
+        "Unrelated observation",
+    )
+    .await;
+    let input = AssessmentInput {
+        target: AssessmentTarget::Object { object_id: target },
+        dimension: AssessmentDimension::Credibility,
+        result: AssessmentResult::Questionable,
+        confidence: AssessmentConfidence::Moderate,
+        criterion: "Consistency with observed events".into(),
+        context: "Current investigation".into(),
+        rationale: "The order of events is not conclusive".into(),
+        grounds: vec![AssessmentGround::Object { object_id: ground }],
+        revises_event_id: None,
+    };
+    let id = Uuid::new_v4();
+    let record = |id, input| {
+        epistemic_workbench::assessment::record(
+            &f.service,
+            f.workspace,
+            sit,
+            f.principal,
+            id,
+            input,
+        )
+    };
+    assert!(!record(id, input.clone()).await.unwrap().replayed);
+    assert!(record(id, input.clone()).await.unwrap().replayed);
+    let mut invalid = input.clone();
+    invalid.result = AssessmentResult::Reliable;
+    assert!(matches!(
+        record(Uuid::new_v4(), invalid).await,
+        Err(WorkbenchError::Invalid)
+    ));
+    let mut invisible = input.clone();
+    invisible.grounds = vec![AssessmentGround::Object { object_id: foreign }];
+    assert!(matches!(
+        record(Uuid::new_v4(), invisible).await,
+        Err(WorkbenchError::Invisible)
+    ));
+    let mut revision = input.clone();
+    revision.revises_event_id = Some(id);
+    revision.result = AssessmentResult::Credible;
+    let revision_id = Uuid::new_v4();
+    assert!(matches!(
+        record(
+            id,
+            AssessmentInput {
+                rationale: "Changed".into(),
+                ..input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Conflict)
+    ));
+    assert!(
+        !record(revision_id, revision.clone())
+            .await
+            .unwrap()
+            .replayed
+    );
+    assert!(matches!(
+        record(Uuid::new_v4(), revision).await,
+        Err(WorkbenchError::Conflict)
+    ));
+    let divergent_id = Uuid::new_v4();
+    record(
+        divergent_id,
+        AssessmentInput {
+            result: AssessmentResult::NotCredible,
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    record(
+        Uuid::new_v4(),
+        AssessmentInput {
+            dimension: AssessmentDimension::Reliability,
+            result: AssessmentResult::Unknown,
+            ..input.clone()
+        },
+    )
+    .await
+    .unwrap();
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.assessments.len(), 4);
+    assert_eq!(snapshot.assessments[0].input, input);
+    assert_eq!(snapshot.assessments[1].input.revises_event_id, Some(id));
+    assert_eq!(snapshot.assessments[2].event_id, divergent_id);
+    assert!(
+        epistemic_workbench::snapshot(&f.service, f.workspace, other)
+            .await
+            .unwrap()
+            .assessments
+            .is_empty()
+    );
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+    };
+    use tower::ServiceExt;
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1)
+        .await
+        .unwrap();
+    let other_actor = Uuid::new_v4();
+    let other_writer = authz::provision_token(&admin, other_actor, f.workspace, true, true, 1)
+        .await
+        .unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let secure = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let router = niccolo_evidence::api::router(secure);
+    let http_id = Uuid::new_v4();
+    let path = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/assessments/{}",
+        f.workspace, sit, http_id
+    );
+    let request = |token: &str, body: &AssessmentInput| {
+        Request::builder()
+            .method("POST")
+            .uri(&path)
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_string(body).unwrap()))
+            .unwrap()
+    };
+    let http_input = AssessmentInput {
+        dimension: AssessmentDimension::Independence,
+        result: AssessmentResult::DependenceIndicated,
+        ..input.clone()
+    };
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&reader, &http_input))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(request(&writer, &http_input))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        router
+            .oneshot(request(&writer, &http_input))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert!(matches!(
+        epistemic_workbench::assessment::record(
+            &f.service,
+            f.workspace,
+            sit,
+            other_actor,
+            Uuid::new_v4(),
+            AssessmentInput {
+                revises_event_id: Some(http_id),
+                ..http_input.clone()
+            }
+        )
+        .await,
+        Err(WorkbenchError::Invalid)
+    ));
+    let divergent = epistemic_workbench::assessment::record(
+        &f.service,
+        f.workspace,
+        sit,
+        other_actor,
+        Uuid::new_v4(),
+        AssessmentInput {
+            result: AssessmentResult::IndependenceSupported,
+            ..http_input
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(divergent.recorded_by, other_actor);
+    drop(other_writer);
+}
+
+#[tokio::test]
 async fn expert_authored_relations_and_joint_grounding_remain_explicit() {
     let f = fixture().await;
     let sit = situation(

@@ -6,6 +6,7 @@ import {
   argumentRequest,
   applicabilityAssessments,
   applicabilityRequest,
+  assessmentResults, assessmentConfidences, assessmentKey, assessmentRequest,
   groundingAdequacies,
   groundingEffects,
   groundingRequest,
@@ -34,6 +35,7 @@ export function ExpertWorkbenchPage() {
   });
   const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
   const [error, setError] = useState('');
+  const [assessment, setAssessment] = useState({ target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: [] });
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
@@ -53,7 +55,8 @@ export function ExpertWorkbenchPage() {
   const createGrounding = useWorkbenchMutation(client, workbench, async ({ argumentId, body }) => client.createExpertGrounding(argumentId, crypto.randomUUID(), body));
   const reviewReassessment = useWorkbenchMutation(client, workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
   const recordApplicability = useWorkbenchMutation(client, workbench, async ({route, body}) => client.recordExpertApplicability(route.argument_id, route.grounding_set_id, crypto.randomUUID(), body));
-  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability];
+  const recordAssessment = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
+  const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
 
@@ -70,6 +73,16 @@ export function ExpertWorkbenchPage() {
     () => evidenceChoices.filter((item) => selectedEvidenceIds.includes(item.evidence_id)),
     [evidenceChoices, selectedEvidenceIds],
   );
+  const assessmentChoices = [
+    ...data.nodes.map(n => ({ target: {kind: 'OBJECT', object_id: n.object_id}, label: `${n.kind}: ${n.text}` })),
+    ...data.arguments.map(a => ({target: {kind: 'OBJECT', object_id: a.argument_id}, label: `ARGUMENT: ${a.rationale}`})),
+    ...evidenceChoices.map(e => ({target: {kind: 'EVIDENCE', evidence_id: e.evidence_id}, label: `EVIDENCE: ${e.document_locator} #${e.ordinal}: ${e.content}`})),
+    ...data.relations.map(r => ({target: {kind: 'RELATION', relation_id: r.relation_id}, label: `${r.kind}: ${r.rationale}`})),
+    ...data.grounding_sets.map(g => ({target: {kind: 'ROUTE', argument_id: g.argument_id, grounding_set_id: g.grounding_set_id}, label: `ROUTE ${g.effect}: ${g.rationale}`})),
+  ];
+  const assessmentHistory = data.assessments ?? [];
+  const supersededAssessments = new Set(assessmentHistory.map(a => a.input.revises_event_id).filter(Boolean));
+  const assessmentLabel = target => assessmentChoices.find(c => assessmentKey(c.target) === assessmentKey(target))?.label ?? assessmentKey(target);
   const submit = (action) => (event) => {
     event.preventDefault();
     setError('');
@@ -148,9 +161,28 @@ export function ExpertWorkbenchPage() {
         <label>Assessment rationale<textarea value={applicability.rationale} maxLength={4096} onChange={(e) => setApplicability({...applicability, rationale: e.target.value})} /></label>
         <button disabled={busy}>Record applicability assessment</button>
       </form>
+      <form onSubmit={submit(() => {
+        const previous = assessmentHistory.find(a => a.event_id === assessment.revises_event_id);
+        const target = previous?.input.target ?? assessmentChoices.find(c => assessmentKey(c.target) === assessment.target)?.target;
+        recordAssessment.mutate(assessmentRequest(assessment, target, assessment.grounds), {onSuccess: () => setAssessment({target: '', dimension: 'CREDIBILITY', result: 'UNKNOWN', confidence: 'UNKNOWN', criterion: '', context: '', rationale: '', grounds: []})});
+      })}>
+        <h3>Record contextual epistemic assessment</h3>
+        <p>One attributed dimension at a time. Confidence refers to the judgment, not the truth of the target.</p>
+        {assessment.revises_event_id && <p>Revising {assessment.revises_event_id} <button type="button" onClick={() => setAssessment({...assessment, revises_event_id: null})}>Cancel revision</button></p>}
+        <label>Target<select disabled={!!assessment.revises_event_id} value={assessment.target} onChange={e => setAssessment({...assessment, target: e.target.value})}><option value="">Choose…</option>{assessmentChoices.map(c => <option key={assessmentKey(c.target)} value={assessmentKey(c.target)}>{c.label}</option>)}</select></label>
+        <label>Dimension<select disabled={!!assessment.revises_event_id} value={assessment.dimension} onChange={e => setAssessment({...assessment, dimension: e.target.value, result: 'UNKNOWN'})}>{Object.keys(assessmentResults).map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Result<select value={assessment.result} onChange={e => setAssessment({...assessment, result: e.target.value})}>{assessmentResults[assessment.dimension].map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Confidence<select value={assessment.confidence} onChange={e => setAssessment({...assessment, confidence: e.target.value})}>{assessmentConfidences.map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Criterion<input disabled={!!assessment.revises_event_id} value={assessment.criterion} maxLength={2048} onChange={e => setAssessment({...assessment, criterion: e.target.value})}/></label>
+        <label>Context<input disabled={!!assessment.revises_event_id} value={assessment.context} maxLength={2048} onChange={e => setAssessment({...assessment, context: e.target.value})}/></label>
+        <label>Rationale<textarea value={assessment.rationale} maxLength={4096} onChange={e => setAssessment({...assessment, rationale: e.target.value})}/></label>
+        <fieldset><legend>Explicit grounds (optional)</legend>{assessmentChoices.filter(c => ['OBJECT','EVIDENCE'].includes(c.target.kind)).map(c => <label key={assessmentKey(c.target)}><input type="checkbox" checked={assessment.grounds.some(g => assessmentKey(g) === assessmentKey(c.target))} onChange={e => setAssessment({...assessment, grounds: e.target.checked ? [...assessment.grounds,c.target] : assessment.grounds.filter(g => assessmentKey(g) !== assessmentKey(c.target))})}/>{c.label}</label>)}</fieldset>
+        <button disabled={busy}>Record assessment</button>
+      </form>
     </div>
 
     <article><h3>Current structured model</h3>
+      {assessmentHistory.length > 0 && <details open><summary>Attributed multidimensional assessments — no universal score</summary><p>Separate judgments and disagreements remain visible. A revision preserves its predecessor.</p><ul>{assessmentHistory.map(a => <li key={a.event_id}><strong>{a.input.dimension}: {a.input.result}</strong> · confidence {a.input.confidence} · {supersededAssessments.has(a.event_id) ? 'revised' : 'current in its own revision chain'}<p>{assessmentLabel(a.input.target)}</p><p>Criterion: {a.input.criterion} · Context: {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.recorded_at}{a.input.revises_event_id ? ` · revises ${a.input.revises_event_id}` : ''}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}{!supersededAssessments.has(a.event_id) && <button type="button" disabled={busy} onClick={() => setAssessment({...a.input, target: assessmentKey(a.input.target), revises_event_id: a.event_id})}>Revise own judgment</button>}</li>)}</ul></details>}
       <p>{data.nodes.length} objects · {data.evidence.length} visible evidence fragments · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
       <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}

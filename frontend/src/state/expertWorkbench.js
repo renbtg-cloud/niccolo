@@ -34,6 +34,22 @@ export const groundingEffects = Object.freeze(['SUPPORTS', 'WEAKENS', 'CHALLENGE
 export const groundingAdequacies = Object.freeze(['UNSPECIFIED', 'PARTIAL', 'SUFFICIENT', 'NECESSARY_CONDITION']);
 export const reassessmentDispositions = Object.freeze(['RETAINED', 'REVISION_REQUIRED', 'DEFERRED']);
 export const applicabilityAssessments = Object.freeze(['UNASSESSED', 'SATISFIED', 'NOT_SATISFIED', 'CONTESTED', 'UNKNOWN']);
+export const assessmentResults = Object.freeze({
+  CREDIBILITY: ['CREDIBLE', 'QUESTIONABLE', 'NOT_CREDIBLE', 'UNKNOWN', 'CONTESTED'],
+  RELEVANCE: ['RELEVANT', 'LIMITED_RELEVANCE', 'IRRELEVANT', 'UNKNOWN', 'CONTESTED'],
+  RELIABILITY: ['RELIABLE', 'LIMITED_RELIABILITY', 'UNRELIABLE', 'UNKNOWN', 'CONTESTED'],
+  INDEPENDENCE: ['INDEPENDENCE_SUPPORTED', 'DEPENDENCE_INDICATED', 'DEPENDENT', 'UNKNOWN', 'CONTESTED'],
+  DISCRIMINATORY_POWER: ['HIGH_POWER', 'LIMITED_POWER', 'NO_POWER', 'UNKNOWN', 'CONTESTED'],
+});
+export const assessmentConfidences = Object.freeze(['LOW', 'MODERATE', 'HIGH', 'UNKNOWN']);
+export function assessmentKey(target) {
+  return target.kind === 'ROUTE' ? `ROUTE:${target.argument_id}:${target.grounding_set_id}` : `${target.kind}:${target.object_id ?? target.evidence_id ?? target.relation_id}`;
+}
+export function assessmentRequest(draft, target, grounds) {
+  if (!target || !assessmentResults[draft.dimension]?.includes(draft.result) || !assessmentConfidences.includes(draft.confidence)) throw new Error('Choose a target, dimension-specific result and confidence.');
+  if (grounds.length > 64 || new Set(grounds.map(assessmentKey)).size !== grounds.length) throw new Error('Choose at most 64 distinct grounds.');
+  return { target, dimension: draft.dimension, result: draft.result, confidence: draft.confidence, criterion: requireText(draft.criterion, 'Criterion', 2048), context: requireText(draft.context, 'Context', 2048), rationale: requireText(draft.rationale, 'Rationale'), grounds, revises_event_id: draft.revises_event_id ?? null };
+}
 
 export function requireText(value, label, max = 4096) {
   const text = String(value ?? '').trim();
