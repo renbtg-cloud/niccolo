@@ -413,6 +413,8 @@ Capability, intent, communication, perceived credibility and outcome are differe
 
 Migration 0125 adds independent attributed judgments of incentive, pressure, communicated threat, adverse condition, coercion, constraint, dependency and leverage concerning a registered actor and a visible Situation object. The same object may receive conflicting or independently qualified judgments, none of which proves the others, establishes consent or supplies a legal determination. This slice captures contextual conditions on the affected actor; it does not yet model a structured directed source actor or independently attribute threat capability, intent, credibility and outcome.
 
+Checkpoint 1.34 validation: migration 0125, eight independent conditions, unknown coercion despite indicated threat, revision identity and direct SQL qualification verified. Full regression passed (597 Rust, 143 React, 22 Python, 8 standalone JavaScript tests).
+
 Compliance is not consent. Submission is not loyalty.
 
 Autonomy is contextual: ability to decide, refuse, disagree, exit, seek review, acquire information and revise commitments may differ independently.
