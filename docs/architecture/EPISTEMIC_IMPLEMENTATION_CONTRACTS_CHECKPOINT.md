@@ -651,6 +651,8 @@ Checkpoint 1.69 exposes the AT-26 dimensions and a contextual attention view gro
 
 Checkpoint 1.70 adds [the AT-01–AT-26 executable witness matrix](EPISTEMIC_ADVERSARIAL_TEST_TRACEABILITY.md), distinguishing focused tests, constituent safeguards and open contracts. The matrix is guarded by two tests that require each case to remain individually traceable and every listed witness to refer to a real Rust integration test. All 24 Python tests and the documentation link check passed. This is a scoped implementation audit, not a declaration that all adversarial scenarios have been fully reproduced.
 
+Checkpoint 1.71 adds an AT-08/AT-22 regression witness: two analyses of the same frozen catalogue examine reverse 90/10 and 10/90 allocations across two sources. Exact examination counts remain analysis-specific; neither examination completeness nor epistemic quality or prevalence is inferred, and the successor does not inherit the predecessor's examined-fragment claims. All nine coverage integration tests and 24 Python tests passed. The audit retains both cases as constituent coverage pending a compound fixture with actual findings and operation exhaustion.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

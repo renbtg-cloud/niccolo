@@ -479,6 +479,72 @@ async fn coverage_summary_distinguishes_present_partial_and_all_catalogued_text(
 }
 
 #[tokio::test]
+async fn unequal_examination_remains_a_coverage_fact_not_a_prevalence_ranking() {
+    // AT-08/AT-22: unequal allocation across the same source catalogue must
+    // remain visible, and later analyses must not inherit examination claims.
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    let initial = Uuid::new_v4();
+    let followup = Uuid::new_v4();
+    create_situation(&f, situation).await;
+    let (unit_a, a) = seed_document(&f, 10).await;
+    let (unit_b, b) = seed_document(&f, 10).await;
+    add_source(&f, situation, unit_a).await;
+    add_source(&f, situation, unit_b).await;
+    begin_analysis(&f, situation, initial, None).await;
+    begin_analysis(&f, situation, followup, Some(initial)).await;
+    for (analysis, fragments) in [
+        (initial, a[..9].iter().chain(&b[..1])),
+        (followup, a[..1].iter().chain(&b[..9])),
+    ] {
+        for evidence in fragments {
+            assert_eq!(
+                call(
+                    f.router.clone(),
+                    req(
+                        "POST",
+                        format!("{}/{evidence}", coverage_path(&f, situation, analysis)),
+                        &f.writer,
+                        None
+                    )
+                )
+                .await
+                .0,
+                StatusCode::CREATED
+            );
+        }
+    }
+    for (analysis, examined_a, examined_b) in [(initial, 9, 1), (followup, 1, 9)] {
+        let (status, summary) = call(
+            f.router.clone(),
+            req(
+                "GET",
+                coverage_summary_path(&f, situation, analysis),
+                &f.reader,
+                None,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(summary["coverage_scope"], "FROZEN_ANALYSIS_INPUT");
+        assert_eq!(summary["source_present_does_not_mean_examined"], true);
+        let documents = summary["documents"].as_array().unwrap();
+        assert_eq!(documents.len(), 2);
+        for (document, examined) in [(unit_a, examined_a), (unit_b, examined_b)] {
+            let entry = documents
+                .iter()
+                .find(|d| d["document_id"] == document.to_string())
+                .unwrap();
+            // Neither prevalence nor epistemic quality follows from examination counts.
+            assert_eq!(
+                entry,
+                &json!({"document_id":document,"format":"WHATSAPP_EXPORT","catalogued_fragment_count":10,"examined_fragment_count":examined,"all_catalogued_fragments_examined":false,"proves_full_source_examined":false})
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn coverage_summary_uses_frozen_source_set_not_current_situation_sources() {
     let f = setup().await;
     let situation = Uuid::new_v4();
