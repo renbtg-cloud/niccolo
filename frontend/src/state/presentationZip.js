@@ -80,6 +80,9 @@ export function presentationZip(pkg) {
     }
     totalPayload += bytes.length;
     if (totalPayload > MAX_BYTES) throw new Error('Export exceeds size limit.');
+    if (offset + directorySize + 76 + 2 * name.length + bytes.length + 22 > MAX_ARCHIVE_BYTES) {
+      throw new Error('Export archive is too large.');
+    }
     const checksum = crc32(bytes);
     const header = localHeader(name, bytes.length, checksum);
     const central = centralHeader(name, bytes.length, checksum, offset);
@@ -87,9 +90,6 @@ export function presentationZip(pkg) {
     directory.push(central);
     offset += header.length + bytes.length;
     directorySize += central.length;
-  }
-  if (offset + directorySize + 22 > MAX_ARCHIVE_BYTES) {
-    throw new Error('Export archive is too large.');
   }
   const end = new Uint8Array(22);
   const view = new DataView(end.buffer);
