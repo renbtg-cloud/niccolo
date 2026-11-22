@@ -25,7 +25,7 @@ function QuestionCard({ question }) {
   });
   const positions = useQuery({
     queryKey:['question-positions',client.config.workspace,question.question_id,positionsCursor],
-    queryFn:async()=> (await client.questionPositions(question.question_id,positionsCursor,100)).value,
+    queryFn:async({ signal })=> (await client.questionPositions(question.question_id,positionsCursor,100,signal)).value,
   });
   const submit = useMutation({
     mutationFn:()=>{
