@@ -619,6 +619,37 @@ async fn assert_retry_stops(recover: bool) {
     assert_eq!(model.calls.load(Ordering::SeqCst), 1);
 }
 
+#[tokio::test]
+async fn runtime_skips_postprocessing_when_model_returns_after_cancellation() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(step_id, 1, "SYNTHESIZE", false, vec![])],
+    ).await.unwrap();
+    let model = GatedResponseModel::default();
+    let (outcome, ()) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        tokio::join!(
+            agentic_runtime::run_until_boundary(&app, scope, s.principal, &model),
+            async {
+                model.started.notified().await;
+                let op = bff_operations::get(&app, scope).await.unwrap();
+                bff_operations::cancel(&app, scope, op.state_version, s.principal, "stop")
+                    .await
+                    .unwrap();
+                model.release.notify_one();
+            }
+        )
+    }).await.unwrap();
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.state, "CANCELLED");
+    assert!(outcome.terminal);
+    assert_eq!(outcome.completed_steps, 0);
+    assert_eq!(last_step_event(&admin, scope, step_id).await.0, "STARTED");
+    assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+}
+
 #[derive(Default)]
 struct PendingModel {
     started: tokio::sync::Notify,

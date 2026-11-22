@@ -45,6 +45,8 @@ pub enum RuntimeError {
     ObservationSearch(#[from] observation_retrieval::ObservationSearchError),
     #[error("observation query audit unavailable: {0}")]
     ObservationLedger(#[from] observation_query_ledger::QueryLedgerError),
+    #[error("agentic operation closed while the model was running")]
+    OperationClosed,
     #[error("agentic operation requires an analysis")]
     MissingAnalysis,
 }
@@ -202,6 +204,9 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             policy,
         )
         .await;
+        if bff_operations::get(pool, scope).await?.terminal {
+            return Err(RuntimeError::OperationClosed);
+        }
         match invocation {
             Ok(v) => {
                 // Transport success does not establish that the provider returned
@@ -322,7 +327,11 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     }
     .await;
     if let Err(error) = &result
-        && !matches!(error, RuntimeError::Model(model_adapter::ModelError::InvocationNoLongerActive))
+        && !matches!(
+            error,
+            RuntimeError::OperationClosed
+                | RuntimeError::Model(model_adapter::ModelError::InvocationNoLongerActive)
+        )
     {
         let reason = match error {
             RuntimeError::Budget(operation_budget::BudgetError::Invalid) => {
@@ -471,6 +480,7 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             .expect("ready step exists")
             .clone();
         match execute_step(pool, scope, actor, model, &step, view.plan_revision).await {
+            Err(RuntimeError::OperationClosed) => continue,
             Err(RuntimeError::Controller(agentic_controller::ControllerError::PlanChanged))
                 if reselections < MAX_PLAN_RESELECTIONS =>
             {
