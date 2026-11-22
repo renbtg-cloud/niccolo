@@ -223,6 +223,7 @@ function ConnectedSituation({client}){
       <input
         ref={sourceFileInput}
         aria-label="Source file"
+        aria-invalid={Boolean(fileError)}
         type="file"
         accept=".eml,.txt,message/rfc822,text/plain"
         disabled={upload.isPending}
