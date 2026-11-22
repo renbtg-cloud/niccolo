@@ -53,6 +53,7 @@ function ConnectedSituation({client}){
   const qc = useQueryClient();
   const generation = useSessionStore(s=>s.generation);
   const [file, setFile] = useState(null);
+  const fileErrorId=useId();
   const [fileError,setFileError] = useState(null);
   const [sourceCursor, setSourceCursor] = useState(null);
   const [sourceBackStack, setSourceBackStack] = useState([]);
@@ -227,6 +228,7 @@ function ConnectedSituation({client}){
         ref={sourceFileInput}
         aria-label="Source file"
         aria-invalid={Boolean(fileError)}
+        aria-describedby={fileError?fileErrorId:undefined}
         type="file"
         accept=".eml,.txt,message/rfc822,text/plain"
         disabled={upload.isPending}
@@ -248,7 +250,7 @@ function ConnectedSituation({client}){
         {upload.isPending ? 'Importing…' : upload.isError && pendingIngest.current ? 'Retry attachment' : 'Import and attach'}
       </button>
       {file && <small>Selected: {file.name} · {file.size} bytes</small>}
-      {fileError && <p className="error" role="alert">{fileError}</p>}
+      {fileError && <p id={fileErrorId} className="error" role="alert">{fileError}</p>}
       {upload.error && <p className="error" role="alert">
         {pendingIngest.current ? 'The record was imported. Attachment failed: ' : 'Import failed: '}{upload.error.message}
       </p>}
