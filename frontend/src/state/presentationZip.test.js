@@ -56,3 +56,9 @@ it('Verify portable ZIP collision handling for Unicode normalization', () => {
 it('Verify portable ZIP rejects file-directory collisions', () => {
   expect(() => presentationZip(pkg({ 'data': 'a', 'DATA/report.txt': 'b' }))).toThrow();
 });
+
+it('writes the same bytes regardless of the insertion order', async () => {
+  const first = presentationZip(pkg({ 'z.txt': 'last', 'é.txt': 'accent', 'a.txt': 'first' }));
+  const second = presentationZip(pkg({ 'a.txt': 'first', 'é.txt': 'accent', 'z.txt': 'last' }));
+  expect(await first.arrayBuffer()).toEqual(await second.arrayBuffer());
+});
