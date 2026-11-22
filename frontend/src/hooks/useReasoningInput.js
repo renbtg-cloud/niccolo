@@ -8,6 +8,6 @@ export function useReasoningInput(){
  return useQuery({
    queryKey:client&&analysis?qk.analysis(client.config,analysis,'reasoning-input'):['reasoning-input','none'],
    enabled:!!client&&!!analysis,
-   queryFn:async()=> (await client.reasoningInput(analysis)).value,
+   queryFn:async ({ signal })=> (await client.reasoningInput(analysis, signal)).value,
  });
 }
