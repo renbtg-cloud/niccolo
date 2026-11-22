@@ -311,13 +311,18 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     }
     // Read the current revision after taking the operation lock because
     // replanning can commit a new revision without modifying that row.
-    let (current_revision, deadline_elapsed): (Option<i64>, bool) = sqlx::query_as(
+    let admitted_at = Instant::now();
+    let (current_revision, remaining_ms): (Option<i64>, Option<i64>) = sqlx::query_as(
         "SELECT (
              SELECT p.plan_revision FROM niccolo.agentic_plans p
              WHERE p.workspace_id=o.workspace_id AND p.situation_id=o.situation_id
                AND p.operation_id=o.operation_id
              ORDER BY p.plan_revision DESC LIMIT 1
-         ), coalesce(o.deadline_at <= clock_timestamp(), false)
+         ), CASE
+                WHEN o.deadline_at IS NULL OR o.deadline_at = 'infinity'::timestamptz THEN NULL
+                WHEN o.deadline_at = '-infinity'::timestamptz THEN 0
+                ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (o.deadline_at - clock_timestamp()))*1000)::bigint)
+            END
          FROM niccolo.bff_operations o
          WHERE o.workspace_id=$1 AND o.situation_id=$2 AND o.operation_id=$3",
     )
@@ -329,7 +334,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     if current_revision != Some(scope.plan_revision) {
         return Err(ModelError::InvocationNoLongerActive);
     }
-    if deadline_elapsed {
+    if remaining_ms == Some(0) {
         return Err(ModelError::Deadline);
     }
     sqlx::query("INSERT INTO niccolo.model_invocations(workspace_id,situation_id,operation_id,plan_revision,step_id,invocation_id,provider,model,request_json,request_sha256,status,recorded_by_principal_id,timeout_ms,max_total_tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'STARTED',$11,$12,$13)")
@@ -339,13 +344,18 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let mut last_error = ModelError::Provider("no attempt made".into());
     let mut attempts_made = 0;
     let mut reported_usage = (None, None);
+    let attempt_timeout = Duration::from_millis(policy.timeout_ms);
+    let operation_time = remaining_ms.map(|ms| Duration::from_millis(ms as u64));
     for attempt in 1..=policy.max_attempts {
+        let timeout = operation_time.map_or(attempt_timeout, |total| {
+            attempt_timeout.min(total.saturating_sub(admitted_at.elapsed()))
+        });
+        if timeout.is_zero() {
+            last_error = ModelError::Deadline;
+            break;
+        }
         attempts_made = attempt;
-        let outcome = tokio::time::timeout(
-            std::time::Duration::from_millis(policy.timeout_ms),
-            model.invoke(request),
-        )
-        .await;
+        let outcome = tokio::time::timeout(timeout, model.invoke(request)).await;
         match outcome {
             Ok(Ok(response)) => {
                 let invalid_usage = response.prompt_tokens.is_some_and(|n| n < 0)
@@ -471,7 +481,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let message = crate::bff_operations::persistable_failure_detail(&message);
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
     let changed = sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,prompt_tokens=$12,completion_tokens=$13,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(message).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).bind(reported_usage.0).bind(reported_usage.1).execute(&mut *tx).await?.rows_affected();
+      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout | ModelError::Deadline){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(message).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).bind(reported_usage.0).bind(reported_usage.1).execute(&mut *tx).await?.rows_affected();
     if changed != 1 {
         return Err(ModelError::InvocationNoLongerActive);
     }
