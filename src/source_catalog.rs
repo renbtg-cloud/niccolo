@@ -173,38 +173,38 @@ pub async fn document_speakers(
         .await?;
     crate::authz::bind_auth_digest(&mut tx).await?;
 
-    let visible: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM niccolo.source_documents WHERE workspace_id=$1 AND document_id=$2)",
-    )
-    .bind(workspace)
-    .bind(document)
-    .fetch_one(&mut *tx)
-    .await?;
-    if !visible {
-        return Err(CatalogError::InvisibleDocument);
-    }
-
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT speaker_label,count(*)::bigint
-         FROM niccolo.source_fragments
-         WHERE workspace_id=$1 AND document_id=$2
-         GROUP BY speaker_label
-         ORDER BY speaker_label
-         LIMIT 1001",
+    let rows: Vec<(Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT speakers.speaker_label, speakers.fragment_count
+         FROM niccolo.source_documents d
+         LEFT JOIN LATERAL (
+             SELECT f.speaker_label, count(*) AS fragment_count
+             FROM niccolo.source_fragments f
+             WHERE f.workspace_id=d.workspace_id AND f.document_id=d.document_id
+             GROUP BY f.speaker_label
+             ORDER BY f.speaker_label
+             LIMIT 1001
+         ) speakers ON true
+         WHERE d.workspace_id=$1 AND d.document_id=$2
+         ORDER BY speakers.speaker_label",
     )
     .bind(workspace)
     .bind(document)
     .fetch_all(&mut *tx)
     .await?;
+    if rows.is_empty() {
+        return Err(CatalogError::InvisibleDocument);
+    }
     tx.commit().await?;
     if rows.len() > 1000 {
         return Err(CatalogError::TooManySpeakers);
     }
     Ok(rows
         .into_iter()
-        .map(|(speaker_label, fragment_count)| SpeakerSummary {
-            speaker_label,
-            fragment_count,
+        .filter_map(|(label, count)| {
+            label.zip(count).map(|(speaker_label, fragment_count)| SpeakerSummary {
+                speaker_label,
+                fragment_count,
+            })
         })
         .collect())
 }
