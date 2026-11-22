@@ -111,14 +111,14 @@ function ConnectedSituation({client}){
       if (!isCurrentSession(generation)) return;
       const ext = source.format === 'EML' ? 'eml' : 'txt';
       const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
       try {
-        const link = document.createElement('a');
         link.href = url;
         link.download = `niccolo-source-${source.document_id}.${ext}`;
         document.body.append(link);
         link.click();
-        link.remove();
       } finally {
+        link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 30000);
       }
     },
