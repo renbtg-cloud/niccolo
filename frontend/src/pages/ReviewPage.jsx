@@ -45,7 +45,7 @@ function ReviewContent(){
    pendingClarification.current.delete(signature);
    return result.value;
  },onSuccess:async(_,variables)=>{
-   setClarificationDrafts(current=>({...current,[variables.questionId]:''}));
+   setClarificationDrafts(current=>({...current,[variables.questionId]:current[variables.questionId]?.trim()===variables.text?'':current[variables.questionId]}));
    await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);
  }});
  const recordReceipt=useMutation({mutationFn:async(kind)=>{
