@@ -325,7 +325,8 @@ function ConnectedSituation({client}){
       {addContext.isSuccess&&<p role="status">Human context recorded.</p>}
       {addContext.error&&<p className="error" role="alert">{addContext.error.message}</p>}
       {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
-      {correctContext.error&&<p className="error">{correctContext.error.message}</p>}
+      {correctContext.isSuccess&&<p role="status">Context correction recorded.</p>}
+      {correctContext.error&&<p className="error" role="alert">{correctContext.error.message}</p>}
       {retractContext.error&&<p className="error">{retractContext.error.message}</p>}
     </article>
 
