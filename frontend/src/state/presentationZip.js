@@ -20,7 +20,7 @@ function entryPathValid(path) {
     && !path.startsWith('/')
     && !path.includes(String.fromCharCode(92))
     && !path.includes(':')
-    && !path.includes(String.fromCharCode(0))
+    && !/\p{Cc}/u.test(path)
     && path.split('/').every(part => part.length > 0 && part !== '.' && part !== '..');
 
 }
