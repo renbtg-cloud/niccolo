@@ -25,10 +25,10 @@ function FocusForm({ initial = '', label, pending, onSubmit }) {
   return <form onSubmit={(event) => {
     event.preventDefault();
     const focus = value.trim();
-    if (focus) onSubmit(focus);
+    if (focus && !pending) onSubmit(focus);
   }}>
     <label>{label}<textarea value={value} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
-    <button disabled={pending}>{pending ? 'Saving…' : 'Save'}</button>
+    <button disabled={pending||!value.trim()}>{pending ? 'Saving…' : 'Save'}</button>
   </form>;
 }
 
