@@ -10,12 +10,13 @@ import { situationTextError } from '../state/situationText.js';
 import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
+  const errorId=useId();
   const [text,setText]=useState(item.text);
   const validationError=situationTextError(text);
   return <li className="context-item">
     <div><strong>{item.kind.replaceAll('_',' ')}</strong><div><small>Human context · not verified evidence</small></div></div>
-    <textarea aria-label={`Edit context ${item.contribution_id}`} value={text} disabled={pending} aria-invalid={Boolean(validationError)} onChange={e=>setText(e.target.value)}/>
-    {validationError && <p role="alert">{validationError}</p>}
+    <textarea aria-label={`Edit context ${item.contribution_id}`} value={text} disabled={pending} aria-invalid={Boolean(validationError)} aria-describedby={validationError?errorId:undefined} onChange={e=>setText(e.target.value)}/>
+    {validationError && <p id={errorId} role="alert">{validationError}</p>}
     <div className="row">
       <button disabled={pending||text.trim()===item.text||!text.trim()||Boolean(validationError)} onClick={()=>onCorrect(item,text.trim())}>Save correction</button>
       <button disabled={pending} onClick={()=>onRetract(item)}>Retract</button>
