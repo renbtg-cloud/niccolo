@@ -106,7 +106,11 @@ function ReviewContent(){
  const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data);
 
  return <section><h2>Human review</h2>
-   {!r&&<p>Loading review…</p>}
+   {!r&&<p role="status">Loading review…</p>}
+   {r&&review.isError&&<div>
+     <p role="alert">Showing the last loaded review. Refresh failed.</p>
+     <button type="button" disabled={review.isFetching} onClick={()=>void review.refetch()}>Retry review refresh</button>
+   </div>}
   {r&&<>
      <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
      {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
