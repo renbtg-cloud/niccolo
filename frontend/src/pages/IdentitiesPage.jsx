@@ -89,9 +89,11 @@ export function IdentitiesPage() {
     queryFn: async ({ signal }) => (await client.identities(identityCursor, 100, signal)).value,
   });
 
-  const documents = sources.data?.documents ?? [];
-  const attachedIds = situation.data?.source_document_ids ?? [];
-  const reviewable = documents.filter((document) => attachedIds.includes(document.document_id));
+  const attachedIds = situation.data?.source_document_ids;
+  const reviewable = useMemo(()=>{
+    const attached = new Set(attachedIds ?? []);
+    return (sources.data?.documents ?? []).filter(document=>attached.has(document.document_id));
+  },[sources.data, attachedIds]);
 
   useEffect(() => {
     if (!documentId && reviewable.length) setDocumentId(reviewable[0].document_id);
