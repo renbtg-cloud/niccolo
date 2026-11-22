@@ -701,6 +701,8 @@ Checkpoints 1.167–1.171 read source visibility and speaker labels together. Th
 
 Checkpoints 1.172–1.175 classify malformed provider envelopes and message content as final failures. The native transport shares a deadline across connection attempts, TLS and socket I/O, and returns a provider HTTP error after reading its headers. Each provider attempt is also bounded by the time still available to the operation.
 
+Checkpoints 1.177–1.179 use the same provider envelope decoder in both transports. When the provider reports token usage alongside malformed message content, the failed invocation retains the reported counts for budget accounting. Both transports bound how much response data they buffer. When a response exceeds the limit, the invocation fails without another provider attempt.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
