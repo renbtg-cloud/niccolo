@@ -678,3 +678,40 @@ async fn pdf_transcription_round_trips_as_human_context_without_a_source_record(
     assert_eq!(reports[0]["is_verified_evidence"], false);
     assert_eq!(reports[0]["author_principal_id"], f.principal.to_string());
 }
+
+#[tokio::test]
+async fn pdf_preview_is_authorized_and_does_not_create_a_source() {
+    let f = setup().await;
+    let path = format!("/v1/workspaces/{}/sources/pdf-preview", f.workspace);
+    let raw = |token: Option<&str>, media: &str, bytes: &'static [u8]| {
+        let mut builder = Request::builder().method("POST").uri(&path)
+            .header(header::CONTENT_TYPE, media);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder.body(Body::from(bytes)).unwrap()
+    };
+    let pdf = include_bytes!("../README.pdf");
+    let (status, _) = call(f.router.clone(), raw(None, "application/pdf", pdf)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = call(f.router.clone(), raw(Some(&f.reader), "application/pdf", pdf)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = call(f.router.clone(), raw(Some(&f.writer), "text/plain", pdf)).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    let (status, _) = call(f.router.clone(), raw(Some(&f.writer), "application/pdf", b"not a PDF")).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, preview) = call(f.router.clone(), raw(Some(&f.writer), "application/pdf", pdf)).await;
+    if status == StatusCode::SERVICE_UNAVAILABLE {
+        assert_eq!(preview["error"], "PDF preview requires pdftotext");
+        return;
+    }
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["pages"][0]["number"], 1);
+    assert!(!preview["pages"][0]["text"].as_str().unwrap().is_empty());
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1")
+        .bind(f.workspace)
+        .fetch_one(&f.admin)
+        .await
+        .unwrap();
+    assert_eq!(count, 1); // The fixture source is the only stored original.
+}
