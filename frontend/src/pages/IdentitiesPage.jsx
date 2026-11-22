@@ -183,7 +183,9 @@ export function IdentitiesPage() {
     <h2>Identity review</h2>
     <p>Speaker labels come from the source artifact. Matching labels are never automatically treated as the same person. Every mapping below is an explicit human action with an append-only reason.</p>
 
-    {reviewable.length === 0 ? <p>Import and attach at least one source to the Situation first.</p> : <label>Document
+    {(sources.isPending || situation.isPending) && <p role="status">Loading attached source records…</p>}
+    {sources.isSuccess && situation.isSuccess && reviewable.length===0 && <p>No attached records on this page. Browse source records or attach one from the Situation.</p>}
+    {reviewable.length>0 && <label>Document
       <select value={documentId} disabled={assign.isPending || clear.isPending} onChange={(event) => resetDocumentSelection(event.target.value)}>
         {reviewable.map((document) => <option key={document.document_id} value={document.document_id}>{document.locator}</option>)}
       </select>
