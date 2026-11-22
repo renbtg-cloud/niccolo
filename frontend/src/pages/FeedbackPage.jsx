@@ -1,5 +1,5 @@
 import { situationTextError } from '../state/situationText.js';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClient } from '../hooks/useClient.js';
 import { useQuestions } from '../hooks/useQuestions.js';
@@ -15,6 +15,7 @@ function QuestionCard({ question }) {
   const qc = useQueryClient();
   const [response,setResponse] = useState('insufficient_evidence');
   const [reason,setReason] = useState('');
+  const reasonErrorId=useId();
   const reasonError=situationTextError(reason,2048);
   const [showEvents,setShowEvents] = useState(false);
   const [eventCursor,setEventCursor] = useState(0);
@@ -53,8 +54,8 @@ function QuestionCard({ question }) {
       {Object.entries(RESPONSE_COPY).map(([value,[label]])=><option key={value} value={value}>{label}</option>)}
     </select></label>
     <p><small>{RESPONSE_COPY[response][1]}</small></p>
-    <label>Why?<textarea aria-label={`Feedback reason ${question.question_id}`} value={reason} disabled={submit.isPending} aria-invalid={Boolean(reasonError)} onChange={e=>{submit.reset();setReason(e.target.value);}} placeholder="Explain your judgment in your own words"/></label>
-    {reasonError&&<p role="alert">{reasonError}</p>}
+    <label>Why?<textarea aria-label={`Feedback reason ${question.question_id}`} value={reason} disabled={submit.isPending} aria-invalid={Boolean(reasonError)} aria-describedby={reasonError?reasonErrorId:undefined} onChange={e=>{submit.reset();setReason(e.target.value);}} placeholder="Explain your judgment in your own words"/></label>
+    {reasonError&&<p id={reasonErrorId} role="alert">{reasonError}</p>}
     <button disabled={!reason.trim()||submit.isPending||Boolean(reasonError)} onClick={()=>submit.mutate()}>{submit.isPending?'Recording…':'Record my position'}</button>
     {submit.error&&<p className="error" role="alert">{submit.error.message}</p>}
     {submit.isSuccess&&<p role="status">Your position was recorded.</p>}
