@@ -232,8 +232,8 @@ export function IdentitiesPage() {
         pending={assign.isPending || clear.isPending}
       />)}
     </div>
-    {documentId && !speakers.isLoading && speakerRows.length === 0 && <p>No speaker labels were extracted from this source.</p>}
-    {documentId&&!speakers.isLoading&&speakerRows.length>0&&<p><Link to="/operations">Continue to Analyze →</Link></p>}
+    {documentId && speakers.isSuccess && speakerRows.length === 0 && <p>No speaker labels were extracted from this source.</p>}
+    {documentId&&speakers.isSuccess&&speakerRows.length>0&&<p><Link to="/operations">Continue to Analyze →</Link></p>}
     {(assign.error || clear.error) && <p className="error">{(assign.error || clear.error).message}</p>}
 
     {documentId && <details open={historyOpen} onToggle={event=>setHistoryOpen(event.currentTarget.open)}>
