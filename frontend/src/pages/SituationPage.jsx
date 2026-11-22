@@ -336,6 +336,11 @@ function ConnectedSituation({client}){
       <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
       {contextError&&<p id={contextErrorId} role="alert">{contextError}</p>}
       <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
+      {pdfContext&&<button type="button" disabled={addContext.isPending} onClick={()=>{
+        setPdfContext(false);
+        setContextText('');
+        addContext.reset();
+      }}>Clear prepared transcription</button>}
       {addContext.isSuccess&&<p role="status">Human context recorded.</p>}
       {addContext.error&&<p className="error" role="alert">{addContext.error.message}</p>}
       {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
