@@ -344,8 +344,24 @@ async fn view_plan(
     operation_state: &str,
     step_budget: i32,
 ) -> Result<ControllerView, ControllerError> {
-    let plan:Option<(i64,String)>=sqlx::query_as("SELECT plan_revision,plan_sha256 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 ORDER BY plan_revision DESC LIMIT 1").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_optional(&mut **tx).await?;
-    let Some((rev, sha)) = plan else {
+    let plan: Option<(i64, String, i64)> = sqlx::query_as(
+        "SELECT latest.plan_revision, latest.plan_sha256, (
+             SELECT count(*) FROM niccolo.agentic_step_events e
+             WHERE e.workspace_id=$1 AND e.situation_id=$2 AND e.operation_id=$3
+               AND e.plan_revision=latest.plan_revision AND e.event_kind='STARTED'
+         )
+         FROM (
+             SELECT plan_revision,plan_sha256 FROM niccolo.agentic_plans
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+             ORDER BY plan_revision DESC LIMIT 1
+         ) latest",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some((rev, sha, budget_used)) = plan else {
         return Err(ControllerError::Invisible);
     };
     type Row = (Uuid, i32, String, String, bool, Option<String>, Vec<Uuid>);
@@ -378,17 +394,6 @@ async fn view_plan(
     .bind(scope.operation)
     .bind(rev)
     .fetch_all(&mut **tx)
-    .await?;
-    let budget_used: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.agentic_step_events
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
-           AND plan_revision=$4 AND event_kind='STARTED'",
-    )
-    .bind(scope.workspace)
-    .bind(scope.situation)
-    .bind(scope.operation)
-    .bind(rev)
-    .fetch_one(&mut **tx)
     .await?;
     let steps: Vec<StepView> = rows
         .into_iter()
