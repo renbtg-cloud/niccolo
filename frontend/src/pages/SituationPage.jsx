@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
-import { useSessionStore } from '../stores/session.js';
+import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { restoreSourceRequest, sourceDescriptor } from '../state/sourceUpload.js';
 import { situationGuide } from '../state/situationGuide.js';
 
@@ -44,6 +44,7 @@ export function SituationPage(){
 
 function ConnectedSituation({client}){
   const qc = useQueryClient();
+  const generation = useSessionStore(s=>s.generation);
   const [file, setFile] = useState(null);
   const [sourceCursor, setSourceCursor] = useState(null);
   const [sourceBackStack, setSourceBackStack] = useState([]);
@@ -96,6 +97,7 @@ function ConnectedSituation({client}){
   const downloadOriginal = useMutation({
     mutationFn: async (source) => {
       const blob = await client.downloadSourceOriginal(source.document_id);
+      if (!isCurrentSession(generation)) return;
       const ext = source.format === 'EML' ? 'eml' : 'txt';
       const url = URL.createObjectURL(blob);
       try {
