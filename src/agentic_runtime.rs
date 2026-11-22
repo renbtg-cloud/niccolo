@@ -314,6 +314,24 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     .await;
     if let Err(error) = &result {
         let reason = match error {
+            RuntimeError::Budget(operation_budget::BudgetError::Invalid) => {
+                "operation model budget is invalid"
+            }
+            RuntimeError::Budget(operation_budget::BudgetError::Deadline) => {
+                "operation deadline elapsed before model invocation"
+            }
+            RuntimeError::Budget(operation_budget::BudgetError::Invocations) => {
+                "operation model invocation allowance exhausted"
+            }
+            RuntimeError::Budget(operation_budget::BudgetError::Tokens) => {
+                "operation model token allowance exhausted"
+            }
+            RuntimeError::Model(model_adapter::ModelError::Budget) => {
+                "model reported usage above the remaining operation token allowance"
+            }
+            RuntimeError::Model(model_adapter::ModelError::Timeout) => {
+                "model invocation timed out"
+            }
             RuntimeError::Model(_) => "model invocation failed",
             RuntimeError::Artifact(_) | RuntimeError::Update(_) | RuntimeError::Challenge(_) => {
                 "model artifact failed validation or application"

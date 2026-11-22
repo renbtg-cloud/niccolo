@@ -87,6 +87,25 @@ fn step(id: Uuid, n: i32, kind: &str, human: bool, deps: Vec<Uuid>) -> StepInput
         depends_on: deps,
     }
 }
+async fn last_step_event(
+    admin: &PgPool,
+    scope: OperationScope,
+    step_id: Uuid,
+) -> (String, String) {
+    sqlx::query_as(
+        "SELECT event_kind,note FROM niccolo.agentic_step_events
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4
+         ORDER BY event_seq DESC LIMIT 1",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(step_id)
+    .fetch_one(admin)
+    .await
+    .unwrap()
+}
+
 struct ReportedUsageModel {
     prompt_tokens: i64,
     completion_tokens: i64,
@@ -325,6 +344,10 @@ async fn runtime_rejects_a_response_over_the_remaining_operation_budget() {
     assert_eq!(rows.len(), 2);
     assert!(rows.contains(&(first, "SUCCEEDED".into(), Some(200))));
     assert!(rows.contains(&(second, "FAILED".into(), Some(90))));
+    assert_eq!(
+        last_step_event(&admin, scope, second).await,
+        ("FAILED".into(), "model reported usage above the remaining operation token allowance".into())
+    );
 }
 
 struct PendingModel;
@@ -406,6 +429,10 @@ async fn runtime_bounds_model_wait_by_the_operation_deadline() {
     assert!((1..=4_000).contains(&timeout_ms));
     assert_eq!(status, "FAILED");
     assert_eq!(error_code, "TIMEOUT");
+    assert_eq!(
+        last_step_event(&admin, scope, step_id).await,
+        ("FAILED".into(), "model invocation timed out".into())
+    );
 }
 
 #[tokio::test]
@@ -443,19 +470,10 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
         result,
         Err(agentic_runtime::RuntimeError::Budget(BudgetError::Invalid))
     ));
-    let last_event: String = sqlx::query_scalar(
-        "SELECT event_kind FROM niccolo.agentic_step_events \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4 \
-         ORDER BY event_seq DESC LIMIT 1"
-    )
-    .bind(s.workspace)
-    .bind(s.situation)
-    .bind(scope.operation)
-    .bind(step_id)
-    .fetch_one(&admin)
-    .await
-    .unwrap();
-    assert_eq!(last_event, "FAILED");
+    assert_eq!(
+        last_step_event(&admin, scope, step_id).await,
+        ("FAILED".into(), "operation model budget is invalid".into())
+    );
     request.input = json!({"model_budget":{"max_invocations":1}});
     assert!(matches!(
         bff_operations::submit(&app, scope, &request).await,
