@@ -7,6 +7,6 @@ export function useAnalysisHistory(before = null) {
   return useQuery({
     queryKey: client ? [...qk.analysisHistory(client.config), before] : ['analysis-history','none'],
     enabled: Boolean(client),
-    queryFn: async () => (await client.analysisHistory(before, 100)).value,
+    queryFn: async ({ signal }) => (await client.analysisHistory(before, 100, signal)).value,
   });
 }
