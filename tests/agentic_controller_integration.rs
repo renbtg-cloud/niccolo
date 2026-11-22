@@ -595,6 +595,35 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
 }
 
 #[tokio::test]
+async fn concurrent_plans_allocate_distinct_consecutive_revisions() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let first_step = Uuid::new_v4();
+    let second_step = Uuid::new_v4();
+    let first = [step(first_step, 1, "INSPECT_SOURCES", false, vec![])];
+    let second = [step(second_step, 1, "CHECK_ASSUMPTIONS", false, vec![])];
+    let (first, second) = tokio::join!(
+        agentic_controller::create_plan(&app, scope, s.principal, &first),
+        agentic_controller::create_plan(&app, scope, s.principal, &second),
+    );
+    let (first_version, first_sha) = first.unwrap();
+    let (second_version, second_sha) = second.unwrap();
+    let mut revisions = [first_version, second_version];
+    revisions.sort_unstable();
+    assert_eq!(revisions, [1, 2]);
+    let view = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(view.plan_revision, 2);
+    let (latest_step, latest_sha) = if first_version == 2 {
+        (first_step, first_sha)
+    } else {
+        (second_step, second_sha)
+    };
+    assert_eq!(view.plan_sha256, latest_sha);
+    assert_eq!(view.ready_step_ids, [latest_step]);
+}
+
+#[tokio::test]
 async fn v211_v214_plan_is_versioned_hashed_and_rejects_cycles() {
     let (a, p) = pools().await;
     let s = seed(&a).await;

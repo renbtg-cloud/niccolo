@@ -166,6 +166,19 @@ pub async fn create_plan(
     let json = canonical_steps(steps)?;
     let sha = format!("{:x}", Sha256::digest(json.as_bytes()));
     let mut tx = scoped(pool, scope.workspace, false).await?;
+    // Serialize revision allocation before reading the plan history.
+    let locked: Option<Uuid> = sqlx::query_scalar(
+        "SELECT operation_id FROM niccolo.bff_operations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 FOR UPDATE",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if locked.is_none() {
+        return Err(ControllerError::Invisible);
+    }
     let rev:i64=sqlx::query_scalar("SELECT coalesce(max(plan_revision),0)+1 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO niccolo.agentic_plans(workspace_id,situation_id,operation_id,plan_revision,plan_sha256,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(&sha).bind(actor).execute(&mut *tx).await?;
     let mut ordered = steps.to_vec();
