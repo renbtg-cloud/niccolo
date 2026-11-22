@@ -242,7 +242,10 @@ function ConnectedSituation({client}){
         }}
       />
       {sources.isLoading && <p>Loading sources…</p>}
-      {sources.error && <p className="error">{sources.error.message}</p>}
+      {sources.error && <div>
+        <p className="error" role="alert">Could not load source records: {sources.error.message}</p>
+        <button type="button" disabled={sources.isFetching} onClick={()=>void sources.refetch()}>Retry sources</button>
+      </div>}
       {sources.isSuccess && documents.length === 0 && <p>No source records have been imported yet.</p>}
       <ul className="source-list">
         {documents.map((document) => <li key={document.document_id}>
