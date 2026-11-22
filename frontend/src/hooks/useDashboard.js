@@ -8,6 +8,6 @@ export function useDashboard(){
  return useQuery({
    queryKey:client&&analysis?qk.dashboard(client.config,analysis,operation):['dashboard','none'],
    enabled:!!client&&!!analysis,
-   queryFn:async()=> (await client.dashboard(analysis,operation)).value,
+   queryFn:async ({ signal })=> (await client.dashboard(analysis,operation, signal)).value,
  });
 }
