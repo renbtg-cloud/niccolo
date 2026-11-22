@@ -544,15 +544,27 @@ async fn late_provider_response_does_not_publish_after_invocation_recovery() {
 
 #[tokio::test]
 async fn recovered_invocation_does_not_retry_after_provider_failure() {
-    assert_retry_stops(true).await;
+    assert_retry_stops(RetryInterruption::Recovery).await;
 }
 
 #[tokio::test]
 async fn cancelled_operation_does_not_retry_after_provider_failure() {
-    assert_retry_stops(false).await;
+    assert_retry_stops(RetryInterruption::Cancellation).await;
 }
 
-async fn assert_retry_stops(recover: bool) {
+#[tokio::test]
+async fn superseded_plan_does_not_retry_after_provider_failure() {
+    assert_retry_stops(RetryInterruption::Replan).await;
+}
+
+#[derive(Clone, Copy)]
+enum RetryInterruption {
+    Recovery,
+    Cancellation,
+    Replan,
+}
+
+async fn assert_retry_stops(interruption: RetryInterruption) {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let scope = op(&app, s, 10).await;
@@ -562,7 +574,9 @@ async fn assert_retry_stops(recover: bool) {
     )
     .await
     .unwrap();
-    agentic_controller::start_step(&app, scope, step_id, s.principal).await.unwrap();
+    if !matches!(interruption, RetryInterruption::Replan) {
+        agentic_controller::start_step(&app, scope, step_id, s.principal).await.unwrap();
+    }
     let model = GatedResponseModel { fail: true, ..Default::default() };
     let request = ModelRequest {
         purpose: "INSPECT_SOURCES".into(),
@@ -581,22 +595,35 @@ async fn assert_retry_stops(recover: bool) {
             ),
             async {
                 model.started.notified().await;
-                if recover {
-                    sqlx::query(
-                        "UPDATE niccolo.agentic_step_events
-                         SET created_at=clock_timestamp()-interval '10 minutes'
-                         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
-                           AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'",
-                    )
-                    .bind(s.workspace).bind(s.situation).bind(scope.operation)
-                    .bind(plan_revision).bind(step_id).execute(&admin).await.unwrap();
-                    agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
-                        .await.unwrap();
-                } else {
-                    let op = bff_operations::get(&app, scope).await.unwrap();
-                    bff_operations::cancel(&app, scope, op.state_version, s.principal, "stop")
+                match interruption {
+                    RetryInterruption::Recovery => {
+                        sqlx::query(
+                            "UPDATE niccolo.agentic_step_events
+                             SET created_at=clock_timestamp()-interval '10 minutes'
+                             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                               AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'",
+                        )
+                        .bind(s.workspace).bind(s.situation).bind(scope.operation)
+                        .bind(plan_revision).bind(step_id).execute(&admin).await.unwrap();
+                        agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
+                            .await.unwrap();
+                    }
+                    RetryInterruption::Cancellation => {
+                        let op = bff_operations::get(&app, scope).await.unwrap();
+                        bff_operations::cancel(&app, scope, op.state_version, s.principal, "stop")
+                            .await
+                            .unwrap();
+                    }
+                    RetryInterruption::Replan => {
+                        agentic_controller::create_plan(
+                            &app,
+                            scope,
+                            s.principal,
+                            &[step(step_id, 1, "CHECK_ASSUMPTIONS", false, vec![])],
+                        )
                         .await
                         .unwrap();
+                    }
                 }
                 model.release.notify_one();
             },
@@ -604,7 +631,7 @@ async fn assert_retry_stops(recover: bool) {
     })
     .await
     .unwrap();
-    if recover {
+    if matches!(interruption, RetryInterruption::Recovery) {
         assert!(matches!(result, Err(ModelError::InvocationNoLongerActive)));
     } else {
         assert!(matches!(result, Err(ModelError::Provider(_))));

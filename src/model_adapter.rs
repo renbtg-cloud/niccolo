@@ -416,6 +416,12 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             let mut tx = scoped(pool, scope.operation.workspace, true).await?;
             let state: Option<(String, bool)> = sqlx::query_as(
                 "SELECT i.status, o.state IN ('SUCCEEDED','FAILED','CANCELLED')
+                     OR i.plan_revision IS DISTINCT FROM (
+                         SELECT p.plan_revision FROM niccolo.agentic_plans p
+                         WHERE p.workspace_id=i.workspace_id AND p.situation_id=i.situation_id
+                           AND p.operation_id=i.operation_id
+                         ORDER BY p.plan_revision DESC LIMIT 1
+                     )
                  FROM niccolo.model_invocations i
                  JOIN niccolo.bff_operations o USING (workspace_id,situation_id,operation_id)
                  WHERE i.workspace_id=$1 AND i.situation_id=$2 AND i.operation_id=$3
@@ -430,7 +436,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
-            match state.as_ref().map(|(status, terminal)| (status.as_str(), *terminal)) {
+            match state.as_ref().map(|(status, blocked)| (status.as_str(), *blocked)) {
                 Some(("STARTED", true)) => break,
                 Some(("STARTED", false)) => {}
                 _ => return Err(ModelError::InvocationNoLongerActive),
