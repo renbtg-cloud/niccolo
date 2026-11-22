@@ -66,6 +66,7 @@ function ReviewContent(){
    }
    return (await client.recordHandoffReceipt(analysis,pendingReceipt.current.id,handoffView.sha256,kind,note)).value;
  },onSuccess:async()=>{
+   if(!isCurrentSession(generation))return;
    pendingReceipt.current=null;
    setHandoffNote('');
    await qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'handoff-receipts')});
