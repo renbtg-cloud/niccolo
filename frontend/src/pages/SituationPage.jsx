@@ -69,6 +69,7 @@ function ConnectedSituation({client}){
   const [contextKind,setContextKind]=useState('user_reported');
   const contextEditor=useRef(null);
   const [pdfContext,setPdfContext]=useState(false);
+  const [pdfPreviewOutdated,setPdfPreviewOutdated]=useState(false);
   const [contextText,setContextText]=useState('');
   const contextErrorId=useId();
   const contextError=situationTextError(contextText);
@@ -329,14 +330,15 @@ function ConnectedSituation({client}){
     <article className="human-context">
       <h3>Human context</h3>
       <PdfExcerptForm disabled={addContext.isPending||(!pdfContext&&Boolean(contextText.trim()))}
-        onPrepare={text=>{addContext.reset();setContextKind('user_reported');setPdfContext(true);setContextText(text);contextEditor.current?.focus();}}/>
+        onDraftChange={()=>{if(pdfContext)setPdfPreviewOutdated(true);}}
+        onPrepare={text=>{addContext.reset();setPdfPreviewOutdated(false);setContextKind('user_reported');setPdfContext(true);setContextText(text);contextEditor.current?.focus();}}/>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
       <label>Kind<select value={contextKind} disabled={addContext.isPending||pdfContext} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
       {pdfContext&&<p role="status">This PDF transcription will be saved as a human report. Edit the passage or its reference above, then prepare it again.</p>}
       <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} readOnly={pdfContext} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
       {pdfContext&&<small>{utf8ByteLength(contextText.trim())} / 4096 UTF-8 bytes, including the source reference.</small>}
       {contextError&&<p id={contextErrorId} role="alert">{contextError}</p>}
-      <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
+      <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)||(pdfContext&&pdfPreviewOutdated)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
       {pdfContext&&<button type="button" disabled={addContext.isPending} onClick={()=>{
         setPdfContext(false);
         setContextText('');

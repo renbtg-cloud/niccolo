@@ -1,12 +1,14 @@
 import { useId, useState } from 'react';
 import { pdfExcerptContext } from '../state/pdfExcerpt.js';
 
-export function PdfExcerptForm({ onPrepare, disabled }) {
+export function PdfExcerptForm({ onPrepare, onDraftChange, disabled }) {
   const [draft, setDraft] = useState({ document: '', page: '', endPage: '', section: '', excerpt: '' });
+  const [prepared, setPrepared] = useState(null);
   const [error, setError] = useState(null);
   const errorId = useId();
 
   function change(key, value) {
+    onDraftChange?.();
     setDraft(current => ({ ...current, [key]: value }));
     setError(null);
   }
@@ -23,6 +25,7 @@ export function PdfExcerptForm({ onPrepare, disabled }) {
       return;
     }
     onPrepare(context);
+    setPrepared(draft);
     setError(null);
   }
 
@@ -44,6 +47,7 @@ export function PdfExcerptForm({ onPrepare, disabled }) {
       <label>Section title (optional)<input {...field('section')} value={draft.section} onChange={event=>change('section',event.target.value)}/></label>
       <label>Selected passage<textarea {...field('excerpt')} value={draft.excerpt} onChange={event=>change('excerpt',event.target.value)} required/></label>
       {disabled && <p>Save or clear the current human-context draft before preparing another passage.</p>}
+      {prepared && prepared !== draft && <p role="status">Prepare again to update the transcription preview.</p>}
       <button type="submit" disabled={disabled}>Prepare as human context</button>
       {error && <p id={errorId} role="alert">{error.message}</p>}
     </form>
