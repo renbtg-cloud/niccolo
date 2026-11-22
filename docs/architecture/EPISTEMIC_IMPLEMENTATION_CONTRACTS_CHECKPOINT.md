@@ -683,6 +683,8 @@ Checkpoints 1.110–1.116 keep plan creation and completion aligned with operati
 
 Checkpoints 1.118–1.120 restrict stale-step recovery to running operations. Step starts, outcomes, resumptions and recoveries return the plan state observed inside the transaction that applied the change. A later concurrent change can still appear on the next read.
 
+Checkpoints 1.122–1.126 read each recovery candidate's latest event once and use a common age cutoff for the batch. Recovery skips plans with no active steps, marks orphaned invocations failed in one update and appends retry events in plan order. Workers reread the plan up to eight times if a newer revision supersedes a selected step before admission. Step outcome notes must fit PostgreSQL's character limit and contain no NUL.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
