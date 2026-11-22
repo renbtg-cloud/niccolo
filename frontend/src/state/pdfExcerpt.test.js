@@ -4,7 +4,7 @@ import { pdfExcerptContext } from './pdfExcerpt.js';
 const draft = { document: ' Relatório.pdf ', page: '12', excerpt: 'Primeira linha.\n Segunda linha.' };
 
 it('preserves the supplied title and page and identifies the excerpt as a human transcription', () => {
-  expect(pdfExcerptContext(draft)).toBe('User transcription from PDF “Relatório.pdf”, page 12 (original unavailable to Niccolò): “Primeira linha. Segunda linha.”');
+  expect(pdfExcerptContext(draft)).toBe('User transcription from PDF “Relatório.pdf”, page 12 (original unavailable to Niccolò, whitespace normalized): “Primeira linha. Segunda linha.”');
 });
 
 it('requires a title, a page and a passage', () => {

@@ -7,7 +7,7 @@ export function pdfExcerptContext({ document, page, excerpt }) {
   const selected = excerpt.trim();
   if (!selected) throw new Error('Paste the text you selected from the PDF.');
   const oneLine = selected.replace(/\s+/gu, ' ');
-  const text = `User transcription from PDF “${title}”, page ${page.trim()} (original unavailable to Niccolò): “${oneLine}”`;
+  const text = `User transcription from PDF “${title}”, page ${page.trim()} (original unavailable to Niccolò, whitespace normalized): “${oneLine}”`;
   const error = situationTextError(text);
   if (error) throw new Error(error);
   return text;
