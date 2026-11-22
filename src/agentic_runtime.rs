@@ -7,7 +7,7 @@ use crate::{
     observation_retrieval, operation_budget, reasoning_handoff, reasoning_packet,
     reasoning_proposals, reasoning_updates,
 };
-use model_adapter::{InvocationScope, ModelRequest, ReasoningModel};
+use model_adapter::{InvocationPolicy, InvocationScope, ModelRequest, ReasoningModel};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -148,7 +148,6 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             .await?;
             return Ok(());
         }
-        let _operation_budget = operation_budget::require_available(pool, scope).await?;
         let packet = reasoning_packet::build(pool, analysis_scope).await?;
         let packet_sha = reasoning_packet::sha256(&packet)?;
         let packet_evidence_ids = packet
@@ -173,7 +172,8 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                 json!({"type":"object","required":["purpose","status"],"niccolo_rules":{"separate_evidence_from_inference":true,"surface_competing_interpretations":true,"do_not_execute_human_actions":true}})
             },
         };
-        let invocation = model_adapter::invoke_recorded(
+        let budget = operation_budget::require_available(pool, scope).await?;
+        let invocation = model_adapter::invoke_recorded_with_policy(
             pool,
             InvocationScope {
                 operation: scope,
@@ -183,6 +183,10 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             actor,
             model,
             &request,
+            InvocationPolicy {
+                max_total_tokens: Some(budget.remaining_total_tokens),
+                ..InvocationPolicy::default()
+            },
         )
         .await;
         match invocation {
