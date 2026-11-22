@@ -12,3 +12,8 @@ it('rejects internal control characters without rejecting accented text', () => 
   expect(situationTextError('a\nb')).toMatch(/line breaks/);
   expect(situationTextError('a\u0085b')).toMatch(/control characters/);
 });
+
+it('counts four-byte Unicode scalars at the identity label limit', () => {
+  expect(situationTextError('🙂'.repeat(128),512)).toBeNull();
+  expect(situationTextError('🙂'.repeat(129),512)).toMatch(/512 UTF-8 bytes/);
+});
