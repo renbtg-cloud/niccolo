@@ -301,7 +301,8 @@ function ConnectedSituation({client}){
           setSourceCursor(sources.data.next_after);
         }}>Next sources</button>
       </div>
-      {attach.error && <p className="error">{attach.error.message}</p>}
+      {attach.isSuccess && <p role="status">Record attached to this Situation.</p>}
+      {attach.error && <p className="error" role="alert">Could not attach the record: {attach.error.message}</p>}
       {restoreOriginal.isSuccess && <p role="status">Original source restored.</p>}
       {restoreOriginal.error && <p className="error" role="alert">{restoreOriginal.error.message}</p>}
       {downloadOriginal.error && <p className="error" role="alert">{downloadOriginal.error.message}</p>}
