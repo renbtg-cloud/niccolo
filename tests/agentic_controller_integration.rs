@@ -544,6 +544,15 @@ async fn late_provider_response_does_not_publish_after_invocation_recovery() {
 
 #[tokio::test]
 async fn recovered_invocation_does_not_retry_after_provider_failure() {
+    assert_retry_stops(true).await;
+}
+
+#[tokio::test]
+async fn cancelled_operation_does_not_retry_after_provider_failure() {
+    assert_retry_stops(false).await;
+}
+
+async fn assert_retry_stops(recover: bool) {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let scope = op(&app, s, 10).await;
@@ -572,23 +581,41 @@ async fn recovered_invocation_does_not_retry_after_provider_failure() {
             ),
             async {
                 model.started.notified().await;
-                sqlx::query(
-                    "UPDATE niccolo.agentic_step_events
-                     SET created_at=clock_timestamp()-interval '10 minutes'
-                     WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
-                       AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'",
-                )
-                .bind(s.workspace).bind(s.situation).bind(scope.operation)
-                .bind(plan_revision).bind(step_id).execute(&admin).await.unwrap();
-                agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
-                    .await.unwrap();
+                if recover {
+                    sqlx::query(
+                        "UPDATE niccolo.agentic_step_events
+                         SET created_at=clock_timestamp()-interval '10 minutes'
+                         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                           AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'",
+                    )
+                    .bind(s.workspace).bind(s.situation).bind(scope.operation)
+                    .bind(plan_revision).bind(step_id).execute(&admin).await.unwrap();
+                    agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
+                        .await.unwrap();
+                } else {
+                    let op = bff_operations::get(&app, scope).await.unwrap();
+                    bff_operations::cancel(&app, scope, op.state_version, s.principal, "stop")
+                        .await
+                        .unwrap();
+                }
                 model.release.notify_one();
             },
         )
     })
     .await
     .unwrap();
-    assert!(matches!(result, Err(ModelError::InvocationNoLongerActive)));
+    if recover {
+        assert!(matches!(result, Err(ModelError::InvocationNoLongerActive)));
+    } else {
+        assert!(matches!(result, Err(ModelError::Provider(_))));
+        let status: String = sqlx::query_scalar(
+            "SELECT status FROM niccolo.model_invocations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+        )
+        .bind(s.workspace).bind(s.situation).bind(scope.operation)
+        .fetch_one(&admin).await.unwrap();
+        assert_eq!(status, "FAILED");
+    }
     assert_eq!(model.calls.load(Ordering::SeqCst), 1);
 }
 

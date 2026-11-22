@@ -384,13 +384,12 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
         }
         if attempt < policy.max_attempts {
             let mut tx = scoped(pool, scope.operation.workspace, true).await?;
-            let active: bool = sqlx::query_scalar(
-                "SELECT EXISTS (
-                    SELECT 1 FROM niccolo.model_invocations
-                    WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
-                      AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6
-                      AND status='STARTED'
-                )",
+            let state: Option<(String, bool)> = sqlx::query_as(
+                "SELECT i.status, o.state IN ('SUCCEEDED','FAILED','CANCELLED')
+                 FROM niccolo.model_invocations i
+                 JOIN niccolo.bff_operations o USING (workspace_id,situation_id,operation_id)
+                 WHERE i.workspace_id=$1 AND i.situation_id=$2 AND i.operation_id=$3
+                   AND i.plan_revision=$4 AND i.step_id=$5 AND i.invocation_id=$6",
             )
             .bind(scope.operation.workspace)
             .bind(scope.operation.situation)
@@ -398,11 +397,13 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             .bind(scope.plan_revision)
             .bind(scope.step_id)
             .bind(invocation)
-            .fetch_one(&mut *tx)
+            .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
-            if !active {
-                return Err(ModelError::InvocationNoLongerActive);
+            match state.as_ref().map(|(status, terminal)| (status.as_str(), *terminal)) {
+                Some(("STARTED", true)) => break,
+                Some(("STARTED", false)) => {}
+                _ => return Err(ModelError::InvocationNoLongerActive),
             }
         }
     }
