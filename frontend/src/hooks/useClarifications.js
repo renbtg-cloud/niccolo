@@ -3,13 +3,13 @@ import { qk } from '../api/keys.js';
 import { useClient } from './useClient.js';
 import { useUiStore } from '../stores/ui.js';
 
-export function useClarifications(){
+export function useClarifications(after = null){
  const client=useClient(); const analysis=useUiStore(s=>s.analysis);
  return useQuery({
-   queryKey:client&&analysis?qk.analysis(client.config,analysis,'clarifications'):['clarifications','none'],
+   queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarifications'),after]:['clarifications','none'],
    enabled:!!client&&!!analysis,
    queryFn:async()=>{
-     const root=(await client.analysisClarifications(analysis, null, 25)).value;
+     const root=(await client.analysisClarifications(analysis, after, 25)).value;
      const questions=root.clarifications??[];
      const results=await Promise.allSettled(questions.map(question =>
        client.clarificationAnswers(analysis,question.question_id)
