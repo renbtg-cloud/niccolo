@@ -212,27 +212,29 @@ pub async fn ingest_source_with_operational_id(
     // Metadata/fragments and the byte-exact original commit atomically.
     // Older documents may lack original bytes; a validated replay backfills
     // only that exact supplied artifact, never a reconstructed approximation.
-    let payload_inserted = sqlx::query(
-        "INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes) \
-         VALUES($1,$2,$3) ON CONFLICT(workspace_id,document_id) DO NOTHING",
-    )
-    .bind(workspace)
-    .bind(document_id)
-    .bind(raw)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected()
-        == 1;
-    if !payload_inserted {
-        let original: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT original_bytes FROM niccolo.source_payloads \
-             WHERE workspace_id=$1 AND document_id=$2",
+    let original_exists = if inserted {
+        false
+    } else {
+        match stored_original_matches(&mut tx, workspace, document_id, raw).await? {
+            Some(true) => true,
+            Some(false) => return Err(ImportError::DocumentConflict),
+            None => false,
+        }
+    };
+    if !original_exists {
+        let payload_inserted = sqlx::query(
+            "INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes)
+             VALUES($1,$2,$3) ON CONFLICT(workspace_id,document_id) DO NOTHING",
         )
         .bind(workspace)
         .bind(document_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if original.as_deref() != Some(raw) {
+        .bind(raw)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected() == 1;
+        if !payload_inserted
+            && stored_original_matches(&mut tx, workspace, document_id, raw).await? != Some(true)
+        {
             return Err(ImportError::DocumentConflict);
         }
     }
@@ -268,6 +270,23 @@ pub async fn ingest_source_with_operational_id(
         operational_duplicate: false,
         delivery_count: 1,
     })
+}
+
+async fn stored_original_matches(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace: Uuid,
+    document_id: Uuid,
+    raw: &[u8],
+) -> Result<Option<bool>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT original_bytes = $3 FROM niccolo.source_payloads
+         WHERE workspace_id=$1 AND document_id=$2",
+    )
+    .bind(workspace)
+    .bind(document_id)
+    .bind(raw)
+    .fetch_optional(&mut **tx)
+    .await
 }
 
 async fn write_fragments(
