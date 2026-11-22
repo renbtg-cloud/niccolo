@@ -126,7 +126,7 @@ function ReviewContent(){
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
        <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
        {exportPackage.error&&<p className="error" role="alert">Export unavailable: {exportPackage.error.message}</p>}
-       {exportPackage.isSuccess&&<p role="status">Archive prepared with {exportPackage.data} files. Keep it private unless you choose to share it.</p>}
+       {exportPackage.isSuccess&&exportPackage.data>0&&<p role="status">Archive prepared with {exportPackage.data} files. Keep it private unless you choose to share it.</p>}
      </article>
      {reasoningInput.isError&&<article className="review-panel">
        <h3>What reached the reasoning model</h3>
