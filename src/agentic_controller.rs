@@ -190,6 +190,9 @@ pub async fn create_plan(
     validate(steps)?;
     let mut tx = scoped(pool, scope.workspace, false).await?;
     let (state, budget, _) = read_operation_state(&mut tx, scope, true).await?;
+    if !matches!(state.as_str(), "QUEUED" | "RUNNING") {
+        return Err(ControllerError::StateConflict);
+    }
     let rev = match view_plan(&mut tx, scope, &state, budget).await {
         Ok(view) => {
             if view.steps.iter().any(|step| step.state == "STARTED") {
@@ -216,6 +219,9 @@ pub(crate) async fn ensure_plan(
     let (view, created) = match view_plan(&mut tx, scope, &state, budget).await {
         Ok(view) => (view, false),
         Err(ControllerError::Invisible) => {
+            if !matches!(state.as_str(), "QUEUED" | "RUNNING") {
+                return Err(ControllerError::StateConflict);
+            }
             validate(steps)?;
             insert_plan(&mut tx, scope, actor, steps, 1).await?;
             (view_plan(&mut tx, scope, &state, budget).await?, true)

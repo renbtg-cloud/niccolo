@@ -768,6 +768,32 @@ async fn an_active_step_prevents_replacement_until_its_outcome_is_recorded() {
 }
 
 #[tokio::test]
+async fn cancelled_operation_cannot_acquire_a_new_plan() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let prior = bff_operations::get(&app, scope).await.unwrap();
+    bff_operations::cancel(&app, scope, prior.state_version, s.principal, "cancelled")
+        .await
+        .unwrap();
+    let steps = [step(Uuid::new_v4(), 1, "INSPECT_SOURCES", false, vec![])];
+    assert!(matches!(
+        agentic_controller::create_plan(&app, scope, s.principal, &steps).await,
+        Err(agentic_controller::ControllerError::StateConflict)
+    ));
+    assert!(matches!(
+        agentic_runtime::ensure_default_plan(&app, scope, s.principal).await,
+        Err(agentic_runtime::RuntimeError::Controller(
+            agentic_controller::ControllerError::StateConflict
+        ))
+    ));
+    assert!(matches!(
+        agentic_controller::view(&app, scope).await,
+        Err(agentic_controller::ControllerError::Invisible)
+    ));
+}
+
+#[tokio::test]
 async fn stale_plan_selection_cannot_start_a_reused_step_id() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
