@@ -36,3 +36,7 @@ describe('portable analysis ZIP', () => {
     expect(() => presentationZip(pkg({}))).toThrow();
   });
 });
+
+it('Verify portable ZIP handling of reserved device paths', () => {
+  expect(() => presentationZip(pkg({ 'reports/CON.txt': 'a', 'readme.md': 'b' }))).toThrow();
+});
