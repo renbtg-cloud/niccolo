@@ -206,25 +206,58 @@ pub async fn create_plan(
     actor: Uuid,
     steps: &[StepInput],
 ) -> Result<(i64, String), ControllerError> {
+    create_plan_checked(pool, scope, actor, steps, None)
+        .await?
+        .ok_or(ControllerError::StateConflict)
+}
+
+/// Append a follow-up only to the current completed plan.
+pub async fn append_followup_plan(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    steps: &[StepInput],
+    completed_revision: i64,
+) -> Result<bool, ControllerError> {
+    Ok(create_plan_checked(pool, scope, actor, steps, Some(completed_revision))
+        .await?
+        .is_some())
+}
+
+async fn create_plan_checked(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    steps: &[StepInput],
+    completed_revision: Option<i64>,
+) -> Result<Option<(i64, String)>, ControllerError> {
     validate(steps)?;
     let mut tx = scoped(pool, scope.workspace, false).await?;
     let (state, budget, _) = read_operation_state(&mut tx, scope, true).await?;
+    if completed_revision.is_some() && state != "RUNNING" {
+        return Ok(None);
+    }
     if !matches!(state.as_str(), "QUEUED" | "RUNNING") {
         return Err(ControllerError::StateConflict);
     }
     let rev = match view_plan(&mut tx, scope, &state, budget).await {
         Ok(view) => {
+            if completed_revision.is_some_and(|revision| {
+                view.plan_revision != revision || !view.complete
+            }) {
+                return Ok(None);
+            }
             if view.steps.iter().any(|step| step.state == "STARTED") {
                 return Err(ControllerError::StateConflict);
             }
             view.plan_revision.checked_add(1).ok_or(ControllerError::Invalid)?
         }
-        Err(ControllerError::Invisible) => 1,
+        Err(ControllerError::Invisible) if completed_revision.is_none() => 1,
         Err(error) => return Err(error),
     };
     let sha = insert_plan(&mut tx, scope, actor, steps, rev).await?;
     tx.commit().await?;
-    Ok((rev, sha))
+    Ok(Some((rev, sha)))
 }
 
 pub(crate) async fn ensure_plan(

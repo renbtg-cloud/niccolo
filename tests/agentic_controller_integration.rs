@@ -794,6 +794,27 @@ async fn cancelled_operation_cannot_acquire_a_new_plan() {
 }
 
 #[tokio::test]
+async fn concurrent_followups_from_one_completed_plan_share_one_revision() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let id = Uuid::new_v4();
+    let initial = [step(id, 1, "INSPECT_SOURCES", false, vec![])];
+    let (revision, _) = agentic_controller::create_plan(&app, scope, s.principal, &initial)
+        .await.unwrap();
+    agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    agentic_controller::finish_step(&app, scope, id, s.principal, "SUCCEEDED", "done")
+        .await.unwrap();
+    let followup = [step(Uuid::new_v4(), 1, "REQUEST_HUMAN_DECISION", true, vec![])];
+    let (first, second) = tokio::join!(
+        agentic_controller::append_followup_plan(&app, scope, s.principal, &followup, revision),
+        agentic_controller::append_followup_plan(&app, scope, s.principal, &followup, revision),
+    );
+    assert_ne!(first.unwrap(), second.unwrap());
+    assert_eq!(agentic_controller::view(&app, scope).await.unwrap().plan_revision, 2);
+}
+
+#[tokio::test]
 async fn superseded_plan_cannot_complete_the_operation() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

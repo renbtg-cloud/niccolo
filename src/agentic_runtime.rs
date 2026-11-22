@@ -400,7 +400,10 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
                     quality.open_material_challenge_count
                 );
                 let followup = agentic_policy::human_attention_plan(&reason)?;
-                agentic_controller::create_plan(pool, scope, actor, &followup).await?;
+                agentic_controller::append_followup_plan(
+                    pool, scope, actor, &followup, view.plan_revision,
+                )
+                .await?;
                 continue;
             }
             let handoff = reasoning_handoff::bundle(
