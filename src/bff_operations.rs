@@ -548,8 +548,20 @@ pub async fn resume(
     expected_version: i64,
     actor: Uuid,
 ) -> Result<OperationView, BffOperationError> {
-    transition(
-        pool,
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    resume_in(&mut tx, scope, expected_version, actor).await?;
+    tx.commit().await?;
+    get(pool, scope).await
+}
+
+pub(crate) async fn resume_in(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    expected_version: i64,
+    actor: Uuid,
+) -> Result<(), BffOperationError> {
+    apply_transition(
+        tx,
         scope,
         Transition {
             expected_version,
@@ -561,6 +573,7 @@ pub async fn resume(
             event_value: &serde_json::json!({}),
             actor,
         },
+        None,
     )
     .await
 }

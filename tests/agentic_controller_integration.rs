@@ -1027,6 +1027,35 @@ async fn cancelled_operation_does_not_record_a_new_human_pause() {
 }
 
 #[tokio::test]
+async fn failed_resume_keeps_the_operation_and_step_paused() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let id = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(id, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    agentic_controller::finish_step(&app, scope, id, s.principal, "WAITING_FOR_HUMAN", "review")
+        .await
+        .unwrap();
+
+    let err = agentic_controller::resume_step(&app, scope, id, s.principal, &"a".repeat(4097))
+        .await;
+    assert!(matches!(err, Err(agentic_controller::ControllerError::Database(_))));
+    assert_eq!(last_step_event(&admin, scope, id).await.0, "WAITING_FOR_HUMAN");
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "WAITING_FOR_HUMAN");
+
+    let resumed = agentic_controller::resume_step(&app, scope, id, s.principal, "approved")
+        .await
+        .unwrap();
+    assert_eq!(resumed.steps[0].state, "STARTED");
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "RUNNING");
+}
+
+#[tokio::test]
 async fn v219_v222_human_gate_pauses_and_resumes_same_operation() {
     let (a, p) = pools().await;
     let s = seed(&a).await;

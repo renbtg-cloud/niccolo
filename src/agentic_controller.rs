@@ -382,6 +382,21 @@ async fn start_step_checked(
     tx.commit().await?;
     view(pool, scope).await
 }
+async fn operation_state_version(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+) -> Result<i64, ControllerError> {
+    Ok(sqlx::query_scalar(
+        "SELECT state_version FROM niccolo.bff_operations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
 pub async fn finish_step(
     pool: &PgPool,
     scope: OperationScope,
@@ -410,15 +425,7 @@ pub async fn finish_step(
     }
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(outcome).bind(note).bind(actor).execute(&mut *tx).await?;
     if outcome == "WAITING_FOR_HUMAN" {
-        let version = sqlx::query_scalar(
-            "SELECT state_version FROM niccolo.bff_operations
-             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
-        )
-        .bind(scope.workspace)
-        .bind(scope.situation)
-        .bind(scope.operation)
-        .fetch_one(&mut *tx)
-        .await?;
+        let version = operation_state_version(&mut tx, scope).await?;
         bff_operations::wait_for_human_in(&mut tx, scope, version, actor, note).await?;
     }
     tx.commit().await?;
@@ -431,7 +438,9 @@ pub async fn resume_step(
     actor: Uuid,
     note: &str,
 ) -> Result<ControllerView, ControllerError> {
-    let before = view(pool, scope).await?;
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let before = view_plan(&mut tx, scope, &state, budget).await?;
     let s = before
         .steps
         .iter()
@@ -440,13 +449,10 @@ pub async fn resume_step(
     if s.state != "WAITING_FOR_HUMAN" || note.trim().is_empty() {
         return Err(ControllerError::StateConflict);
     }
-    let op = bff_operations::get(pool, scope).await?;
-    let _ = bff_operations::resume(pool, scope, op.state_version, actor).await?;
-    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let version = operation_state_version(&mut tx, scope).await?;
+    bff_operations::resume_in(&mut tx, scope, version, actor).await?;
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(note).bind(actor).execute(&mut *tx).await?;
-    tx.commit().await?;
     // RESUMED means active again, so add a STARTED event as the latest operational state.
-    let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','resumed after human input',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
     tx.commit().await?;
     view(pool, scope).await
