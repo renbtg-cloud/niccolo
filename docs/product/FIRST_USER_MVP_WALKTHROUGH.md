@@ -78,7 +78,7 @@ piece of human context.
 Supported MVP source files include:
 
 - `.eml` email with a plain-text UTF-8 or US-ASCII body;
-- `.txt` WhatsApp/plain-text export.
+- `.txt` WhatsApp export with day/month/year timestamps and a sender label. Bracketed and hyphen-separated formats accept hours and minutes, with optional seconds.
 
 Choose **Import and attach**.
 

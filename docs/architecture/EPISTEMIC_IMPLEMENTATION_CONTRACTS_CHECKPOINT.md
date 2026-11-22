@@ -695,6 +695,8 @@ Checkpoints 1.147–1.149 apply two admission checks. The generic BFF operation 
 
 Checkpoints 1.151–1.159 validate configured and returned model identities before storage, preserve the answering model’s attribution through explicit failover, and omit provider credentials and error bodies from diagnostics. Provider HTTP 408, 429 and 5xx responses are eligible for retry or explicit failover. Other HTTP failures end the invocation without retry or failover. The operation budget reads its deadline and recorded invocation totals in one query. The model adapter checks the operation deadline before reserving an invocation.
 
+Checkpoints 1.162–1.165 preserve source replay across changes to the bounded text parsers. New WhatsApp imports recognize optional seconds in supported timestamp formats. An exact replay keeps the recorded fragment IDs and verifies byte ranges, speaker labels and content against the applicable parser rules. New imports batch the evidence and fragment inserts. Replays compare retained originals in PostgreSQL before reusing them. Before retrying a provider, the runtime also checks the operation deadline.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
