@@ -443,6 +443,100 @@ async fn oversized_provider_diagnostic_does_not_strand_the_worker_operation() {
 }
 
 #[derive(Default)]
+struct GatedResponseModel {
+    started: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+impl ReasoningModel for GatedResponseModel {
+    fn provider(&self) -> &str {
+        "gated-fixture"
+    }
+
+    fn model(&self) -> &str {
+        "delayed-response"
+    }
+
+    fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        self.started.notify_one();
+        Box::pin(async move {
+            self.release.notified().await;
+            Ok(ModelResponse {
+                value: json!({"status":"ok"}),
+                prompt_tokens: Some(10),
+                completion_tokens: Some(5),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn late_provider_response_does_not_publish_after_invocation_recovery() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (revision, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let model = GatedResponseModel::default();
+    let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        tokio::join!(
+            agentic_runtime::run_until_boundary(&app, scope, s.principal, &model),
+            async {
+                model.started.notified().await;
+                sqlx::query(
+                    "UPDATE niccolo.agentic_step_events
+                     SET created_at=clock_timestamp()-interval '10 minutes'
+                     WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                       AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'",
+                )
+                .bind(s.workspace)
+                .bind(s.situation)
+                .bind(scope.operation)
+                .bind(revision)
+                .bind(step_id)
+                .execute(&admin)
+                .await
+                .unwrap();
+                let view =
+                    agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
+                        .await
+                        .unwrap();
+                assert_eq!(view.ready_step_ids, [step_id]);
+                model.release.notify_one();
+            },
+        )
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        result,
+        Err(agentic_runtime::RuntimeError::Model(ModelError::InvocationNoLongerActive))
+    ));
+    let (status, code, response, attribution): (String, String, Option<String>, Option<String>) =
+        sqlx::query_as(
+            "SELECT status,error_code,response_json,effective_model FROM niccolo.model_invocations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+    assert_eq!((status.as_str(), code.as_str()), ("FAILED", "RECOVERY_STALE"));
+    assert_eq!((response, attribution), (None, None));
+    let view = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(view.ready_step_ids, [step_id]);
+}
+
+#[derive(Default)]
 struct PendingModel {
     started: tokio::sync::Notify,
 }

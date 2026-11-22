@@ -321,7 +321,9 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
         }
     }
     .await;
-    if let Err(error) = &result {
+    if let Err(error) = &result
+        && !matches!(error, RuntimeError::Model(model_adapter::ModelError::InvocationNoLongerActive))
+    {
         let reason = match error {
             RuntimeError::Budget(operation_budget::BudgetError::Invalid) => {
                 "operation model budget is invalid"

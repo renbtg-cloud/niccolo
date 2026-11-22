@@ -27,6 +27,8 @@ pub enum ModelError {
     Provider(String),
     #[error("model invocation timed out")]
     Timeout,
+    #[error("model invocation is no longer active")]
+    InvocationNoLongerActive,
     #[error("model invocation token budget exceeded")]
     Budget,
 }
@@ -320,8 +322,11 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     }
                     let response_sha = digest(&response_json);
                     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
-                    sqlx::query("UPDATE niccolo.model_invocations SET response_json=$7,response_sha256=$8,status='SUCCEEDED',prompt_tokens=$9,completion_tokens=$10,attempt_count=$11,latency_ms=$12,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-                  .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&response_json).bind(&response_sha).bind(response.prompt_tokens).bind(response.completion_tokens).bind(attempt as i32).bind(started.elapsed().as_millis() as i64).execute(&mut *tx).await?;
+                    let changed = sqlx::query("UPDATE niccolo.model_invocations SET response_json=$7,response_sha256=$8,status='SUCCEEDED',prompt_tokens=$9,completion_tokens=$10,attempt_count=$11,latency_ms=$12,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
+                  .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&response_json).bind(&response_sha).bind(response.prompt_tokens).bind(response.completion_tokens).bind(attempt as i32).bind(started.elapsed().as_millis() as i64).execute(&mut *tx).await?.rows_affected();
+                    if changed != 1 {
+                        return Err(ModelError::InvocationNoLongerActive);
+                    }
                     let effective_provider = response
                         .effective_provider
                         .clone()
@@ -362,8 +367,11 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let message = last_error.to_string();
     let message = crate::bff_operations::persistable_failure_detail(&message);
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
-    sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,prompt_tokens=$12,completion_tokens=$13,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(message).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).bind(reported_usage.0).bind(reported_usage.1).execute(&mut *tx).await?;
+    let changed = sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,prompt_tokens=$12,completion_tokens=$13,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
+      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(message).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).bind(reported_usage.0).bind(reported_usage.1).execute(&mut *tx).await?.rows_affected();
+    if changed != 1 {
+        return Err(ModelError::InvocationNoLongerActive);
+    }
     tx.commit().await?;
     Err(last_error)
 }
