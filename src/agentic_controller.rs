@@ -564,29 +564,49 @@ pub async fn resolve_human_boundary(
     if replacement.is_some() && before.steps.iter().any(|step| step.state == "STARTED") {
         return Err(ControllerError::StateConflict);
     }
-    sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_id).bind(decision).bind(response_text.trim()).bind(actor).execute(&mut *tx).await?;
+    let plan_revision = if replacement.is_some() {
+        before.plan_revision.checked_add(1).ok_or(ControllerError::Invalid)?
+    } else {
+        before.plan_revision
+    };
+    let operation_state = if decision == "STOP" { "CANCELLED" } else { "RUNNING" };
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_human_responses
+             (workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,
+              decision,response_text,actor_principal_id,result_operation_state,result_plan_revision)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(before.plan_revision)
+    .bind(step)
+    .bind(response_id)
+    .bind(decision)
+    .bind(response_text.trim())
+    .bind(actor)
+    .bind(operation_state)
+    .bind(plan_revision)
+    .execute(&mut *tx)
+    .await?;
     let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).fetch_optional(&mut *tx).await?;
     if row != Some((decision.into(), response_text.trim().into(), actor)) {
         return Err(ControllerError::StateConflict);
     }
-    let mut plan_revision = before.plan_revision;
-    let operation_state = if decision == "STOP" {
+    if decision == "STOP" {
         bff_operations::cancel_in(
             &mut tx, scope, version, actor, "human stopped agentic continuation",
         )
         .await?;
-        "CANCELLED"
     } else {
         if state == "WAITING_FOR_HUMAN" {
             bff_operations::resume_in(&mut tx, scope, version, actor).await?;
         }
         sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7),($1,$2,$3,$4,$5,'SUCCEEDED',$8,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_text.trim()).bind(actor).bind(if decision=="REPLAN"{"human requested replanning"}else{"human explicitly continued"}).execute(&mut *tx).await?;
         if let Some(steps) = replacement {
-            plan_revision = plan_revision.checked_add(1).ok_or(ControllerError::Invalid)?;
             insert_plan(&mut tx, scope, actor, &steps, plan_revision).await?;
         }
-        "RUNNING"
-    };
+    }
     tx.commit().await?;
     Ok(HumanBoundaryResolution {
         decision: decision.into(),

@@ -1435,6 +1435,14 @@ async fn deferred_replan_leaves_the_human_response_and_pause_retryable() {
     assert_eq!(result.operation_state, "RUNNING");
     assert!(result.human_response_persisted);
     assert!(!result.system_inferred_consent);
+    let recorded: (String, i64) = sqlx::query_as(
+        "SELECT result_operation_state,result_plan_revision
+         FROM niccolo.agentic_human_responses
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND response_id=$4",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation).bind(response)
+    .fetch_one(&admin).await.unwrap();
+    assert_eq!(recorded, ("RUNNING".into(), 2));
 }
 
 #[tokio::test]
