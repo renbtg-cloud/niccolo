@@ -32,7 +32,7 @@ describe('primary analysis path', () => {
     expect(operations).toContain('const pendingLaunch=useRef(null)');
     expect(operations).toContain('pendingLaunch.current?.signature!==signature');
     expect(operations).toContain('const {operationId,analysisId}=pendingLaunch.current');
-    expect(operations).toContain('onSuccess:()=>{pendingLaunch.current=null;}');
+    expect(operations).toContain('pendingLaunch.current=null;');
     expect(operations).toContain('const pendingHumanResponse=useRef(null)');
     expect(operations).toContain('pendingHumanResponse.current?.signature!==signature');
     expect(operations).toContain('response_id:pendingHumanResponse.current.responseId');

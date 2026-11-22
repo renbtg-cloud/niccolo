@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useUiStore } from '../stores/ui.js';
 import { useOperationObserver } from '../hooks/useOperationObserver.js';
@@ -56,7 +57,10 @@ export function OperationsPage(){
    const task={analysis_id:analysisId,intent:v.intent,goal:v.goal?.trim()||null,reanalysis_of:null,idempotency_key:`ui-intent-${operationId}`,step_budget:v.stepBudget,context:{surface:'react-v1',human_owns_project:true}};
    const r=v.mode==='sync'?await client.runIntentSync(operationId,task):await client.runIntentAsync(operationId,task);
    setAnalysis(r.value.analysis_id); setActive(operationId); return r.value;
- },onSuccess:()=>{pendingLaunch.current=null;}});
+ },onSuccess:()=>{
+   pendingLaunch.current=null;
+   void qc.invalidateQueries({queryKey:qk.analysisHistory(client.config),exact:true});
+ }});
  const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
  const respond=useMutation({mutationFn:async(v)=>{
    if(!active||!waitingStep)throw new Error('No waiting human step');
