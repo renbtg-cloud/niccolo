@@ -40,3 +40,7 @@ describe('portable analysis ZIP', () => {
 it('Verify portable ZIP handling of reserved device paths', () => {
   expect(() => presentationZip(pkg({ 'reports/CON.txt': 'a', 'readme.md': 'b' }))).toThrow();
 });
+
+it('Verify portable ZIP handling of trailing dots and spaces', () => {
+  expect(() => presentationZip(pkg({ 'reports /notes.txt': 'a' }))).toThrow();
+});
