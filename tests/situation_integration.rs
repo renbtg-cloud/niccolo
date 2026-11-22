@@ -739,3 +739,29 @@ async fn pdf_preview_is_authorized_and_does_not_create_a_source() {
         .unwrap();
     assert_eq!(count, 1); // The fixture source is the only stored original.
 }
+
+#[tokio::test]
+async fn pdf_original_replays_and_downloads_exactly_without_evidence_fragments() {
+    let f = setup().await;
+    let document = Uuid::new_v4();
+    let pdf = simple_text_pdf();
+    let path = format!("/v1/workspaces/{}/sources/{document}", f.workspace);
+    for expected in [StatusCode::CREATED, StatusCode::OK] {
+        let upload = Request::post(&path)
+            .header(header::AUTHORIZATION, format!("Bearer {}", f.writer))
+            .header(header::CONTENT_TYPE, "application/pdf")
+            .header("x-source-locator", "original.pdf")
+            .body(Body::from(pdf.clone()))
+            .unwrap();
+        let (status, body) = call(f.router.clone(), upload).await;
+        assert_eq!(status, expected, "{body}");
+        assert_eq!(body["fragment_ids"], json!([]));
+    }
+    let response = f.router.clone().oneshot(request(
+        "GET", format!("{path}/original"), Some(&f.reader), None,
+    )).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/pdf");
+    assert!(response.headers()[header::CONTENT_DISPOSITION].to_str().unwrap().ends_with(".pdf\""));
+    assert_eq!(response.into_body().collect().await.unwrap().to_bytes().as_ref(), &pdf);
+}
