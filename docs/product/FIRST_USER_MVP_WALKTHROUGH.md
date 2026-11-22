@@ -130,6 +130,8 @@ Review should make it possible to inspect, as available for that analysis:
 
 The answer is provisional reasoning over recorded input, not a declaration of truth.
 
+Under **Worth looking at next**, check the reason beside each available lead. Use the link to the Situation to add a record or human context. To revisit an earlier answer, choose it from **Analysis history**. A newly launched analysis also appears in that history.
+
 ## What to record during a human usability test
 
 Do not teach the tester the architecture first. Record where they hesitate or ask for help:
