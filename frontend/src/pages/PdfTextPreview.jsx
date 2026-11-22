@@ -12,7 +12,7 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
 
   useEffect(() => () => active.current?.abort(), []);
 
-  async function load(file, stored = null) {
+  async function load(file, stored = null, firstPage = 1) {
     active.current?.abort();
     setPreview(null);
     setSelection(null);
@@ -29,11 +29,11 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
     setBusy(true);
     try {
       const { value } = stored
-        ? await client.previewStoredPdf(stored.document_id, request.signal)
+        ? await client.previewStoredPdf(stored.document_id, request.signal, firstPage)
         : await client.previewPdf(file, request.signal);
       request.signal.throwIfAborted();
       if (!Array.isArray(value?.pages)) throw new Error('Invalid PDF preview response.');
-      setPreview({ ...value, title: stored?.locator ?? file.name, documentId: stored?.document_id });
+      setPreview({ ...value, title: stored?.locator ?? file.name, documentId: stored?.document_id, stored, firstPage });
     } catch (error) {
       if (!request.signal.aborted) setError(error.message);
     } finally {
@@ -73,7 +73,11 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
     <p>Previewing a file does not add it to the source catalog.</p>
     {busy && <p role="status">Extracting PDF text…</p>}
     {error && <p role="alert">{error} You can still paste a passage manually.</p>}
-    {preview?.truncated && <p>Showing the first 20 pages.</p>}
+    {preview?.truncated && !preview.stored && <p>Showing the first 20 pages. To browse later pages here, attach the PDF to the Situation.</p>}
+    {preview?.stored && <div>
+      {preview.firstPage > 1 && <button type="button" disabled={disabled} onClick={()=>void load(null, preview.stored, Math.max(1, preview.firstPage - 20))}>Previous 20 pages</button>}
+      {preview.next_page && <button type="button" disabled={disabled} onClick={()=>void load(null, preview.stored, preview.next_page)}>Next 20 pages</button>}
+    </div>}
     {preview && !preview.pages.some(item => item.text) &&
       <p>No selectable text was found in the preview. You can describe a page in your own words.</p>}
     {page && <div>
