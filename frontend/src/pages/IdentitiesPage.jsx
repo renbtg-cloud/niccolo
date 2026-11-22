@@ -17,7 +17,8 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
 
   const current = identities.find((item) => item.person_id === binding?.person_id);
   const reasonError=situationTextError(reason,2048);
-  const canAssign = !reasonError && reason.trim() && (choice === '__new__' ? newLabel.trim() : choice);
+  const newLabelError=choice==='__new__' ? situationTextError(newLabel,512) : null;
+  const canAssign = !reasonError && !newLabelError && reason.trim() && (choice === '__new__' ? newLabel.trim() : choice);
 
   return <article className="speaker-row">
     <div className="speaker-heading">
@@ -41,6 +42,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
     {choice === '__new__' && <label>New person label
       <input value={newLabel} disabled={pending} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
     </label>}
+    {newLabelError && <p role="alert">{newLabelError}</p>}
     <label>Why are you making this mapping?
       <textarea value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
     </label>
