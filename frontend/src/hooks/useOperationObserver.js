@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '../api/keys.js';
 import { useClient } from './useClient.js';
-import { mergeOperationObservation, operationPhase, observationPollDelay } from '../state/operationObservation.js';
+import { OBSERVATION_PAGE_SIZE, mergeOperationObservation, operationPhase, observationPollDelay } from '../state/operationObservation.js';
 
 export function useOperationObserver(operationId) {
   const client = useClient();
@@ -13,7 +13,7 @@ export function useOperationObserver(operationId) {
       const previous = queryClient.getQueryData(queryKey) ?? null;
       const afterVersion = previous?.operation?.state_version ?? 0;
       const afterEvent = previous?.cursor ?? 0;
-      const incoming = (await client.observeOperation(operationId, afterVersion, afterEvent, 5000, 100, signal)).value;
+      const incoming = (await client.observeOperation(operationId, afterVersion, afterEvent, 5000, OBSERVATION_PAGE_SIZE, signal)).value;
       signal.throwIfAborted();
       const merged = mergeOperationObservation(previous, incoming);
       if (merged?.operation) queryClient.setQueryData(qk.operation(client.config, operationId), merged.operation);
@@ -22,7 +22,7 @@ export function useOperationObserver(operationId) {
     },
     refetchInterval: (q) => {
       const state = q.state.data?.operation?.state;
-      return observationPollDelay(state);
+      return observationPollDelay(state, q.state.data?.fullEventPage);
     },
     staleTime: 0,
     retry: 2,

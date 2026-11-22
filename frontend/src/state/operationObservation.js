@@ -1,8 +1,10 @@
+export const OBSERVATION_PAGE_SIZE = 100;
 export const TERMINAL_OPERATION_STATES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED']);
 
 // The observation endpoint already long-polls for changes. This delay applies
 // after each request and avoids busy loops when a response returns immediately.
-export function observationPollDelay(state) {
+export function observationPollDelay(state, fullEventPage = false) {
+  if (fullEventPage) return 250;
   if (!state || TERMINAL_OPERATION_STATES.has(state)) return false;
   return state === 'WAITING_FOR_HUMAN' ? 1000 : 250;
 }
@@ -32,6 +34,7 @@ export function mergeOperationObservation(previous, incoming) {
     operationChanged: Boolean(incoming.operation_changed),
     eventsChanged: Boolean(incoming.events_changed),
     timedOut: Boolean(incoming.timed_out),
+    fullEventPage: (incoming.events?.length ?? 0) >= OBSERVATION_PAGE_SIZE && cursor > (prior.cursor ?? 0),
   };
 }
 
