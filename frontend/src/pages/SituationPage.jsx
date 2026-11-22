@@ -1,6 +1,6 @@
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
@@ -24,6 +24,7 @@ function ContributionItem({ item, pending, onCorrect, onRetract }) {
 }
 
 function FocusForm({ initial = '', label, pending, onSubmit }) {
+  const errorId=useId();
   const [value, setValue] = useState(initial);
   const validationError=situationTextError(value);
   return <form aria-busy={pending} onSubmit={(event) => {
@@ -31,8 +32,8 @@ function FocusForm({ initial = '', label, pending, onSubmit }) {
     const focus = value.trim();
     if (focus && !pending && !validationError) onSubmit(focus);
   }}>
-    <label>{label}<textarea value={value} disabled={pending} aria-invalid={Boolean(validationError)} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
-    {validationError && <p role="alert">{validationError}</p>}
+    <label>{label}<textarea value={value} disabled={pending} aria-invalid={Boolean(validationError)} aria-describedby={validationError?errorId:undefined} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
+    {validationError && <p id={errorId} role="alert">{validationError}</p>}
     <button disabled={pending||!value.trim()||Boolean(validationError)}>{pending ? 'Saving…' : 'Save'}</button>
   </form>;
 }
