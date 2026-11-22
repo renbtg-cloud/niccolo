@@ -998,6 +998,35 @@ async fn v215_v218_controller_only_starts_dependency_ready_steps() {
     assert_eq!(v.ready_step_ids, vec![y]);
 }
 #[tokio::test]
+async fn cancelled_operation_does_not_record_a_new_human_pause() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let id = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(id, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    let current = bff_operations::get(&app, scope).await.unwrap();
+    bff_operations::cancel(&app, scope, current.state_version, s.principal, "cancelled")
+        .await
+        .unwrap();
+    assert!(matches!(
+        agentic_controller::finish_step(
+            &app, scope, id, s.principal, "WAITING_FOR_HUMAN", "review required",
+        )
+        .await,
+        Err(agentic_controller::ControllerError::Operation(
+            bff_operations::BffOperationError::StateConflict
+        ))
+    ));
+    assert_eq!(last_step_event(&admin, scope, id).await.0, "STARTED");
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "CANCELLED");
+}
+
+#[tokio::test]
 async fn v219_v222_human_gate_pauses_and_resumes_same_operation() {
     let (a, p) = pools().await;
     let s = seed(&a).await;

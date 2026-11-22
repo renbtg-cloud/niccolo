@@ -409,11 +409,19 @@ pub async fn finish_step(
         return Err(ControllerError::StateConflict);
     }
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(outcome).bind(note).bind(actor).execute(&mut *tx).await?;
-    tx.commit().await?;
     if outcome == "WAITING_FOR_HUMAN" {
-        let op = bff_operations::get(pool, scope).await?;
-        let _ = bff_operations::wait_for_human(pool, scope, op.state_version, actor, note).await?;
+        let version = sqlx::query_scalar(
+            "SELECT state_version FROM niccolo.bff_operations
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.operation)
+        .fetch_one(&mut *tx)
+        .await?;
+        bff_operations::wait_for_human_in(&mut tx, scope, version, actor, note).await?;
     }
+    tx.commit().await?;
     view(pool, scope).await
 }
 pub async fn resume_step(

@@ -360,18 +360,28 @@ async fn transition_with_owner(
     spec: Transition<'_>,
     owner: Option<&str>,
 ) -> Result<OperationView, BffOperationError> {
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    apply_transition(&mut tx, scope, spec, owner).await?;
+    tx.commit().await?;
+    get(pool, scope).await
+}
+
+async fn apply_transition(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    spec: Transition<'_>,
+    owner: Option<&str>,
+) -> Result<(), BffOperationError> {
     let result_json = spec.result.map(canonical).transpose()?;
     let event_json = canonical(spec.event_value)?;
-    let mut tx = scoped(pool, scope.workspace, false).await?;
     let changed = sqlx::query("UPDATE niccolo.bff_operations SET state=$4,state_version=state_version+1,result_json=$5,error_code=$6,error_message=$7,updated_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND state_version=$8 AND state=ANY($9) AND ($10::text IS NULL OR (execution_owner=$10 AND execution_lease_until >= clock_timestamp()))")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(spec.to).bind(result_json).bind(spec.error.map(|x| x.0)).bind(spec.error.map(|x| x.1)).bind(spec.expected_version).bind(spec.from).bind(owner).execute(&mut *tx).await?.rows_affected();
+        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(spec.to).bind(result_json).bind(spec.error.map(|x| x.0)).bind(spec.error.map(|x| x.1)).bind(spec.expected_version).bind(spec.from).bind(owner).execute(&mut **tx).await?.rows_affected();
     if changed != 1 {
         return Err(BffOperationError::StateConflict);
     }
     sqlx::query("INSERT INTO niccolo.bff_operation_events(workspace_id,situation_id,operation_id,event_kind,event_json,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(spec.event_kind).bind(event_json).bind(spec.actor).execute(&mut *tx).await?;
-    tx.commit().await?;
-    get(pool, scope).await
+        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(spec.event_kind).bind(event_json).bind(spec.actor).execute(&mut **tx).await?;
+    Ok(())
 }
 
 pub async fn start(
@@ -501,8 +511,21 @@ pub async fn wait_for_human(
     actor: Uuid,
     reason: &str,
 ) -> Result<OperationView, BffOperationError> {
-    transition(
-        pool,
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    wait_for_human_in(&mut tx, scope, expected_version, actor, reason).await?;
+    tx.commit().await?;
+    get(pool, scope).await
+}
+
+pub(crate) async fn wait_for_human_in(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    expected_version: i64,
+    actor: Uuid,
+    reason: &str,
+) -> Result<(), BffOperationError> {
+    apply_transition(
+        tx,
         scope,
         Transition {
             expected_version,
@@ -514,6 +537,7 @@ pub async fn wait_for_human(
             event_value: &serde_json::json!({"reason":reason}),
             actor,
         },
+        None,
     )
     .await
 }
