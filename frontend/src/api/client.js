@@ -71,7 +71,7 @@ export class NiccoloClient {
   revisions() { return this.request('GET', `${situationPath(this.config)}/revisions?after=0&limit=100`); }
   analysisHistory(before = null, limit = 100, signal) { const q = before ? `?before=${before}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${situationPath(this.config)}/analysis-history${q}`, { signal }); }
   analysisReview(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/review`, { signal }); }
-  analysisClarifications(id, after = null, limit = 25) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications${q}`); }
+  analysisClarifications(id, after = null, limit = 25, signal) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications${q}`, { signal }); }
   clarificationAnswers(id, questionId, after = null, limit = 25) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers${q}`); }
   answerClarification(id, questionId, answerId, text) { return this.request('POST', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers/${answerId}`, { body: { text } }); }
   reanalysisRevision(id) { return this.request('GET', `${analysisPath(this.config,id)}/reanalysis-revision`); }

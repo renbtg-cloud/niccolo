@@ -9,7 +9,7 @@ export function useClarifications(after = null){
    queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarifications'),after]:['clarifications','none'],
    enabled:!!client&&!!analysis,
    retry:false,
-   queryFn:async()=> (await client.analysisClarifications(analysis, after, 25)).value,
+   queryFn:async ({ signal })=> (await client.analysisClarifications(analysis, after, 25, signal)).value,
  });
 }
 
