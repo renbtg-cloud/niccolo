@@ -452,6 +452,8 @@ pub async fn finish_step(
         outcome,
         "SUCCEEDED" | "FAILED" | "WAITING_FOR_HUMAN" | "SKIPPED" | "CANCELLED"
     ) || note.trim().is_empty()
+        || note.contains('\0')
+        || note.chars().count() > 4096
     {
         return Err(ControllerError::Invalid);
     }

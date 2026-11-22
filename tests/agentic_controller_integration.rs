@@ -970,6 +970,14 @@ async fn concurrent_step_finishes_record_one_outcome() {
     agentic_controller::start_step(&app, scope, step_id, s.principal)
         .await
         .unwrap();
+    for invalid in ["invalid\0note".to_owned(), "á".repeat(4097)] {
+        assert!(matches!(
+            agentic_controller::finish_step(
+                &app, scope, step_id, s.principal, "SUCCEEDED", &invalid,
+            ).await,
+            Err(agentic_controller::ControllerError::Invalid)
+        ));
+    }
     let (success, failure) = tokio::join!(
         agentic_controller::finish_step(&app, scope, step_id, s.principal, "SUCCEEDED", "completed"),
         agentic_controller::finish_step(&app, scope, step_id, s.principal, "FAILED", "failed"),
