@@ -85,7 +85,7 @@ export class NiccoloClient {
   presentationPackage(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package`); }
   dashboard(id, operationId, signal) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`, { signal }); }
   epistemic(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/bff/epistemic`, { signal }); }
-  epistemicPolicy() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/epistemic/policy?situation_id=${this.config.situation}`); }
+  epistemicPolicy(signal) { return this.request('GET', `/v1/workspaces/${this.config.workspace}/epistemic/policy?situation_id=${this.config.situation}`, { signal }); }
   compareEpistemic(body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/compare`, { body }); }
   recordEpistemicPolicy(policyId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/policies/${policyId}`, { body }); }
   expertWorkbench() { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench`); }

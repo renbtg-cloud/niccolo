@@ -45,7 +45,7 @@ export function EpistemicPlaygroundPage() {
   const policyQuery = useQuery({
     queryKey: ['epistemic-playground-policy', client?.config.workspace, client?.config.situation],
     enabled: !!client,
-    queryFn: async () => (await client.epistemicPolicy()).value,
+    queryFn: async ({ signal }) => (await client.epistemicPolicy(signal)).value,
   });
   const compare = useMutation({
     mutationFn: async (payload) => (await client.compareEpistemic(payload)).value,
