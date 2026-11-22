@@ -667,6 +667,47 @@ async fn concurrent_step_starts_share_one_plan_budget_and_do_not_start_twice() {
 }
 
 #[tokio::test]
+async fn concurrent_step_finishes_record_one_outcome() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, step_id, s.principal)
+        .await
+        .unwrap();
+    let (success, failure) = tokio::join!(
+        agentic_controller::finish_step(&app, scope, step_id, s.principal, "SUCCEEDED", "completed"),
+        agentic_controller::finish_step(&app, scope, step_id, s.principal, "FAILED", "failed"),
+    );
+    let outcome = match (success, failure) {
+        (Ok(_), Err(agentic_controller::ControllerError::StateConflict)) => "SUCCEEDED",
+        (Err(agentic_controller::ControllerError::StateConflict), Ok(_)) => "FAILED",
+        other => panic!("expected one durable outcome, got {other:?}"),
+    };
+    let events: Vec<String> = sqlx::query_scalar(
+        "SELECT event_kind FROM niccolo.agentic_step_events
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4
+         ORDER BY event_seq",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(step_id)
+    .fetch_all(&admin)
+    .await
+    .unwrap();
+    assert_eq!(events, ["STARTED", outcome]);
+}
+
+#[tokio::test]
 async fn v211_v214_plan_is_versioned_hashed_and_rejects_cycles() {
     let (a, p) = pools().await;
     let s = seed(&a).await;

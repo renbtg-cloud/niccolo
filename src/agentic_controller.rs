@@ -319,7 +319,9 @@ pub async fn finish_step(
     {
         return Err(ControllerError::Invalid);
     }
-    let before = view(pool, scope).await?;
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let (operation_state, step_budget) = lock_operation(&mut tx, scope).await?;
+    let before = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     let s = before
         .steps
         .iter()
@@ -328,7 +330,6 @@ pub async fn finish_step(
     if s.state != "STARTED" {
         return Err(ControllerError::StateConflict);
     }
-    let mut tx = scoped(pool, scope.workspace, false).await?;
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(outcome).bind(note).bind(actor).execute(&mut *tx).await?;
     tx.commit().await?;
     if outcome == "WAITING_FOR_HUMAN" {
