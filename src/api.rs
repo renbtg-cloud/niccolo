@@ -4906,7 +4906,14 @@ async fn submit_bff(
         },
     )
     .await
-    .map_err(bff_error)
+    .map_err(|error| match &error {
+        BffOperationError::Database(sqlx::Error::Database(database))
+            if matches!(database.code().as_deref(), Some("22007" | "22008" | "22009")) =>
+        {
+            ApiError(StatusCode::BAD_REQUEST, "invalid operation deadline")
+        }
+        _ => bff_error(error),
+    })
 }
 async fn bff_operation_sync(
     State(state): State<AppState>,
