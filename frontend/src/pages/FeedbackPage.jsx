@@ -55,7 +55,8 @@ function QuestionCard({ question }) {
     {submit.isSuccess&&<p role="status">Your position was recorded.</p>}
     <div className="feedback-history">
       <h4>Current recorded positions</h4>
-      {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : <p>No human position recorded on this page.</p>}
+      {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : positions.isSuccess && <p>No human position recorded on this page.</p>}
+      {positions.isPending&&<p role="status">Loading recorded positions…</p>}
       <div className="row">
         <button disabled={positions.isFetching||positionsBackStack.length===0} onClick={()=>{
           const stack=positionsBackStack.slice();
