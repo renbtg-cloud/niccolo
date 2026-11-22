@@ -194,12 +194,12 @@ export function IdentitiesPage() {
       }}>Next source records</button>
     </div>
     <div className="row">
-      <button disabled={identities.isFetching || identityBackStack.length === 0} onClick={() => {
+      <button disabled={assign.isPending || clear.isPending || identities.isFetching || identityBackStack.length === 0} onClick={() => {
         const stack = identityBackStack.slice();
         setIdentityCursor(stack.pop() ?? null);
         setIdentityBackStack(stack);
       }}>Previous people</button>
-      <button disabled={identities.isFetching || !identities.data?.next_after} onClick={() => {
+      <button disabled={assign.isPending || clear.isPending || identities.isFetching || !identities.data?.next_after} onClick={() => {
         setIdentityBackStack(stack => [...stack, identityCursor]);
         setIdentityCursor(identities.data.next_after);
       }}>Next people</button>
