@@ -31,7 +31,7 @@ function FocusForm({ initial = '', label, pending, onSubmit }) {
     const focus = value.trim();
     if (focus && !pending && !validationError) onSubmit(focus);
   }}>
-    <label>{label}<textarea value={value} disabled={pending} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
+    <label>{label}<textarea value={value} disabled={pending} aria-invalid={Boolean(validationError)} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
     {validationError && <p role="alert">{validationError}</p>}
     <button disabled={pending||!value.trim()||Boolean(validationError)}>{pending ? 'Saving…' : 'Save'}</button>
   </form>;
