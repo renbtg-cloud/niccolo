@@ -25,7 +25,7 @@ export function ReviewPage(){
 
 function ReviewContent(){
  const pendingReanalysis=useRef(null);
- const pendingClarification=useRef(null);
+ const pendingClarification=useRef(new Map());
  const pendingReceipt=useRef(null);
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const observed=useOperationObserver(activeOperation);
@@ -37,12 +37,14 @@ function ReviewContent(){
  // Keep every hook above conditional returns so connect/selection transitions never change hook order.
  const answerClarification=useMutation({mutationFn:async({questionId,text})=>{
    const signature=JSON.stringify({analysis,questionId,text});
-   if(pendingClarification.current?.signature!==signature){
-     pendingClarification.current={signature,id:crypto.randomUUID()};
+   if(!pendingClarification.current.has(signature)){
+     pendingClarification.current.set(signature,crypto.randomUUID());
    }
-   return (await client.answerClarification(analysis,questionId,pendingClarification.current.id,text)).value;
+   const id=pendingClarification.current.get(signature);
+   const result=await client.answerClarification(analysis,questionId,id,text);
+   pendingClarification.current.delete(signature);
+   return result.value;
  },onSuccess:async(_,variables)=>{
-   pendingClarification.current=null;
    setClarificationDrafts(current=>({...current,[variables.questionId]:''}));
    await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);
  }});

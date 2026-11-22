@@ -5,9 +5,9 @@ const source = readFileSync(new URL('./ReviewPage.jsx', import.meta.url), 'utf8'
 
 describe('ReviewPage hook order', () => {
   it('reuses the same clarification ID after an interrupted response', () => {
-    expect(source).toContain('pendingClarification.current?.signature!==signature');
-    expect(source).toContain('client.answerClarification(analysis,questionId,pendingClarification.current.id,text)');
-    expect(source).toContain('pendingClarification.current=null;');
+    expect(source).toContain('pendingClarification.current.has(signature)');
+    expect(source).toContain('client.answerClarification(analysis,questionId,id,text)');
+    expect(source).toContain('pendingClarification.current.delete(signature);');
   });
 
   it('reuses the same handoff receipt ID without confusing review kinds', () => {
