@@ -9,7 +9,7 @@ export function useClarifications(){
    queryKey:client&&analysis?qk.analysis(client.config,analysis,'clarifications'):['clarifications','none'],
    enabled:!!client&&!!analysis,
    queryFn:async()=>{
-     const root=(await client.analysisClarifications(analysis)).value;
+     const root=(await client.analysisClarifications(analysis, null, 25)).value;
      const questions=root.clarifications??[];
      const results=await Promise.allSettled(questions.map(question =>
        client.clarificationAnswers(analysis,question.question_id)
@@ -20,6 +20,7 @@ export function useClarifications(){
          ...question,
          answers: result.status==='fulfilled' ? result.value.value.answers??[] : [],
          answersUnavailable: result.status==='rejected',
+         moreAnswers: result.status==='fulfilled' && Boolean(result.value.value.next_after),
        };
      });
      return {...root,clarifications};
