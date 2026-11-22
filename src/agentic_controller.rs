@@ -612,7 +612,7 @@ pub async fn recover_stale_started(
     let mut tx = scoped(pool, scope.workspace, false).await?;
     let (state, budget, _) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &state, budget).await?;
-    if state != "RUNNING" {
+    if state != "RUNNING" || before.steps.iter().all(|step| step.state != "STARTED") {
         return Ok(before);
     }
     let stale: Vec<Uuid> = sqlx::query_scalar(
@@ -629,7 +629,7 @@ pub async fn recover_stale_started(
          WHERE s.workspace_id=$1 AND s.situation_id=$2
            AND s.operation_id=$3 AND s.plan_revision=$4
            AND latest.event_kind='STARTED'
-           AND latest.created_at < clock_timestamp()-make_interval(secs=>$5)
+           AND latest.created_at < statement_timestamp()-make_interval(secs=>$5)
          ORDER BY s.ordinal",
     )
     .bind(scope.workspace)
