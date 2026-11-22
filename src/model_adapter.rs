@@ -360,7 +360,27 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             break;
         }
         if attempt < policy.max_attempts {
-            tokio::task::yield_now().await;
+            let mut tx = scoped(pool, scope.operation.workspace, true).await?;
+            let active: bool = sqlx::query_scalar(
+                "SELECT EXISTS (
+                    SELECT 1 FROM niccolo.model_invocations
+                    WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                      AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6
+                      AND status='STARTED'
+                )",
+            )
+            .bind(scope.operation.workspace)
+            .bind(scope.operation.situation)
+            .bind(scope.operation.operation)
+            .bind(scope.plan_revision)
+            .bind(scope.step_id)
+            .bind(invocation)
+            .fetch_one(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            if !active {
+                return Err(ModelError::InvocationNoLongerActive);
+            }
         }
     }
     let budget = matches!(last_error, ModelError::Budget);

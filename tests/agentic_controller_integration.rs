@@ -444,6 +444,8 @@ async fn oversized_provider_diagnostic_does_not_strand_the_worker_operation() {
 
 #[derive(Default)]
 struct GatedResponseModel {
+    fail: bool,
+    calls: AtomicUsize,
     started: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
@@ -458,9 +460,13 @@ impl ReasoningModel for GatedResponseModel {
     }
 
     fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         self.started.notify_one();
         Box::pin(async move {
             self.release.notified().await;
+            if self.fail {
+                return Err(ModelError::Provider("transient fixture error".into()));
+            }
             Ok(ModelResponse {
                 value: json!({"status":"ok"}),
                 prompt_tokens: Some(10),
@@ -534,6 +540,56 @@ async fn late_provider_response_does_not_publish_after_invocation_recovery() {
     assert_eq!((response, attribution), (None, None));
     let view = agentic_controller::view(&app, scope).await.unwrap();
     assert_eq!(view.ready_step_ids, [step_id]);
+}
+
+#[tokio::test]
+async fn recovered_invocation_does_not_retry_after_provider_failure() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (plan_revision, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, step_id, s.principal).await.unwrap();
+    let model = GatedResponseModel { fail: true, ..Default::default() };
+    let request = ModelRequest {
+        purpose: "INSPECT_SOURCES".into(),
+        input: json!({}),
+        output_contract: json!({}),
+    };
+    let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        tokio::join!(
+            model_adapter::invoke_recorded_with_policy(
+                &app,
+                InvocationScope { operation: scope, plan_revision, step_id },
+                s.principal,
+                &model,
+                &request,
+                InvocationPolicy { max_attempts: 2, ..Default::default() },
+            ),
+            async {
+                model.started.notified().await;
+                sqlx::query(
+                    "UPDATE niccolo.agentic_step_events
+                     SET created_at=clock_timestamp()-interval '10 minutes'
+                     WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                       AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'",
+                )
+                .bind(s.workspace).bind(s.situation).bind(scope.operation)
+                .bind(plan_revision).bind(step_id).execute(&admin).await.unwrap();
+                agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
+                    .await.unwrap();
+                model.release.notify_one();
+            },
+        )
+    })
+    .await
+    .unwrap();
+    assert!(matches!(result, Err(ModelError::InvocationNoLongerActive)));
+    assert_eq!(model.calls.load(Ordering::SeqCst), 1);
 }
 
 #[derive(Default)]
