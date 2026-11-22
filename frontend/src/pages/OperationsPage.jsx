@@ -1,6 +1,6 @@
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,6 +11,8 @@ import { useUiStore } from '../stores/ui.js';
 import { useOperationObserver } from '../hooks/useOperationObserver.js';
 import { useAgenticPlan } from '../hooks/useAgenticPlan.js';
 import { useAnalysisOutput } from '../hooks/useAnalysisOutput.js';
+
+const initialHumanResponse = {decision:'CONTINUE',responseText:''};
 
 const intentSchema=z.object({
   mode:z.enum(['sync','async']),
@@ -47,7 +49,7 @@ export function OperationsPage(){
  const observed=useOperationObserver(active); const plan=useAgenticPlan(active); const operation=observed.operation;
  const output=useAnalysisOutput(analysis, operation?.target_analysis_id===analysis ? operation : null);
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32}});
- const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:{decision:'CONTINUE',responseText:''}});
+ const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:initialHumanResponse});
  const run=useMutation({mutationFn:async(v)=>{
    const signature=JSON.stringify({mode:v.mode,intent:v.intent,goal:v.goal?.trim()||null,stepBudget:v.stepBudget});
    if(pendingLaunch.current?.signature!==signature){
@@ -62,6 +64,13 @@ export function OperationsPage(){
    void qc.invalidateQueries({queryKey:qk.analysisHistory(client.config),exact:true});
  }});
  const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
+ const waitingStepId=waitingStep?.step_id;
+ const planRevision=plan.data?.plan_revision;
+ const resetHumanResponse=humanForm.reset;
+ useEffect(()=>{
+   pendingHumanResponse.current=null;
+   resetHumanResponse(initialHumanResponse);
+ },[active,waitingStepId,planRevision,resetHumanResponse]);
  const respond=useMutation({mutationFn:async(v)=>{
    if(!active||!waitingStep)throw new Error('No waiting human step');
    const signature=JSON.stringify({active,step:waitingStep.step_id,decision:v.decision,text:v.responseText});
@@ -69,7 +78,7 @@ export function OperationsPage(){
      pendingHumanResponse.current={signature,responseId:crypto.randomUUID()};
    }
    return (await client.respondAgentic(active,waitingStep.step_id,{response_id:pendingHumanResponse.current.responseId,decision:v.decision,response_text:v.responseText})).value;
- },onSuccess:async()=>{pendingHumanResponse.current=null;humanForm.reset({decision:'CONTINUE',responseText:''});await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
+ },onSuccess:async()=>{pendingHumanResponse.current=null;resetHumanResponse(initialHumanResponse);await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
  if(!client)return <p>Connect first.</p>;
  return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p>
  {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. Configure a local or remote OpenAI-compatible model and restart the Niccolò service before analyzing.</p>}
