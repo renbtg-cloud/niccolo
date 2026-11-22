@@ -17,10 +17,18 @@ export function recordedChanges(review) {
   return items;
 }
 
+const leadLabels = {
+  EVIDENCE_GAP: 'Evidence gap',
+  CONFLICT: 'Conflicting evidence',
+  SOURCE_REQUEST: 'Source to look for',
+  CLARIFICATION: 'Question to clarify',
+};
+
 export function proactiveLeads(dashboard) {
   return (dashboard?.proactive?.leads ?? []).map((lead) => ({
     id: lead.id,
     kind: lead.kind,
+    label: leadLabels[lead.kind] ?? 'Investigation lead',
     text: lead.text,
     whyNow: lead.why_now,
     userMayIgnore: lead.user_may_ignore === true,

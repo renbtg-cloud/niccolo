@@ -21,7 +21,7 @@ describe('review presentation', () => {
       proactive: { leads: [{ id: 'l', kind: 'EVIDENCE_GAP', text: 'Check the original message', why_now: 'missing support', user_may_ignore: true, lead_is_evidence: false, lead_establishes_truth: false }] },
       reanalysis: { recommended: true, reasons: ['1 source(s) added'], human_approval_required: true, recommendation_starts_analysis: false, old_output_must_be_preserved: true },
     };
-    expect(proactiveLeads(dashboard)[0]).toMatchObject({ userMayIgnore: true, isEvidence: false, establishesTruth: false });
+    expect(proactiveLeads(dashboard)[0]).toMatchObject({ label: 'Evidence gap', userMayIgnore: true, isEvidence: false, establishesTruth: false });
     expect(reanalysisPrompt(dashboard)).toEqual({ reasons: ['1 source(s) added'], humanApprovalRequired: true, startsAutomatically: false, preservesOldOutput: true });
   });
 });
