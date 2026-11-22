@@ -178,7 +178,7 @@ function ConnectedSituation({client}){
       <h2>Start a Situation</h2>
       <p>Give Niccolò the question, concern or project you want to examine. Records can be added immediately afterward.</p>
       <FocusForm label="Initial focus" pending={create.isPending} onSubmit={(focus) => create.mutate(focus)}/>
-      {create.error && <p className="error">{create.error.message}</p>}
+      {create.error && <p className="error" role="alert">{create.error.message}</p>}
     </section>;
   }
   if (situation.error) return <section>
