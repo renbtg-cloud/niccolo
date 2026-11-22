@@ -649,6 +649,31 @@ async fn concurrent_plans_allocate_distinct_consecutive_revisions() {
 }
 
 #[tokio::test]
+async fn an_active_step_prevents_replacement_until_its_outcome_is_recorded() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let id = Uuid::new_v4();
+    let original = [step(id, 1, "INSPECT_SOURCES", false, vec![])];
+    let replacement = [step(id, 1, "CHECK_ASSUMPTIONS", false, vec![])];
+    agentic_controller::create_plan(&app, scope, s.principal, &original).await.unwrap();
+    agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    assert!(matches!(
+        agentic_controller::create_plan(&app, scope, s.principal, &replacement).await,
+        Err(agentic_controller::ControllerError::StateConflict)
+    ));
+    let prior = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(prior.plan_revision, 1);
+    assert_eq!(prior.steps[0].state, "STARTED");
+    agentic_controller::finish_step(&app, scope, id, s.principal, "SUCCEEDED", "completed")
+        .await
+        .unwrap();
+    let (revision, _) =
+        agentic_controller::create_plan(&app, scope, s.principal, &replacement).await.unwrap();
+    assert_eq!(revision, 2);
+}
+
+#[tokio::test]
 async fn stale_plan_selection_cannot_start_a_reused_step_id() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

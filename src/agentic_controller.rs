@@ -189,9 +189,17 @@ pub async fn create_plan(
 ) -> Result<(i64, String), ControllerError> {
     validate(steps)?;
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    // Serialize revision allocation before reading the plan history.
-    read_operation_state(&mut tx, scope, true).await?;
-    let rev:i64=sqlx::query_scalar("SELECT coalesce(max(plan_revision),0)+1 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_one(&mut *tx).await?;
+    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let rev = match view_plan(&mut tx, scope, &state, budget).await {
+        Ok(view) => {
+            if view.steps.iter().any(|step| step.state == "STARTED") {
+                return Err(ControllerError::StateConflict);
+            }
+            view.plan_revision.checked_add(1).ok_or(ControllerError::Invalid)?
+        }
+        Err(ControllerError::Invisible) => 1,
+        Err(error) => return Err(error),
+    };
     let sha = insert_plan(&mut tx, scope, actor, steps, rev).await?;
     tx.commit().await?;
     Ok((rev, sha))
