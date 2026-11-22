@@ -56,7 +56,7 @@ function QuestionCard({ question }) {
     <label>Why?<textarea aria-label={`Feedback reason ${question.question_id}`} value={reason} disabled={submit.isPending} aria-invalid={Boolean(reasonError)} onChange={e=>{submit.reset();setReason(e.target.value);}} placeholder="Explain your judgment in your own words"/></label>
     {reasonError&&<p role="alert">{reasonError}</p>}
     <button disabled={!reason.trim()||submit.isPending||Boolean(reasonError)} onClick={()=>submit.mutate()}>{submit.isPending?'Recording…':'Record my position'}</button>
-    {submit.error&&<p className="error">{submit.error.message}</p>}
+    {submit.error&&<p className="error" role="alert">{submit.error.message}</p>}
     {submit.isSuccess&&<p role="status">Your position was recorded.</p>}
     <div className="feedback-history">
       <h4>Current recorded positions</h4>
