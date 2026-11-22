@@ -171,7 +171,7 @@ function ConnectedSituation({client}){
     onError: refresh,
   });
 
-  if (situation.isLoading) return <p>Loading Situation…</p>;
+  if (situation.isLoading) return <p role="status">Loading Situation…</p>;
 
   if (situation.error?.status === 404) {
     return <section>
