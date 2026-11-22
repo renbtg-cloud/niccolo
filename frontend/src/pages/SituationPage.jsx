@@ -234,11 +234,13 @@ function ConnectedSituation({client}){
         }}
       />
       <button disabled={!file || Boolean(fileError) || upload.isPending} onClick={() => file && upload.mutate(file)}>
-        {upload.isPending ? 'Importing…' : 'Import and attach'}
+        {upload.isPending ? 'Importing…' : upload.isError && pendingIngest.current ? 'Retry attachment' : 'Import and attach'}
       </button>
       {file && <small>Selected: {file.name} · {file.size} bytes</small>}
       {fileError && <p className="error" role="alert">{fileError}</p>}
-      {upload.error && <p className="error">{upload.error.message}</p>}
+      {upload.error && <p className="error" role="alert">
+        {pendingIngest.current ? 'The record was imported. Attachment failed: ' : 'Import failed: '}{upload.error.message}
+      </p>}
       {upload.data && <p>Record imported and attached to this Situation.</p>}
     </article>
 
