@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
@@ -17,6 +17,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
 
   const current = identities.find((item) => item.person_id === binding?.person_id);
   const reasonError=situationTextError(reason,2048);
+  const labelErrorId=useId();
   const newLabelError=choice==='__new__' ? situationTextError(newLabel,512) : null;
   const canAssign = !reasonError && !newLabelError && reason.trim() && (choice === '__new__' ? newLabel.trim() : choice);
 
@@ -40,9 +41,9 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
       </select>
     </label>
     {choice === '__new__' && <label>New person label
-      <input value={newLabel} disabled={pending} aria-invalid={Boolean(newLabelError)} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
+      <input value={newLabel} disabled={pending} aria-invalid={Boolean(newLabelError)} aria-describedby={newLabelError?labelErrorId:undefined} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
     </label>}
-    {newLabelError && <p role="alert">{newLabelError}</p>}
+    {newLabelError && <p id={labelErrorId} role="alert">{newLabelError}</p>}
     <label>Why are you making this mapping?
       <textarea value={reason} disabled={pending} aria-invalid={Boolean(reasonError)} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
     </label>
