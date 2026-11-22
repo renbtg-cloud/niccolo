@@ -99,7 +99,7 @@ export class NiccoloClient {
   recordActorEpistemicState(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/actor-states/${eventId}`, {body}); }
   recordNormativeAssessment(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/normative-assessments/${eventId}`, {body}); }
   recordActorEpistemicAct(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/actor-acts/${eventId}`, {body}); }
-  actors() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/actors`); }
+  actors(signal) { return this.request('GET', `/v1/workspaces/${this.config.workspace}/actors`, { signal }); }
   recordExpertQuestionResponse(questionId, responseId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/questions/${questionId}/responses/${responseId}`, { body }); }
   recordResponseInterpretation(utteranceId, interpretationId, revisionId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/utterances/${utteranceId}/interpretations/${interpretationId}/revisions/${revisionId}`, { body }); }
   confirmResponseInterpretation(utteranceId, interpretationId, revisionId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/utterances/${utteranceId}/interpretations/${interpretationId}/revisions/${revisionId}/confirmations/${eventId}`, { body }); }

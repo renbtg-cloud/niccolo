@@ -47,7 +47,7 @@ export function ExpertWorkbenchPage() {
     queryFn: async ({ signal }) => (await client.expertWorkbench(signal)).value,
   });
   const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
-  const actors = useQuery({queryKey:['epistemic-response-actors',client?.config.workspace],enabled:!!client,queryFn:async () => (await client.actors()).value.actors});
+  const actors = useQuery({queryKey:['epistemic-response-actors',client?.config.workspace],enabled:!!client,queryFn:async ({ signal }) => (await client.actors(signal)).value.actors});
   const [responseDraft, setResponseDraft] = useState({question:'',text:'',speaker:'',evidence:'',rationale:''});
   const pendingResponse = useRef(null);
   const [error, setError] = useState('');
