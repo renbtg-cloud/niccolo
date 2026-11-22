@@ -520,3 +520,5 @@ pub mod adversarial_dossier;
 pub mod runtime_resources;
 
 pub mod resource_policy;
+
+mod pdf_preview;

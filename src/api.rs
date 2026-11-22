@@ -331,6 +331,7 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
+        .route("/v1/workspaces/{workspace}/sources/pdf-preview", post(preview_pdf))
         .route(
             "/v1/workspaces/{workspace}/sources/{document}/speakers",
             get(list_source_speakers),
@@ -971,6 +972,27 @@ fn source_locator(headers: &HeaderMap) -> Result<std::borrow::Cow<'_, str>, ApiE
         (None, None) => Err(ApiError(StatusCode::BAD_REQUEST, "missing source locator")),
         (Some(_), Some(_)) => Err(invalid()),
     }
+}
+
+async fn preview_pdf(
+    State(state): State<AppState>,
+    Path(workspace): Path<Uuid>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, ApiError> {
+    use crate::pdf_preview::PreviewError;
+    guard(&state, &headers, workspace, Capability::Write).await?;
+    if headers.get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()) != Some("application/pdf") {
+        return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected application/pdf"));
+    }
+    let preview = crate::pdf_preview::extract(&body).await.map_err(|error| match error {
+        PreviewError::Invalid => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "PDF could not be read"),
+        PreviewError::Unavailable => ApiError(StatusCode::SERVICE_UNAVAILABLE, "PDF preview requires pdftotext"),
+        PreviewError::Busy => ApiError(StatusCode::TOO_MANY_REQUESTS, "PDF preview is busy"),
+        PreviewError::Timeout => ApiError(StatusCode::REQUEST_TIMEOUT, "PDF preview exceeded the time limit"),
+        PreviewError::TooLarge => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "PDF text exceeds the preview limit"),
+    })?;
+    Ok(no_store(json!(preview), StatusCode::OK))
 }
 
 async fn ingest(
