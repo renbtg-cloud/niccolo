@@ -103,6 +103,9 @@ async fn scoped(
 fn canonical_steps(steps: &[StepInput]) -> Result<String, ControllerError> {
     let mut x = steps.to_vec();
     x.sort_by_key(|s| s.ordinal);
+    for step in &mut x {
+        step.depends_on.sort_unstable();
+    }
     Ok(serde_json::to_string(&x)?)
 }
 fn validate(steps: &[StepInput]) -> Result<(), ControllerError> {
@@ -258,7 +261,7 @@ async fn view_plan(
     };
     type Row = (Uuid, i32, String, String, bool, Option<String>);
     let rows:Vec<Row>=sqlx::query_as("SELECT s.step_id,s.ordinal,s.step_kind,s.label,s.requires_human,NULLIF((SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1),'RETRY_READY') FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 ORDER BY s.ordinal").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut **tx).await?;
-    let deps:Vec<(Uuid,Uuid)>=sqlx::query_as("SELECT step_id,depends_on_step_id FROM niccolo.agentic_step_dependencies WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut **tx).await?;
+    let deps:Vec<(Uuid,Uuid)>=sqlx::query_as("SELECT step_id,depends_on_step_id FROM niccolo.agentic_step_dependencies WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 ORDER BY step_id,depends_on_step_id").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_all(&mut **tx).await?;
     let budget_used:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.agentic_step_events WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND event_kind='STARTED'").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).fetch_one(&mut **tx).await?;
     let mut depmap: BTreeMap<Uuid, Vec<Uuid>> = BTreeMap::new();
     for (d, p) in deps {

@@ -595,6 +595,31 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
 }
 
 #[tokio::test]
+async fn equivalent_plan_edge_order_produces_the_same_digest() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let mut prerequisites = [Uuid::new_v4(), Uuid::new_v4()];
+    prerequisites.sort_unstable();
+    let mut plan = vec![
+        step(prerequisites[0], 1, "INSPECT_SOURCES", false, vec![]),
+        step(prerequisites[1], 2, "CHECK_ASSUMPTIONS", false, vec![]),
+        step(Uuid::new_v4(), 3, "SYNTHESIZE", false, prerequisites.to_vec()),
+    ];
+    let (_, first) = agentic_controller::create_plan(&app, scope, s.principal, &plan)
+        .await
+        .unwrap();
+    plan[2].depends_on.reverse();
+    plan.reverse();
+    let (_, second) = agentic_controller::create_plan(&app, scope, s.principal, &plan)
+        .await
+        .unwrap();
+    assert_eq!(first, second);
+    let view = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(view.steps[2].depends_on, prerequisites);
+}
+
+#[tokio::test]
 async fn concurrent_plans_allocate_distinct_consecutive_revisions() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
