@@ -185,6 +185,12 @@ async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
 
 #[tokio::test]
 async fn invalid_provider_attribution_fails_the_invocation_without_stranding_it() {
+    for model in ["fixture\0model", " \t"] {
+        assert_invalid_provider_attribution(model).await;
+    }
+}
+
+async fn assert_invalid_provider_attribution(effective_model: &'static str) {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let scope = op(&app, s, 32).await;
@@ -192,7 +198,7 @@ async fn invalid_provider_attribution_fails_the_invocation_without_stranding_it(
         calls: AtomicUsize::new(0),
         prompt_tokens: 90,
         completion_tokens: 20,
-        effective_model: Some("fixture\0model"),
+        effective_model: Some(effective_model),
     };
     assert!(
         niccolo_evidence::bff_executor::execute(&app, scope, s.principal, &model)

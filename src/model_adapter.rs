@@ -87,6 +87,10 @@ pub trait ReasoningModel: Send + Sync {
     fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a>;
 }
 
+fn valid_model_identity(identity: &str) -> bool {
+    !identity.trim().is_empty() && !identity.contains('\0')
+}
+
 #[derive(Clone, Debug)]
 pub struct DeterministicModel {
     provider: String,
@@ -94,7 +98,7 @@ pub struct DeterministicModel {
 }
 impl DeterministicModel {
     pub fn new(provider: &str, model: &str) -> Result<Self, ModelError> {
-        if provider.trim().is_empty() || model.trim().is_empty() {
+        if !valid_model_identity(provider) || !valid_model_identity(model) {
             return Err(ModelError::Invalid);
         }
         Ok(Self {
@@ -268,8 +272,8 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
 ) -> Result<InvocationView, ModelError> {
     let policy = policy.validate()?;
     if request.purpose.trim().is_empty()
-        || model.provider().trim().is_empty()
-        || model.model().trim().is_empty()
+        || !valid_model_identity(model.provider())
+        || !valid_model_identity(model.model())
     {
         return Err(ModelError::Invalid);
     }
@@ -339,7 +343,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     || [response.effective_provider.as_deref(), response.effective_model.as_deref()]
                         .into_iter()
                         .flatten()
-                        .any(|identity| identity.contains('\0'))
+                        .any(|identity| !valid_model_identity(identity))
                 {
                     last_error = ModelError::Invalid;
                 } else if policy.max_total_tokens.is_some_and(|max| total > i128::from(max)) {
@@ -542,8 +546,8 @@ impl OpenAiCompatibleModel {
         api_key: &str,
     ) -> Result<Self, ModelError> {
         let endpoint = ParsedEndpoint::parse(endpoint)?;
-        if provider.trim().is_empty()
-            || model.trim().is_empty()
+        if !valid_model_identity(provider)
+            || !valid_model_identity(model)
             || (api_key.trim().is_empty() && endpoint.scheme != "http")
             || api_key.contains(['\r', '\n'])
         {

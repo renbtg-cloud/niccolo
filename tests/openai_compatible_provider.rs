@@ -1,4 +1,6 @@
-use niccolo_evidence::model_adapter::{ModelRequest, OpenAiCompatibleModel, ReasoningModel};
+use niccolo_evidence::model_adapter::{
+    DeterministicModel, ModelError, ModelRequest, OpenAiCompatibleModel, ReasoningModel,
+};
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -146,4 +148,18 @@ fn openai_compatible_provider_allows_plain_http_only_on_loopback() {
         )
         .is_ok()
     );
+}
+
+#[test]
+fn configured_model_identity_rejects_nul() {
+    for (provider, model) in [("provider\0name", "model"), ("provider", "model\0name")] {
+        assert!(matches!(
+            DeterministicModel::new(provider, model),
+            Err(ModelError::Invalid)
+        ));
+        assert!(matches!(
+            OpenAiCompatibleModel::new(provider, model, "http://localhost/v1", ""),
+            Err(ModelError::Invalid)
+        ));
+    }
 }
