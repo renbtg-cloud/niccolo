@@ -632,6 +632,24 @@ async fn concurrent_http_stop_replays_return_the_same_human_resolution() {
     .fetch_one(&s.admin).await.unwrap();
     assert_eq!(event_count, 1);
 
+    let other_writer = authz::provision_token(
+        &s.admin, Uuid::new_v4(), s.workspace, true, true, 1,
+    ).await.unwrap();
+    let (status, _, denied_replay) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &endpoint,
+            &other_writer,
+            Some(json!({"response_id":response_id,"decision":"STOP","response_text":""})),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(denied_replay.get("resolution").is_none());
+
+
     let (status, _, _) = invoke(
         s.router.clone(),
         req(
