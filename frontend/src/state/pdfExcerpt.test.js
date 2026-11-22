@@ -24,3 +24,15 @@ it('records a range and heading while rejecting reversed and malformed ranges', 
   expect(() => pdfExcerptContext({ ...draft, endPage: '11' })).toThrow(/last page/);
   expect(() => pdfExcerptContext({ ...draft, endPage: '1e3' })).toThrow(/last page/);
 });
+
+it('identifies the affected field when a locator or passage is invalid', () => {
+  for (const [overrides, field] of [
+    [{document: ' '}, 'document'],
+    [{page: '0'}, 'page'],
+    [{endPage: '9'}, 'endPage'],
+    [{section: 'Heading\u0000'}, 'section'],
+    [{excerpt: 'é'.repeat(2048)}, 'excerpt'],
+  ]) {
+    expect(() => pdfExcerptContext({...draft, ...overrides})).toThrow(expect.objectContaining({field}));
+  }
+});
