@@ -584,6 +584,69 @@ async fn v431_v440_about_to_act_or_say_forces_explicit_human_boundary() {
 }
 
 #[tokio::test]
+async fn concurrent_http_stop_replays_return_the_same_human_resolution() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    let analysis = Uuid::new_v4();
+    let (status, _, operation_body) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &intent_path(&s, operation, "/sync"),
+            &s.token,
+            Some(intent_request(operation, analysis, "ABOUT_TO_ACT_OR_SAY")),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(operation_body["operation"]["state"], "WAITING_FOR_HUMAN");
+    let plan = agentic_plan(&s, operation).await;
+    let gate = step(&plan, "REQUEST_HUMAN_DECISION").unwrap()["step_id"]
+        .as_str()
+        .unwrap();
+    let endpoint = path(&s, operation, &format!("/agentic/steps/{gate}/human-response"));
+    let response_id = Uuid::new_v4();
+    let submit = || {
+        invoke(
+            s.router.clone(),
+            req(
+                "POST",
+                &endpoint,
+                &s.token,
+                Some(json!({"response_id":response_id,"decision":"STOP","response_text":""})),
+                None,
+            ),
+        )
+    };
+    let ((first_status, _, first), (retry_status, _, retry)) = tokio::join!(submit(), submit());
+    assert_eq!(first_status, StatusCode::OK);
+    assert_eq!(retry_status, StatusCode::OK);
+    assert_eq!(first["resolution"], retry["resolution"]);
+    assert_eq!(retry["resolution"]["operation_state"], "CANCELLED");
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.bff_operation_events
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND event_kind='CANCELLED'",
+    )
+    .bind(s.workspace).bind(s.situation).bind(operation)
+    .fetch_one(&s.admin).await.unwrap();
+    assert_eq!(event_count, 1);
+
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &endpoint,
+            &s.token,
+            Some(json!({"response_id":response_id,"decision":"CONTINUE","response_text":"yes"})),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
 async fn v441_v450_understand_changes_synthesis_without_forcing_human_choice() {
     let s = setup().await;
     let operation = Uuid::new_v4();

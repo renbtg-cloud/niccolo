@@ -687,6 +687,8 @@ Checkpoints 1.122–1.126 read each recovery candidate's latest event once and u
 
 Checkpoints 1.128–1.132 check the invocation and operation before retrying a provider call. Recovery ends the original invocation. A closed operation cannot reserve a new invocation, and a worker that observes closure after a provider reply skips domain postprocessing and reports the recorded operation state. A successful invocation stores the response and provider attribution in one ledger update. Closure can still occur after an invocation was reserved or while work already admitted is in flight.
 
+Checkpoints 1.134–1.136 store the outcome of each newly committed human response alongside the submitted decision. Replaying the same response ID, actor, step, decision and trimmed text returns the original resolution without applying the decision again. Reusing the response ID with different input returns a conflict. Responses recorded before this migration retain their original history and have no stored resolution to replay.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
