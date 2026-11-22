@@ -66,7 +66,7 @@ function ConnectedSituation({client}){
   const sources = useQuery({
     queryKey: client ? [...qk.sources(client.config), sourceCursor] : ['sources','none'],
     enabled: !!client,
-    queryFn: async () => (await client.sources(sourceCursor, 100)).value,
+    queryFn: async ({ signal }) => (await client.sources(sourceCursor, 100, signal)).value,
   });
   const readiness = useRuntimeReadiness(client);
   const refresh = async () => Promise.all([
