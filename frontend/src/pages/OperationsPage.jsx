@@ -2,7 +2,7 @@ import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { situationTextError, utf8ByteLength } from '../state/situationText.js';
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -56,6 +56,7 @@ export function OperationsPage(){
  const active=useUiStore(s=>s.activeOperation); const analysis=useUiStore(s=>s.analysis); const setActive=useUiStore(s=>s.setActiveOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const observed=useOperationObserver(active); const operation=observed.operation; const plan=useAgenticPlan(active, operation?.terminal);
  const output=useAnalysisOutput(analysis, operation?.target_analysis_id===analysis ? operation : null);
+ const goalErrorId=useId();
  const {register,handleSubmit,formState:{errors}}=useForm({resolver:zodResolver(intentSchema),defaultValues:{mode:'sync',intent:'UNDERSTAND',goal:'',stepBudget:32}});
  const humanForm=useForm({resolver:zodResolver(humanSchema),defaultValues:initialHumanResponse});
  const run=useMutation({mutationFn:async(v)=>{
@@ -102,8 +103,8 @@ export function OperationsPage(){
  </div>}
  <form aria-busy={run.isPending} onSubmit={handleSubmit(v=>{if (!run.isPending && !modelUnavailable && !readiness.isPending && !readiness.isError) run.mutate(v);})}>
    <label>What are you trying to do?<select disabled={run.isPending} {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
-   <label>Goal / question (optional)<textarea disabled={run.isPending} aria-invalid={Boolean(errors.goal)} {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
-   {errors.goal&&<p role="alert">{errors.goal.message}</p>}
+   <label>Goal / question (optional)<textarea disabled={run.isPending} aria-invalid={Boolean(errors.goal)} aria-describedby={errors.goal?goalErrorId:undefined} {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
+   {errors.goal&&<p id={goalErrorId} role="alert">{errors.goal.message}</p>}
    <details><summary>Advanced execution</summary><label>Delivery<select disabled={run.isPending} {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Start and follow progress</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" min={1} max={10000} step={1} disabled={run.isPending} {...register('stepBudget')}/></label><small>The default settings are appropriate for ordinary use. Change these only when testing execution behavior.</small></details>
    <button disabled={run.isPending||modelUnavailable||readiness.isPending||readiness.isError}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
  </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error" role="alert">{run.error.message}</p>}
