@@ -113,10 +113,13 @@ export function IdentitiesPage() {
     queryFn: async ({ signal }) => (await client.effectiveIdentities(documentId, signal)).value,
   });
   const [historyOpen,setHistoryOpen] = useState(false);
+  const [historyPages,setHistoryPages] = useState([0]);
+  useEffect(()=>{setHistoryPages([0]);},[documentId]);
+  const historyCursor=historyPages.at(-1);
   const history = useQuery({
-    queryKey: client && documentId ? qk.identityHistory(client.config, documentId) : ['identity-history','none'],
+    queryKey: client && documentId ? [...qk.identityHistory(client.config, documentId),historyCursor] : ['identity-history','none'],
     enabled: !!client && !!documentId && historyOpen,
-    queryFn: async ({ signal }) => (await client.identityHistory(documentId, 0, 100, signal)).value,
+    queryFn: async ({ signal }) => (await client.identityHistory(documentId, historyCursor, 100, signal)).value,
   });
 
   const bindingBySpeaker = useMemo(
@@ -240,6 +243,8 @@ export function IdentitiesPage() {
           <div><small>{event.human_reason}</small></div>
         </li>)}
       </ol>
+      {historyPages.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(pages=>pages.slice(0,-1))}>Previous mapping events</button>}
+      {history.data?.next_after && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(pages=>[...pages,history.data.next_after])}>More mapping events</button>}
       {(history.data?.events ?? []).length === 0 && <p>No mapping events yet.</p>}
     </details>}
   </section>;
