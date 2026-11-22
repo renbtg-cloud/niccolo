@@ -21,7 +21,7 @@ function QuestionCard({ question }) {
   const pendingFeedback = useRef(null);
   const history = useQuery({
     queryKey:['question-feedback',client.config.workspace,question.question_id,eventCursor],
-    queryFn:async()=> (await client.questionFeedback(question.question_id,eventCursor,100)).value,
+    queryFn:async ({ signal })=> (await client.questionFeedback(question.question_id,eventCursor,100, signal)).value,
   });
   const positions = useQuery({
     queryKey:['question-positions',client.config.workspace,question.question_id,positionsCursor],
