@@ -62,7 +62,7 @@ async fn scoped(pool: &PgPool, w: uuid::Uuid) -> Result<Transaction<'_, Postgres
     Ok(tx)
 }
 
-fn configured(input: &Value) -> Result<(i64, i64), BudgetError> {
+pub(crate) fn configured(input: &Value) -> Result<(i64, i64), BudgetError> {
     let budget = match input.get("model_budget") {
         None => None,
         Some(Value::Object(fields)) => Some(fields),

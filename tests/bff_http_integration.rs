@@ -106,6 +106,34 @@ fn body(s: &Seed, kind: &str) -> Value {
 }
 
 #[tokio::test]
+async fn malformed_agentic_budget_is_rejected_before_creating_an_operation() {
+    let s = setup().await;
+    for suffix in ["/sync", "/async"] {
+        let operation = Uuid::new_v4();
+        let mut request = body(&s, "AGENTIC_ANALYSIS");
+        request["input"] = json!({"model_budget": {"max_invocations": 0}});
+        let (status, _, _) = invoke(
+            s.router.clone(),
+            req(
+                "POST",
+                &path(&s, operation, suffix),
+                &s.token,
+                Some(request),
+                None,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _, _) = invoke(
+            s.router.clone(),
+            req("GET", &path(&s, operation, ""), &s.token, None, None),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+}
+
+#[tokio::test]
 async fn v201_v204_sync_and_async_http_surfaces_share_operation_shape() {
     let s = setup().await;
     let sync = Uuid::new_v4();

@@ -4883,6 +4883,10 @@ async fn submit_bff(
     actor: Uuid,
     request: BffOperationRequest,
 ) -> Result<bff_operations::OperationView, ApiError> {
+    if request.kind == "AGENTIC_ANALYSIS" {
+        operation_budget::configured(&request.input)
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid operation model budget"))?;
+    }
     bff_operations::submit(
         &state.pool,
         OperationScope {
