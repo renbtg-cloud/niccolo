@@ -33,6 +33,8 @@ pub enum ModelError {
         prompt_tokens: Option<i64>,
         completion_tokens: Option<i64>,
     },
+    #[error("provider response too large")]
+    ResponseTooLarge,
     #[error("model invocation timed out")]
     Timeout,
     #[error("operation deadline exceeded")]
@@ -849,7 +851,7 @@ fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, ModelError> {
 
 // Guard memory before decoding HTTP; a remote response must never grow the
 // local worker buffer without bound. Includes headers and transport framing.
-const MAX_HTTP_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
+pub(crate) const MAX_HTTP_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 
 fn transport_io_error(phase: &str, error: std::io::Error) -> ModelError {
     if matches!(
@@ -889,9 +891,9 @@ fn complete_chunked_body_end(body: &[u8]) -> Result<Option<usize>, ModelError> {
         let end = cursor
             .checked_add(size)
             .and_then(|value| value.checked_add(2))
-            .ok_or_else(|| ModelError::Provider("provider response too large".into()))?;
+            .ok_or_else(|| ModelError::ResponseTooLarge)?;
         if end as u64 > MAX_HTTP_RESPONSE_BYTES {
-            return Err(ModelError::Provider("provider response too large".into()));
+            return Err(ModelError::ResponseTooLarge);
         }
         if end > body.len() {
             return Ok(None);
@@ -949,9 +951,9 @@ fn complete_content_length_end(raw: &[u8]) -> Result<Option<usize>, ModelError> 
     let end = marker
         .checked_add(4)
         .and_then(|start| start.checked_add(length))
-        .ok_or_else(|| ModelError::Provider("provider response too large".into()))?;
+        .ok_or_else(|| ModelError::ResponseTooLarge)?;
     if end as u64 > MAX_HTTP_RESPONSE_BYTES {
-        return Err(ModelError::Provider("provider response too large".into()));
+        return Err(ModelError::ResponseTooLarge);
     }
     Ok(Some(end))
 }
@@ -967,7 +969,7 @@ fn read_bounded<R: Read>(reader: &mut R) -> Result<Vec<u8>, ModelError> {
             return Ok(raw);
         }
         if raw.len().saturating_add(count) as u64 > MAX_HTTP_RESPONSE_BYTES {
-            return Err(ModelError::Provider("provider response too large".into()));
+            return Err(ModelError::ResponseTooLarge);
         }
         raw.extend_from_slice(&buffer[..count]);
         if let Some(end) = complete_content_length_end(&raw)?
@@ -1243,17 +1245,24 @@ mod bounded_response_tests {
     }
 
     #[test]
-    fn rejects_invalid_or_oversized_content_length_before_body_allocation() {
+    fn rejects_invalid_content_length_before_body_allocation() {
         for response in [
             b"HTTP/1.1 200 OK\r\nContent-Length: bad\r\n\r\n".as_slice(),
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\n".as_slice(),
-            b"HTTP/1.1 200 OK\r\nContent-Length: 3000000\r\n\r\n".as_slice(),
         ] {
             assert!(matches!(
                 complete_content_length_end(response),
                 Err(ModelError::Provider(_))
             ));
         }
+    }
+
+    #[test]
+    fn rejects_oversized_content_length_without_retrying() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 3000000\r\n\r\n";
+        let error = complete_content_length_end(response).unwrap_err();
+        assert!(matches!(error, ModelError::ResponseTooLarge));
+        assert!(!retryable_model_error(&error));
     }
 
     #[test]
@@ -1265,6 +1274,6 @@ mod bounded_response_tests {
     #[test]
     fn rejects_response_above_maximum_before_unbounded_allocation() {
         let source = vec![b'x'; MAX_HTTP_RESPONSE_BYTES as usize + 1];
-        assert!(matches!(read_bounded(&mut &source[..]), Err(ModelError::Provider(_))));
+        assert!(matches!(read_bounded(&mut &source[..]), Err(ModelError::ResponseTooLarge)));
     }
 }

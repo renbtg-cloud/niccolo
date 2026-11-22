@@ -3,13 +3,13 @@
 //! The core stays provider-neutral. The runtime path uses the native TLS
 //! adapter from model_adapter. The curl adapter remains only as a compatibility
 //! implementation and test oracle while the native path is validated.
-use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, OpenAiCompatibleModel, ReasoningModel, parse_openai_envelope};
+use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, OpenAiCompatibleModel, ReasoningModel, MAX_HTTP_RESPONSE_BYTES, parse_openai_envelope};
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, ExitStatus, Stdio},
 };
 use uuid::Uuid;
 
@@ -184,6 +184,31 @@ fn remove_private(path: &Path) {
     let _ = fs::remove_file(path);
 }
 
+fn bounded_curl_output(mut command: Command) -> Result<(ExitStatus, Vec<u8>), ModelError> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| ModelError::Provider(format!("curl launch failed: {error}")))?;
+    let mut output = Vec::new();
+    // The write-out suffix consists of a newline and three HTTP status digits.
+    let max_output = MAX_HTTP_RESPONSE_BYTES + 4;
+    let read = child.stdout.take().expect("stdout requested as a pipe")
+        .take(max_output + 1)
+        .read_to_end(&mut output);
+    if read.is_err() || output.len() as u64 > max_output {
+        let _ = child.kill();
+        let _ = child.wait();
+        match read {
+            Err(error) => return Err(ModelError::Provider(format!("curl output failed: {error}"))),
+            Ok(_) => return Err(ModelError::ResponseTooLarge),
+        }
+    }
+    let status = child.wait()
+        .map_err(|error| ModelError::Provider(format!("curl wait failed: {error}")))?;
+    Ok((status, output))
+}
+
 impl ReasoningModel for CurlOpenAiCompatibleModel {
     fn provider(&self) -> &str {
         &self.config.provider
@@ -219,12 +244,11 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             let body_arg = format!("@{}", body_path.display());
             let header_arg = format!("@{}", header_path.display());
             let output = tokio::task::spawn_blocking(move || {
-                let result = Command::new(curl)
-                    .args([
+                let mut command = Command::new(curl);
+                command.args([
                         "--disable",
                         "--globoff",
                         "--silent",
-                        "--show-error",
                         "--fail",
                         "--write-out",
                         "\n%{http_code}",
@@ -239,27 +263,27 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                         "--data-binary",
                         &body_arg,
                         &endpoint,
-                    ])
-                    .output();
+                    ]);
+                let result = bounded_curl_output(command);
                 remove_private(&body_path);
                 remove_private(&header_path);
                 result
             })
             .await
-            .map_err(|e| ModelError::Provider(format!("curl task failed: {e}")))?
-            .map_err(|e| ModelError::Provider(format!("curl launch failed: {e}")))?;
-            let (body, status) = output.stdout.iter().rposition(|byte| *byte == b'\n')
-                .map(|index| (&output.stdout[..index], &output.stdout[index + 1..]))
+            .map_err(|e| ModelError::Provider(format!("curl task failed: {e}")))??;
+            let (exit, output) = output;
+            let (body, status) = output.iter().rposition(|byte| *byte == b'\n')
+                .map(|index| (&output[..index], &output[index + 1..]))
                 .unwrap_or((&[], &[]));
             let status = std::str::from_utf8(status).ok().and_then(|s| s.parse::<u16>().ok());
             if let Some(code) = status.filter(|code| (300..=599).contains(code)) {
                 return Err(ModelError::HttpStatus(code));
             }
-            if !output.status.success() {
-                if output.status.code() == Some(28) {
+            if !exit.success() {
+                if exit.code() == Some(28) {
                     return Err(ModelError::Timeout);
                 }
-                return Err(ModelError::Provider(format!("curl exited with {}", output.status)));
+                return Err(ModelError::Provider(format!("curl exited with {exit}")));
             }
             if !status.is_some_and(|code| (200..300).contains(&code)) {
                 return Err(ModelError::Provider("missing provider HTTP status".into()));
@@ -432,6 +456,28 @@ mod tests {
         assert_eq!(response.prompt_tokens, Some(9));
         assert_eq!(response.completion_tokens, Some(7));
     }
+    #[tokio::test]
+    async fn curl_transport_rejects_an_oversized_success_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            socket.read(&mut [0; 8192]).unwrap();
+            let body = vec![b'x'; (MAX_HTTP_RESPONSE_BYTES + 128) as usize];
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            ).unwrap();
+            let _ = socket.write_all(&body);
+        });
+        let model = CurlOpenAiCompatibleModel::new(config(format!("http://{address}/v1"))).unwrap();
+        let error = model.invoke(&request()).await.unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(error, ModelError::ResponseTooLarge));
+    }
+
     #[tokio::test]
     async fn curl_transport_does_not_copy_provider_error_bodies() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
