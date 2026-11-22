@@ -329,7 +329,7 @@ function ConnectedSituation({client}){
 
     <article className="human-context">
       <h3>Human context</h3>
-      <PdfExcerptForm disabled={addContext.isPending||(!pdfContext&&Boolean(contextText.trim()))}
+      <PdfExcerptForm saving={addContext.isPending} previewOutdated={pdfContext&&pdfPreviewOutdated} disabled={addContext.isPending||(!pdfContext&&Boolean(contextText.trim()))}
         onDraftChange={()=>{if(pdfContext)setPdfPreviewOutdated(true);}}
         onPrepare={text=>{addContext.reset();setPdfPreviewOutdated(false);setContextKind('user_reported');setPdfContext(true);setContextText(text);contextEditor.current?.focus();}}/>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
