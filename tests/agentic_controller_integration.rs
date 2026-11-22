@@ -708,6 +708,32 @@ async fn concurrent_step_finishes_record_one_outcome() {
 }
 
 #[tokio::test]
+async fn concurrent_default_plan_requests_share_the_first_revision() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 32).await;
+    let (a, b) = tokio::join!(
+        agentic_runtime::ensure_default_plan(&app, scope, s.principal),
+        agentic_runtime::ensure_default_plan(&app, scope, s.principal),
+    );
+    let a = a.unwrap();
+    let b = b.unwrap();
+    assert_eq!(a.plan_revision, 1);
+    assert_eq!(a, b);
+    let plan_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_plans
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(plan_count, 1);
+}
+
+#[tokio::test]
 async fn v211_v214_plan_is_versioned_hashed_and_rejects_cycles() {
     let (a, p) = pools().await;
     let s = seed(&a).await;

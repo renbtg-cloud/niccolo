@@ -61,8 +61,17 @@ pub async fn ensure_default_plan(
     scope: OperationScope,
     actor: Uuid,
 ) -> Result<agentic_controller::ControllerView, RuntimeError> {
+    let (view, _) = ensure_default_plan_with_status(pool, scope, actor).await?;
+    Ok(view)
+}
+
+pub(crate) async fn ensure_default_plan_with_status(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+) -> Result<(agentic_controller::ControllerView, bool), RuntimeError> {
     match agentic_controller::view(pool, scope).await {
-        Ok(v) => Ok(v),
+        Ok(view) => Ok((view, false)),
         Err(agentic_controller::ControllerError::Invisible) => {
             let op = bff_operations::get(pool, scope).await?;
             let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
@@ -79,8 +88,7 @@ pub async fn ensure_default_plan(
                 intent,
             )
             .await?;
-            agentic_controller::create_plan(pool, scope, actor, &steps).await?;
-            Ok(agentic_controller::view(pool, scope).await?)
+            Ok(agentic_controller::ensure_plan(pool, scope, actor, &steps).await?)
         }
         Err(e) => Err(e.into()),
     }

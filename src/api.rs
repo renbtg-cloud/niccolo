@@ -46,7 +46,7 @@ use crate::source_import::SourceFormat;
 use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
 use crate::{
-    adversarial_dossier, agentic_controller, agentic_policy, bff_dashboard, bff_epistemic,
+    adversarial_dossier, agentic_controller, agentic_runtime, bff_dashboard, bff_epistemic,
     bff_executor, reasoning_handoff, reasoning_packet,
 };
 use axum::{
@@ -5146,11 +5146,13 @@ async fn plan_agentic_operation(
     if op.kind != "AGENTIC_ANALYSIS" {
         return Err(ApiError(StatusCode::CONFLICT, "not an agentic operation"));
     }
-    let analysis = op.target_analysis_id.ok_or(ApiError(
-        StatusCode::BAD_REQUEST,
-        "agentic operation requires analysis",
-    ))?;
-    let steps = agentic_policy::default_plan(&state.pool, workspace, situation, analysis)
+    if op.target_analysis_id.is_none() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "agentic operation requires analysis",
+        ));
+    }
+    let (view, created) = agentic_runtime::ensure_default_plan_with_status(&state.pool, scope, actor)
         .await
         .map_err(|_| {
             ApiError(
@@ -5158,32 +5160,12 @@ async fn plan_agentic_operation(
                 "agentic planning unavailable",
             )
         })?;
-    match agentic_controller::view(&state.pool, scope).await {
-        Ok(view) => Ok(no_store(json!(view), StatusCode::OK)),
-        Err(agentic_controller::ControllerError::Invisible) => {
-            agentic_controller::create_plan(&state.pool, scope, actor, &steps)
-                .await
-                .map_err(|_| {
-                    ApiError(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "agentic planning unavailable",
-                    )
-                })?;
-            let view = agentic_controller::view(&state.pool, scope)
-                .await
-                .map_err(|_| {
-                    ApiError(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "agentic plan unavailable",
-                    )
-                })?;
-            Ok(no_store(json!(view), StatusCode::CREATED))
-        }
-        Err(_) => Err(ApiError(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "agentic plan unavailable",
-        )),
-    }
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok(no_store(json!(view), status))
 }
 async fn cancel_bff_operation(
     State(state): State<AppState>,

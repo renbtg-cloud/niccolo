@@ -183,26 +183,59 @@ pub async fn create_plan(
     steps: &[StepInput],
 ) -> Result<(i64, String), ControllerError> {
     validate(steps)?;
-    let json = canonical_steps(steps)?;
-    let sha = format!("{:x}", Sha256::digest(json.as_bytes()));
     let mut tx = scoped(pool, scope.workspace, false).await?;
     // Serialize revision allocation before reading the plan history.
     read_operation_state(&mut tx, scope, true).await?;
     let rev:i64=sqlx::query_scalar("SELECT coalesce(max(plan_revision),0)+1 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_one(&mut *tx).await?;
-    sqlx::query("INSERT INTO niccolo.agentic_plans(workspace_id,situation_id,operation_id,plan_revision,plan_sha256,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(&sha).bind(actor).execute(&mut *tx).await?;
-    let mut ordered = steps.to_vec();
-    ordered.sort_by_key(|s| s.ordinal);
-    for s in &ordered {
-        sqlx::query("INSERT INTO niccolo.agentic_steps(workspace_id,situation_id,operation_id,plan_revision,step_id,ordinal,step_kind,label,requires_human) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(s.ordinal).bind(&s.kind).bind(&s.label).bind(s.requires_human).execute(&mut *tx).await?;
-    }
-    for s in &ordered {
-        for d in &s.depends_on {
-            sqlx::query("INSERT INTO niccolo.agentic_step_dependencies(workspace_id,situation_id,operation_id,plan_revision,step_id,depends_on_step_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(d).execute(&mut *tx).await?;
-        }
-    }
+    let sha = insert_plan(&mut tx, scope, actor, steps, rev).await?;
     tx.commit().await?;
     Ok((rev, sha))
 }
+
+pub(crate) async fn ensure_plan(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    steps: &[StepInput],
+) -> Result<(ControllerView, bool), ControllerError> {
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (view, created) = match view_plan(&mut tx, scope, &state, budget).await {
+        Ok(view) => (view, false),
+        Err(ControllerError::Invisible) => {
+            validate(steps)?;
+            insert_plan(&mut tx, scope, actor, steps, 1).await?;
+            (view_plan(&mut tx, scope, &state, budget).await?, true)
+        }
+        Err(error) => return Err(error),
+    };
+    tx.commit().await?;
+    Ok((view, created))
+}
+
+async fn insert_plan(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    actor: Uuid,
+    steps: &[StepInput],
+    rev: i64,
+) -> Result<String, ControllerError> {
+    let json = canonical_steps(steps)?;
+    let sha = format!("{:x}", Sha256::digest(json.as_bytes()));
+    sqlx::query("INSERT INTO niccolo.agentic_plans(workspace_id,situation_id,operation_id,plan_revision,plan_sha256,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(&sha).bind(actor).execute(&mut **tx).await?;
+    let mut ordered = steps.to_vec();
+    ordered.sort_by_key(|s| s.ordinal);
+    for s in &ordered {
+        sqlx::query("INSERT INTO niccolo.agentic_steps(workspace_id,situation_id,operation_id,plan_revision,step_id,ordinal,step_kind,label,requires_human) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(s.ordinal).bind(&s.kind).bind(&s.label).bind(s.requires_human).execute(&mut **tx).await?;
+    }
+    for s in &ordered {
+        for d in &s.depends_on {
+            sqlx::query("INSERT INTO niccolo.agentic_step_dependencies(workspace_id,situation_id,operation_id,plan_revision,step_id,depends_on_step_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(d).execute(&mut **tx).await?;
+        }
+    }
+    Ok(sha)
+}
+
 pub async fn view(pool: &PgPool, scope: OperationScope) -> Result<ControllerView, ControllerError> {
     let mut tx = scoped(pool, scope.workspace, true).await?;
     let (operation_state, step_budget) = read_operation_state(&mut tx, scope, false).await?;
