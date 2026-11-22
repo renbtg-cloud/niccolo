@@ -105,6 +105,8 @@ describe('buyer-facing primary surfaces', () => {
     expect(feedback).toContain('Next feedback events');
     expect(feedback).toContain('Previous positions');
     expect(feedback).toContain('Next positions');
+    expect(feedback).toContain('enabled:showEvents');
+    expect(feedback).toContain('Retry feedback events');
     expect(feedback).toContain('history.data.next_after');
     expect(feedback).toContain('positions.data.next_after');
   });
