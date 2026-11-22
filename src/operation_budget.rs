@@ -147,35 +147,35 @@ fn mark_unknown_usage(mut view: BudgetView, missing: i64) -> Result<BudgetView, 
 /// approximate host CPU estimate, or publication side effect.
 pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, BudgetError> {
     let mut tx = scoped(pool, s.workspace).await?;
-    let row: Option<(String, Option<i64>)> = sqlx::query_as(
-        "SELECT input_json, \
-         CASE WHEN deadline_at IS NULL OR deadline_at = 'infinity'::timestamptz THEN NULL \
-         WHEN deadline_at = '-infinity'::timestamptz THEN 0 \
-         ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (deadline_at - clock_timestamp()))*1000)::bigint) END \
-         FROM niccolo.bff_operations \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    let row: Option<(String, Option<i64>, i64, i64, i64)> = sqlx::query_as(
+        "SELECT o.input_json,
+                CASE
+                    WHEN o.deadline_at IS NULL OR o.deadline_at = 'infinity'::timestamptz THEN NULL
+                    WHEN o.deadline_at = '-infinity'::timestamptz THEN 0
+                    ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (o.deadline_at - clock_timestamp()))*1000)::bigint)
+                END,
+                usage.invocations, usage.tokens, usage.missing
+         FROM niccolo.bff_operations o
+         CROSS JOIN LATERAL (
+             SELECT count(*) AS invocations,
+                    LEAST(coalesce(sum(coalesce(i.prompt_tokens,0)::numeric
+                        + coalesce(i.completion_tokens,0)::numeric),0),9223372036854775807)::bigint AS tokens,
+                    count(*) FILTER (WHERE i.prompt_tokens IS NULL OR i.completion_tokens IS NULL) AS missing
+             FROM niccolo.model_invocations i
+             WHERE i.workspace_id=o.workspace_id AND i.situation_id=o.situation_id
+               AND i.operation_id=o.operation_id
+         ) usage
+         WHERE o.workspace_id=$1 AND o.situation_id=$2 AND o.operation_id=$3",
     )
     .bind(s.workspace)
     .bind(s.situation)
     .bind(s.operation)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((input, remaining_deadline_ms)) = row else {
+    let Some((input, remaining_deadline_ms, used_invocations, used_total_tokens, missing_usage)) = row else {
         return Err(BudgetError::Missing);
     };
     let input: Value = serde_json::from_str(&input).map_err(|_| BudgetError::Invalid)?;
-    let (used_invocations, used_total_tokens, missing_usage): (i64, i64, i64) = sqlx::query_as(
-        "SELECT count(*), \
-         LEAST(coalesce(sum(coalesce(prompt_tokens,0)::numeric+coalesce(completion_tokens,0)::numeric),0),9223372036854775807)::bigint, \
-         count(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL) \
-         FROM niccolo.model_invocations \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
-    )
-    .bind(s.workspace)
-    .bind(s.situation)
-    .bind(s.operation)
-    .fetch_one(&mut *tx)
-    .await?;
     tx.commit().await?;
     mark_unknown_usage(
         summarize(
