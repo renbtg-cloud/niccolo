@@ -26,7 +26,7 @@ function ContributionItem({ item, pending, onCorrect, onRetract }) {
 function FocusForm({ initial = '', label, pending, onSubmit }) {
   const [value, setValue] = useState(initial);
   const validationError=situationTextError(value);
-  return <form onSubmit={(event) => {
+  return <form aria-busy={pending} onSubmit={(event) => {
     event.preventDefault();
     const focus = value.trim();
     if (focus && !pending && !validationError) onSubmit(focus);
