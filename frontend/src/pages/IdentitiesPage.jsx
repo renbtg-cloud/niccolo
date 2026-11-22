@@ -29,7 +29,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
     </div>
 
     <label>Person
-      <select value={choice} onChange={(event) => setChoice(event.target.value)}>
+      <select value={choice} disabled={pending} onChange={(event) => setChoice(event.target.value)}>
         <option value="">Choose an existing person</option>
         {binding?.person_id && !current && <option value={binding.person_id}>Currently mapped person ({binding.person_id})</option>}
         {identities.map((identity) => <option key={identity.person_id} value={identity.person_id}>{identity.display_label}</option>)}
@@ -37,10 +37,10 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
       </select>
     </label>
     {choice === '__new__' && <label>New person label
-      <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
+      <input value={newLabel} disabled={pending} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
     </label>}
     <label>Why are you making this mapping?
-      <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
+      <textarea value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
     </label>
     <div className="row">
       <button disabled={!canAssign || pending} onClick={() => onAssign({
