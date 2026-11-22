@@ -46,6 +46,7 @@ function ConnectedSituation({client}){
   const qc = useQueryClient();
   const generation = useSessionStore(s=>s.generation);
   const [file, setFile] = useState(null);
+  const [fileError,setFileError] = useState(null);
   const [sourceCursor, setSourceCursor] = useState(null);
   const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve the document identity across retries after a partial upload.
@@ -215,13 +216,21 @@ function ConnectedSituation({client}){
         onChange={(event) => {
           pendingDocumentId.current = null;
           upload.reset();
-          setFile(event.target.files?.[0] ?? null);
+          const selected=event.target.files?.[0] ?? null;
+          setFile(selected);
+          try {
+            if(selected) sourceDescriptor(selected);
+            setFileError(null);
+          } catch(error) {
+            setFileError(error.message);
+          }
         }}
       />
-      <button disabled={!file || upload.isPending} onClick={() => file && upload.mutate(file)}>
+      <button disabled={!file || Boolean(fileError) || upload.isPending} onClick={() => file && upload.mutate(file)}>
         {upload.isPending ? 'Importing…' : 'Import and attach'}
       </button>
       {file && <small>Selected: {file.name} · {file.size} bytes</small>}
+      {fileError && <p className="error" role="alert">{fileError}</p>}
       {upload.error && <p className="error">{upload.error.message}</p>}
       {upload.data && <p>Record imported and attached to this Situation.</p>}
     </article>
