@@ -17,3 +17,8 @@ it('counts four-byte Unicode scalars at the identity label limit', () => {
   expect(situationTextError('🙂'.repeat(128),512)).toBeNull();
   expect(situationTextError('🙂'.repeat(129),512)).toMatch(/512 UTF-8 bytes/);
 });
+
+it('counts accented text at the reason limit after trimming', () => {
+  expect(situationTextError(' '+ 'é'.repeat(1024) +' ',2048)).toBeNull();
+  expect(situationTextError('é'.repeat(1025),2048)).toMatch(/2048 UTF-8 bytes/);
+});
