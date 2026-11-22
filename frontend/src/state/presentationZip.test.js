@@ -44,3 +44,7 @@ it('Verify portable ZIP handling of reserved device paths', () => {
 it('Verify portable ZIP handling of trailing dots and spaces', () => {
   expect(() => presentationZip(pkg({ 'reports /notes.txt': 'a' }))).toThrow();
 });
+
+it('Verify portable ZIP collision handling on case-insensitive hosts', () => {
+  expect(() => presentationZip(pkg({ 'README.md': 'a', 'readme.md': 'b' }))).toThrow();
+});
