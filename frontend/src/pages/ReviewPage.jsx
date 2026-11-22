@@ -92,7 +92,9 @@ function ReviewContent(){
   {r&&<>
      <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
      {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
-     {output.error&&<p className="error">Answer unavailable: {output.error.message}</p>}
+     {output.error && <p className="error" role="alert">Answer unavailable: {output.error.message}</p>}
+     {output.isPending && <p role="status">Checking for a published answer…</p>}
+     {!output.isPending && !output.error && !output.data && <p>No answer has been published for this analysis yet.</p>}
      <article className="review-panel"><h3>Worth looking at next</h3>{dashboard.error ? <p role="alert">Next steps unavailable: {dashboard.error.message}</p> : dashboard.isPending ? <p>Checking next steps…</p> : leads.length? <div className="lead-list">{leads.map(lead=><div className="lead" key={lead.id}><strong>{lead.label}</strong><p>{lead.text}</p><small>{lead.whyNow}{lead.userMayIgnore?' · You may ignore this lead.':''}</small></div>)}</div> : <p>No proactive lead is currently recorded.</p>}<p><small>These are prioritization prompts from the backend; they are not evidence and do not establish truth.</small></p></article>
      <article className="review-panel"><h3>Download this analysis</h3>
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
