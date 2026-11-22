@@ -1,7 +1,8 @@
+import { PdfTextPreview } from './PdfTextPreview.jsx';
 import { useId, useState } from 'react';
 import { pdfExcerptContext } from '../state/pdfExcerpt.js';
 
-export function PdfExcerptForm({ onPrepare, onDraftChange, disabled, saving, previewOutdated }) {
+export function PdfExcerptForm({ client, onPrepare, onDraftChange, disabled, saving, previewOutdated }) {
   const [draft, setDraft] = useState({ document: '', page: '', endPage: '', section: '', excerpt: '' });
   const [error, setError] = useState(null);
   const errorId = useId();
@@ -38,6 +39,11 @@ export function PdfExcerptForm({ onPrepare, onDraftChange, disabled, saving, pre
   return <details>
     <summary>Use a passage from a PDF</summary>
     <p>Open the original PDF yourself. Copy the passage you want Niccolò to consider and record its page. The prepared text combines lines into a single paragraph.</p>
+    <PdfTextPreview client={client} disabled={saving} onSelect={selection=>{
+      onDraftChange?.();
+      setDraft(selection);
+      setError(null);
+    }}/>
     <form onSubmit={prepare}>
       <fieldset disabled={saving}>
       <label>PDF title or file name<input {...field('document')} value={draft.document} onChange={event=>change('document',event.target.value)} required/></label>
