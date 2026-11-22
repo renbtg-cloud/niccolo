@@ -40,7 +40,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
       </select>
     </label>
     {choice === '__new__' && <label>New person label
-      <input value={newLabel} disabled={pending} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
+      <input value={newLabel} disabled={pending} aria-invalid={Boolean(newLabelError)} onChange={(event) => setNewLabel(event.target.value)} placeholder="Human-confirmed display label"/>
     </label>}
     {newLabelError && <p role="alert">{newLabelError}</p>}
     <label>Why are you making this mapping?
