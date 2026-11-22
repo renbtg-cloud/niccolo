@@ -181,13 +181,13 @@ export function IdentitiesPage() {
     </label>}
 
     <div className="row">
-      <button disabled={sources.isFetching || sourceBackStack.length === 0} onClick={() => {
+      <button disabled={assign.isPending || clear.isPending || sources.isFetching || sourceBackStack.length === 0} onClick={() => {
         const stack = sourceBackStack.slice();
         setSourceCursor(stack.pop() ?? null);
         setSourceBackStack(stack);
         resetDocumentSelection('');
       }}>Previous source records</button>
-      <button disabled={sources.isFetching || !sources.data?.next_after} onClick={() => {
+      <button disabled={assign.isPending || clear.isPending || sources.isFetching || !sources.data?.next_after} onClick={() => {
         setSourceBackStack(stack => [...stack, sourceCursor]);
         setSourceCursor(sources.data.next_after);
         resetDocumentSelection('');
