@@ -1384,6 +1384,48 @@ async fn failed_resume_keeps_the_operation_and_step_paused() {
 }
 
 #[tokio::test]
+async fn a_legacy_pending_human_response_can_still_finish() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let gate = Uuid::new_v4();
+    let response = Uuid::new_v4();
+    let (revision, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(gate, 1, "REQUEST_HUMAN_DECISION", true, vec![])],
+    )
+    .await
+    .unwrap();
+    agentic_controller::start_step(&app, scope, gate, s.principal).await.unwrap();
+    agentic_controller::finish_step(&app, scope, gate, s.principal, "WAITING_FOR_HUMAN", "review")
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_human_responses
+             (workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,
+              decision,response_text,actor_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,'STOP','',$7)",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation).bind(revision)
+    .bind(gate).bind(response).bind(s.principal)
+    .execute(&admin).await.unwrap();
+
+    let outcome = agentic_controller::resolve_human_boundary(
+        &app, scope, gate, response, s.principal, "STOP", "",
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.operation_state, "CANCELLED");
+    let recorded: Vec<(Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT result_operation_state,result_plan_revision
+         FROM niccolo.agentic_human_responses
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation)
+    .fetch_all(&admin).await.unwrap();
+    assert_eq!(recorded, [(None, None)]);
+}
+
+#[tokio::test]
 async fn deferred_replan_leaves_the_human_response_and_pause_retryable() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
