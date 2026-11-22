@@ -235,7 +235,7 @@ function ConnectedSituation({client}){
       />
       {sources.isLoading && <p>Loading sources…</p>}
       {sources.error && <p className="error">{sources.error.message}</p>}
-      {!sources.isLoading && documents.length === 0 && <p>No source records have been imported yet.</p>}
+      {sources.isSuccess && documents.length === 0 && <p>No source records have been imported yet.</p>}
       <ul className="source-list">
         {documents.map((document) => <li key={document.document_id}>
           <div>
