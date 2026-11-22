@@ -6,6 +6,7 @@ import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { restoreSourceRequest, sourceDescriptor } from '../state/sourceUpload.js';
+import { situationTextError } from '../state/situationText.js';
 import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
@@ -22,13 +23,15 @@ function ContributionItem({ item, pending, onCorrect, onRetract }) {
 
 function FocusForm({ initial = '', label, pending, onSubmit }) {
   const [value, setValue] = useState(initial);
+  const validationError=situationTextError(value);
   return <form onSubmit={(event) => {
     event.preventDefault();
     const focus = value.trim();
-    if (focus && !pending) onSubmit(focus);
+    if (focus && !pending && !validationError) onSubmit(focus);
   }}>
     <label>{label}<textarea value={value} disabled={pending} onChange={(event) => setValue(event.target.value)} placeholder="What situation are you trying to understand?"/></label>
-    <button disabled={pending||!value.trim()}>{pending ? 'Saving…' : 'Save'}</button>
+    {validationError && <p role="alert">{validationError}</p>}
+    <button disabled={pending||!value.trim()||Boolean(validationError)}>{pending ? 'Saving…' : 'Save'}</button>
   </form>;
 }
 
