@@ -8,6 +8,7 @@ These describe components or intended contracts. Source code and tests determine
 - [Local Qwen epistemic inference pilot (research-only)](../../experiments/epistemic-qwen-local-2026-11-14/README.md) — synthetic fixtures, raw outcomes, and runnable offline code
 - [Offline Qwen epistemic test-challenge experiment 001](../../experiments/epistemic-challenge-001-2026-11-15/README.md) — matched direct-vs-test framing, constrained operator parsing, and independent oracle
 - [MVP composite evidence and human-guided circumstances](MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md)
+- [MVP confidentiality boundaries](MVP_CONFIDENTIALITY_BOUNDARIES.md)
 - [Model evolution architecture](EVOLUTION_ENGINE.md)
 - [Epistemic weighting API](EPISTEMIC_WEIGHTING_API.md)
 - [Discriminating-question scheduling](DISCRIMINATING_QUESTIONS_MVP.md)
