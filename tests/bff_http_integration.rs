@@ -581,6 +581,25 @@ async fn v431_v440_about_to_act_or_say_forces_explicit_human_boundary() {
             .contains("human must choose")
     );
     assert_eq!(step(&plan, "PREPARE_HANDOFF").unwrap()["state"], "PENDING");
+    let gate = human["step_id"].as_str().unwrap();
+    let endpoint = path(&s, operation, &format!("/agentic/steps/{gate}/human-response"));
+    let (status, _, replacement) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &endpoint,
+            &s.token,
+            Some(json!({"response_id":Uuid::new_v4(),"decision":"REPLAN","response_text":"review again"})),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replacement["resolution"]["plan_revision"], 2);
+    let next_gate = step(&replacement["controller"], "REQUEST_HUMAN_DECISION").unwrap();
+    assert_eq!(next_gate["requires_human"], true);
+    assert_eq!(next_gate["state"], "PENDING");
+
 }
 
 #[tokio::test]

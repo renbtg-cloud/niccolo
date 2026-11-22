@@ -78,10 +78,7 @@ pub(crate) async fn ensure_default_plan_with_status(
             let op = bff_operations::get(pool, scope).await?;
             let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
             let input = bff_operations::input(pool, scope).await?;
-            let intent = input
-                .get("human_intent")
-                .cloned()
-                .and_then(|v| serde_json::from_value(v).ok());
+            let intent = agentic_policy::intent_from_operation_input(&input);
             let steps = agentic_policy::plan_for_intent(
                 pool,
                 scope.workspace,

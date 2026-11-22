@@ -65,6 +65,10 @@ pub async fn default_plan(
     plan_for_intent(pool, workspace, situation, analysis, None).await
 }
 
+pub(crate) fn intent_from_operation_input(input: &serde_json::Value) -> Option<HumanIntent> {
+    input.get("human_intent").cloned().and_then(|value| serde_json::from_value(value).ok())
+}
+
 pub async fn plan_for_intent(
     pool: &PgPool,
     workspace: Uuid,
