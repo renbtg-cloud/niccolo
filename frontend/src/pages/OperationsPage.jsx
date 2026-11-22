@@ -23,9 +23,10 @@ const intentSchema=z.object({
 const humanSchema=z.object({decision:z.enum(['CONTINUE','STOP','REPLAN']),responseText:z.string().trim().max(4096)}).refine(v=>v.decision==='STOP'||v.responseText.length>0,{path:['responseText']});
 
 function AnswerPanel({ output, operation, error, pending }) {
- if(error)return <p className="error">Answer unavailable: {error.message}</p>;
+ if(error && !output)return <p className="error" role="alert">Answer unavailable: {error.message}</p>;
  if(output)return <article className="analysis-answer">
    <div className="answer-heading"><h3>Niccolò's answer</h3><span className={output.input_is_current?'status-current':'status-historical'}>{output.input_is_current?'Current input':'Historical input'}</span></div>
+   {error && <p role="status">Showing the last loaded answer. Refresh failed.</p>}
    <div className="answer-text">{output.answer_text}</div>
    <h4>Coverage</h4><div className="coverage-note">{output.coverage_note}</div>
    {!output.input_is_current&&<p className="historical-note">The Situation changed after this analysis input was frozen. The original answer is preserved.</p>}
