@@ -280,6 +280,21 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let request_sha = digest(&request_json);
     let invocation = Uuid::new_v4();
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
+    let operation_state: Option<String> = sqlx::query_scalar(
+        "SELECT state FROM niccolo.bff_operations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+         FOR SHARE",
+    )
+    .bind(scope.operation.workspace)
+    .bind(scope.operation.situation)
+    .bind(scope.operation.operation)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if operation_state.as_deref().is_none_or(|state| {
+        matches!(state, "SUCCEEDED" | "FAILED" | "CANCELLED")
+    }) {
+        return Err(ModelError::InvocationNoLongerActive);
+    }
     sqlx::query("INSERT INTO niccolo.model_invocations(workspace_id,situation_id,operation_id,plan_revision,step_id,invocation_id,provider,model,request_json,request_sha256,status,recorded_by_principal_id,timeout_ms,max_total_tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'STARTED',$11,$12,$13)")
       .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(model.provider()).bind(model.model()).bind(&request_json).bind(&request_sha).bind(actor).bind(policy.timeout_ms as i32).bind(policy.max_total_tokens).execute(&mut *tx).await?;
     tx.commit().await?;
