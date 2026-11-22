@@ -32,7 +32,7 @@ function ReviewContent(){
  const observed=useOperationObserver(activeOperation);
  const [questionPages,setQuestionPages]=useState([null]);
  const clarifications=useClarifications(questionPages.at(-1)); const reasoningInput=useReasoningInput(); const handoff=useReasoningHandoff(); const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
- const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async()=> (await client.analysisReview(analysis)).value});
+ const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async ({ signal })=> (await client.analysisReview(analysis, signal)).value});
  const r=review.data; const d=dashboard.data; const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
  const [clarificationDrafts,setClarificationDrafts]=useState({});
  // Keep every hook above conditional returns so connect/selection transitions never change hook order.
