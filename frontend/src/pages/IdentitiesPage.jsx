@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
+import { situationTextError } from '../state/situationText.js';
 import { identityMappingSummary } from '../state/identityMappingSummary.js';
 
 function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }) {
@@ -15,7 +16,8 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
   }, [binding?.person_id]);
 
   const current = identities.find((item) => item.person_id === binding?.person_id);
-  const canAssign = reason.trim() && (choice === '__new__' ? newLabel.trim() : choice);
+  const reasonError=situationTextError(reason,2048);
+  const canAssign = !reasonError && reason.trim() && (choice === '__new__' ? newLabel.trim() : choice);
 
   return <article className="speaker-row">
     <div className="speaker-heading">
@@ -42,6 +44,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
     <label>Why are you making this mapping?
       <textarea value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
     </label>
+    {reasonError && <p role="alert">{reasonError}</p>}
     <div className="row">
       <button disabled={!canAssign || pending} onClick={() => onAssign({
         speakerLabel: speaker.speaker_label,
@@ -49,7 +52,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
         newLabel: choice === '__new__' ? newLabel.trim() : null,
         reason: reason.trim(),
       })}>Assign</button>
-      {binding?.person_id && <button disabled={!reason.trim() || pending} onClick={() => onClear({
+      {binding?.person_id && <button disabled={!reason.trim() || Boolean(reasonError) || pending} onClick={() => onClear({
         speakerLabel: speaker.speaker_label,
         reason: reason.trim(),
       })}>Clear mapping</button>}
