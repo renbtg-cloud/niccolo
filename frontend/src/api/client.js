@@ -21,7 +21,7 @@ export class NiccoloClient {
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag'), pollAfterMs: Number(response.headers.get('x-poll-after-ms')) || value.retry_after_ms || null };
   }
-  async requestRaw(method, path, { body, contentType, locator } = {}) {
+  async requestRaw(method, path, { body, contentType, locator, signal } = {}) {
     const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
     if (contentType) headers['Content-Type'] = contentType;
     if (locator) {
@@ -32,10 +32,15 @@ export class NiccoloClient {
         headers['X-Source-Locator-Utf8'] = btoa(String.fromCharCode(...bytes));
       }
     }
-    const response = await this.fetch(path, { method, headers, cache: 'no-store', body });
+    const response = await this.fetch(path, { method, headers, cache: 'no-store', body, signal });
     const value = await response.json().catch(() => ({}));
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag') };
+  }
+  previewPdf(file, signal) {
+    return this.requestRaw('POST', `${sourcesPath(this.config)}/pdf-preview`, {
+      body: file, contentType: 'application/pdf', signal,
+    });
   }
   async downloadSourceOriginal(documentId) {
     const url = `${sourcesPath(this.config)}/${documentId}/original`;
