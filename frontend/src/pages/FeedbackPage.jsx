@@ -56,6 +56,10 @@ function QuestionCard({ question }) {
     <div className="feedback-history">
       <h4>Current recorded positions</h4>
       {latest.length? <ul>{latest.map(item=><li key={item.actor_principal_id}><strong>{item.response.replaceAll('_',' ')}</strong>: {item.human_reason}</li>)}</ul> : positions.isSuccess && <p>No human position recorded on this page.</p>}
+      {positions.isError&&<div>
+        <p role="alert">Recorded positions could not be loaded.</p>
+        <button type="button" disabled={positions.isFetching} onClick={()=>void positions.refetch()}>Retry positions</button>
+      </div>}
       {positions.isPending&&<p role="status">Loading recorded positions…</p>}
       <div className="row">
         <button disabled={positions.isFetching||positionsBackStack.length===0} onClick={()=>{
