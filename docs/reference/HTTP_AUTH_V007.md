@@ -26,7 +26,7 @@ Each data request parses the bearer header, hashes the token and checks the requ
 | GET | `/readyz` | public / loopback | DB reachability; no connection details |
 | GET | `/v1/workspaces/{workspace}/graph` | read | Revision, node/edge counts; not raw evidence |
 | POST | `/v1/workspaces/{workspace}/assess` | read | `{"report_ids": [uuid, ...]}` (1–64 unique IDs); roots, shared-source context; **no truth/independence claims** |
-| POST | `/v1/workspaces/{workspace}/sources/{document}` | write | Raw `.eml` (`message/rfc822`) or WhatsApp text (`text/plain`), `X-Source-Locator`, **≤4 MiB**; `201` newly imported, `200` idempotent retry, `409` conflicting reused ID |
+| POST | `/v1/workspaces/{workspace}/sources/{document}` | write | Raw `.eml` (`message/rfc822`) or WhatsApp text (`text/plain`), `X-Source-Locator` or `X-Source-Locator-Utf8` (standard Base64 of the UTF-8 locator), **≤4 MiB**; `201` newly imported, `200` idempotent retry, `409` conflicting reused ID |
 | GET | `/v1/workspaces/{workspace}/sources` | read | Page of metadata only: `limit` 1–100 (default 25), UUID `after` cursor, `next_after`; stable UUID keyset order |
 
 The server does not serve source bytes. Unauthorized data operations fail with generic JSON `401` (missing/malformed token) or `403` (no grant / unknown token), not stack traces. JSON data responses include `Cache-Control: no-store`; the raw parser input is never echoed to the response. `DefaultBodyLimit` rejects overly large upload bodies.

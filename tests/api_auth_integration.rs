@@ -231,6 +231,32 @@ async fn service_role_cannot_query_auth_tables_or_modify_access() {
     );
 }
 #[tokio::test]
+async fn source_locator_can_preserve_utf8_file_names() {
+    let (admin, _, workspace, _, token, router) = setup().await;
+    let id = Uuid::new_v4();
+    let path = source(workspace, id);
+    let encoded = "UmVjZXDDp8OjbyDigJQgcmV1bmnDo28udHh0";
+    let upload = |encoded, plain| {
+        let mut req = request("POST", &path, Some(&token), Some("text/plain"), plain, CHAT);
+        req.headers_mut().insert("x-source-locator-utf8", header::HeaderValue::from_static(encoded));
+        req
+    };
+    let (invalid, _) = invoke(router.clone(), upload("***", None)).await;
+    assert_eq!(invalid, StatusCode::BAD_REQUEST);
+    let (ambiguous, _) = invoke(router.clone(), upload(encoded, Some("other.txt"))).await;
+    assert_eq!(ambiguous, StatusCode::BAD_REQUEST);
+    let (created, _) = invoke(router.clone(), upload(encoded, None)).await;
+    assert_eq!(created, StatusCode::CREATED);
+    let (replay, _) = invoke(router, upload(encoded, None)).await;
+    assert_eq!(replay, StatusCode::OK);
+    let locator: String = sqlx::query_scalar(
+        "SELECT locator FROM niccolo.source_documents WHERE workspace_id=$1 AND document_id=$2",
+    )
+    .bind(workspace).bind(id).fetch_one(&admin).await.unwrap();
+    assert_eq!(locator, "Recepção — reunião.txt");
+}
+
+#[tokio::test]
 async fn source_is_atomic_replayable_and_provenance_is_returned_without_truth_claims() {
     let (_admin, _app, w, _, token, router) = setup().await;
     let id = Uuid::new_v4();

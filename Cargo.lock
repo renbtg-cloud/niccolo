@@ -794,6 +794,7 @@ name = "niccolo-evidence-poc"
 version = "1.0.0"
 dependencies = [
  "axum",
+ "base64",
  "http-body-util",
  "rustls",
  "serde",

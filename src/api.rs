@@ -941,6 +941,27 @@ async fn list_source_speakers(
     ))
 }
 
+fn source_locator(headers: &HeaderMap) -> Result<std::borrow::Cow<'_, str>, ApiError> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use std::borrow::Cow;
+
+    let invalid = || ApiError(StatusCode::BAD_REQUEST, "invalid source locator header");
+    match (headers.get("x-source-locator"), headers.get("x-source-locator-utf8")) {
+        (Some(locator), None) => locator.to_str().map(Cow::Borrowed).map_err(|_| invalid()),
+        (None, Some(encoded)) => {
+            let encoded = encoded.as_bytes();
+            // Base64 for a locator of at most 1024 decoded bytes.
+            if encoded.len() > 1368 {
+                return Err(invalid());
+            }
+            let bytes = STANDARD.decode(encoded).map_err(|_| invalid())?;
+            String::from_utf8(bytes).map(Cow::Owned).map_err(|_| invalid())
+        }
+        (None, None) => Err(ApiError(StatusCode::BAD_REQUEST, "missing source locator")),
+        (Some(_), Some(_)) => Err(invalid()),
+    }
+}
+
 async fn ingest(
     State(state): State<AppState>,
     Path((workspace, document)): Path<(Uuid, Uuid)>,
@@ -961,10 +982,7 @@ async fn ingest(
             ));
         }
     };
-    let locator = headers
-        .get("x-source-locator")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError(StatusCode::BAD_REQUEST, "missing source locator"))?;
+    let locator = source_locator(&headers)?;
     let operational_event_id = headers
         .get("x-operational-event-id")
         .map(|v| v.to_str())
@@ -980,7 +998,7 @@ async fn ingest(
         workspace,
         document,
         format,
-        locator,
+        &locator,
         &body,
         operational_event_id,
     )
