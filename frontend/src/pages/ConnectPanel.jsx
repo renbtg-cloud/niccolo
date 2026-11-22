@@ -19,9 +19,10 @@ export function ConnectPanel(){
    {prepared
     ? <div className="prepared-session"><strong>Prepared Situation</strong><small>Workspace and Situation are already selected by this demo link.</small><details><summary>Connection identifiers</summary><div className="row"><input aria-label="Workspace" placeholder="Workspace UUID" {...register('workspace')}/><input aria-label="Situation" placeholder="Situation UUID" {...register('situation')}/></div></details></div>
     : <><input aria-label="Workspace" placeholder="Workspace UUID" {...register('workspace')}/><input aria-label="Situation" placeholder="Situation UUID" {...register('situation')}/></>}
-   <input aria-label="Bearer token" type="password" placeholder="Bearer token" {...register('token')}/>
+   <input aria-label="Bearer token" aria-invalid={Boolean(errors.token)} type="password" placeholder="Bearer token" {...register('token')}/>
    <button type="submit">Connect</button>
    <small>{prepared?'Workspace and Situation are ready. Paste the bearer token from the separately supplied secret (for a local install: .niccolo-local/token.txt), then Connect.':'Workspace and Situation may be prefilled by a prepared demo link.'} Bearer tokens are never read from the URL or persisted.</small>
-   {Object.keys(errors).length>0&&<span className="error">Check connection fields.</span>}
+   {errors.token&&<span className="error" role="alert">Enter the bearer token.</span>}
+   {(errors.workspace||errors.situation)&&<span className="error" role="alert">Enter valid workspace and Situation identifiers.</span>}
  </form>;
 }
