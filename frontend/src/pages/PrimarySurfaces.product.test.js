@@ -58,6 +58,10 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('pendingDocumentId.current ?? crypto.randomUUID()');
     expect(situation).toContain('pendingDocumentId.current = documentId');
     expect(situation).toContain('pendingDocumentId.current = null');
+    expect(situation).toContain('pendingIngest.current?.documentId !== documentId');
+    expect(situation).toContain('Retry attachment');
+    expect(situation.indexOf('session ended before the record could be attached'))
+      .toBeLessThan(situation.indexOf('await client.addSituationSource(documentId)'));
     expect(situation).toContain('onError: refresh');
     expect(situation).toContain('upload.reset();');
     expect(situation).toContain('pendingContribution.current?.signature !== signature');
