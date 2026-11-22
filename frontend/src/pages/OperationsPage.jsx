@@ -1,3 +1,4 @@
+import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
@@ -42,6 +43,7 @@ function AnswerPanel({ output, operation, error, pending }) {
 }
 
 export function OperationsPage(){
+ const generation=useSessionStore(s=>s.generation);
  const client=useClient(); const qc=useQueryClient();
  const readiness = useRuntimeReadiness(client);
  const modelUnavailable=readiness.data?.model_configured===false;
@@ -60,8 +62,13 @@ export function OperationsPage(){
    const {operationId,analysisId}=pendingLaunch.current;
    const task={analysis_id:analysisId,intent:v.intent,goal:v.goal?.trim()||null,reanalysis_of:null,idempotency_key:`ui-intent-${operationId}`,step_budget:v.stepBudget,context:{surface:'react-v1',human_owns_project:true}};
    const r=v.mode==='sync'?await client.runIntentSync(operationId,task):await client.runIntentAsync(operationId,task);
-   setAnalysis(r.value.analysis_id); setActive(operationId); return r.value;
+   if (isCurrentSession(generation)) {
+     setAnalysis(r.value.analysis_id);
+     setActive(operationId);
+   }
+   return r.value;
  },onSuccess:()=>{
+   if (!isCurrentSession(generation)) return;
    pendingLaunch.current=null;
    void qc.invalidateQueries({queryKey:qk.analysisHistory(client.config)});
  }});
