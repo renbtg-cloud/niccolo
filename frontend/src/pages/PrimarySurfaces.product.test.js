@@ -87,6 +87,9 @@ describe('buyer-facing primary surfaces', () => {
     expect(identities).toContain('Next people');
     expect(identities).toContain('client.identities(identityCursor, 100, signal)');
     expect(identities).toContain('resetDocumentSelection');
+    expect(identities).toContain('client.identityHistory(documentId, historyCursor, 100, signal)');
+    expect(identities).toContain('historyPages.documentId===documentId');
+    expect(identities).toContain('key={JSON.stringify([documentId,speaker.speaker_label])}');
   });
 
   it('retries speaker identity creation and binding with stable identifiers', () => {
