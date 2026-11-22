@@ -242,7 +242,7 @@ export function IdentitiesPage() {
     </div>
     {documentId && speakers.isSuccess && speakerRows.length === 0 && <p>No speaker labels were extracted from this source.</p>}
     {documentId&&speakers.isSuccess&&speakerRows.length>0&&<p><Link to="/operations">Continue to Analyze →</Link></p>}
-    {(assign.error || clear.error) && <p className="error">{(assign.error || clear.error).message}</p>}
+    {(assign.error || clear.error) && <p className="error" role="alert">{(assign.error || clear.error).message}</p>}
 
     {documentId && <details open={historyOpen} onToggle={event=>setHistoryOpen(event.currentTarget.open)}>
       <summary>Identity mapping history</summary>
