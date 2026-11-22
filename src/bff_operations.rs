@@ -397,6 +397,16 @@ pub async fn start(
     .await
 }
 
+const FAILURE_DETAIL_MAX_BYTES: usize = 4096;
+
+pub(crate) fn persistable_failure_detail(message: &str) -> &str {
+    if message.len() > FAILURE_DETAIL_MAX_BYTES || message.contains('\0') {
+        "failure details could not be recorded"
+    } else {
+        message
+    }
+}
+
 pub async fn fail(
     pool: &PgPool,
     scope: OperationScope,
@@ -435,7 +445,7 @@ async fn fail_with_owner(
     if code.trim().is_empty()
         || code.len() > 128
         || message.trim().is_empty()
-        || message.len() > 4096
+        || message.len() > FAILURE_DETAIL_MAX_BYTES
     {
         return Err(BffOperationError::Invalid);
     }

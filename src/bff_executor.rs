@@ -103,7 +103,15 @@ async fn run_with_owned_lease(
             | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
         };
         let message = error.to_string();
-        mark_failed_best_effort(pool, scope, actor, lease_owner, code, &message).await;
+        mark_failed_best_effort(
+            pool,
+            scope,
+            actor,
+            lease_owner,
+            code,
+            bff_operations::persistable_failure_detail(&message),
+        )
+        .await;
     }
     let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
     result?;

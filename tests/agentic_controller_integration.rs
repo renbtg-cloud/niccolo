@@ -350,6 +350,53 @@ async fn runtime_rejects_a_response_over_the_remaining_operation_budget() {
     );
 }
 
+struct ExcessiveDiagnosticModel;
+
+impl ReasoningModel for ExcessiveDiagnosticModel {
+    fn provider(&self) -> &str {
+        "diagnostic-fixture"
+    }
+
+    fn model(&self) -> &str {
+        "failure-response"
+    }
+
+    fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        Box::pin(async { Err(ModelError::Provider("diagnostic ".repeat(500))) })
+    }
+}
+
+#[tokio::test]
+async fn oversized_provider_diagnostic_does_not_strand_the_worker_operation() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 32).await;
+    assert!(
+        niccolo_evidence::bff_executor::execute(&app, scope, s.principal, &ExcessiveDiagnosticModel)
+            .await
+            .is_err()
+    );
+    let view = bff_operations::get(&app, scope).await.unwrap();
+    assert_eq!(view.state, "FAILED");
+    assert_eq!(view.error_code.as_deref(), Some("AGENTIC_EXECUTION_FAILED"));
+    assert_eq!(
+        view.error_message.as_deref(),
+        Some("failure details could not be recorded")
+    );
+    let (status, message): (String, String) = sqlx::query_as(
+        "SELECT status,error_message FROM niccolo.model_invocations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(status, "FAILED");
+    assert_eq!(message, "failure details could not be recorded");
+}
+
 struct PendingModel;
 
 impl ReasoningModel for PendingModel {
