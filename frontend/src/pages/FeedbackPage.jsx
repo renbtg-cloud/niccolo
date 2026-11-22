@@ -80,6 +80,7 @@ function QuestionCard({ question }) {
           <p className="error" role="alert">Feedback events unavailable: {history.error.message}</p>
           <button type="button" disabled={history.isFetching} onClick={()=>void history.refetch()}>Retry feedback events</button>
         </div>}
+        {history.isSuccess && history.data.events?.length===0 && <p>No feedback events on this page.</p>}
         <ul>{(history.data?.events??[]).map(item=><li key={item.event_id}>#{item.event_no} · {item.response.replaceAll('_',' ')} · {item.human_reason}</li>)}</ul>
         <div className="row">
           <button disabled={history.isFetching||eventBackStack.length===0} onClick={()=>{
