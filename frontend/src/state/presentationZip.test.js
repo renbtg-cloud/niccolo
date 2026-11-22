@@ -7,7 +7,7 @@ function pkg(files) {
 
 describe('portable analysis ZIP', () => {
   it('writes readable uncompressed ZIP entries with correct CRC and directory', async () => {
-    const archive = presentationZip(pkg({ 'data/numbers.txt': '123456789', 'README.md': 'Private analysis' }));
+    const archive = presentationZip(pkg({ 'data/numbers.txt': '123456789', 'readme.md': 'Private analysis' }));
     expect(archive.type).toBe('application/zip');
     const bytes = new Uint8Array(await archive.arrayBuffer());
     const view = new DataView(bytes.buffer);

@@ -60,7 +60,7 @@ export function presentationZip(pkg) {
       || !pkg.files || typeof pkg.files !== 'object' || Array.isArray(pkg.files)) {
     throw new Error('Invalid portable analysis package.');
   }
-  const entries = Object.entries(pkg.files).sort(([a], [b]) => a.localeCompare(b));
+  const entries = Object.entries(pkg.files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
   if (entries.length === 0 || entries.length > 65535) {
     throw new Error('Invalid number of export files.');
   }
