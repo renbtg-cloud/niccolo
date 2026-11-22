@@ -3,7 +3,7 @@ import { ClarificationCard } from './ClarificationCard.jsx';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { situationTextError, utf8ByteLength } from '../state/situationText.js';
 import { Link } from 'react-router-dom';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useDashboard } from '../hooks/useDashboard.js';
@@ -37,6 +37,7 @@ function ReviewContent(){
  const clarifications=useClarifications(questionPages.at(-1)); const reasoningInput=useReasoningInput(); const handoff=useReasoningHandoff(); const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const receipts=useHandoffReceipts(); const [handoffNote,setHandoffNote]=useState('');
  const review=useQuery({queryKey:client&&analysis?qk.analysis(client.config,analysis,'review'):['review','none'],enabled:!!client&&!!analysis,queryFn:async ({ signal })=> (await client.analysisReview(analysis, signal)).value});
  const r=review.data; const d=dashboard.data; const handoffView=handoffSummary(handoff.data); const receiptView=receiptSummary(receipts.data);
+ const reanalysisGoalErrorId=useId();
  const reanalysisGoalError=situationTextError(reanalysisGoal);
  const cleanHandoffNote=handoffNote.trim();
  const handoffNoteError=cleanHandoffNote.includes('\0') ? 'The note cannot contain NUL.'
@@ -165,7 +166,7 @@ function ReviewContent(){
        />)}</div> : <p>No clarification question is currently recorded.</p>}
        {questionPages.length>1 && <button type="button" disabled={clarifications.isFetching} onClick={()=>setQuestionPages(pages=>pages.slice(0,-1))}>Previous questions</button>}
        {clarifications.data?.next_after && <button type="button" disabled={clarifications.isFetching} onClick={()=>setQuestionPages(pages=>[...pages,clarifications.data.next_after])}>More questions</button>}<p><small>Clarification questions are not evidence. Answers are new attributed human context and never rewrite the analysis input that motivated the question.</small></p>{answerClarification.isSuccess&&<p role="status">Answer saved as human context.</p>}{answerClarification.error&&<p className="error" role="alert">{answerClarification.error.message}</p>}</article>
-     <article className="review-panel"><h3>Reanalysis</h3>{dashboard.error ? <p>Reanalysis recommendations are unavailable.</p> : dashboard.isPending ? <p>Checking for changes…</p> : reanalysis? <><p>The backend reports material post-analysis change:</p><ul>{reanalysis.reasons.map(x=><li key={x}>{x}</li>)}</ul><p><strong>Your approval is required.</strong> This recommendation does not start a new analysis automatically, and the old output remains preserved.</p><label>Goal for the new analysis<textarea aria-label="Reanalysis goal" value={reanalysisGoal} disabled={approveReanalysis.isPending} aria-invalid={Boolean(reanalysisGoalError)} onChange={e=>setReanalysisGoal(e.target.value)} placeholder={r.goal||'What should the new analysis revisit?'}/></label>{reanalysisGoalError&&<p role="alert">{reanalysisGoalError}</p>}<button disabled={approveReanalysis.isPending||Boolean(reanalysisGoalError)} onClick={()=>approveReanalysis.mutate()}>{approveReanalysis.isPending?'Starting reanalysis…':'Approve and start reanalysis'}</button>{approveReanalysis.error&&<p className="error" role="alert">{approveReanalysis.error.message}</p>}</> : <p>No reanalysis recommendation is currently recorded.</p>}</article>
+     <article className="review-panel"><h3>Reanalysis</h3>{dashboard.error ? <p>Reanalysis recommendations are unavailable.</p> : dashboard.isPending ? <p>Checking for changes…</p> : reanalysis? <><p>The backend reports material post-analysis change:</p><ul>{reanalysis.reasons.map(x=><li key={x}>{x}</li>)}</ul><p><strong>Your approval is required.</strong> This recommendation does not start a new analysis automatically, and the old output remains preserved.</p><label>Goal for the new analysis<textarea aria-label="Reanalysis goal" value={reanalysisGoal} disabled={approveReanalysis.isPending} aria-invalid={Boolean(reanalysisGoalError)} aria-describedby={reanalysisGoalError?reanalysisGoalErrorId:undefined} onChange={e=>setReanalysisGoal(e.target.value)} placeholder={r.goal||'What should the new analysis revisit?'}/></label>{reanalysisGoalError&&<p id={reanalysisGoalErrorId} role="alert">{reanalysisGoalError}</p>}<button disabled={approveReanalysis.isPending||Boolean(reanalysisGoalError)} onClick={()=>approveReanalysis.mutate()}>{approveReanalysis.isPending?'Starting reanalysis…':'Approve and start reanalysis'}</button>{approveReanalysis.error&&<p className="error" role="alert">{approveReanalysis.error.message}</p>}</> : <p>No reanalysis recommendation is currently recorded.</p>}</article>
      <details className="desktop-only"><summary>Raw review data</summary><div className="inspector-grid"><pre>{JSON.stringify(r,null,2)}</pre><pre>{JSON.stringify(d,null,2)}</pre></div></details>
    </>}
  </section>;
