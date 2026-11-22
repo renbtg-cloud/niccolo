@@ -14,7 +14,10 @@ export class NiccoloClient {
     if (etag) headers['If-None-Match'] = etag;
     const response = await this.fetch(path, { method, headers, cache: 'no-store', signal, body: body === undefined ? undefined : JSON.stringify(body) });
     if (response.status === 304) return { notModified: true, etag: response.headers.get('etag') ?? etag };
-    const value = await response.json().catch(() => ({}));
+    const value = await response.json().catch((error) => {
+      if (signal?.aborted || error?.name === 'AbortError') throw error;
+      return {};
+    });
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag'), pollAfterMs: Number(response.headers.get('x-poll-after-ms')) || value.retry_after_ms || null };
   }
