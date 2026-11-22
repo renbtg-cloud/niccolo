@@ -436,6 +436,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
             let mut tx = scoped(pool, scope.operation.workspace, true).await?;
             let state: Option<(String, bool)> = sqlx::query_as(
                 "SELECT i.status, o.state IN ('SUCCEEDED','FAILED','CANCELLED')
+                     OR coalesce(o.deadline_at <= clock_timestamp(), false)
                      OR i.plan_revision IS DISTINCT FROM (
                          SELECT p.plan_revision FROM niccolo.agentic_plans p
                          WHERE p.workspace_id=i.workspace_id AND p.situation_id=i.situation_id

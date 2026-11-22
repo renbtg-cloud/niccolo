@@ -572,17 +572,34 @@ async fn superseded_plan_does_not_retry_after_provider_failure() {
     assert_retry_stops(RetryInterruption::Replan).await;
 }
 
+#[tokio::test]
+async fn deadline_stops_retry_after_provider_failure() {
+    assert_retry_stops(RetryInterruption::Deadline).await;
+}
+
 #[derive(Clone, Copy)]
 enum RetryInterruption {
     Recovery,
     Cancellation,
     Replan,
+    Deadline,
 }
 
 async fn assert_retry_stops(interruption: RetryInterruption) {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
-    let scope = op(&app, s, 10).await;
+    let deadline = if matches!(interruption, RetryInterruption::Deadline) {
+        let deadline: String = sqlx::query_scalar(
+            "SELECT (clock_timestamp() + interval '2 seconds')::text",
+        )
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        Some(deadline)
+    } else {
+        None
+    };
+    let scope = op_with_deadline(&app, s, 10, deadline.clone()).await;
     let step_id = Uuid::new_v4();
     let (plan_revision, _) = agentic_controller::create_plan(
         &app, scope, s.principal, &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
@@ -626,6 +643,13 @@ async fn assert_retry_stops(interruption: RetryInterruption) {
                     RetryInterruption::Cancellation => {
                         let op = bff_operations::get(&app, scope).await.unwrap();
                         bff_operations::cancel(&app, scope, op.state_version, s.principal, "stop")
+                            .await
+                            .unwrap();
+                    }
+                    RetryInterruption::Deadline => {
+                        sqlx::query("SELECT pg_sleep_until($1::text::timestamptz)")
+                            .bind(deadline.as_deref().unwrap())
+                            .execute(&admin)
                             .await
                             .unwrap();
                     }
