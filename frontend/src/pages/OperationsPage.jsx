@@ -64,7 +64,7 @@ export function OperationsPage(){
    pendingLaunch.current=null;
    void qc.invalidateQueries({queryKey:qk.analysisHistory(client.config),exact:true});
  }});
- const waitingStep=plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
+ const waitingStep=operation?.terminal ? null : plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
  const waitingStepId=waitingStep?.step_id;
  const planRevision=plan.data?.plan_revision;
  const resetHumanResponse=humanForm.reset;
@@ -73,7 +73,7 @@ export function OperationsPage(){
    resetHumanResponse(initialHumanResponse);
  },[active,waitingStepId,planRevision,resetHumanResponse]);
  const respond=useMutation({mutationFn:async(v)=>{
-   if(!active||!waitingStep)throw new Error('No waiting human step');
+   if(!active||!waitingStep||operation?.terminal)throw new Error('No waiting human step');
    const signature=JSON.stringify({active,step:waitingStep.step_id,decision:v.decision,text:v.responseText});
    if(pendingHumanResponse.current?.signature!==signature){
      pendingHumanResponse.current={signature,responseId:crypto.randomUUID()};
