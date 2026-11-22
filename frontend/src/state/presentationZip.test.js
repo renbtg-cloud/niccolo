@@ -48,3 +48,7 @@ it('Verify portable ZIP handling of trailing dots and spaces', () => {
 it('Verify portable ZIP collision handling on case-insensitive hosts', () => {
   expect(() => presentationZip(pkg({ 'README.md': 'a', 'readme.md': 'b' }))).toThrow();
 });
+
+it('Verify portable ZIP collision handling for Unicode normalization', () => {
+  expect(() => presentationZip(pkg({ 'café.txt': 'a', 'cafe\u0301.txt': 'b' }))).toThrow();
+});
