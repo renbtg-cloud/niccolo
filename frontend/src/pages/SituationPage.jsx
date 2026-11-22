@@ -1,3 +1,4 @@
+import { PdfExcerptForm } from './PdfExcerptForm.jsx';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useRef, useState } from 'react';
@@ -325,6 +326,8 @@ function ConnectedSituation({client}){
 
     <article className="human-context">
       <h3>Human context</h3>
+      <PdfExcerptForm disabled={addContext.isPending||Boolean(contextText.trim())}
+        onPrepare={text=>{setContextKind('user_reported');setContextText(text);}}/>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
       <label>Kind<select value={contextKind} disabled={addContext.isPending} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
       <label>Context<textarea aria-label="Human context text" value={contextText} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
