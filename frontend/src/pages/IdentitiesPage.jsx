@@ -104,7 +104,7 @@ export function IdentitiesPage() {
   const bindings = useQuery({
     queryKey: client && documentId ? qk.identityBindings(client.config, documentId) : ['identity-bindings','none'],
     enabled: !!client && !!documentId,
-    queryFn: async () => (await client.effectiveIdentities(documentId)).value,
+    queryFn: async ({ signal }) => (await client.effectiveIdentities(documentId, signal)).value,
   });
   const history = useQuery({
     queryKey: client && documentId ? qk.identityHistory(client.config, documentId) : ['identity-history','none'],
