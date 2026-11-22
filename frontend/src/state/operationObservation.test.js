@@ -72,6 +72,16 @@ describe('operation observation state', () => {
     }
   });
 
+  it('drains a full terminal page and stops after a short final page', () => {
+    const operation = { state: 'SUCCEEDED', state_version: 8 };
+    const events = Array.from({length: 100}, (_, index) => ({ event_seq: index + 1 }));
+    const first = mergeOperationObservation(null, { operation, events, next_after_event: 100 });
+    expect(observationPollDelay(operation.state, first.fullEventPage)).toBe(250);
+    const second = mergeOperationObservation(first, {operation, events: [{ event_seq: 101 }], next_after_event: 101});
+    expect(second.events).toHaveLength(101);
+    expect(observationPollDelay(operation.state, second.fullEventPage)).toBe(false);
+  });
+
   it('reports transport and terminal phases explicitly', () => {
     expect(operationPhase(null, { pending: true })).toBe('loading');
     expect(operationPhase(null, { error: new Error('x') })).toBe('error');
