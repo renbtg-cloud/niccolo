@@ -611,7 +611,30 @@ pub async fn recover_stale_started(
     if state != "RUNNING" {
         return Ok(before);
     }
-    let stale:Vec<Uuid>=sqlx::query_scalar("SELECT s.step_id FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 AND (SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)='STARTED' AND (SELECT e.created_at FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)<clock_timestamp()-make_interval(secs=>$5)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(stale_after_seconds).fetch_all(&mut *tx).await?;
+    let stale: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT s.step_id
+         FROM niccolo.agentic_steps s
+         JOIN LATERAL (
+             SELECT e.event_kind, e.created_at
+             FROM niccolo.agentic_step_events e
+             WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id
+               AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision
+               AND e.step_id=s.step_id
+             ORDER BY e.event_seq DESC LIMIT 1
+         ) latest ON true
+         WHERE s.workspace_id=$1 AND s.situation_id=$2
+           AND s.operation_id=$3 AND s.plan_revision=$4
+           AND latest.event_kind='STARTED'
+           AND latest.created_at < clock_timestamp()-make_interval(secs=>$5)
+         ORDER BY s.ordinal",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(before.plan_revision)
+    .bind(stale_after_seconds)
+    .fetch_all(&mut *tx)
+    .await?;
     if stale.is_empty() {
         return Ok(before);
     }
