@@ -44,7 +44,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
     </label>}
     {newLabelError && <p role="alert">{newLabelError}</p>}
     <label>Why are you making this mapping?
-      <textarea value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
+      <textarea value={reason} disabled={pending} aria-invalid={Boolean(reasonError)} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
     </label>
     {reasonError && <p role="alert">{reasonError}</p>}
     <div className="row">
