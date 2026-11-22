@@ -134,6 +134,39 @@ async fn malformed_agentic_budget_is_rejected_before_creating_an_operation() {
 }
 
 #[tokio::test]
+async fn unknown_agentic_intent_is_rejected_before_submission() {
+    let s = setup().await;
+    for suffix in ["/sync", "/async"] {
+        let operation = Uuid::new_v4();
+        let mut request = body(&s, "AGENTIC_ANALYSIS");
+        request["input"] = json!({"human_intent":"ABOUT_TO_ACT"});
+        let (status, _, response) = invoke(
+            s.router.clone(),
+            req("POST", &path(&s, operation, suffix), &s.token, Some(request), None),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response["error"], "invalid operation human intent");
+        let (status, _, _) = invoke(
+            s.router.clone(),
+            req("GET", &path(&s, operation, ""), &s.token, None, None),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+    let operation = Uuid::new_v4();
+    let mut request = body(&s, "AGENTIC_ANALYSIS");
+    request["input"] = json!({"human_intent":null});
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req("POST", &path(&s, operation, "/sync"), &s.token, Some(request), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+}
+
+#[tokio::test]
 async fn agentic_plan_creation_reports_conflict_after_cancellation() {
     let s = setup().await;
     let operation = Uuid::new_v4();

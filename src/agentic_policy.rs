@@ -66,7 +66,7 @@ pub async fn default_plan(
 }
 
 pub(crate) fn intent_from_operation_input(input: &serde_json::Value) -> Option<HumanIntent> {
-    input.get("human_intent").cloned().and_then(|value| serde_json::from_value(value).ok())
+    serde::Deserialize::deserialize(input.get("human_intent")?).ok()
 }
 
 pub async fn plan_for_intent(

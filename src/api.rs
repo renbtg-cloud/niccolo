@@ -4886,6 +4886,11 @@ async fn submit_bff(
     if request.kind == "AGENTIC_ANALYSIS" {
         operation_budget::configured(&request.input)
             .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid operation model budget"))?;
+        if request.input.get("human_intent").is_some_and(|intent| !intent.is_null())
+            && crate::agentic_policy::intent_from_operation_input(&request.input).is_none()
+        {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "invalid operation human intent"));
+        }
     }
     bff_operations::submit(
         &state.pool,
