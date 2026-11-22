@@ -1,3 +1,4 @@
+import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { ClarificationCard } from './ClarificationCard.jsx';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -28,6 +29,7 @@ function ReviewContent(){
  const pendingReanalysis=useRef(null);
  const pendingClarification=useRef(new Map());
  const pendingReceipt=useRef(null);
+ const generation=useSessionStore(s=>s.generation);
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const observed=useOperationObserver(activeOperation);
  const [questionPages,setQuestionPages]=useState([null]);
@@ -91,7 +93,7 @@ function ReviewContent(){
      pendingReanalysis.current={signature,ids:{snapshotOperation:crypto.randomUUID(),newAnalysis:crypto.randomUUID(),agenticOperation:crypto.randomUUID()}};
    }
    return launchApprovedReanalysis({client,priorAnalysis:analysis,goal,ids:pendingReanalysis.current.ids});
- },onSuccess:async(result)=>{pendingReanalysis.current=null;setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:qk.analysisHistory(client.config)})]);}});
+ },onSuccess:async(result)=>{if(!isCurrentSession(generation))return;pendingReanalysis.current=null;setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:qk.analysisHistory(client.config)})]);}});
  if(!client)return <p>Connect first.</p>;
  if(!analysis)return <section><h2>Human review</h2><p><Link to="/operations">Run an analysis</Link> or <Link to="/analysis">choose an earlier analysis</Link> to review.</p></section>;
  if(review.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {review.error.message}</p></section>;
