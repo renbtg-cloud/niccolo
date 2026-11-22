@@ -62,6 +62,7 @@ function ConnectedSituation({client}){
   const pendingCorrection = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
   const [contextText,setContextText]=useState('');
+  const contextError=situationTextError(contextText);
 
   const situation = useQuery({
     queryKey: client ? qk.situation(client.config) : ['situation','none'],
@@ -317,7 +318,8 @@ function ConnectedSituation({client}){
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
       <label>Kind<select value={contextKind} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
       <label>Context<textarea aria-label="Human context text" value={contextText} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
-      <button disabled={!contextText.trim()||addContext.isPending} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
+      {contextError&&<p role="alert">{contextError}</p>}
+      <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
       {addContext.error&&<p className="error">{addContext.error.message}</p>}
       {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
       {correctContext.error&&<p className="error">{correctContext.error.message}</p>}
