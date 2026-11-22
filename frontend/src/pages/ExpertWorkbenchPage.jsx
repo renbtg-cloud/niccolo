@@ -125,6 +125,7 @@ export function ExpertWorkbenchPage() {
   };
   const submit = (action) => (event) => {
     event.preventDefault();
+    if (busy) return;
     setError('');
     try { action(); } catch (e) { setError(e.message); }
   };
