@@ -29,6 +29,19 @@ describe('BFF client',()=>{
    expect(calls[1][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/sources/doc');
    expect(calls[1][1].method).toBe('POST');
  });
+ it('preserves Unicode upload names using an ASCII-safe UTF-8 header', async () => {
+   const calls = [];
+   const client = new NiccoloClient(c, async (_url, options) => {
+     calls.push(new Headers(options.headers));
+     return response(201, {document_id: 'doc'});
+   });
+   const locator = 'Recepção — reunião.txt';
+   await client.ingestSource('doc', { locator, contentType: 'text/plain', body: new Uint8Array([65]) });
+   expect(calls[0].has('X-Source-Locator')).toBe(false);
+   const encoded = calls[0].get('X-Source-Locator-Utf8');
+   const decoded = Uint8Array.from(atob(encoded), byte => byte.charCodeAt(0));
+   expect(new TextDecoder().decode(decoded)).toBe(locator);
+ });
  it('lists the workspace source catalog through the BFF client',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{documents:[],next_after:null});});

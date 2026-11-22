@@ -21,7 +21,14 @@ export class NiccoloClient {
   async requestRaw(method, path, { body, contentType, locator } = {}) {
     const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
     if (contentType) headers['Content-Type'] = contentType;
-    if (locator) headers['X-Source-Locator'] = locator;
+    if (locator) {
+      if (/^[\x20-\x7e]+$/u.test(locator)) {
+        headers['X-Source-Locator'] = locator;
+      } else {
+        const bytes = new TextEncoder().encode(locator);
+        headers['X-Source-Locator-Utf8'] = btoa(String.fromCharCode(...bytes));
+      }
+    }
     const response = await this.fetch(path, { method, headers, cache: 'no-store', body });
     const value = await response.json().catch(() => ({}));
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
