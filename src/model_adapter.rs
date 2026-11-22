@@ -29,6 +29,8 @@ pub enum ModelError {
     HttpStatus(u16),
     #[error("model invocation timed out")]
     Timeout,
+    #[error("operation deadline exceeded")]
+    Deadline,
     #[error("model invocation is no longer active")]
     InvocationNoLongerActive,
     #[error("model invocation token budget exceeded")]
@@ -307,18 +309,26 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     }
     // Read the current revision after taking the operation lock because
     // replanning can commit a new revision without modifying that row.
-    let current_revision: Option<i64> = sqlx::query_scalar(
-        "SELECT plan_revision FROM niccolo.agentic_plans
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
-         ORDER BY plan_revision DESC LIMIT 1",
+    let (current_revision, deadline_elapsed): (Option<i64>, bool) = sqlx::query_as(
+        "SELECT (
+             SELECT p.plan_revision FROM niccolo.agentic_plans p
+             WHERE p.workspace_id=o.workspace_id AND p.situation_id=o.situation_id
+               AND p.operation_id=o.operation_id
+             ORDER BY p.plan_revision DESC LIMIT 1
+         ), coalesce(o.deadline_at <= clock_timestamp(), false)
+         FROM niccolo.bff_operations o
+         WHERE o.workspace_id=$1 AND o.situation_id=$2 AND o.operation_id=$3",
     )
     .bind(scope.operation.workspace)
     .bind(scope.operation.situation)
     .bind(scope.operation.operation)
-    .fetch_optional(&mut *tx)
+    .fetch_one(&mut *tx)
     .await?;
     if current_revision != Some(scope.plan_revision) {
         return Err(ModelError::InvocationNoLongerActive);
+    }
+    if deadline_elapsed {
+        return Err(ModelError::Deadline);
     }
     sqlx::query("INSERT INTO niccolo.model_invocations(workspace_id,situation_id,operation_id,plan_revision,step_id,invocation_id,provider,model,request_json,request_sha256,status,recorded_by_principal_id,timeout_ms,max_total_tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'STARTED',$11,$12,$13)")
       .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(model.provider()).bind(model.model()).bind(&request_json).bind(&request_sha).bind(actor).bind(policy.timeout_ms as i32).bind(policy.max_total_tokens).execute(&mut *tx).await?;

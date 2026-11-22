@@ -54,6 +54,15 @@ async fn seed(a: &PgPool) -> Seed {
     s
 }
 async fn op(app: &PgPool, s: Seed, budget: i32) -> OperationScope {
+    op_with_deadline(app, s, budget, None).await
+}
+
+async fn op_with_deadline(
+    app: &PgPool,
+    s: Seed,
+    budget: i32,
+    deadline_at: Option<String>,
+) -> OperationScope {
     let sc = OperationScope {
         workspace: s.workspace,
         situation: s.situation,
@@ -68,7 +77,7 @@ async fn op(app: &PgPool, s: Seed, budget: i32) -> OperationScope {
             parent_operation_id: None,
             idempotency_key: None,
             input: json!({}),
-            deadline_at: None,
+            deadline_at,
             step_budget: budget,
             requested_by: s.principal,
         },
@@ -687,6 +696,40 @@ async fn superseded_plan_cannot_reserve_a_model_invocation() {
     assert_eq!(current.status, "SUCCEEDED");
     assert_eq!(model.calls.load(Ordering::SeqCst), 1);
     assert_eq!(operation_budget::view(&app, scope).await.unwrap().used_invocations, 1);
+}
+
+#[tokio::test]
+async fn expired_operation_cannot_reserve_a_model_invocation() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op_with_deadline(&app, s, 10, Some("-infinity".into())).await;
+    let step_id = Uuid::new_v4();
+    let (plan_revision, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let model = ReportedUsageModel {
+        calls: AtomicUsize::new(0),
+        prompt_tokens: 2,
+        completion_tokens: 1,
+        effective_model: None,
+    };
+    let result = model_adapter::invoke_recorded(
+        &app,
+        InvocationScope { operation: scope, plan_revision, step_id },
+        s.principal,
+        &model,
+        &ModelRequest {
+            purpose: "INSPECT_SOURCES".into(),
+            input: json!({}),
+            output_contract: json!({}),
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(ModelError::Deadline)));
+    assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(operation_budget::view(&app, scope).await.unwrap().used_invocations, 0);
 }
 
 #[tokio::test]

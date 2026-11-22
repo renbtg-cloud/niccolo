@@ -334,7 +334,8 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             RuntimeError::Budget(operation_budget::BudgetError::Invalid) => {
                 "operation model budget is invalid"
             }
-            RuntimeError::Budget(operation_budget::BudgetError::Deadline) => {
+            RuntimeError::Budget(operation_budget::BudgetError::Deadline)
+            | RuntimeError::Model(model_adapter::ModelError::Deadline) => {
                 "operation deadline elapsed before model invocation"
             }
             RuntimeError::Budget(operation_budget::BudgetError::Invocations) => {
