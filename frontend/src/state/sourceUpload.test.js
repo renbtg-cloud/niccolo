@@ -16,6 +16,7 @@ describe('source upload boundary', () => {
   it('rejects unsupported, empty and oversized sources before upload', () => {
     expect(() => sourceDescriptor({ name: 'image.png', type: 'image/png', size: 12 })).toThrow(/Unsupported/);
     expect(() => sourceDescriptor({ name: 'image.png', type: 'text/plain', size: 12 })).toThrow(/Unsupported/);
+    expect(() => sourceDescriptor({ name: 'chat\u0085.txt', size: 12 })).toThrow(/file name/);
     expect(() => sourceDescriptor({ name: 'chat.csv', type: 'text/plain', size: 12 })).toThrow(/Unsupported/);
     expect(() => sourceDescriptor({ name: 'chat.txt\nX-Bad: value', type: 'text/plain', size: 12 })).toThrow(/file name/);
     expect(() => sourceDescriptor({ name: 'é'.repeat(520) + '.txt', type: 'text/plain', size: 12 })).toThrow(/1024/);
