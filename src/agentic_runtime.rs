@@ -414,11 +414,12 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             .await?;
             let handoff_sha256 = reasoning_handoff::sha256(&handoff)?;
             let result = json!({"agentic":true,"plan_revision":view.plan_revision,"plan_sha256":view.plan_sha256,"budget_used":view.budget_used,"steps":view.steps.len(),"quality":quality,"explicit_human_review_occurred":already_had_human_review,"handoff":handoff,"handoff_sha256":handoff_sha256});
-            let final_view = if op.state == "RUNNING" {
-                bff_operations::succeed(pool, scope, op.state_version, actor, &result).await?
-            } else {
-                op
-            };
+            if op.state == "RUNNING"
+                && !agentic_controller::complete_plan(pool, scope, actor, view.plan_revision, &result).await?
+            {
+                continue;
+            }
+            let final_view = bff_operations::get(pool, scope).await?;
             return Ok(RunOutcome {
                 state: final_view.state,
                 completed_steps: completed,

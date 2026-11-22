@@ -794,6 +794,38 @@ async fn cancelled_operation_cannot_acquire_a_new_plan() {
 }
 
 #[tokio::test]
+async fn superseded_plan_cannot_complete_the_operation() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let id = Uuid::new_v4();
+    let steps = [step(id, 1, "INSPECT_SOURCES", false, vec![])];
+    let (old, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+        .await.unwrap();
+    agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    agentic_controller::finish_step(&app, scope, id, s.principal, "SUCCEEDED", "done")
+        .await.unwrap();
+    let (current, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+        .await.unwrap();
+    let result = json!({"plan_revision": old});
+    assert!(!agentic_controller::complete_plan(&app, scope, s.principal, old, &result)
+        .await.unwrap());
+    assert!(!agentic_controller::complete_plan(&app, scope, s.principal, current, &result)
+        .await.unwrap());
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "RUNNING");
+
+    agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    agentic_controller::finish_step(&app, scope, id, s.principal, "SUCCEEDED", "done")
+        .await.unwrap();
+    let result = json!({"plan_revision": current});
+    assert!(agentic_controller::complete_plan(&app, scope, s.principal, current, &result)
+        .await.unwrap());
+    let operation = bff_operations::get(&app, scope).await.unwrap();
+    assert_eq!(operation.state, "SUCCEEDED");
+    assert_eq!(operation.result, Some(result));
+}
+
+#[tokio::test]
 async fn stale_plan_selection_cannot_start_a_reused_step_id() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

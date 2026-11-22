@@ -181,6 +181,25 @@ async fn read_operation_state(
     .ok_or(ControllerError::Invisible)
 }
 
+/// Publish a result only for the current, completed plan.
+pub async fn complete_plan(
+    pool: &PgPool,
+    scope: OperationScope,
+    actor: Uuid,
+    expected_revision: i64,
+    result: &serde_json::Value,
+) -> Result<bool, ControllerError> {
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let (state, budget, version) = read_operation_state(&mut tx, scope, true).await?;
+    let plan = view_plan(&mut tx, scope, &state, budget).await?;
+    if state != "RUNNING" || plan.plan_revision != expected_revision || !plan.complete {
+        return Ok(false);
+    }
+    bff_operations::succeed_in(&mut tx, scope, version, actor, result).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
 pub async fn create_plan(
     pool: &PgPool,
     scope: OperationScope,
