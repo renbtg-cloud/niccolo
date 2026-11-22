@@ -697,6 +697,10 @@ Checkpoints 1.151–1.159 validate configured and returned model identities befo
 
 Checkpoints 1.162–1.165 preserve source replay across changes to the bounded text parsers. New WhatsApp imports recognize optional seconds in supported timestamp formats. An exact replay keeps the recorded fragment IDs and verifies byte ranges, speaker labels and content against the applicable parser rules. New imports batch the evidence and fragment inserts. Replays compare retained originals in PostgreSQL before reusing them. Before retrying a provider, the runtime also checks the operation deadline.
 
+Checkpoints 1.167–1.171 read source visibility and speaker labels together. The upload API and browser preserve UTF-8 locators. Catalog entries missing an original can restore it by replaying the exact file against the existing document. Format rejections describe the parser boundary without quoting the uploaded evidence.
+
+Checkpoints 1.172–1.175 classify malformed provider envelopes and message content as final failures. The native transport shares a deadline across connection attempts, TLS and socket I/O, and returns a provider HTTP error after reading its headers. Each provider attempt is also bounded by the time still available to the operation.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
