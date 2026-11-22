@@ -791,6 +791,12 @@ async fn cancelled_operation_cannot_acquire_a_new_plan() {
         agentic_controller::view(&app, scope).await,
         Err(agentic_controller::ControllerError::Invisible)
     ));
+    let model = DeterministicModel::new("fixture", "unused").unwrap();
+    let outcome = agentic_runtime::run_until_boundary(&app, scope, s.principal, &model)
+        .await.unwrap();
+    assert!(outcome.terminal);
+    assert_eq!(outcome.state, "CANCELLED");
+    assert_eq!(outcome.completed_steps, 0);
 }
 
 #[tokio::test]

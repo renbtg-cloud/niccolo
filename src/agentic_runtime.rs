@@ -357,16 +357,33 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
     result
 }
 
+fn terminal_outcome(op: bff_operations::OperationView, completed_steps: usize) -> RunOutcome {
+    RunOutcome {
+        state: op.state,
+        completed_steps,
+        waiting_for_human: false,
+        terminal: true,
+    }
+}
+
 pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
     pool: &PgPool,
     scope: OperationScope,
     actor: Uuid,
     model: &M,
 ) -> Result<RunOutcome, RuntimeError> {
+    let mut op = bff_operations::get(pool, scope).await?;
+    if op.terminal {
+        return Ok(terminal_outcome(op, 0));
+    }
     ensure_default_plan(pool, scope, actor).await?;
     let _ = agentic_controller::recover_stale_started(pool, scope, actor, 120).await?;
     let mut completed = 0usize;
     loop {
+        op = bff_operations::get(pool, scope).await?;
+        if op.terminal {
+            return Ok(terminal_outcome(op, completed));
+        }
         let view = agentic_controller::view(pool, scope).await?;
         if view.waiting_for_human {
             return Ok(RunOutcome {
@@ -377,7 +394,6 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             });
         }
         if view.complete {
-            let op = bff_operations::get(pool, scope).await?;
             let analysis = op.target_analysis_id.ok_or(RuntimeError::MissingAnalysis)?;
             let quality = analysis_quality::report(
                 pool,
