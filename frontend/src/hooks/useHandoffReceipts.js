@@ -8,6 +8,6 @@ export function useHandoffReceipts(){
  return useQuery({
    queryKey:client&&analysis?qk.analysis(client.config,analysis,'handoff-receipts'):['handoff-receipts','none'],
    enabled:!!client&&!!analysis,
-   queryFn:async()=> (await client.handoffReceipts(analysis)).value,
+   queryFn:async ({ signal })=> (await client.handoffReceipts(analysis, signal)).value,
  });
 }
