@@ -245,7 +245,8 @@ export function IdentitiesPage() {
       </ol>
       {historyPages.documentId===documentId && historyPages.cursors.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(page=>({documentId,cursors:page.cursors.slice(0,-1)}))}>Previous mapping events</button>}
       {history.data?.next_after && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(page=>({documentId,cursors:[...(page.documentId===documentId?page.cursors:[0]),history.data.next_after]}))}>More mapping events</button>}
-      {(history.data?.events ?? []).length === 0 && <p>No mapping events yet.</p>}
+      {history.isPending && historyOpen && <p role="status">Loading mapping events…</p>}
+      {history.isSuccess && (history.data?.events ?? []).length === 0 && <p>No mapping events yet.</p>}
     </details>}
   </section>;
 }
