@@ -229,7 +229,7 @@ export function IdentitiesPage() {
         identities={identityRows}
         onAssign={(value) => assign.mutate(value)}
         onClear={(value) => clear.mutate(value)}
-        pending={assign.isPending || clear.isPending}
+        pending={assign.isPending || clear.isPending || !bindings.isSuccess}
       />)}
     </div>
     {documentId && speakers.isSuccess && speakerRows.length === 0 && <p>No speaker labels were extracted from this source.</p>}
