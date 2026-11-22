@@ -85,6 +85,8 @@ Choose **Import and attach**. If an older catalog record has no retained origina
 For information that is remembered, hypothetical, or an investigative preference rather than a
 source record, use **Human context** instead. Niccolò keeps that separate from verified evidence.
 
+To discuss part of a PDF, open **Use a passage from a PDF** under **Human context**. Enter the file name, page number, and the text you selected in your PDF reader. Review the prepared transcription before saving it. The saved entry identifies the passage as user-transcribed and combines lines into one paragraph. The original PDF remains in your reader.
+
 ## 6. Check readiness before Analyze
 
 The bottom of the Situation screen shows whether the local service has a reasoning model.
