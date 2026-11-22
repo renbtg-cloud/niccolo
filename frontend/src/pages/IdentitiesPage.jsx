@@ -96,8 +96,11 @@ export function IdentitiesPage() {
   },[sources.data, attachedIds]);
 
   useEffect(() => {
-    if (!documentId && reviewable.length) setDocumentId(reviewable[0].document_id);
-  }, [documentId, reviewable]);
+    if (!sources.isSuccess || !situation.isSuccess) return;
+    if (!reviewable.some(document=>document.document_id===documentId)) {
+      setDocumentId(reviewable[0]?.document_id ?? '');
+    }
+  }, [documentId, reviewable, sources.isSuccess, situation.isSuccess]);
 
   const speakers = useQuery({
     queryKey: client && documentId ? qk.sourceSpeakers(client.config, documentId) : ['source-speakers','none'],
