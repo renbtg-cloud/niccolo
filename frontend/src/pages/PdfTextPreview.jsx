@@ -14,9 +14,10 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
 
   async function load(file, stored = null, firstPage = 1) {
     active.current?.abort();
-    setPreview(null);
+    const sameOriginal = stored && stored.document_id === preview?.documentId;
+    if (!sameOriginal) setPreview(null);
     setSelection(null);
-    setIndex(0);
+    if (!sameOriginal) setIndex(0);
     setError('');
     setBusy(false);
     if (!file && !stored) return;
@@ -33,6 +34,7 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
         : await client.previewPdf(file, request.signal);
       request.signal.throwIfAborted();
       if (!Array.isArray(value?.pages)) throw new Error('Invalid PDF preview response.');
+      setIndex(0);
       setPreview({ ...value, title: stored?.locator ?? file.name, documentId: stored?.document_id, stored, firstPage });
     } catch (error) {
       if (!request.signal.aborted) setError(error.message);
@@ -75,17 +77,17 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
     {error && <p role="alert">{error} You can still paste a passage manually.</p>}
     {preview?.truncated && !preview.stored && <p>Showing the first 20 pages. To browse later pages here, attach the PDF to the Situation.</p>}
     {preview?.stored && <div>
-      {preview.firstPage > 1 && <button type="button" disabled={disabled} onClick={()=>void load(null, preview.stored, Math.max(1, preview.firstPage - 20))}>Previous 20 pages</button>}
-      {preview.next_page && <button type="button" disabled={disabled} onClick={()=>void load(null, preview.stored, preview.next_page)}>Next 20 pages</button>}
+      {preview.firstPage > 1 && <button type="button" disabled={disabled||busy} onClick={()=>void load(null, preview.stored, Math.max(1, preview.firstPage - 20))}>Previous 20 pages</button>}
+      {preview.next_page && <button type="button" disabled={disabled||busy} onClick={()=>void load(null, preview.stored, preview.next_page)}>Next 20 pages</button>}
     </div>}
     {preview && !preview.pages.some(item => item.text) &&
       <p>No selectable text was found in the preview. You can describe a page in your own words.</p>}
     {page && <div>
-      <button type="button" disabled={index===0} onClick={()=>selectPage(index-1)}>Previous page</button>
+      <button type="button" disabled={busy||index===0} onClick={()=>selectPage(index-1)}>Previous page</button>
       <span role="status">Page {page.number}</span>
-      <button type="button" disabled={index+1>=preview.pages.length} onClick={()=>selectPage(index+1)}>Next page</button>
+      <button type="button" disabled={busy||index+1>=preview.pages.length} onClick={()=>selectPage(index+1)}>Next page</button>
       <label>Page text<textarea ref={text} key={page.number} readOnly rows={8} value={page.text} onSelect={selectText}/></label>
-      <button type="button" disabled={!selection||disabled} onClick={()=>{
+      <button type="button" disabled={!selection||disabled||busy} onClick={()=>{
         const selected = { document: preview.title, page: String(page.number), excerpt: selection, documentId: preview.documentId };
         onSelect({ ...selected, endPage: '', section: '', preview: selected });
       }}>Use selected text in the passage form</button>
