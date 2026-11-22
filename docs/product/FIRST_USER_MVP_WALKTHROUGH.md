@@ -87,6 +87,8 @@ source record, use **Human context** instead. Niccolò keeps that separate from 
 
 To discuss part of a PDF, open **Use a passage from a PDF** under **Human context**. Enter the file name, the first page as shown in your PDF reader, and the text you selected. Add the last page for a passage that spans pages and the section title if available. Review the prepared transcription before saving it. The saved entry identifies the passage as user-transcribed and combines lines into one paragraph. The original PDF remains in your reader.
 
+With `pdftotext` installed on the Niccolò server, use **Preview a PDF on this Niccolò server** in the same panel. The preview accepts files up to 4 MiB, shows up to 20 pages, and extracts embedded text. Select text on a page and choose **Use selected text in the passage form**. Review its location and prepare it before saving. The preview does not retain the PDF, perform OCR, or attest that the extracted content is complete. For scanned pages and unavailable previews, use the manual passage form or describe the relevant material as human context.
+
 ## 6. Check readiness before Analyze
 
 The bottom of the Situation screen shows whether the local service has a reasoning model.
