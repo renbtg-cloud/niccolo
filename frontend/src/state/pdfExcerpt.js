@@ -26,7 +26,10 @@ export function pdfExcerptContext({ document, page, endPage = "", section = "", 
   const matchesPreview = preview && preview.excerpt === selected && preview.document === title
     && String(preview.page) === start && (!end || end === start);
   const origin = matchesPreview ? 'User-selected extracted text from PDF' : 'User transcription from PDF';
-  const text = `${origin} “${title}”, ${reference} (${preview === null ? 'original unavailable to Niccolò' : 'original not retained by Niccolò'}, whitespace normalized): “${oneLine}”`;
+  const original = matchesPreview && preview.documentId
+    ? `stored original ${preview.documentId}`
+    : preview === null ? 'original unavailable to Niccolò' : 'original not retained by this preview';
+  const text = `${origin} “${title}”, ${reference} (${original}, whitespace normalized): “${oneLine}”`;
   const error = situationTextError(text);
   if (error) invalid('excerpt', error);
   return text;

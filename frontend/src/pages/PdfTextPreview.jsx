@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_SOURCE_BYTES } from '../state/sourceUpload.js';
 
-export function PdfTextPreview({ client, disabled, onSelect }) {
+export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
   const active = useRef(null);
   const text = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -12,15 +12,15 @@ export function PdfTextPreview({ client, disabled, onSelect }) {
 
   useEffect(() => () => active.current?.abort(), []);
 
-  async function load(file) {
+  async function load(file, stored = null) {
     active.current?.abort();
     setPreview(null);
     setSelection(null);
     setIndex(0);
     setError('');
     setBusy(false);
-    if (!file) return;
-    if (!/\.pdf$/i.test(file.name) || file.size === 0 || file.size > MAX_SOURCE_BYTES) {
+    if (!file && !stored) return;
+    if (file && (!/\.pdf$/i.test(file.name) || file.size === 0 || file.size > MAX_SOURCE_BYTES)) {
       setError('Select a non-empty PDF of at most 4 MiB.');
       return;
     }
@@ -28,10 +28,12 @@ export function PdfTextPreview({ client, disabled, onSelect }) {
     active.current = request;
     setBusy(true);
     try {
-      const { value } = await client.previewPdf(file, request.signal);
+      const original = stored ? await client.downloadSourceOriginal(stored.document_id) : file;
+      request.signal.throwIfAborted();
+      const { value } = await client.previewPdf(original, request.signal);
       request.signal.throwIfAborted();
       if (!Array.isArray(value?.pages)) throw new Error('Invalid PDF preview response.');
-      setPreview({ ...value, title: file.name });
+      setPreview({ ...value, title: stored?.locator ?? file.name, documentId: stored?.document_id });
     } catch (error) {
       if (!request.signal.aborted) setError(error.message);
     } finally {
@@ -59,7 +61,16 @@ export function PdfTextPreview({ client, disabled, onSelect }) {
         void load(file);
       }}/>
     </label>
-    <p>The server extracts text for this preview. The PDF itself is kept in your files.</p>
+    {documents.length > 0 && <label>Or preview an attached PDF
+      <select disabled={disabled} value="" onChange={event=>{
+        const stored = documents.find(item => item.document_id === event.currentTarget.value);
+        if (stored) void load(null, stored);
+      }}>
+        <option value="">Choose an attached PDF</option>
+        {documents.map(item=><option key={item.document_id} value={item.document_id}>{item.locator}</option>)}
+      </select>
+    </label>}
+    <p>Previewing a file does not add it to the source catalog.</p>
     {busy && <p role="status">Extracting PDF text…</p>}
     {error && <p role="alert">{error} You can still paste a passage manually.</p>}
     {preview?.truncated && <p>Showing the first 20 pages.</p>}
@@ -71,7 +82,7 @@ export function PdfTextPreview({ client, disabled, onSelect }) {
       <button type="button" disabled={index+1>=preview.pages.length} onClick={()=>selectPage(index+1)}>Next page</button>
       <label>Page text<textarea ref={text} key={page.number} readOnly rows={8} value={page.text} onSelect={selectText}/></label>
       <button type="button" disabled={!selection||disabled} onClick={()=>{
-        const selected = { document: preview.title, page: String(page.number), excerpt: selection };
+        const selected = { document: preview.title, page: String(page.number), excerpt: selection, documentId: preview.documentId };
         onSelect({ ...selected, endPage: '', section: '', preview: selected });
       }}>Use selected text in the passage form</button>
       {page.text.length===0 && <small>This page has no extracted text.</small>}
