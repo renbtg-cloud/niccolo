@@ -124,3 +124,12 @@ it('passes the observation cancellation signal to fetch', async () => {
   });
   await client.observeOperation('operation', 0, 0, 5000, 100, controller.signal);
 });
+
+it('passes cancellation through a review read and rejects an aborted body', async () => {
+  const controller = new AbortController();
+  const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (_, options) => {
+    expect(options.signal).toBe(controller.signal);
+    return {status:200,ok:true,json:async()=>{controller.abort();throw controller.signal.reason;}};
+  });
+  await expect(client.analysisReview('analysis', controller.signal)).rejects.toMatchObject({name:'AbortError'});
+});
