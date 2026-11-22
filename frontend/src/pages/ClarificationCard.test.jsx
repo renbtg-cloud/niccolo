@@ -26,3 +26,17 @@ it('renders recorded answers and pagination without losing the editable draft', 
   expect(markup).toContain('Check with Bob');
   expect(markup).not.toContain('Previous answers');
 });
+
+it('links a rejected multiline draft to its visible validation error', () => {
+  const question = { question_id: 'question', text: 'What changed?' };
+  const markup = renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <ClarificationCard question={question} draft={'First\nSecond'} onChange={()=>{}} onSubmit={()=>{}} saving={false}/>
+    </QueryClientProvider>,
+  );
+  const description = markup.match(/aria-describedby="([^"]+)"/)?.[1];
+  expect(description).toBeTruthy();
+  expect(markup).toContain(`id="${description}" role="alert"`);
+  expect(markup).toContain('aria-invalid="true"');
+  expect(markup).toContain('<button type="submit" disabled="">Add answer as context');
+});
