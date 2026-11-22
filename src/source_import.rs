@@ -12,12 +12,14 @@ pub const MAX_FRAGMENT_BYTES: usize = 64 * 1024;
 pub enum SourceFormat {
     Eml,
     WhatsappExport,
+    Pdf,
 }
 impl SourceFormat {
     pub fn db_value(self) -> &'static str {
         match self {
             Self::Eml => "EML",
             Self::WhatsappExport => "WHATSAPP_EXPORT",
+            Self::Pdf => "PDF",
         }
     }
 }
@@ -316,6 +318,16 @@ fn parse_source_version(
     if raw.is_empty() || raw.len() > MAX_DOCUMENT_BYTES {
         return Err(ParseError::InvalidSize);
     }
+    if format == SourceFormat::Pdf {
+        if !raw.starts_with(b"%PDF-") {
+            return Err(ParseError::Unsupported("missing PDF signature"));
+        }
+        return Ok(ParsedSource {
+            sha256: format!("{:x}", Sha256::digest(raw)),
+            byte_length: raw.len() as i64,
+            fragments: Vec::new(),
+        });
+    }
     let src = std::str::from_utf8(raw).map_err(|_| ParseError::NotUtf8)?;
     if src.contains('\0') {
         return Err(ParseError::Unsupported("NUL in text"));
@@ -323,6 +335,7 @@ fn parse_source_version(
     let fragments = match format {
         SourceFormat::Eml => parse_eml(src, legacy)?,
         SourceFormat::WhatsappExport => parse_whatsapp(src, legacy)?,
+        SourceFormat::Pdf => unreachable!("PDF is handled as an opaque original"),
     };
     let sha256 = format!("{:x}", Sha256::digest(raw));
     Ok(ParsedSource {
