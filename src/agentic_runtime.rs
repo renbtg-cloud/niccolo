@@ -104,7 +104,8 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
 ) -> Result<(), RuntimeError> {
     // Once STARTED is persisted, every error path must leave a terminal step.
     // Model/artifact failures are handled here alongside pre-invocation errors.
-    agentic_controller::start_step(pool, scope, step.step_id, actor).await?;
+    agentic_controller::start_step_at_revision(pool, scope, step.step_id, actor, plan_revision)
+        .await?;
     let result: Result<(), RuntimeError> = async {
         if step.requires_human || step.kind == "REQUEST_HUMAN_DECISION" {
             agentic_controller::finish_step(

@@ -311,7 +311,14 @@ async fn view_plan(
         blocked,
     })
 }
-fn check_step_start(view: &ControllerView, step: Uuid) -> Result<(), ControllerError> {
+fn check_step_start(
+    view: &ControllerView,
+    step: Uuid,
+    expected_revision: Option<i64>,
+) -> Result<(), ControllerError> {
+    if expected_revision.is_some_and(|revision| revision != view.plan_revision) {
+        return Err(ControllerError::StateConflict);
+    }
     if view.budget_used >= i64::from(view.budget_total) {
         return Err(ControllerError::BudgetExhausted);
     }
@@ -327,9 +334,30 @@ pub async fn start_step(
     step: Uuid,
     actor: Uuid,
 ) -> Result<ControllerView, ControllerError> {
+    start_step_checked(pool, scope, step, actor, None).await
+}
+
+/// Admit a step only if the plan revision from which it was selected is current.
+pub async fn start_step_at_revision(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+    actor: Uuid,
+    expected_revision: i64,
+) -> Result<ControllerView, ControllerError> {
+    start_step_checked(pool, scope, step, actor, Some(expected_revision)).await
+}
+
+async fn start_step_checked(
+    pool: &PgPool,
+    scope: OperationScope,
+    step: Uuid,
+    actor: Uuid,
+    expected_revision: Option<i64>,
+) -> Result<ControllerView, ControllerError> {
     let op = bff_operations::get(pool, scope).await?;
     if op.state == "QUEUED" {
-        check_step_start(&view(pool, scope).await?, step)?;
+        check_step_start(&view(pool, scope).await?, step, expected_revision)?;
         bff_operations::start(pool, scope, op.state_version, actor).await?;
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
@@ -338,7 +366,7 @@ pub async fn start_step(
         return Err(ControllerError::StateConflict);
     }
     let before = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
-    check_step_start(&before, step)?;
+    check_step_start(&before, step, expected_revision)?;
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','controller started step',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
     tx.commit().await?;
     view(pool, scope).await

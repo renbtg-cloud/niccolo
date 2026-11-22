@@ -624,6 +624,34 @@ async fn concurrent_plans_allocate_distinct_consecutive_revisions() {
 }
 
 #[tokio::test]
+async fn stale_plan_selection_cannot_start_a_reused_step_id() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let id = Uuid::new_v4();
+    let (old, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let (current, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(id, 1, "CHECK_ASSUMPTIONS", false, vec![])],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        agentic_controller::start_step_at_revision(&app, scope, id, s.principal, old).await,
+        Err(agentic_controller::ControllerError::StateConflict)
+    ));
+    assert_eq!(agentic_controller::view(&app, scope).await.unwrap().budget_used, 0);
+    let view = agentic_controller::start_step_at_revision(&app, scope, id, s.principal, current)
+        .await
+        .unwrap();
+    assert_eq!(view.budget_used, 1);
+    assert_eq!(view.steps[0].kind, "CHECK_ASSUMPTIONS");
+}
+
+#[tokio::test]
 async fn concurrent_step_starts_share_one_plan_budget_and_do_not_start_twice() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
