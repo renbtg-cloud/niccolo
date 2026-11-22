@@ -48,7 +48,7 @@ export class NiccoloClient {
     return response.blob();
   }
   readiness(signal) { return this.request('GET', '/readyz', { signal }); }
-  situation() { return this.request('GET', situationPath(this.config)); }
+  situation(signal) { return this.request('GET', situationPath(this.config), { signal }); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
   sources(after = null, limit = 100) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${sourcesPath(this.config)}${q}`); }
