@@ -21,7 +21,7 @@ function entryPathValid(path) {
     && !path.includes(String.fromCharCode(92))
     && !path.includes(':')
     && !/\p{Cc}/u.test(path)
-    && path.split('/').every(part => part.length > 0 && part !== '.' && part !== '..');
+    && path.split('/').every(part => part.length > 0 && !/[. ]$/u.test(part));
 
 }
 
