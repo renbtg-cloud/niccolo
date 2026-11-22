@@ -136,7 +136,7 @@ export function ExpertWorkbenchPage() {
     <h2>Epistemic Workbench</h2>
     <p>This MVP assumes a trained investigator who explicitly authors epistemic abstractions. Niccolò validates and reasons over the structure; it does not translate investigator free text into ontology.</p>
     <p className="epistemic-boundary"><strong>Post-MVP:</strong> optional free-text interpretation may propose this structure later. It is not enabled here.</p>
-    {workbench.isPending && <p>Loading structured model…</p>}
+    {workbench.isPending && <p role="status">Loading structured model…</p>}
     {workbench.error && <div>
       <p className="error" role="alert">Workbench unavailable: {workbench.error.message}</p>
       <button type="button" disabled={workbench.isFetching} onClick={()=>void workbench.refetch()}>Retry workbench</button>
