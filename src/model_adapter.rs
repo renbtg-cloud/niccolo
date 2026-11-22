@@ -771,12 +771,7 @@ fn parse_http_response(raw: &[u8]) -> Result<(u16, String, Vec<u8>), ModelError>
     let header_bytes = &raw[..marker];
     let headers = String::from_utf8(header_bytes.to_vec())
         .map_err(|_| ModelError::Provider("non-UTF8 HTTP headers".into()))?;
-    let status = headers
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|v| v.parse::<u16>().ok())
-        .ok_or_else(|| ModelError::Provider("missing HTTP status".into()))?;
+    let status = parse_http_status(&headers)?;
     let body = raw[marker + 4..].to_vec();
     let is_chunked = headers.lines().any(|line| {
         line.split_once(':').is_some_and(|(name, value)| {
@@ -790,6 +785,15 @@ fn parse_http_response(raw: &[u8]) -> Result<(u16, String, Vec<u8>), ModelError>
         body
     };
     Ok((status, headers, payload))
+}
+
+fn parse_http_status(headers: &str) -> Result<u16, ModelError> {
+    headers
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or_else(|| ModelError::Provider("missing HTTP status".into()))
 }
 
 fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, ModelError> {
@@ -884,6 +888,10 @@ fn complete_content_length_end(raw: &[u8]) -> Result<Option<usize>, ModelError> 
     };
     let headers = std::str::from_utf8(&raw[..marker])
         .map_err(|_| ModelError::Provider("non-UTF8 HTTP headers".into()))?;
+    let status = parse_http_status(headers)?;
+    if (300..=599).contains(&status) {
+        return Err(ModelError::HttpStatus(status));
+    }
     let mut body_length = None;
     let mut chunked = false;
     for line in headers.lines().skip(1) {
@@ -1120,6 +1128,23 @@ mod bounded_response_tests {
         }
         let other = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
         assert!(matches!(transport_io_error("connect", other), ModelError::Provider(_)));
+    }
+
+    #[test]
+    fn native_provider_does_not_wait_for_an_error_body() {
+        struct HeadersOnly(bool);
+
+        impl Read for HeadersOnly {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                assert!(!self.0, "must not read the provider error body");
+                self.0 = true;
+                let headers = b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 200\r\n\r\n";
+                buffer[..headers.len()].copy_from_slice(headers);
+                Ok(headers.len())
+            }
+        }
+
+        assert!(matches!(read_bounded(&mut HeadersOnly(false)), Err(ModelError::HttpStatus(401))));
     }
 
     #[test]
