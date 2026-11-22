@@ -736,31 +736,33 @@ impl OpenAiCompatibleModel {
             // status for diagnosis without copying the body into ledgers.
             return Err(ModelError::HttpStatus(status));
         }
-        let value: Value = serde_json::from_slice(&payload)
-            .map_err(|_| ModelError::InvalidResponse("provider envelope is not JSON"))?;
-        let content = value
-            .pointer("/choices/0/message/content")
-            .and_then(Value::as_str)
-            .ok_or(ModelError::InvalidResponse("missing message content"))?;
-        let output: Value = serde_json::from_str(content)
-            .map_err(|_| ModelError::InvalidResponse("message content is not JSON"))?;
-        Ok(ModelResponse {
-            value: output,
-            prompt_tokens: value
-                .pointer("/usage/prompt_tokens")
-                .and_then(Value::as_i64),
-            completion_tokens: value
-                .pointer("/usage/completion_tokens")
-                .and_then(Value::as_i64),
-            effective_provider: Some(self.provider.clone()),
-            effective_model: value
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .or_else(|| Some(self.model.clone())),
-            fallback_used: false,
-        })
+        parse_openai_envelope(&payload, &self.provider, &self.model)
     }
+}
+
+pub(crate) fn parse_openai_envelope(
+    bytes: &[u8],
+    provider: &str,
+    configured_model: &str,
+) -> Result<ModelResponse, ModelError> {
+    let envelope: Value = serde_json::from_slice(bytes)
+        .map_err(|_| ModelError::InvalidResponse("provider envelope is not JSON"))?;
+    let content = envelope
+        .pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .ok_or(ModelError::InvalidResponse("missing message content"))?;
+    let value = serde_json::from_str(content)
+        .map_err(|_| ModelError::InvalidResponse("message content is not JSON"))?;
+    Ok(ModelResponse {
+        value,
+        prompt_tokens: envelope.pointer("/usage/prompt_tokens").and_then(Value::as_i64),
+        completion_tokens: envelope.pointer("/usage/completion_tokens").and_then(Value::as_i64),
+        effective_provider: Some(provider.to_owned()),
+        effective_model: Some(
+            envelope.get("model").and_then(Value::as_str).unwrap_or(configured_model).to_owned(),
+        ),
+        fallback_used: false,
+    })
 }
 
 fn parse_http_response(raw: &[u8]) -> Result<(u16, String, Vec<u8>), ModelError> {

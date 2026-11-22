@@ -3,7 +3,7 @@
 //! The core stays provider-neutral. The runtime path uses the native TLS
 //! adapter from model_adapter. The curl adapter remains only as a compatibility
 //! implementation and test oracle while the native path is validated.
-use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, ModelResponse, OpenAiCompatibleModel, ReasoningModel};
+use crate::model_adapter::{ModelError, ModelFuture, ModelRequest, OpenAiCompatibleModel, ReasoningModel, parse_openai_envelope};
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -159,33 +159,6 @@ impl CurlOpenAiCompatibleModel {
         body
     }
 
-    fn parse_response(&self, value: Value) -> Result<ModelResponse, ModelError> {
-        let content = value
-            .pointer("/choices/0/message/content")
-            .and_then(Value::as_str)
-            .ok_or(ModelError::InvalidResponse("missing message content"))?;
-        let parsed: Value = serde_json::from_str(content)
-            .map_err(|_| ModelError::InvalidResponse("message content is not JSON"))?;
-        let prompt_tokens = value
-            .pointer("/usage/prompt_tokens")
-            .and_then(Value::as_i64);
-        let completion_tokens = value
-            .pointer("/usage/completion_tokens")
-            .and_then(Value::as_i64);
-        let effective_model = value
-            .get("model")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| Some(self.config.model.clone()));
-        Ok(ModelResponse {
-            value: parsed,
-            prompt_tokens,
-            completion_tokens,
-            effective_provider: Some(self.config.provider.clone()),
-            effective_model,
-            fallback_used: false,
-        })
-    }
 }
 
 fn private_temp(prefix: &str, bytes: &[u8]) -> Result<PathBuf, ModelError> {
@@ -291,9 +264,7 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             if !status.is_some_and(|code| (200..300).contains(&code)) {
                 return Err(ModelError::Provider("missing provider HTTP status".into()));
             }
-            let envelope: Value = serde_json::from_slice(body)
-                .map_err(|_| ModelError::InvalidResponse("provider envelope is not JSON"))?;
-            self.parse_response(envelope)
+            parse_openai_envelope(body, &self.config.provider, &self.config.model)
         })
     }
 }
@@ -373,14 +344,12 @@ mod tests {
 
     #[test]
     fn provider_envelope_parses_structured_json_and_usage() {
-        let model =
-            CurlOpenAiCompatibleModel::new(config("https://example.com/v1".into())).unwrap();
         let envelope = json!({
             "model":"effective-model",
             "choices":[{"message":{"content":"{\"purpose\":\"SYNTHESIZE\",\"status\":\"ok\",\"niccolo_artifact\":{\"answer_text\":\"A\",\"coverage_note\":\"B\",\"claims\":[]}}"}}],
             "usage":{"prompt_tokens":17,"completion_tokens":11}
         });
-        let response = model.parse_response(envelope).unwrap();
+        let response = parse_openai_envelope(envelope.to_string().as_bytes(), "mock-compatible", "mock-model").unwrap();
         assert_eq!(response.prompt_tokens, Some(17));
         assert_eq!(response.completion_tokens, Some(11));
         assert_eq!(response.effective_model.as_deref(), Some("effective-model"));
