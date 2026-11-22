@@ -524,6 +524,47 @@ fn human_boundary_input_valid(decision: &str, response_text: &str) -> bool {
         && !response_text.contains('\0')
 }
 
+async fn recorded_human_resolution(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    step: Uuid,
+    response_id: Uuid,
+    actor: Uuid,
+    decision: &str,
+    response_text: &str,
+) -> Result<Option<HumanBoundaryResolution>, ControllerError> {
+    type Receipt = (Uuid, Uuid, String, String, String, i64);
+    let row: Option<Receipt> = sqlx::query_as(
+        "SELECT step_id,actor_principal_id,decision,response_text,
+                result_operation_state,result_plan_revision
+         FROM niccolo.agentic_human_responses
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+           AND response_id=$4 AND result_plan_revision IS NOT NULL",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(response_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some((saved_step, saved_actor, saved_decision, saved_text, state, revision)) = row else {
+        return Ok(None);
+    };
+    if saved_step != step || saved_actor != actor || saved_decision != decision
+        || saved_text != response_text.trim()
+    {
+        return Err(ControllerError::StateConflict);
+    }
+    Ok(Some(HumanBoundaryResolution {
+        decision: saved_decision,
+        operation_state: state,
+        plan_revision: revision,
+        step_id: step,
+        human_response_persisted: true,
+        system_inferred_consent: false,
+    }))
+}
+
 pub async fn resolve_human_boundary(
     pool: &PgPool,
     scope: OperationScope,
@@ -537,6 +578,16 @@ pub async fn resolve_human_boundary(
         return Err(ControllerError::Invalid);
     }
     let replacement = if decision == "REPLAN" {
+        // A replay does not need to regenerate the proposed plan.
+        let mut tx = scoped(pool, scope.workspace, true).await?;
+        let recorded = recorded_human_resolution(
+            &mut tx, scope, step, response_id, actor, decision, response_text,
+        )
+        .await?;
+        tx.commit().await?;
+        if let Some(recorded) = recorded {
+            return Ok(recorded);
+        }
         let op = bff_operations::get(pool, scope).await?;
         let analysis = op.target_analysis_id.ok_or(ControllerError::Invalid)?;
         let steps =
@@ -550,6 +601,14 @@ pub async fn resolve_human_boundary(
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
     let (state, budget, version) = read_operation_state(&mut tx, scope, true).await?;
+    if let Some(recorded) = recorded_human_resolution(
+        &mut tx, scope, step, response_id, actor, decision, response_text,
+    )
+    .await?
+    {
+        tx.commit().await?;
+        return Ok(recorded);
+    }
     let before = view_plan(&mut tx, scope, &state, budget).await?;
     let step_view = before
         .steps

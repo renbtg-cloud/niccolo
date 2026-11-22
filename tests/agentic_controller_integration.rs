@@ -1443,6 +1443,18 @@ async fn deferred_replan_leaves_the_human_response_and_pause_retryable() {
     .bind(s.workspace).bind(s.situation).bind(scope.operation).bind(response)
     .fetch_one(&admin).await.unwrap();
     assert_eq!(recorded, ("RUNNING".into(), 2));
+    let replay = agentic_controller::resolve_human_boundary(
+        &app, scope, gate, response, s.principal, "REPLAN", "use a different approach",
+    ).await.unwrap();
+    assert_eq!(replay, result);
+    assert!(matches!(
+        agentic_controller::resolve_human_boundary(
+            &app, scope, gate, response, s.principal, "REPLAN", "different response",
+        ).await,
+        Err(agentic_controller::ControllerError::StateConflict)
+    ));
+    assert_eq!(agentic_controller::view(&app, scope).await.unwrap().plan_revision, 2);
+
 }
 
 #[tokio::test]
