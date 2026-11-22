@@ -216,8 +216,16 @@ export function IdentitiesPage() {
       }}>Next people</button>
     </div>
 
-    {(sources.error || situation.error || identities.error || speakers.error || bindings.error) &&
-      <p className="error">{(sources.error || situation.error || identities.error || speakers.error || bindings.error).message}</p>}
+    {[
+      ['attached records', situation],
+      ['source records', sources],
+      ['people', identities],
+      ['speaker labels', speakers],
+      ['current mappings', bindings],
+    ].filter(([,query])=>query.isError).map(([label,query])=><div key={label}>
+      <p className="error" role="alert">Could not load {label}: {query.error.message}</p>
+      <button type="button" disabled={query.isFetching} onClick={()=>void query.refetch()}>Retry {label}</button>
+    </div>)}
 
     {documentId&&speakers.isSuccess&&bindings.isSuccess&&<article className="identity-summary"><strong>{mappingSummary.mappedCount}/{mappingSummary.speakerCount}</strong> source label(s) mapped by a human.{mappingSummary.unmappedCount>0?<p>{mappingSummary.unmappedCount} label(s) remain unmapped. That is allowed; Niccolò will not infer identity merely because labels match.</p>:mappingSummary.speakerCount>0?<p>Every extracted label in this record has an explicit mapping. Coverage does not prove that the mappings are correct.</p>:null}<small>Identity mappings are human assertions with history, not verified facts.</small></article>}
 
