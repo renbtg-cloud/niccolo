@@ -112,9 +112,10 @@ export function IdentitiesPage() {
     enabled: !!client && !!documentId,
     queryFn: async ({ signal }) => (await client.effectiveIdentities(documentId, signal)).value,
   });
+  const [historyOpen,setHistoryOpen] = useState(false);
   const history = useQuery({
     queryKey: client && documentId ? qk.identityHistory(client.config, documentId) : ['identity-history','none'],
-    enabled: !!client && !!documentId,
+    enabled: !!client && !!documentId && historyOpen,
     queryFn: async ({ signal }) => (await client.identityHistory(documentId, 0, 100, signal)).value,
   });
 
@@ -230,7 +231,7 @@ export function IdentitiesPage() {
     {documentId&&!speakers.isLoading&&speakerRows.length>0&&<p><Link to="/operations">Continue to Analyze →</Link></p>}
     {(assign.error || clear.error) && <p className="error">{(assign.error || clear.error).message}</p>}
 
-    {documentId && <details>
+    {documentId && <details open={historyOpen} onToggle={event=>setHistoryOpen(event.currentTarget.open)}>
       <summary>Identity mapping history</summary>
       <ol>
         {(history.data?.events ?? []).map((event) => <li key={event.event_id}>
