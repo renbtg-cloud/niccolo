@@ -99,7 +99,7 @@ export function IdentitiesPage() {
   const speakers = useQuery({
     queryKey: client && documentId ? qk.sourceSpeakers(client.config, documentId) : ['source-speakers','none'],
     enabled: !!client && !!documentId,
-    queryFn: async () => (await client.sourceSpeakers(documentId)).value,
+    queryFn: async ({ signal }) => (await client.sourceSpeakers(documentId, signal)).value,
   });
   const bindings = useQuery({
     queryKey: client && documentId ? qk.identityBindings(client.config, documentId) : ['identity-bindings','none'],
