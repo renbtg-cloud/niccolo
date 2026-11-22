@@ -71,10 +71,14 @@ export function presentationZip(pkg) {
   let offset = 0;
   let directorySize = 0;
   let totalPayload = 0;
+  const entryNames = new Set();
   for (const [path, value] of entries) {
     if (!entryPathValid(path) || typeof value !== 'string') {
       throw new Error('Invalid export file path or contents.');
     }
+    const portablePath = path.normalize('NFC').toLowerCase();
+    if (entryNames.has(portablePath)) throw new Error('Export contains conflicting file names.');
+    entryNames.add(portablePath);
     const name = encoder.encode(path);
     const bytes = encoder.encode(value);
     if (name.length > 65535 || bytes.length > MAX_BYTES) {
