@@ -1,3 +1,4 @@
+import { situationTextError } from '../state/situationText.js';
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClient } from '../hooks/useClient.js';
@@ -14,6 +15,7 @@ function QuestionCard({ question }) {
   const qc = useQueryClient();
   const [response,setResponse] = useState('insufficient_evidence');
   const [reason,setReason] = useState('');
+  const reasonError=situationTextError(reason,2048);
   const [showEvents,setShowEvents] = useState(false);
   const [eventCursor,setEventCursor] = useState(0);
   const [eventBackStack,setEventBackStack] = useState([]);
@@ -52,7 +54,8 @@ function QuestionCard({ question }) {
     </select></label>
     <p><small>{RESPONSE_COPY[response][1]}</small></p>
     <label>Why?<textarea aria-label={`Feedback reason ${question.question_id}`} value={reason} disabled={submit.isPending} onChange={e=>{submit.reset();setReason(e.target.value);}} placeholder="Explain your judgment in your own words"/></label>
-    <button disabled={!reason.trim()||submit.isPending} onClick={()=>submit.mutate()}>{submit.isPending?'Recording…':'Record my position'}</button>
+    {reasonError&&<p role="alert">{reasonError}</p>}
+    <button disabled={!reason.trim()||submit.isPending||Boolean(reasonError)} onClick={()=>submit.mutate()}>{submit.isPending?'Recording…':'Record my position'}</button>
     {submit.error&&<p className="error">{submit.error.message}</p>}
     {submit.isSuccess&&<p role="status">Your position was recorded.</p>}
     <div className="feedback-history">
