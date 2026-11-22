@@ -73,7 +73,7 @@ function ConnectedSituation({client}){
   const refresh = async () => {
     if (!isCurrentSession(generation)) return;
     return Promise.all([
-    qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
+      qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
       qc.invalidateQueries({ queryKey: qk.sources(client.config) }),
     ]);
   };
@@ -306,7 +306,10 @@ function ConnectedSituation({client}){
       {readiness.isPending
         ? <p>Checking reasoning readiness…</p>
         : readiness.error
-          ? <p className="error">Niccolò cannot confirm reasoning readiness: {readiness.error.message}</p>
+          ? <div>
+              <p className="error" role="alert">Niccolò cannot confirm reasoning readiness: {readiness.error.message}</p>
+              <button type="button" disabled={readiness.isFetching} onClick={()=>void readiness.refetch()}>Retry readiness</button>
+            </div>
           : readiness.data?.model_configured === false
             ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting, or use .niccolo-local/model.env.</small></>
             : <><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></>}
