@@ -36,3 +36,10 @@ it('identifies the affected field when a locator or passage is invalid', () => {
     expect(() => pdfExcerptContext({...draft, ...overrides})).toThrow(expect.objectContaining({field}));
   }
 });
+
+it('distinguishes unchanged extractor text from a human-edited passage', () => {
+  const selected = { ...draft, previewText: draft.excerpt };
+  expect(pdfExcerptContext(selected)).toMatch(/^User-selected extracted text from PDF/);
+  expect(pdfExcerptContext(selected)).toContain('original not retained by Niccolò');
+  expect(pdfExcerptContext({ ...selected, excerpt: 'Edited passage' })).toMatch(/^User transcription from PDF/);
+});
