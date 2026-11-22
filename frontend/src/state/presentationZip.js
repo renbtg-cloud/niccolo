@@ -19,7 +19,7 @@ function entryPathValid(path) {
   return typeof path === 'string' && path.length > 0
     && !path.startsWith('/')
     && !path.includes(String.fromCharCode(92))
-    && !path.includes(':')
+    && !/[<>:"|?*]/u.test(path)
     && !/\p{Cc}/u.test(path)
     && path.split('/').every(part => part.length > 0 && !/[. ]$/u.test(part));
 
