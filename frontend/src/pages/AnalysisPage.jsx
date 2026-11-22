@@ -42,8 +42,8 @@ export function AnalysisPage(){
        <button className={entry.analysis_id===analysis?'history-selected':''} onClick={()=>setAnalysis(entry.analysis_id)}>{entry.goal||'Analysis without explicit goal'}</button>
        <div><small>Revision {entry.input_revision} · {analysisHistoryLabel(entry)}{entry.reanalysis_of?` · reanalysis of ${entry.reanalysis_of}`:''}</small></div>
      </li>)}</ul>
-     {historyPages.length>1 && <button type="button" onClick={()=>setHistoryPages(pages=>pages.slice(0,-1))}>Newer analyses</button>}
-     {history.data?.next_before && <button type="button" onClick={()=>setHistoryPages(pages=>[...pages,history.data.next_before])}>Older analyses</button>}
+     {historyPages.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(pages=>pages.slice(0,-1))}>Newer analyses</button>}
+     {history.data?.next_before && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(pages=>[...pages,history.data.next_before])}>Older analyses</button>}
      <small>Lineage shown here is recorded lineage only; missing links are not inferred.</small>
    </article>
    {analysis ? <AnalysisAnswer output={output.data} pending={output.isPending} error={output.error}/> : <p>Select an analysis to inspect its published answer.</p>}
