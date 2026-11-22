@@ -115,7 +115,7 @@ describe('buyer-facing primary surfaces', () => {
     expect(feedback).toContain('Next questions');
     expect(feedback).toContain('questions.data.next_after');
     expect(questionsHook).toContain("['questions', client.config.workspace, after]");
-    expect(questionsHook).toContain('client.questions(after, 100)');
+    expect(questionsHook).toContain('client.questions(after, 100, signal)');
   });
 
   it('does not mutate in-flight feedback payloads and confirms stored results', () => {
