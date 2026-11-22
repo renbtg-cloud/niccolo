@@ -796,6 +796,36 @@ async fn stale_plan_selection_cannot_start_a_reused_step_id() {
 }
 
 #[tokio::test]
+async fn concurrent_first_step_starts_transition_the_operation_once() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 1).await;
+    let id = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let (a, b) = tokio::join!(
+        agentic_controller::start_step(&app, scope, id, s.principal),
+        agentic_controller::start_step(&app, scope, id, s.principal),
+    );
+    assert!(matches!(
+        (a, b),
+        (Ok(_), Err(agentic_controller::ControllerError::BudgetExhausted))
+            | (Err(agentic_controller::ControllerError::BudgetExhausted), Ok(_))
+    ));
+    let events = bff_operations::events(&app, scope, 0, 20).await.unwrap();
+    assert_eq!(
+        events.events.iter().map(|event| event.kind.as_str()).collect::<Vec<_>>(),
+        ["QUEUED", "RUNNING"]
+    );
+    let current = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(current.budget_used, 1);
+    assert_eq!(current.steps[0].state, "STARTED");
+}
+
+#[tokio::test]
 async fn concurrent_step_starts_share_one_plan_budget_and_do_not_start_twice() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

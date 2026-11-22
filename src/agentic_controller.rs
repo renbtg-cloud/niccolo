@@ -366,18 +366,16 @@ async fn start_step_checked(
     actor: Uuid,
     expected_revision: Option<i64>,
 ) -> Result<ControllerView, ControllerError> {
-    let op = bff_operations::get(pool, scope).await?;
-    if op.state == "QUEUED" {
-        check_step_start(&view(pool, scope).await?, step, expected_revision)?;
-        bff_operations::start(pool, scope, op.state_version, actor).await?;
-    }
     let mut tx = scoped(pool, scope.workspace, false).await?;
     let (operation_state, step_budget) = read_operation_state(&mut tx, scope, true).await?;
-    if operation_state != "RUNNING" {
-        return Err(ControllerError::StateConflict);
-    }
     let before = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     check_step_start(&before, step, expected_revision)?;
+    if operation_state == "QUEUED" {
+        let version = operation_state_version(&mut tx, scope).await?;
+        bff_operations::start_in(&mut tx, scope, version, actor).await?;
+    } else if operation_state != "RUNNING" {
+        return Err(ControllerError::StateConflict);
+    }
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','controller started step',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
     tx.commit().await?;
     view(pool, scope).await
