@@ -78,6 +78,33 @@ async fn attributed_import_and_workspace_graph_are_connected() {
     }
 }
 #[tokio::test]
+async fn batch_import_preserves_fragment_order_and_original_byte_ranges() {
+    let (admin, service) = pools().await;
+    let workspace = workspace(&admin).await;
+    let document = Uuid::new_v4();
+    let raw: String = (0..1024).map(|index| format!("[2/11/2026, 12:00] Pessoa: olá {index}\n")).collect();
+    let import = ingest_source(
+        &service, workspace, document, SourceFormat::WhatsappExport, "fixture://batch", raw.as_bytes(),
+    ).await.unwrap();
+    assert_eq!(import.fragment_ids.len(), 1024);
+    let stored: Vec<(Uuid, i32, i32, String)> = sqlx::query_as(
+        "SELECT f.evidence_id,f.byte_start,f.byte_end,e.content
+         FROM niccolo.source_fragments f JOIN niccolo.evidence e USING(workspace_id,evidence_id)
+         WHERE f.workspace_id=$1 AND f.document_id=$2 ORDER BY f.ordinal",
+    )
+    .bind(workspace).bind(document).fetch_all(&admin).await.unwrap();
+    assert_eq!(stored.len(), import.fragment_ids.len());
+    let mut offset = 0;
+    for ((id, start, end, content), expected_id) in stored.into_iter().zip(import.fragment_ids) {
+        assert_eq!(id, expected_id);
+        assert_eq!(start as usize, offset);
+        assert_eq!(content, raw[start as usize..end as usize]);
+        offset = end as usize;
+    }
+    assert_eq!(offset, raw.len());
+}
+
+#[tokio::test]
 async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;

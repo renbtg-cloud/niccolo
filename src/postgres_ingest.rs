@@ -277,37 +277,51 @@ async fn write_fragments(
     locator: &str,
     parsed: &ParsedSource,
 ) -> Result<Vec<Uuid>, ImportError> {
-    let mut ids = Vec::with_capacity(parsed.fragments.len());
-    for f in &parsed.fragments {
-        let evidence_id = Uuid::new_v4();
-        let evidence_locator = format!("{locator}#bytes={}-{}", f.byte_start, f.byte_end);
-        sqlx::query(
-            "INSERT INTO niccolo.evidence \
-             (workspace_id,evidence_id,source_locator,content,source_class,admissible) \
-             VALUES ($1,$2,$3,$4,'REPORTED_SPEECH',true)",
-        )
-        .bind(workspace)
-        .bind(evidence_id)
-        .bind(evidence_locator)
-        .bind(&f.content)
-        .execute(&mut **tx)
-        .await?;
-        sqlx::query(
-            "INSERT INTO niccolo.source_fragments \
-             (workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7)",
-        )
-        .bind(workspace)
-        .bind(document_id)
-        .bind(f.ordinal)
-        .bind(evidence_id)
-        .bind(f.byte_start)
-        .bind(f.byte_end)
-        .bind(&f.speaker_label)
-        .execute(&mut **tx)
-        .await?;
-        ids.push(evidence_id);
+    let count = parsed.fragments.len();
+    let mut ids = Vec::with_capacity(count);
+    let mut locators = Vec::with_capacity(count);
+    let mut contents = Vec::with_capacity(count);
+    let mut ordinals = Vec::with_capacity(count);
+    let mut starts = Vec::with_capacity(count);
+    let mut ends = Vec::with_capacity(count);
+    let mut speakers = Vec::with_capacity(count);
+    for fragment in &parsed.fragments {
+        ids.push(Uuid::new_v4());
+        locators.push(format!("{locator}#bytes={}-{}", fragment.byte_start, fragment.byte_end));
+        contents.push(fragment.content.as_str());
+        ordinals.push(fragment.ordinal);
+        starts.push(fragment.byte_start);
+        ends.push(fragment.byte_end);
+        speakers.push(fragment.speaker_label.as_str());
     }
+    sqlx::query(
+        "INSERT INTO niccolo.evidence
+         (workspace_id,evidence_id,source_locator,content,source_class,admissible)
+         SELECT $1, fragment.evidence_id, fragment.locator, fragment.content, 'REPORTED_SPEECH', true
+         FROM unnest($2::uuid[], $3::text[], $4::text[]) AS fragment(evidence_id,locator,content)",
+    )
+    .bind(workspace)
+    .bind(&ids)
+    .bind(&locators)
+    .bind(&contents)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO niccolo.source_fragments
+         (workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
+         SELECT $1, $2, fragment.ordinal, fragment.evidence_id, fragment.byte_start, fragment.byte_end, fragment.speaker
+         FROM unnest($3::integer[], $4::uuid[], $5::integer[], $6::integer[], $7::text[])
+              AS fragment(ordinal,evidence_id,byte_start,byte_end,speaker)",
+    )
+    .bind(workspace)
+    .bind(document_id)
+    .bind(&ordinals)
+    .bind(&ids)
+    .bind(&starts)
+    .bind(&ends)
+    .bind(&speakers)
+    .execute(&mut **tx)
+    .await?;
     Ok(ids)
 }
 async fn verify_replay(
