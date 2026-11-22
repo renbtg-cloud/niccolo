@@ -10,7 +10,10 @@ export function ClarificationCard({ question, draft, onChange, onSubmit, saving 
     <p><small>Why asked: {question.reason} · based on frozen revision {question.input_revision}{question.input_is_current?'':' · Situation has changed since then'}</small></p>
     {history.isPending && <p role="status">Loading recorded answers…</p>}
 
-    {history.isError && <p role="status">Earlier answers could not be loaded for this question.</p>}
+    {history.isError && <div>
+      <p role="alert">Recorded answers could not be loaded for this question.</p>
+      <button type="button" disabled={history.isFetching} onClick={()=>void history.refetch()}>Retry loading answers</button>
+    </div>}
     {answers.length > 0 && <ul>{answers.map(answer =>
       <li key={answer.answer_id}>{answer.text}<div><small>Recorded later as {answer.kind}; not evidence and not part of the original frozen input.</small></div></li>
     )}</ul>}
