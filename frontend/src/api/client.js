@@ -78,7 +78,7 @@ export class NiccoloClient {
   clarificationAnswers(id, questionId, after = null, limit = 25, signal) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers${q}`, { signal }); }
   answerClarification(id, questionId, answerId, text) { return this.request('POST', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers/${answerId}`, { body: { text } }); }
   reanalysisRevision(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/reanalysis-revision`, { signal }); }
-  analysisCoverage(id) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`); }
+  analysisCoverage(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`, { signal }); }
   analysisContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`); }
   analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
   analysisOutput(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/output`, { signal }); }
