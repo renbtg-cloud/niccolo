@@ -38,8 +38,11 @@ it('identifies the affected field when a locator or passage is invalid', () => {
 });
 
 it('distinguishes unchanged extractor text from a human-edited passage', () => {
-  const selected = { ...draft, previewText: draft.excerpt };
+  const selected = { ...draft, preview: { document: draft.document.trim(), page: draft.page, excerpt: draft.excerpt.trim() } };
   expect(pdfExcerptContext(selected)).toMatch(/^User-selected extracted text from PDF/);
   expect(pdfExcerptContext(selected)).toContain('original not retained by Niccolò');
   expect(pdfExcerptContext({ ...selected, excerpt: 'Edited passage' })).toMatch(/^User transcription from PDF/);
+  expect(pdfExcerptContext({ ...selected, page: '13' })).toMatch(/^User transcription from PDF/);
+  expect(pdfExcerptContext({ ...selected, endPage: '13' })).toMatch(/^User transcription from PDF/);
+  expect(pdfExcerptContext({ ...selected, document: 'Another.pdf' })).toMatch(/^User transcription from PDF/);
 });

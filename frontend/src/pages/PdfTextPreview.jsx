@@ -71,7 +71,8 @@ export function PdfTextPreview({ client, disabled, onSelect }) {
       <button type="button" disabled={index+1>=preview.pages.length} onClick={()=>selectPage(index+1)}>Next page</button>
       <label>Page text<textarea ref={text} key={page.number} readOnly rows={8} value={page.text} onSelect={selectText}/></label>
       <button type="button" disabled={!selection||disabled} onClick={()=>{
-        onSelect({document:preview.title,page:String(page.number),endPage:'',section:'',excerpt:selection,previewText:selection});
+        const selected = { document: preview.title, page: String(page.number), excerpt: selection };
+        onSelect({ ...selected, endPage: '', section: '', preview: selected });
       }}>Use selected text in the passage form</button>
       {page.text.length===0 && <small>This page has no extracted text.</small>}
     </div>}

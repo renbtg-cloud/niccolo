@@ -6,7 +6,7 @@ function invalid(field, message) {
   throw error;
 }
 
-export function pdfExcerptContext({ document, page, endPage = "", section = "", excerpt, previewText = null }) {
+export function pdfExcerptContext({ document, page, endPage = "", section = "", excerpt, preview = null }) {
   const title = document.trim();
   if (!title) invalid('document', 'Enter the PDF title or file name.');
   if (!/^[1-9][0-9]{0,5}$/.test(page.trim())) invalid('page', 'Enter a page number from 1 to 999999.');
@@ -23,8 +23,10 @@ export function pdfExcerptContext({ document, page, endPage = "", section = "", 
   const selected = excerpt.trim();
   if (!selected) invalid('excerpt', 'Paste the text you selected from the PDF.');
   const oneLine = selected.replace(/\s+/gu, ' ');
-  const origin = previewText !== null && previewText.trim() === selected ? 'User-selected extracted text from PDF' : 'User transcription from PDF';
-  const text = `${origin} “${title}”, ${reference} (${previewText === null ? 'original unavailable to Niccolò' : 'original not retained by Niccolò'}, whitespace normalized): “${oneLine}”`;
+  const matchesPreview = preview && preview.excerpt === selected && preview.document === title
+    && String(preview.page) === start && (!end || end === start);
+  const origin = matchesPreview ? 'User-selected extracted text from PDF' : 'User transcription from PDF';
+  const text = `${origin} “${title}”, ${reference} (${preview === null ? 'original unavailable to Niccolò' : 'original not retained by Niccolò'}, whitespace normalized): “${oneLine}”`;
   const error = situationTextError(text);
   if (error) invalid('excerpt', error);
   return text;
