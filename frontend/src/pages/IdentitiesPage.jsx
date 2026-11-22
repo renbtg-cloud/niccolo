@@ -219,7 +219,7 @@ export function IdentitiesPage() {
     {(sources.error || situation.error || identities.error || speakers.error || bindings.error) &&
       <p className="error">{(sources.error || situation.error || identities.error || speakers.error || bindings.error).message}</p>}
 
-    {documentId&&!speakers.isLoading&&<article className="identity-summary"><strong>{mappingSummary.mappedCount}/{mappingSummary.speakerCount}</strong> source label(s) mapped by a human.{mappingSummary.unmappedCount>0?<p>{mappingSummary.unmappedCount} label(s) remain unmapped. That is allowed; Niccolò will not infer identity merely because labels match.</p>:mappingSummary.speakerCount>0?<p>Every extracted label in this record has an explicit mapping. Coverage does not prove that the mappings are correct.</p>:null}<small>Identity mappings are human assertions with history, not verified facts.</small></article>}
+    {documentId&&speakers.isSuccess&&bindings.isSuccess&&<article className="identity-summary"><strong>{mappingSummary.mappedCount}/{mappingSummary.speakerCount}</strong> source label(s) mapped by a human.{mappingSummary.unmappedCount>0?<p>{mappingSummary.unmappedCount} label(s) remain unmapped. That is allowed; Niccolò will not infer identity merely because labels match.</p>:mappingSummary.speakerCount>0?<p>Every extracted label in this record has an explicit mapping. Coverage does not prove that the mappings are correct.</p>:null}<small>Identity mappings are human assertions with history, not verified facts.</small></article>}
 
     <div className="speaker-list">
       {speakerRows.map((speaker) => <SpeakerRow
