@@ -296,11 +296,25 @@ async fn insert_plan(
     let json = canonical_steps(steps)?;
     let sha = format!("{:x}", Sha256::digest(json.as_bytes()));
     sqlx::query("INSERT INTO niccolo.agentic_plans(workspace_id,situation_id,operation_id,plan_revision,plan_sha256,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(&sha).bind(actor).execute(&mut **tx).await?;
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_steps
+             (workspace_id,situation_id,operation_id,plan_revision,step_id,
+              ordinal,step_kind,label,requires_human)
+         SELECT $1,$2,$3,$4,step_id,ordinal,kind,label,requires_human
+         FROM jsonb_to_recordset($5::text::jsonb) AS step(
+             step_id uuid, ordinal integer, kind text, label text, requires_human boolean
+         )
+         ORDER BY ordinal",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(rev)
+    .bind(&json)
+    .execute(&mut **tx)
+    .await?;
     let mut ordered = steps.to_vec();
     ordered.sort_by_key(|s| s.ordinal);
-    for s in &ordered {
-        sqlx::query("INSERT INTO niccolo.agentic_steps(workspace_id,situation_id,operation_id,plan_revision,step_id,ordinal,step_kind,label,requires_human) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(s.ordinal).bind(&s.kind).bind(&s.label).bind(s.requires_human).execute(&mut **tx).await?;
-    }
     for s in &ordered {
         for d in &s.depends_on {
             sqlx::query("INSERT INTO niccolo.agentic_step_dependencies(workspace_id,situation_id,operation_id,plan_revision,step_id,depends_on_step_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(d).execute(&mut **tx).await?;
