@@ -155,6 +155,7 @@ function ConnectedSituation({client}){
         });
         pendingIngest.current = { documentId, value: ingested.value };
       }
+      if (!isCurrentSession(generation)) throw new Error('The session ended before the record could be attached.');
       const attached = await client.addSituationSource(documentId);
       return { documentId, ingest: pendingIngest.current.value, situation: attached.value };
     },
