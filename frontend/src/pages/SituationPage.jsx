@@ -70,10 +70,13 @@ function ConnectedSituation({client}){
     queryFn: async ({ signal }) => (await client.sources(sourceCursor, 100, signal)).value,
   });
   const readiness = useRuntimeReadiness(client);
-  const refresh = async () => Promise.all([
+  const refresh = async () => {
+    if (!isCurrentSession(generation)) return;
+    return Promise.all([
     qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
-    qc.invalidateQueries({ queryKey: qk.sources(client.config) }),
-  ]);
+      qc.invalidateQueries({ queryKey: qk.sources(client.config) }),
+    ]);
+  };
 
   const create = useMutation({
     mutationFn: (focus) => client.createSituation(focus),
