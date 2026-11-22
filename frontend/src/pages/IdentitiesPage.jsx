@@ -109,7 +109,7 @@ export function IdentitiesPage() {
   const history = useQuery({
     queryKey: client && documentId ? qk.identityHistory(client.config, documentId) : ['identity-history','none'],
     enabled: !!client && !!documentId,
-    queryFn: async () => (await client.identityHistory(documentId)).value,
+    queryFn: async ({ signal }) => (await client.identityHistory(documentId, 0, 100, signal)).value,
   });
 
   const bindingBySpeaker = useMemo(
