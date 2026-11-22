@@ -165,12 +165,12 @@ async fn read_operation_state(
     tx: &mut Transaction<'_, Postgres>,
     scope: OperationScope,
     lock_for_update: bool,
-) -> Result<(String, i32), ControllerError> {
+) -> Result<(String, i32, i64), ControllerError> {
     sqlx::query_as(if lock_for_update {
-        "SELECT state,step_budget FROM niccolo.bff_operations
+        "SELECT state,step_budget,state_version FROM niccolo.bff_operations
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 FOR UPDATE"
     } else {
-        "SELECT state,step_budget FROM niccolo.bff_operations
+        "SELECT state,step_budget,state_version FROM niccolo.bff_operations
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3"
     })
     .bind(scope.workspace)
@@ -189,7 +189,7 @@ pub async fn create_plan(
 ) -> Result<(i64, String), ControllerError> {
     validate(steps)?;
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (state, budget, _) = read_operation_state(&mut tx, scope, true).await?;
     let rev = match view_plan(&mut tx, scope, &state, budget).await {
         Ok(view) => {
             if view.steps.iter().any(|step| step.state == "STARTED") {
@@ -212,7 +212,7 @@ pub(crate) async fn ensure_plan(
     steps: &[StepInput],
 ) -> Result<(ControllerView, bool), ControllerError> {
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (state, budget, _) = read_operation_state(&mut tx, scope, true).await?;
     let (view, created) = match view_plan(&mut tx, scope, &state, budget).await {
         Ok(view) => (view, false),
         Err(ControllerError::Invisible) => {
@@ -251,7 +251,7 @@ async fn insert_plan(
 
 pub async fn view(pool: &PgPool, scope: OperationScope) -> Result<ControllerView, ControllerError> {
     let mut tx = scoped(pool, scope.workspace, true).await?;
-    let (operation_state, step_budget) = read_operation_state(&mut tx, scope, false).await?;
+    let (operation_state, step_budget, _) = read_operation_state(&mut tx, scope, false).await?;
     let result = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     tx.commit().await?;
     Ok(result)
@@ -367,11 +367,10 @@ async fn start_step_checked(
     expected_revision: Option<i64>,
 ) -> Result<ControllerView, ControllerError> {
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (operation_state, step_budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (operation_state, step_budget, version) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     check_step_start(&before, step, expected_revision)?;
     if operation_state == "QUEUED" {
-        let version = operation_state_version(&mut tx, scope).await?;
         bff_operations::start_in(&mut tx, scope, version, actor).await?;
     } else if operation_state != "RUNNING" {
         return Err(ControllerError::StateConflict);
@@ -380,21 +379,6 @@ async fn start_step_checked(
     tx.commit().await?;
     view(pool, scope).await
 }
-async fn operation_state_version(
-    tx: &mut Transaction<'_, Postgres>,
-    scope: OperationScope,
-) -> Result<i64, ControllerError> {
-    Ok(sqlx::query_scalar(
-        "SELECT state_version FROM niccolo.bff_operations
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
-    )
-    .bind(scope.workspace)
-    .bind(scope.situation)
-    .bind(scope.operation)
-    .fetch_one(&mut **tx)
-    .await?)
-}
-
 pub async fn finish_step(
     pool: &PgPool,
     scope: OperationScope,
@@ -411,7 +395,7 @@ pub async fn finish_step(
         return Err(ControllerError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (operation_state, step_budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (operation_state, step_budget, version) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     let s = before
         .steps
@@ -423,7 +407,6 @@ pub async fn finish_step(
     }
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(outcome).bind(note).bind(actor).execute(&mut *tx).await?;
     if outcome == "WAITING_FOR_HUMAN" {
-        let version = operation_state_version(&mut tx, scope).await?;
         bff_operations::wait_for_human_in(&mut tx, scope, version, actor, note).await?;
     }
     tx.commit().await?;
@@ -437,7 +420,7 @@ pub async fn resume_step(
     note: &str,
 ) -> Result<ControllerView, ControllerError> {
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (state, budget, version) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &state, budget).await?;
     let s = before
         .steps
@@ -447,7 +430,6 @@ pub async fn resume_step(
     if s.state != "WAITING_FOR_HUMAN" || note.trim().is_empty() {
         return Err(ControllerError::StateConflict);
     }
-    let version = operation_state_version(&mut tx, scope).await?;
     bff_operations::resume_in(&mut tx, scope, version, actor).await?;
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(note).bind(actor).execute(&mut *tx).await?;
     // RESUMED means active again, so add a STARTED event as the latest operational state.
@@ -496,7 +478,7 @@ pub async fn resolve_human_boundary(
         None
     };
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (state, budget, version) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &state, budget).await?;
     let step_view = before
         .steps
@@ -516,7 +498,6 @@ pub async fn resolve_human_boundary(
     if row != Some((decision.into(), response_text.trim().into(), actor)) {
         return Err(ControllerError::StateConflict);
     }
-    let version = operation_state_version(&mut tx, scope).await?;
     let mut plan_revision = before.plan_revision;
     let operation_state = if decision == "STOP" {
         bff_operations::cancel_in(
@@ -558,7 +539,7 @@ pub async fn recover_stale_started(
         return Err(ControllerError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let (state, budget, _) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &state, budget).await?;
     let stale:Vec<Uuid>=sqlx::query_scalar("SELECT s.step_id FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 AND (SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)='STARTED' AND (SELECT e.created_at FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)<clock_timestamp()-make_interval(secs=>$5)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(stale_after_seconds).fetch_all(&mut *tx).await?;
     for step in stale {
