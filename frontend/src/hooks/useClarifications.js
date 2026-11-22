@@ -8,22 +8,16 @@ export function useClarifications(after = null){
  return useQuery({
    queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarifications'),after]:['clarifications','none'],
    enabled:!!client&&!!analysis,
-   queryFn:async()=>{
-     const root=(await client.analysisClarifications(analysis, after, 25)).value;
-     const questions=root.clarifications??[];
-     const results=await Promise.allSettled(questions.map(question =>
-       client.clarificationAnswers(analysis,question.question_id)
-     ));
-     const clarifications=questions.map((question,index)=>{
-       const result=results[index];
-       return {
-         ...question,
-         answers: result.status==='fulfilled' ? result.value.value.answers??[] : [],
-         answersUnavailable: result.status==='rejected',
-         moreAnswers: result.status==='fulfilled' && Boolean(result.value.value.next_after),
-       };
-     });
-     return {...root,clarifications};
-   },
+   queryFn:async()=> (await client.analysisClarifications(analysis, after, 25)).value,
+ });
+}
+
+export function useClarificationAnswers(questionId, after = null) {
+ const client=useClient();
+ const analysis=useUiStore(s=>s.analysis);
+ return useQuery({
+   queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarification-answers'),questionId,after]:['clarification-answers','none'],
+   enabled:Boolean(client&&analysis&&questionId),
+   queryFn:async()=> (await client.clarificationAnswers(analysis, questionId, after, 25)).value,
  });
 }
