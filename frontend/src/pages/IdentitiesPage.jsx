@@ -85,7 +85,7 @@ export function IdentitiesPage() {
   const identities = useQuery({
     queryKey: client ? [...qk.identities(client.config), identityCursor] : ['identities','none'],
     enabled: !!client,
-    queryFn: async () => (await client.identities(identityCursor, 100)).value,
+    queryFn: async ({ signal }) => (await client.identities(identityCursor, 100, signal)).value,
   });
 
   const documents = sources.data?.documents ?? [];

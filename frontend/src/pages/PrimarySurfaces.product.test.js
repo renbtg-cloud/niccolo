@@ -85,7 +85,7 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).toContain('client.sources(sourceCursor, 100, signal)');
     expect(identities).toContain('Next source records');
     expect(identities).toContain('Next people');
-    expect(identities).toContain('client.identities(identityCursor, 100)');
+    expect(identities).toContain('client.identities(identityCursor, 100, signal)');
     expect(identities).toContain('resetDocumentSelection');
   });
 
