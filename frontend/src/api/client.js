@@ -78,7 +78,7 @@ export class NiccoloClient {
   analysisCoverage(id) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`); }
   analysisContext(id) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`); }
   analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
-  analysisOutput(id) { return this.request('GET', `${analysisPath(this.config,id)}/output`); }
+  analysisOutput(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/output`, { signal }); }
   presentationPackage(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package`); }
   dashboard(id, operationId) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`); }
   epistemic(id) { return this.request('GET', `${analysisPath(this.config,id)}/bff/epistemic`); }

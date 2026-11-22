@@ -20,9 +20,9 @@ export function useAnalysisOutput(analysisId, operation = null) {
   return useQuery({
     queryKey: client && analysisId ? qk.analysis(client.config, analysisId, 'output') : ['analysis-output', 'none'],
     enabled: Boolean(client && analysisId),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
-        return (await client.analysisOutput(analysisId)).value;
+        return (await client.analysisOutput(analysisId, signal)).value;
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
