@@ -10,3 +10,8 @@ export const useSessionStore = create((set) => ({
     workspace: '', situation: '', token: '', connected: false, generation: state.generation + 1,
   })),
 }));
+
+export function isCurrentSession(generation) {
+  const session = useSessionStore.getState();
+  return session.connected && session.generation === generation;
+}
