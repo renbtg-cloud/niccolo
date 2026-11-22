@@ -685,6 +685,8 @@ Checkpoints 1.118–1.120 restrict stale-step recovery to running operations. St
 
 Checkpoints 1.122–1.126 read each recovery candidate's latest event once and use a common age cutoff for the batch. Recovery skips plans with no active steps, marks orphaned invocations failed in one update and appends retry events in plan order. Workers reread the plan up to eight times if a newer revision supersedes a selected step before admission. Step outcome notes must fit PostgreSQL's character limit and contain no NUL.
 
+Checkpoints 1.128–1.132 check the invocation and operation before retrying a provider call. Recovery ends the original invocation. A closed operation cannot reserve a new invocation, and a worker that observes closure after a provider reply skips domain postprocessing and reports the recorded operation state. A successful invocation stores the response and provider attribution in one ledger update. Closure can still occur after an invocation was reserved or while work already admitted is in flight.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
