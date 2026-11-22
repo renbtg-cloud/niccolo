@@ -67,6 +67,7 @@ function ConnectedSituation({client}){
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
+  const contextEditor=useRef(null);
   const [contextText,setContextText]=useState('');
   const contextErrorId=useId();
   const contextError=situationTextError(contextText);
@@ -327,10 +328,10 @@ function ConnectedSituation({client}){
     <article className="human-context">
       <h3>Human context</h3>
       <PdfExcerptForm disabled={addContext.isPending||Boolean(contextText.trim())}
-        onPrepare={text=>{setContextKind('user_reported');setContextText(text);}}/>
+        onPrepare={text=>{setContextKind('user_reported');setContextText(text);contextEditor.current?.focus();}}/>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
       <label>Kind<select value={contextKind} disabled={addContext.isPending} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
-      <label>Context<textarea aria-label="Human context text" value={contextText} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
+      <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
       {contextError&&<p id={contextErrorId} role="alert">{contextError}</p>}
       <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
       {addContext.isSuccess&&<p role="status">Human context recorded.</p>}
