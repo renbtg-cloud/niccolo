@@ -8,6 +8,7 @@ export function useClarifications(after = null){
  return useQuery({
    queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarifications'),after]:['clarifications','none'],
    enabled:!!client&&!!analysis,
+   retry:false,
    queryFn:async()=> (await client.analysisClarifications(analysis, after, 25)).value,
  });
 }
@@ -18,6 +19,7 @@ export function useClarificationAnswers(questionId, after = null) {
  return useQuery({
    queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarification-answers'),questionId,after]:['clarification-answers','none'],
    enabled:Boolean(client&&analysis&&questionId),
+   retry:false,
    queryFn:async()=> (await client.clarificationAnswers(analysis, questionId, after, 25)).value,
  });
 }
