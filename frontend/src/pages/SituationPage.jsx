@@ -263,7 +263,7 @@ function ConnectedSituation({client}){
           const source = pendingRestoreDocument.current;
           event.target.value = '';
           pendingRestoreDocument.current = null;
-          if (file && source) restoreOriginal.mutate({source, file});
+          if (file && source && !restoreOriginal.isPending) restoreOriginal.mutate({source, file});
         }}
       />
       {sources.isLoading && <p role="status">Loading sources…</p>}
