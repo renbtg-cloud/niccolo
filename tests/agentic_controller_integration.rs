@@ -438,7 +438,10 @@ async fn oversized_provider_diagnostic_does_not_strand_the_worker_operation() {
     assert_eq!(message, "failure details could not be recorded");
 }
 
-struct PendingModel;
+#[derive(Default)]
+struct PendingModel {
+    started: tokio::sync::Notify,
+}
 
 impl ReasoningModel for PendingModel {
     fn provider(&self) -> &str {
@@ -450,6 +453,7 @@ impl ReasoningModel for PendingModel {
     }
 
     fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+        self.started.notify_one();
         Box::pin(std::future::pending())
     }
 }
@@ -493,12 +497,24 @@ async fn runtime_bounds_model_wait_by_the_operation_deadline() {
     )
     .await
     .unwrap();
-    let result = tokio::time::timeout(
+    let model = PendingModel::default();
+    let (result, pending_budget) = tokio::time::timeout(
         std::time::Duration::from_secs(10),
-        agentic_runtime::run_until_boundary(&app, scope, s.principal, &PendingModel),
+        async {
+            tokio::join!(
+                agentic_runtime::run_until_boundary(&app, scope, s.principal, &model),
+                async {
+                    model.started.notified().await;
+                    operation_budget::view(&app, scope).await.unwrap()
+                },
+            )
+        },
     )
     .await
     .expect("the operation deadline should bound the model wait");
+    assert_eq!(pending_budget.used_invocations, 1);
+    assert_eq!(pending_budget.unreported_token_usage_invocations, 1);
+    assert!(!pending_budget.token_usage_complete);
     assert!(matches!(
         result,
         Err(agentic_runtime::RuntimeError::Model(ModelError::Timeout))
@@ -517,6 +533,11 @@ async fn runtime_bounds_model_wait_by_the_operation_deadline() {
     assert!((1..=4_000).contains(&timeout_ms));
     assert_eq!(status, "FAILED");
     assert_eq!(error_code, "TIMEOUT");
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_invocations, 1);
+    assert_eq!(budget.unreported_token_usage_invocations, 1);
+    assert!(!budget.token_usage_complete);
+    assert!(budget.remaining_total_tokens_is_upper_bound);
     assert_eq!(
         last_step_event(&admin, scope, step_id).await,
         ("FAILED".into(), "model invocation timed out".into())

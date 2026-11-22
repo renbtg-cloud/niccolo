@@ -25,14 +25,14 @@ pub enum BudgetError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BudgetView {
     pub max_invocations: i64,
-    /// Successful calls and completed responses rejected for reported token use.
+    /// Recorded invocations reserve budget from the moment they start.
     pub used_invocations: i64,
     pub remaining_invocations: i64,
     pub max_total_tokens: i64,
     /// Saturates at the largest representable token total.
     pub used_total_tokens: i64,
     pub remaining_total_tokens: i64,
-    /// Number of completed calls whose provider did not report all usage.
+    /// Number of invocations with pending, partial, or unavailable usage.
     /// Used tokens are a lower bound when this is nonzero.
     pub unreported_token_usage_invocations: i64,
     pub token_usage_complete: bool,
@@ -132,8 +132,7 @@ fn summarize(
     })
 }
 
-/// A successful call with absent token usage is not free. Expose the
-/// accounting uncertainty instead of claiming the token budget is exact.
+/// An incomplete usage record leaves the remaining token budget uncertain.
 fn mark_unknown_usage(mut view: BudgetView, missing: i64) -> Result<BudgetView, BudgetError> {
     if missing < 0 || missing > view.used_invocations {
         return Err(BudgetError::Invalid);
@@ -170,8 +169,7 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
          LEAST(coalesce(sum(coalesce(prompt_tokens,0)::numeric+coalesce(completion_tokens,0)::numeric),0),9223372036854775807)::bigint, \
          count(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL) \
          FROM niccolo.model_invocations \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
-           AND (status='SUCCEEDED' OR (budget_exceeded AND (prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL)))",
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
     )
     .bind(s.workspace)
     .bind(s.situation)
