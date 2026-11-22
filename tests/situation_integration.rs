@@ -757,6 +757,23 @@ async fn pdf_original_replays_and_downloads_exactly_without_evidence_fragments()
         assert_eq!(status, expected, "{body}");
         assert_eq!(body["fragment_ids"], json!([]));
     }
+    let preview_path = format!("{path}/pdf-preview");
+    let (status, _) = call(
+        f.router.clone(),
+        request("GET", preview_path.clone(), Some(&f.reader), None),
+    ).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, preview) = call(
+        f.router.clone(),
+        request("GET", preview_path, Some(&f.writer), None),
+    ).await;
+    if status == StatusCode::SERVICE_UNAVAILABLE {
+        assert_eq!(preview["error"], "PDF preview requires pdftotext");
+    } else {
+        assert_eq!(status, StatusCode::OK, "{preview}");
+        assert_eq!(preview["pages"][0]["text"], "Fixture passage");
+    }
     let response = f.router.clone().oneshot(request(
         "GET", format!("{path}/original"), Some(&f.reader), None,
     )).await.unwrap();
