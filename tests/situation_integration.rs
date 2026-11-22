@@ -680,14 +680,22 @@ async fn pdf_transcription_round_trips_as_human_context_without_a_source_record(
 }
 
 fn simple_text_pdf() -> Vec<u8> {
+    text_pdf(1)
+}
+
+fn text_pdf(page_count: usize) -> Vec<u8> {
     let stream = "BT /F1 12 Tf 30 90 Td (Fixture passage) Tj ET";
-    let objects = [
+    let kids = (5..5 + page_count).map(|id| format!("{id} 0 R")).collect::<Vec<_>>().join(" ");
+    let mut objects = vec![
         "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>".to_owned(),
+        format!("<< /Type /Pages /Kids [{kids}] /Count {page_count} >>"),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
         format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
     ];
+    objects.extend(std::iter::repeat_n(
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>".to_owned(),
+        page_count,
+    ));
     let mut pdf = "%PDF-1.4\n".to_owned();
     let mut offsets = Vec::new();
     for (index, object) in objects.iter().enumerate() {
@@ -695,11 +703,12 @@ fn simple_text_pdf() -> Vec<u8> {
         pdf.push_str(&format!("{} 0 obj\n{object}\nendobj\n", index + 1));
     }
     let xref = pdf.len();
-    pdf.push_str("xref\n0 6\n0000000000 65535 f \n");
+    let size = objects.len() + 1;
+    pdf.push_str(&format!("xref\n0 {size}\n0000000000 65535 f \n"));
     for offset in offsets {
         pdf.push_str(&format!("{offset:010} 00000 n \n"));
     }
-    pdf.push_str(&format!("trailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n{xref}\n%%EOF\n"));
+    pdf.push_str(&format!("trailer\n<< /Root 1 0 R /Size {size} >>\nstartxref\n{xref}\n%%EOF\n"));
     pdf.into_bytes()
 }
 
@@ -744,7 +753,7 @@ async fn pdf_preview_is_authorized_and_does_not_create_a_source() {
 async fn pdf_original_replays_and_downloads_exactly_without_evidence_fragments() {
     let f = setup().await;
     let document = Uuid::new_v4();
-    let pdf = simple_text_pdf();
+    let pdf = text_pdf(21);
     let path = format!("/v1/workspaces/{}/sources/{document}", f.workspace);
     for expected in [StatusCode::CREATED, StatusCode::OK] {
         let upload = Request::post(&path)
@@ -766,13 +775,23 @@ async fn pdf_original_replays_and_downloads_exactly_without_evidence_fragments()
 
     let (status, preview) = call(
         f.router.clone(),
-        request("GET", preview_path, Some(&f.writer), None),
+        request("GET", preview_path.clone(), Some(&f.writer), None),
     ).await;
     if status == StatusCode::SERVICE_UNAVAILABLE {
         assert_eq!(preview["error"], "PDF preview requires pdftotext");
     } else {
         assert_eq!(status, StatusCode::OK, "{preview}");
         assert_eq!(preview["pages"][0]["text"], "Fixture passage");
+        assert_eq!(preview["pages"].as_array().unwrap().len(), 20);
+        assert_eq!(preview["next_page"], 21);
+        let (status, last) = call(
+            f.router.clone(),
+            request("GET", format!("{preview_path}?first_page=21"), Some(&f.writer), None),
+        ).await;
+        assert_eq!(status, StatusCode::OK, "{last}");
+        assert_eq!(last["pages"].as_array().unwrap().len(), 1);
+        assert_eq!(last["pages"][0]["number"], 21);
+        assert_eq!(last["next_page"], Value::Null);
     }
     let response = f.router.clone().oneshot(request(
         "GET", format!("{path}/original"), Some(&f.reader), None,
