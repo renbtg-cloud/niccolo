@@ -351,11 +351,20 @@ async fn transition(
     scope: OperationScope,
     spec: Transition<'_>,
 ) -> Result<OperationView, BffOperationError> {
+    transition_with_owner(pool, scope, spec, None).await
+}
+
+async fn transition_with_owner(
+    pool: &PgPool,
+    scope: OperationScope,
+    spec: Transition<'_>,
+    owner: Option<&str>,
+) -> Result<OperationView, BffOperationError> {
     let result_json = spec.result.map(canonical).transpose()?;
     let event_json = canonical(spec.event_value)?;
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let changed = sqlx::query("UPDATE niccolo.bff_operations SET state=$4,state_version=state_version+1,result_json=$5,error_code=$6,error_message=$7,updated_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND state_version=$8 AND state=ANY($9)")
-        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(spec.to).bind(result_json).bind(spec.error.map(|x| x.0)).bind(spec.error.map(|x| x.1)).bind(spec.expected_version).bind(spec.from).execute(&mut *tx).await?.rows_affected();
+    let changed = sqlx::query("UPDATE niccolo.bff_operations SET state=$4,state_version=state_version+1,result_json=$5,error_code=$6,error_message=$7,updated_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND state_version=$8 AND state=ANY($9) AND ($10::text IS NULL OR (execution_owner=$10 AND execution_lease_until >= clock_timestamp()))")
+        .bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(spec.to).bind(result_json).bind(spec.error.map(|x| x.0)).bind(spec.error.map(|x| x.1)).bind(spec.expected_version).bind(spec.from).bind(owner).execute(&mut *tx).await?.rows_affected();
     if changed != 1 {
         return Err(BffOperationError::StateConflict);
     }
@@ -396,6 +405,33 @@ pub async fn fail(
     code: &str,
     message: &str,
 ) -> Result<OperationView, BffOperationError> {
+    fail_with_owner(pool, scope, expected_version, actor, (code, message), None).await
+}
+
+/// Fail an operation only while the named worker still holds its execution lease.
+pub async fn fail_claimed(
+    pool: &PgPool,
+    scope: OperationScope,
+    expected_version: i64,
+    actor: Uuid,
+    owner: &str,
+    code: &str,
+    message: &str,
+) -> Result<OperationView, BffOperationError> {
+    if owner.trim().is_empty() || owner.len() > 128 {
+        return Err(BffOperationError::Invalid);
+    }
+    fail_with_owner(pool, scope, expected_version, actor, (code, message), Some(owner)).await
+}
+
+async fn fail_with_owner(
+    pool: &PgPool,
+    scope: OperationScope,
+    expected_version: i64,
+    actor: Uuid,
+    (code, message): (&str, &str),
+    owner: Option<&str>,
+) -> Result<OperationView, BffOperationError> {
     if code.trim().is_empty()
         || code.len() > 128
         || message.trim().is_empty()
@@ -403,7 +439,7 @@ pub async fn fail(
     {
         return Err(BffOperationError::Invalid);
     }
-    transition(
+    transition_with_owner(
         pool,
         scope,
         Transition {
@@ -416,6 +452,7 @@ pub async fn fail(
             event_value: &serde_json::json!({"code":code}),
             actor,
         },
+        owner,
     )
     .await
 }

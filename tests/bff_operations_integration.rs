@@ -353,6 +353,37 @@ async fn postgres_infinite_deadlines_keep_their_ordering_semantics() {
 }
 
 #[tokio::test]
+async fn only_the_current_lease_owner_can_record_a_worker_failure() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(s, Uuid::new_v4());
+    let queued = bff_operations::submit(&app, scope, &input(s, "BUILD_BRIEFING", None))
+        .await
+        .unwrap();
+    assert!(bff_operations::claim_execution(&app, scope, "old", 60_000).await.unwrap());
+    let running = bff_operations::start(&app, scope, queued.state_version, s.principal)
+        .await
+        .unwrap();
+    assert!(bff_operations::release_execution(&app, scope, "old").await.unwrap());
+    assert!(bff_operations::claim_execution(&app, scope, "new", 60_000).await.unwrap());
+    assert!(matches!(
+        bff_operations::fail_claimed(
+            &app, scope, running.state_version, s.principal, "old", "OLD", "old worker failed",
+        ).await,
+        Err(bff_operations::BffOperationError::StateConflict)
+    ));
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "RUNNING");
+    let failed = bff_operations::fail_claimed(
+        &app, scope, running.state_version, s.principal, "new", "NEW", "current worker failed",
+    )
+    .await
+    .unwrap();
+    assert_eq!(failed.state, "FAILED");
+    let events = bff_operations::events(&app, scope, 0, 200).await.unwrap();
+    assert_eq!(events.events.iter().filter(|event| event.kind == "FAILED").count(), 1);
+}
+
+#[tokio::test]
 async fn adaptive_admission_serializes_competing_workers_at_workspace_limit() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

@@ -24,14 +24,17 @@ async fn mark_failed_best_effort(
     pool: &PgPool,
     scope: OperationScope,
     actor: Uuid,
+    lease_owner: &str,
     code: &str,
     message: &str,
 ) {
     if let Ok(current) = bff_operations::get(pool, scope).await
         && !current.terminal
     {
-        let _ =
-            bff_operations::fail(pool, scope, current.state_version, actor, code, message).await;
+        let _ = bff_operations::fail_claimed(
+            pool, scope, current.state_version, actor, lease_owner, code, message,
+        )
+        .await;
     }
 }
 
@@ -91,9 +94,8 @@ async fn run_with_owned_lease(
     }
     .await;
 
-    let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
-    if let Err(error) = result {
-        let code = match &error {
+    if let Err(error) = &result {
+        let code = match error {
             BffExecutionError::Agentic(_) => "AGENTIC_EXECUTION_FAILED",
             BffExecutionError::Reanalysis(_) => "REANALYSIS_EXECUTION_FAILED",
             BffExecutionError::Operation(_)
@@ -101,9 +103,10 @@ async fn run_with_owned_lease(
             | BffExecutionError::ResourcePolicy(_) => "BFF_EXECUTION_FAILED",
         };
         let message = error.to_string();
-        mark_failed_best_effort(pool, scope, actor, code, &message).await;
-        return Err(error);
+        mark_failed_best_effort(pool, scope, actor, lease_owner, code, &message).await;
     }
+    let _ = bff_operations::release_execution(pool, scope, lease_owner).await;
+    result?;
     Ok(bff_operations::get(pool, scope).await?)
 }
 
