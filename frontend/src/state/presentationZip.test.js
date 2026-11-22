@@ -52,3 +52,7 @@ it('Verify portable ZIP collision handling on case-insensitive hosts', () => {
 it('Verify portable ZIP collision handling for Unicode normalization', () => {
   expect(() => presentationZip(pkg({ 'café.txt': 'a', 'cafe\u0301.txt': 'b' }))).toThrow();
 });
+
+it('Verify portable ZIP rejects file-directory collisions', () => {
+  expect(() => presentationZip(pkg({ 'data': 'a', 'DATA/report.txt': 'b' }))).toThrow();
+});
