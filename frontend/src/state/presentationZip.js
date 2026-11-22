@@ -72,13 +72,19 @@ export function presentationZip(pkg) {
   let directorySize = 0;
   let totalPayload = 0;
   const entryNames = new Set();
+  const directoryNames = new Set();
   for (const [path, value] of entries) {
     if (!entryPathValid(path) || typeof value !== 'string') {
       throw new Error('Invalid export file path or contents.');
     }
     const portablePath = path.normalize('NFC').toLowerCase();
-    if (entryNames.has(portablePath)) throw new Error('Export contains conflicting file names.');
+    if (entryNames.has(portablePath) || directoryNames.has(portablePath)) throw new Error('Export contains conflicting file names.');
     entryNames.add(portablePath);
+    for (let slash = portablePath.indexOf('/'); slash >= 0; slash = portablePath.indexOf('/', slash + 1)) {
+      const directory = portablePath.slice(0, slash);
+      if (entryNames.has(directory)) throw new Error('Export contains conflicting file names.');
+      directoryNames.add(directory);
+    }
     const name = encoder.encode(path);
     const bytes = encoder.encode(value);
     if (name.length > 65535 || bytes.length > MAX_BYTES) {
