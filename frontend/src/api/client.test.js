@@ -133,3 +133,19 @@ it('passes cancellation through a review read and rejects an aborted body', asyn
   });
   await expect(client.analysisReview('analysis', controller.signal)).rejects.toMatchObject({name:'AbortError'});
 });
+
+it('passes the selected cursor and cancellation signal through feedback reads', async () => {
+  const { signal } = new AbortController();
+  const paths = [];
+  const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (path, options) => {
+    expect(options.signal).toBe(signal);
+    paths.push(path);
+    return response(200, {});
+  });
+  await client.questionFeedback('q', 40, 100, signal);
+  await client.questionPositions('q', 'actor', 100, signal);
+  expect(paths).toEqual([
+    '/v1/workspaces/w/questions/q/feedback?after=40&limit=100',
+    '/v1/workspaces/w/questions/q/positions?after=actor&limit=100',
+  ]);
+});

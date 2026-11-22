@@ -99,8 +99,8 @@ describe('buyer-facing primary surfaces', () => {
   });
 
   it('pages both current positions and immutable feedback events', () => {
-    expect(feedback).toContain('questionFeedback(question.question_id,eventCursor,100)');
-    expect(feedback).toContain('questionPositions(question.question_id,positionsCursor,100)');
+    expect(feedback).toContain('questionFeedback(question.question_id,eventCursor,100,signal)');
+    expect(feedback).toContain('questionPositions(question.question_id,positionsCursor,100,signal)');
     expect(feedback).toContain('Previous feedback events');
     expect(feedback).toContain('Next feedback events');
     expect(feedback).toContain('Previous positions');
