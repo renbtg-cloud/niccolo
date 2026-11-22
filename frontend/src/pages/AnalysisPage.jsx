@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { analysisSchema } from '../config.js';
@@ -28,8 +28,9 @@ export function AnalysisPage(){
  const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis);
  const {register,handleSubmit,reset}=useForm({resolver:zodResolver(analysisSchema),defaultValues:{analysis}});
  useEffect(()=>{reset({analysis});},[analysis,reset]);
+ const [historyPages,setHistoryPages]=useState([null]);
  const observed=useOperationObserver(activeOperation);
- const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const history=useAnalysisHistory(); const rows=historyGroups(history.data?.analyses??[]);
+ const output=useAnalysisOutput(analysis, observed.operation?.target_analysis_id===analysis ? observed.operation : null); const history=useAnalysisHistory(historyPages.at(-1)); const rows=historyGroups(history.data?.analyses??[]);
  return <section><h2>Analysis</h2>
    <form onSubmit={handleSubmit(v=>setAnalysis(v.analysis))}><input aria-label="Analysis UUID" placeholder="Analysis UUID" {...register('analysis')}/><button>Select analysis</button></form>
    <p>Selected: <code>{analysis||'none'}</code></p>
@@ -41,6 +42,8 @@ export function AnalysisPage(){
        <button className={entry.analysis_id===analysis?'history-selected':''} onClick={()=>setAnalysis(entry.analysis_id)}>{entry.goal||'Analysis without explicit goal'}</button>
        <div><small>Revision {entry.input_revision} · {analysisHistoryLabel(entry)}{entry.reanalysis_of?` · reanalysis of ${entry.reanalysis_of}`:''}</small></div>
      </li>)}</ul>
+     {historyPages.length>1 && <button type="button" onClick={()=>setHistoryPages(pages=>pages.slice(0,-1))}>Newer analyses</button>}
+     {history.data?.next_before && <button type="button" onClick={()=>setHistoryPages(pages=>[...pages,history.data.next_before])}>Older analyses</button>}
      <small>Lineage shown here is recorded lineage only; missing links are not inferred.</small>
    </article>
    {analysis ? <AnalysisAnswer output={output.data} pending={output.isPending} error={output.error}/> : <p>Select an analysis to inspect its published answer.</p>}

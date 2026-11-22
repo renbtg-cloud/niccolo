@@ -85,7 +85,7 @@ function ReviewContent(){
      pendingReanalysis.current={signature,ids:{snapshotOperation:crypto.randomUUID(),newAnalysis:crypto.randomUUID(),agenticOperation:crypto.randomUUID()}};
    }
    return launchApprovedReanalysis({client,priorAnalysis:analysis,goal,ids:pendingReanalysis.current.ids});
- },onSuccess:async(result)=>{pendingReanalysis.current=null;setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:qk.analysisHistory(client.config),exact:true})]);}});
+ },onSuccess:async(result)=>{pendingReanalysis.current=null;setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:qk.analysisHistory(client.config)})]);}});
  if(!client)return <p>Connect first.</p>;
  if(!analysis)return <section><h2>Human review</h2><p><Link to="/operations">Run an analysis</Link> or <Link to="/analysis">choose an earlier analysis</Link> to review.</p></section>;
  if(review.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {review.error.message}</p></section>;

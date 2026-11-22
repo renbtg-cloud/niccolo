@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { qk } from '../api/keys.js';
 import { useClient } from './useClient.js';
 
-export function useAnalysisHistory() {
+export function useAnalysisHistory(before = null) {
   const client = useClient();
   return useQuery({
-    queryKey: client ? qk.analysisHistory(client.config) : ['analysis-history','none'],
+    queryKey: client ? [...qk.analysisHistory(client.config), before] : ['analysis-history','none'],
     enabled: Boolean(client),
-    queryFn: async () => (await client.analysisHistory(null, 100)).value,
+    queryFn: async () => (await client.analysisHistory(before, 100)).value,
   });
 }

@@ -62,7 +62,7 @@ export function OperationsPage(){
    setAnalysis(r.value.analysis_id); setActive(operationId); return r.value;
  },onSuccess:()=>{
    pendingLaunch.current=null;
-   void qc.invalidateQueries({queryKey:qk.analysisHistory(client.config),exact:true});
+   void qc.invalidateQueries({queryKey:qk.analysisHistory(client.config)});
  }});
  const waitingStep=operation?.terminal ? null : plan.data?.steps?.find?.(s=>s.state==='WAITING_FOR_HUMAN');
  const waitingStepId=waitingStep?.step_id;
