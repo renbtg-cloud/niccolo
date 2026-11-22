@@ -241,7 +241,7 @@ function ConnectedSituation({client}){
       {upload.error && <p className="error" role="alert">
         {pendingIngest.current ? 'The record was imported. Attachment failed: ' : 'Import failed: '}{upload.error.message}
       </p>}
-      {upload.data && <p>Record imported and attached to this Situation.</p>}
+      {upload.data && <p role="status">Record imported and attached to this Situation.</p>}
     </article>
 
     <article>
