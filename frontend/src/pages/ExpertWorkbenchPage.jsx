@@ -202,6 +202,7 @@ export function ExpertWorkbenchPage() {
           <div className="evidence-search"><input aria-label="Search documentary evidence" placeholder="Search all attached admissible fragments" value={evidenceSearchText} maxLength={512} onChange={(e) => setEvidenceSearchText(e.target.value)} /><button type="button" disabled={searchEvidence.isPending || !evidenceSearchText.trim()} onClick={() => searchEvidence.mutate(evidenceSearchText.trim())}>Search evidence</button></div>
           {searchEvidence.isPending && <p role="status">Searching attached evidence…</p>}
           {searchEvidence.error && <p className="error" role="alert">Evidence search failed: {searchEvidence.error.message}</p>}
+          {searchEvidence.isSuccess && searchEvidence.data?.results?.length>0 && <p role="status">Showing evidence matches for “{searchEvidence.variables}”.</p>}
           {searchEvidence.isSuccess && searchEvidence.data?.results?.length===0 && <p>No additional fragments matched “{searchEvidence.variables}”.</p>}
           {evidenceChoices.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidence.has(item.evidence_id)} onChange={(e) => {
             const checked=e.target.checked;
