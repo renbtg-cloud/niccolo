@@ -33,6 +33,7 @@ function localHeader(name, length, checksum) {
   view.setUint32(0, 0x04034b50, true);
   view.setUint16(4, 20, true);
   view.setUint16(6, 0x0800, true); // UTF-8 names
+  view.setUint16(12, 0x21, true); // 1980-01-01, independent of the local timezone
   view.setUint32(14, checksum, true);
   view.setUint32(18, length, true);
   view.setUint32(22, length, true);
@@ -48,6 +49,7 @@ function centralHeader(name, length, checksum, offset) {
   view.setUint16(4, 20, true);
   view.setUint16(6, 20, true);
   view.setUint16(8, 0x0800, true);
+  view.setUint16(14, 0x21, true);
   view.setUint32(16, checksum, true);
   view.setUint32(20, length, true);
   view.setUint32(24, length, true);
