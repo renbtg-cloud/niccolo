@@ -8,6 +8,6 @@ export function useEpistemicView(){
  return useQuery({
    queryKey:client&&analysis?qk.analysis(client.config,analysis,'epistemic'):['epistemic','none'],
    enabled:!!client&&!!analysis,
-   queryFn:async()=> (await client.epistemic(analysis)).value,
+   queryFn:async ({ signal })=> (await client.epistemic(analysis, signal)).value,
  });
 }
