@@ -237,8 +237,8 @@ export function IdentitiesPage() {
         speaker={speaker}
         binding={bindingBySpeaker.get(speaker.speaker_label)}
         identities={identityRows}
-        onAssign={(value) => assign.mutate(value)}
-        onClear={(value) => clear.mutate(value)}
+        onAssign={(value) => {clear.reset();assign.mutate(value);}}
+        onClear={(value) => {assign.reset();clear.mutate(value);}}
         pending={assign.isPending || clear.isPending || !bindings.isSuccess}
       />)}
     </div>
