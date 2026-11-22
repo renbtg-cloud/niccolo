@@ -7,7 +7,7 @@ import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { restoreSourceRequest, sourceDescriptor } from '../state/sourceUpload.js';
-import { situationTextError } from '../state/situationText.js';
+import { situationTextError, utf8ByteLength } from '../state/situationText.js';
 import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
@@ -334,6 +334,7 @@ function ConnectedSituation({client}){
       <label>Kind<select value={contextKind} disabled={addContext.isPending||pdfContext} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
       {pdfContext&&<p role="status">This PDF transcription will be saved as a human report.</p>}
       <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
+      {pdfContext&&<small>{utf8ByteLength(contextText.trim())} / 4096 UTF-8 bytes, including the source reference.</small>}
       {contextError&&<p id={contextErrorId} role="alert">{contextError}</p>}
       <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
       {pdfContext&&<button type="button" disabled={addContext.isPending} onClick={()=>{
