@@ -20,6 +20,8 @@ pub enum ControllerError {
     BudgetExhausted,
     #[error("state conflict")]
     StateConflict,
+    #[error("selected plan revision is no longer current")]
+    PlanChanged,
     #[error("operation unavailable: {0}")]
     Operation(#[from] bff_operations::BffOperationError),
     #[error("serialization failed: {0}")]
@@ -386,7 +388,7 @@ fn check_step_start(
     expected_revision: Option<i64>,
 ) -> Result<(), ControllerError> {
     if expected_revision.is_some_and(|revision| revision != view.plan_revision) {
-        return Err(ControllerError::StateConflict);
+        return Err(ControllerError::PlanChanged);
     }
     if view.budget_used >= i64::from(view.budget_total) {
         return Err(ControllerError::BudgetExhausted);

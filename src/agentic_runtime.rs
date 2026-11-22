@@ -378,7 +378,9 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
     }
     ensure_default_plan(pool, scope, actor).await?;
     let _ = agentic_controller::recover_stale_started(pool, scope, actor, 120).await?;
+    const MAX_PLAN_RESELECTIONS: usize = 8;
     let mut completed = 0usize;
+    let mut reselections = 0;
     loop {
         op = bff_operations::get(pool, scope).await?;
         if op.terminal {
@@ -468,7 +470,17 @@ pub async fn run_until_boundary<M: ReasoningModel + ?Sized>(
             .find(|s| s.step_id == id)
             .expect("ready step exists")
             .clone();
-        execute_step(pool, scope, actor, model, &step, view.plan_revision).await?;
-        completed += 1;
+        match execute_step(pool, scope, actor, model, &step, view.plan_revision).await {
+            Err(RuntimeError::Controller(agentic_controller::ControllerError::PlanChanged))
+                if reselections < MAX_PLAN_RESELECTIONS =>
+            {
+                reselections += 1;
+            }
+            result => {
+                result?;
+                completed += 1;
+                reselections = 0;
+            }
+        }
     }
 }

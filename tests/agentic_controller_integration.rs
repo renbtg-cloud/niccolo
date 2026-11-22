@@ -870,7 +870,7 @@ async fn stale_plan_selection_cannot_start_a_reused_step_id() {
     .unwrap();
     assert!(matches!(
         agentic_controller::start_step_at_revision(&app, scope, id, s.principal, old).await,
-        Err(agentic_controller::ControllerError::StateConflict)
+        Err(agentic_controller::ControllerError::PlanChanged)
     ));
     assert_eq!(agentic_controller::view(&app, scope).await.unwrap().budget_used, 0);
     let view = agentic_controller::start_step_at_revision(&app, scope, id, s.principal, current)
