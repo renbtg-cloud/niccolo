@@ -258,6 +258,7 @@ export function IdentitiesPage() {
           <strong>{event.speaker_label}</strong> — {event.operation.toLowerCase()}
           {event.person_id ? ` → ${identityNameById.get(event.person_id) ?? event.person_id}` : ''}
           <div><small>{event.human_reason}</small></div>
+          <small>Event {event.event_no}</small>
         </li>)}
       </ol>
       {historyPages.documentId===documentId && historyPages.cursors.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setHistoryPages(page=>({documentId,cursors:page.cursors.slice(0,-1)}))}>Previous mapping events</button>}
