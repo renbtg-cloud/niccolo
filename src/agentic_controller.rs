@@ -629,7 +629,7 @@ pub async fn resolve_human_boundary(
         before.plan_revision
     };
     let operation_state = if decision == "STOP" { "CANCELLED" } else { "RUNNING" };
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO niccolo.agentic_human_responses
              (workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,
               decision,response_text,actor_principal_id,result_operation_state,result_plan_revision)
@@ -647,10 +647,30 @@ pub async fn resolve_human_boundary(
     .bind(operation_state)
     .bind(plan_revision)
     .execute(&mut *tx)
-    .await?;
-    let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).fetch_optional(&mut *tx).await?;
-    if row != Some((decision.into(), response_text.trim().into(), actor)) {
-        return Err(ControllerError::StateConflict);
+    .await?
+    .rows_affected();
+    if inserted == 0 {
+        let matches_legacy: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+                SELECT 1 FROM niccolo.agentic_human_responses
+                WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                  AND plan_revision=$4 AND step_id=$5 AND result_plan_revision IS NULL
+                  AND decision=$6 AND response_text=$7 AND actor_principal_id=$8
+            )",
+        )
+        .bind(scope.workspace)
+        .bind(scope.situation)
+        .bind(scope.operation)
+        .bind(before.plan_revision)
+        .bind(step)
+        .bind(decision)
+        .bind(response_text.trim())
+        .bind(actor)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !matches_legacy {
+            return Err(ControllerError::StateConflict);
+        }
     }
     if decision == "STOP" {
         bff_operations::cancel_in(
