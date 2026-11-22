@@ -838,6 +838,34 @@ async fn invalid_operation_budget_cannot_strand_an_agentic_step_in_started() {
 }
 
 #[tokio::test]
+async fn dense_plan_roundtrips_all_dependencies_and_ready_steps() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 64).await;
+    let ids: Vec<_> = (0..64).map(|_| Uuid::new_v4()).collect();
+    let steps: Vec<_> = ids.iter().enumerate().map(|(index, &id)| {
+        step(id, (index + 1) as i32, "CHECK_ASSUMPTIONS", false, ids[..index].to_vec())
+    }).collect();
+    agentic_controller::create_plan(&app, scope, s.principal, &steps).await.unwrap();
+    let view = agentic_controller::view(&app, scope).await.unwrap();
+    assert_eq!(view.steps.len(), ids.len());
+    assert_eq!(view.ready_step_ids, [ids[0]]);
+    for (index, persisted) in view.steps.iter().enumerate() {
+        let mut expected = ids[..index].to_vec();
+        expected.sort_unstable();
+        assert_eq!(persisted.step_id, ids[index]);
+        assert_eq!(persisted.depends_on, expected);
+    }
+
+    agentic_controller::start_step(&app, scope, ids[0], s.principal).await.unwrap();
+    let view = agentic_controller::finish_step(
+        &app, scope, ids[0], s.principal, "SUCCEEDED", "first condition checked",
+    ).await.unwrap();
+    assert_eq!(view.ready_step_ids, [ids[1]]);
+    assert_eq!(view.budget_used, 1);
+}
+
+#[tokio::test]
 async fn equivalent_plan_edge_order_produces_the_same_digest() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
