@@ -638,10 +638,38 @@ pub async fn recover_stale_started(
     if stale.is_empty() {
         return Ok(before);
     }
-    for step in stale {
-        sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code='RECOVERY_STALE',error_message='orphaned invocation recovered after stale threshold',completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND status='STARTED'").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RETRY_READY','stale STARTED step recovered for bounded retry',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
-    }
+    sqlx::query(
+        "UPDATE niccolo.model_invocations
+         SET status='FAILED', error_code='RECOVERY_STALE',
+             error_message='orphaned invocation recovered after stale threshold',
+             completed_at=clock_timestamp()
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+           AND plan_revision=$4 AND step_id=ANY($5) AND status='STARTED'",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(before.plan_revision)
+    .bind(&stale)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_step_events
+             (workspace_id,situation_id,operation_id,plan_revision,step_id,
+              event_kind,note,recorded_by_principal_id)
+         SELECT $1,$2,$3,$4,step_id,'RETRY_READY',
+                'stale STARTED step recovered for bounded retry',$6
+         FROM unnest($5::uuid[]) WITH ORDINALITY AS recovered(step_id,position)
+         ORDER BY position",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(before.plan_revision)
+    .bind(&stale)
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?;
     let recovered = view_plan(&mut tx, scope, &state, budget).await?;
     tx.commit().await?;
     Ok(recovered)

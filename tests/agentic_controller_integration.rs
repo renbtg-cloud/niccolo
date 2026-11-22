@@ -1113,6 +1113,47 @@ async fn v215_v218_controller_only_starts_dependency_ready_steps() {
     assert_eq!(v.ready_step_ids, vec![y]);
 }
 #[tokio::test]
+async fn recovery_requeues_only_stale_steps_in_plan_order() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let ids = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let plan = [
+        step(ids[0], 1, "INSPECT_SOURCES", false, vec![]),
+        step(ids[1], 2, "CHECK_ASSUMPTIONS", false, vec![]),
+        step(ids[2], 3, "CHECK_STOP_CONDITIONS", false, vec![]),
+    ];
+    let (revision, _) = agentic_controller::create_plan(&app, scope, s.principal, &plan)
+        .await
+        .unwrap();
+    for id in ids {
+        agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    }
+    sqlx::query(
+        "UPDATE niccolo.agentic_step_events
+         SET created_at=clock_timestamp()-interval '10 minutes'
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+           AND plan_revision=$4 AND step_id=ANY($5) AND event_kind='STARTED'",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation)
+    .bind(revision).bind(&ids[..2]).execute(&admin).await.unwrap();
+    let view = agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
+        .await
+        .unwrap();
+    assert_eq!(view.ready_step_ids, ids[..2]);
+    assert_eq!(view.steps[2].state, "STARTED");
+    let recovery_order: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT step_id FROM niccolo.agentic_step_events
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+           AND plan_revision=$4 AND event_kind='RETRY_READY'
+         ORDER BY event_seq",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation)
+    .bind(revision).fetch_all(&admin).await.unwrap();
+    assert_eq!(recovery_order, ids[..2]);
+}
+
+#[tokio::test]
 async fn cancelled_operation_does_not_record_a_new_human_pause() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
