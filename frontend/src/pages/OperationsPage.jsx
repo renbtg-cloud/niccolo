@@ -91,6 +91,7 @@ export function OperationsPage(){
  if(!client)return <p>Connect first.</p>;
  return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p>
  {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. Configure a local or remote OpenAI-compatible model and restart the Niccolò service before analyzing.</p>}
+ {readiness.isPending&&<p role="status">Checking whether a reasoning model is ready…</p>}
  {readiness.error&&<div>
    <p className="error" role="alert">Niccolò is not ready to analyze: {readiness.error.message}</p>
    <button type="button" disabled={readiness.isFetching} onClick={()=>void readiness.refetch()}>Retry readiness</button>
