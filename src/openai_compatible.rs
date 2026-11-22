@@ -241,7 +241,9 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                     .args([
                         "--silent",
                         "--show-error",
-                        "--fail-with-body",
+                        "--fail",
+                        "--write-out",
+                        "\n%{http_code}",
                         "--max-time",
                         &max_time,
                         "--connect-timeout",
@@ -262,21 +264,23 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             .await
             .map_err(|e| ModelError::Provider(format!("curl task failed: {e}")))?
             .map_err(|e| ModelError::Provider(format!("curl launch failed: {e}")))?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                return Err(ModelError::Provider(format!(
-                    "provider HTTP request failed: {}{}{}",
-                    stderr.trim(),
-                    if stderr.is_empty() || stdout.is_empty() {
-                        ""
-                    } else {
-                        " | "
-                    },
-                    stdout.trim()
-                )));
+            let (body, status) = output.stdout.iter().rposition(|byte| *byte == b'\n')
+                .map(|index| (&output.stdout[..index], &output.stdout[index + 1..]))
+                .unwrap_or((&[], &[]));
+            let status = std::str::from_utf8(status).ok().and_then(|s| s.parse::<u16>().ok());
+            if let Some(code) = status.filter(|code| (300..=599).contains(code)) {
+                return Err(ModelError::Provider(format!("HTTP {code}")));
             }
-            let envelope: Value = serde_json::from_slice(&output.stdout).map_err(|e| {
+            if !output.status.success() {
+                if output.status.code() == Some(28) {
+                    return Err(ModelError::Timeout);
+                }
+                return Err(ModelError::Provider(format!("curl exited with {}", output.status)));
+            }
+            if !status.is_some_and(|code| (200..300).contains(&code)) {
+                return Err(ModelError::Provider("missing provider HTTP status".into()));
+            }
+            let envelope: Value = serde_json::from_slice(body).map_err(|e| {
                 ModelError::Provider(format!("invalid provider JSON envelope: {e}"))
             })?;
             self.parse_response(envelope)
@@ -425,4 +429,27 @@ mod tests {
         assert_eq!(response.prompt_tokens, Some(9));
         assert_eq!(response.completion_tokens, Some(7));
     }
+    #[tokio::test]
+    async fn curl_transport_does_not_copy_provider_error_bodies() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            socket.read(&mut [0; 8192]).unwrap();
+            let body = "private evidence echoed by upstream";
+            write!(
+                socket,
+                "HTTP/1.1 429 Too Many Requests\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        let model = CurlOpenAiCompatibleModel::new(config(format!("http://{address}/v1"))).unwrap();
+        let error = model.invoke(&request()).await.unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.to_string(), "model invocation failed: HTTP 429");
+    }
+
 }
