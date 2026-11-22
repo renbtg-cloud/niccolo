@@ -902,11 +902,10 @@ async fn download_source_original(
             StatusCode::NOT_FOUND,
             "source original unavailable",
         ))?;
-    let extension = if format == "EML" { "eml" } else { "txt" };
-    let content_type = if format == "EML" {
-        "message/rfc822"
-    } else {
-        "text/plain; charset=utf-8"
+    let (extension, content_type) = match format.as_str() {
+        "EML" => ("eml", "message/rfc822"),
+        "PDF" => ("pdf", "application/pdf"),
+        _ => ("txt", "text/plain; charset=utf-8"),
     };
     let filename = format!("attachment; filename=\"niccolo-source-{document}.{extension}\"");
     let mut response = Bytes::from(original).into_response();
@@ -1008,10 +1007,11 @@ async fn ingest(
     {
         Some("message/rfc822") => SourceFormat::Eml,
         Some("text/plain") => SourceFormat::WhatsappExport,
+        Some("application/pdf") => SourceFormat::Pdf,
         _ => {
             return Err(ApiError(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "expected message/rfc822 or text/plain",
+                "expected message/rfc822, text/plain, or application/pdf",
             ));
         }
     };
