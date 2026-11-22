@@ -77,14 +77,14 @@ function ReviewContent(){
    const files=result.value?.files;
    const archive=presentationZip(result.value);
    const url=URL.createObjectURL(archive);
+   const anchor=document.createElement('a');
    try {
-     const anchor=document.createElement('a');
      anchor.href=url;
      anchor.download=`niccolo-analysis-${analysis}.zip`;
      document.body.append(anchor);
      anchor.click();
-     anchor.remove();
    } finally {
+     anchor.remove();
      window.setTimeout(()=>URL.revokeObjectURL(url),30000);
    }
    return Object.keys(files).length;
