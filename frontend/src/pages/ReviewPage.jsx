@@ -116,7 +116,8 @@ function ReviewContent(){
      {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
      {output.error && (output.data
        ? <p role="status">Showing the last loaded answer. Refresh failed.</p>
-       : <p className="error" role="alert">Answer unavailable: {output.error.message}</p>)}
+       : <div><p className="error" role="alert">Answer unavailable: {output.error.message}</p>
+         <button type="button" disabled={output.isFetching} onClick={()=>void output.refetch()}>Retry answer</button></div>)}
      {output.isPending && <p role="status">Checking for a published answer…</p>}
      {!output.isPending && !output.error && !output.data && <p>No answer has been published for this analysis yet.</p>}
      <article className="review-panel"><h3>Worth looking at next</h3>{dashboard.error ? <div><p role="alert">Next steps unavailable: {dashboard.error.message}</p>
