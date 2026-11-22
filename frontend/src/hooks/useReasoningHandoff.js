@@ -8,6 +8,6 @@ export function useReasoningHandoff(){
  return useQuery({
    queryKey:client&&analysis?qk.analysis(client.config,analysis,'handoff'):['handoff','none'],
    enabled:!!client&&!!analysis,
-   queryFn:async()=> (await client.reasoningHandoff(analysis)).value,
+   queryFn:async ({ signal })=> (await client.reasoningHandoff(analysis, signal)).value,
  });
 }
