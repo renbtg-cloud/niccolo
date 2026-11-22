@@ -80,7 +80,7 @@ export class NiccoloClient {
   reanalysisRevision(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/reanalysis-revision`, { signal }); }
   analysisCoverage(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`, { signal }); }
   analysisContext(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`, { signal }); }
-  analysisDelta(id) { return this.request('GET', `${analysisPath(this.config,id)}/delta`); }
+  analysisDelta(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/delta`, { signal }); }
   analysisOutput(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/output`, { signal }); }
   presentationPackage(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package`); }
   dashboard(id, operationId, signal) { const q = operationId ? `?operation=${operationId}` : ''; return this.request('GET', `${analysisPath(this.config,id)}/bff/dashboard${q}`, { signal }); }
