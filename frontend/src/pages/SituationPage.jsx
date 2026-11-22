@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useSessionStore } from '../stores/session.js';
-import { sourceDescriptor } from '../state/sourceUpload.js';
+import { restoreSourceRequest, sourceDescriptor } from '../state/sourceUpload.js';
 import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
@@ -48,6 +48,8 @@ function ConnectedSituation({client}){
   const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve the document identity across retries after a partial upload.
   const pendingDocumentId = useRef(null);
+  const restoreFileInput = useRef(null);
+  const pendingRestoreDocument = useRef(null);
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
   const [contextKind,setContextKind]=useState('user_reported');
@@ -86,6 +88,13 @@ function ConnectedSituation({client}){
   });
   const attach = useMutation({
     mutationFn: (documentId) => client.addSituationSource(documentId),
+    onSuccess: refresh,
+  });
+  const restoreOriginal = useMutation({
+    mutationFn: ({source, file}) => {
+      const {documentId, ...request} = restoreSourceRequest(source, file);
+      return client.ingestSource(documentId, request);
+    },
     onSuccess: refresh,
   });
   const downloadOriginal = useMutation({
@@ -213,6 +222,19 @@ function ConnectedSituation({client}){
 
     <article>
       <h3>Source catalog</h3>
+      <input
+        type="file"
+        hidden
+        ref={restoreFileInput}
+        aria-label="Original source file"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          const source = pendingRestoreDocument.current;
+          event.target.value = '';
+          pendingRestoreDocument.current = null;
+          if (file && source) restoreOriginal.mutate({source, file});
+        }}
+      />
       {sources.isLoading && <p>Loading sources…</p>}
       {sources.error && <p className="error">{sources.error.message}</p>}
       {!sources.isLoading && documents.length === 0 && <p>No source records have been imported yet.</p>}
@@ -222,7 +244,7 @@ function ConnectedSituation({client}){
             <strong>{document.locator}</strong>
             <div><small>{document.format} · {document.fragment_count} attributed fragment(s) · {document.byte_length} bytes</small></div>
             {document.original_bytes_available === false
-              ? <div><small className="error">Original bytes unavailable (legacy import). Re-upload the same file to restore byte-exact retention.</small></div>
+              ? <div><small className="error">Original bytes unavailable. Choose the exact original file to restore them.</small></div>
               : document.original_bytes_available === true
                 ? <div><small>Original bytes preserved</small></div>
                 : null}
@@ -230,6 +252,14 @@ function ConnectedSituation({client}){
           {attached.has(document.document_id)
             ? <span className="status-current">Attached</span>
             : <button disabled={attach.isPending} onClick={() => attach.mutate(document.document_id)}>Attach to Situation</button>}
+          {document.original_bytes_available === false && <button
+            disabled={restoreOriginal.isPending}
+            onClick={() => {
+              restoreOriginal.reset();
+              pendingRestoreDocument.current = document;
+              restoreFileInput.current?.click();
+            }}
+          >Restore original</button>}
           {document.original_bytes_available&&<button disabled={downloadOriginal.isPending} onClick={()=>downloadOriginal.mutate(document)}>Download original</button>}
         </li>)}
       </ul>
@@ -245,6 +275,8 @@ function ConnectedSituation({client}){
         }}>Next sources</button>
       </div>
       {attach.error && <p className="error">{attach.error.message}</p>}
+      {restoreOriginal.isSuccess && <p role="status">Original source restored.</p>}
+      {restoreOriginal.error && <p className="error" role="alert">{restoreOriginal.error.message}</p>}
       {downloadOriginal.error && <p className="error" role="alert">{downloadOriginal.error.message}</p>}
     </article>
 

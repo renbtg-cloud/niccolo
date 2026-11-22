@@ -146,10 +146,15 @@ async fn parser_upgrades_preserve_historical_fragment_replays() {
         let (document, evidence) = seed_historical_fragment(
             &admin, workspace, format, locator, raw, start,
         ).await;
+        let before = source_catalog::source_original(&service, workspace, document).await.unwrap();
+        assert!(before.is_none());
         let replay = ingest_source(&service, workspace, document, format, locator, raw.as_bytes())
             .await.unwrap();
         assert!(replay.replayed);
         assert_eq!(replay.fragment_ids, vec![evidence]);
+        let restored = source_catalog::source_original(&service, workspace, document).await.unwrap();
+        assert_eq!(restored, Some((format.db_value().to_owned(), raw.as_bytes().to_vec())));
+
 
         let fresh = ingest_source(
             &service, workspace, Uuid::new_v4(), format, locator, raw.as_bytes(),

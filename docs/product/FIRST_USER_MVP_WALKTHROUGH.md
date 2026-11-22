@@ -80,7 +80,7 @@ Supported MVP source files include:
 - `.eml` email with a plain-text UTF-8 or US-ASCII body;
 - `.txt` WhatsApp export with day/month/year timestamps and a sender label. Bracketed and hyphen-separated formats accept hours and minutes, with optional seconds.
 
-Choose **Import and attach**.
+Choose **Import and attach**. If an older catalog record has no retained original, choose **Restore original** on that record and select the same file. Niccolò verifies it against the existing record before retaining the bytes.
 
 For information that is remembered, hypothetical, or an investigative preference rather than a
 source record, use **Human context** instead. Niccolò keeps that separate from verified evidence.

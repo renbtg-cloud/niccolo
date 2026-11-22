@@ -35,12 +35,16 @@ describe('BFF client',()=>{
      calls.push(new Headers(options.headers));
      return response(201, {document_id: 'doc'});
    });
-   const locator = 'Recepção — reunião.txt';
-   await client.ingestSource('doc', { locator, contentType: 'text/plain', body: new Uint8Array([65]) });
-   expect(calls[0].has('X-Source-Locator')).toBe(false);
-   const encoded = calls[0].get('X-Source-Locator-Utf8');
-   const decoded = Uint8Array.from(atob(encoded), byte => byte.charCodeAt(0));
-   expect(new TextDecoder().decode(decoded)).toBe(locator);
+   const locators = ['Recepção — reunião.txt', ' historical.txt '];
+   for (const locator of locators) {
+     await client.ingestSource('doc', { locator, contentType: 'text/plain', body: new Uint8Array([65]) });
+   }
+   for (const [index, locator] of locators.entries()) {
+     expect(calls[index].has('X-Source-Locator')).toBe(false);
+     const encoded = calls[index].get('X-Source-Locator-Utf8');
+     const decoded = Uint8Array.from(atob(encoded), byte => byte.charCodeAt(0));
+     expect(new TextDecoder().decode(decoded)).toBe(locator);
+   }
  });
  it('lists the workspace source catalog through the BFF client',async()=>{
    const calls=[];

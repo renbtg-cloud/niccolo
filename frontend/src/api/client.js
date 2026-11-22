@@ -22,7 +22,7 @@ export class NiccoloClient {
     const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
     if (contentType) headers['Content-Type'] = contentType;
     if (locator) {
-      if (/^[\x20-\x7e]+$/u.test(locator)) {
+      if (locator.trim() === locator && /^[\x20-\x7e]+$/u.test(locator)) {
         headers['X-Source-Locator'] = locator;
       } else {
         const bytes = new TextEncoder().encode(locator);
