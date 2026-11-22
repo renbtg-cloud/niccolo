@@ -1137,6 +1137,21 @@ async fn cancelled_operation_does_not_record_a_new_human_pause() {
             bff_operations::BffOperationError::StateConflict
         ))
     ));
+    sqlx::query(
+        "UPDATE niccolo.agentic_step_events
+         SET created_at=clock_timestamp()-interval '10 minutes'
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND step_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .bind(id)
+    .execute(&admin)
+    .await
+    .unwrap();
+    agentic_controller::recover_stale_started(&app, scope, s.principal, 120)
+        .await
+        .unwrap();
     assert_eq!(last_step_event(&admin, scope, id).await.0, "STARTED");
     assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "CANCELLED");
 }
