@@ -620,6 +620,43 @@ async fn assert_retry_stops(recover: bool) {
 }
 
 #[tokio::test]
+async fn superseded_plan_cannot_reserve_a_model_invocation() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let steps = [step(step_id, 1, "INSPECT_SOURCES", false, vec![])];
+    let (old, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+        .await.unwrap();
+    let (current, _) = agentic_controller::create_plan(&app, scope, s.principal, &steps)
+        .await.unwrap();
+    let model = ReportedUsageModel {
+        calls: AtomicUsize::new(0),
+        prompt_tokens: 2,
+        completion_tokens: 1,
+        effective_model: None,
+    };
+    let request = ModelRequest {
+        purpose: "INSPECT_SOURCES".into(),
+        input: json!({}),
+        output_contract: json!({}),
+    };
+    let stale = model_adapter::invoke_recorded(
+        &app, InvocationScope { operation: scope, plan_revision: old, step_id },
+        s.principal, &model, &request,
+    ).await;
+    assert!(matches!(stale, Err(ModelError::InvocationNoLongerActive)));
+    assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+    let current = model_adapter::invoke_recorded(
+        &app, InvocationScope { operation: scope, plan_revision: current, step_id },
+        s.principal, &model, &request,
+    ).await.unwrap();
+    assert_eq!(current.status, "SUCCEEDED");
+    assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(operation_budget::view(&app, scope).await.unwrap().used_invocations, 1);
+}
+
+#[tokio::test]
 async fn closed_operation_cannot_reserve_a_new_model_invocation() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
