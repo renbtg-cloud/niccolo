@@ -313,13 +313,20 @@ async fn insert_plan(
     .bind(&json)
     .execute(&mut **tx)
     .await?;
-    let mut ordered = steps.to_vec();
-    ordered.sort_by_key(|s| s.ordinal);
-    for s in &ordered {
-        for d in &s.depends_on {
-            sqlx::query("INSERT INTO niccolo.agentic_step_dependencies(workspace_id,situation_id,operation_id,plan_revision,step_id,depends_on_step_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(s.step_id).bind(d).execute(&mut **tx).await?;
-        }
-    }
+    sqlx::query(
+        "INSERT INTO niccolo.agentic_step_dependencies
+             (workspace_id,situation_id,operation_id,plan_revision,step_id,depends_on_step_id)
+         SELECT $1,$2,$3,$4,step.step_id,dependency.value::uuid
+         FROM jsonb_to_recordset($5::text::jsonb) AS step(step_id uuid, depends_on jsonb)
+         CROSS JOIN LATERAL jsonb_array_elements_text(step.depends_on) AS dependency(value)",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.operation)
+    .bind(rev)
+    .bind(&json)
+    .execute(&mut **tx)
+    .await?;
     Ok(sha)
 }
 
