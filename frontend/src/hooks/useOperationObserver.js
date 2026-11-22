@@ -9,11 +9,12 @@ export function useOperationObserver(operationId) {
   const query = useQuery({
     queryKey: client && operationId ? qk.operationObservation(client.config, operationId) : ['operation-observation', 'none'],
     enabled: Boolean(client && operationId),
-    queryFn: async ({ queryKey }) => {
+    queryFn: async ({ queryKey, signal }) => {
       const previous = queryClient.getQueryData(queryKey) ?? null;
       const afterVersion = previous?.operation?.state_version ?? 0;
       const afterEvent = previous?.cursor ?? 0;
-      const incoming = (await client.observeOperation(operationId, afterVersion, afterEvent, 5000, 100)).value;
+      const incoming = (await client.observeOperation(operationId, afterVersion, afterEvent, 5000, 100, signal)).value;
+      signal.throwIfAborted();
       const merged = mergeOperationObservation(previous, incoming);
       if (merged?.operation) queryClient.setQueryData(qk.operation(client.config, operationId), merged.operation);
       if (merged?.events) queryClient.setQueryData(qk.operationEvents(client.config, operationId), merged.events);
