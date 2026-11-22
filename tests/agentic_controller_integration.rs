@@ -380,6 +380,11 @@ async fn runtime_rejects_a_response_over_the_remaining_operation_budget() {
     assert_eq!(rows.len(), 2);
     assert!(rows.contains(&(first, "SUCCEEDED".into(), Some(200))));
     assert!(rows.contains(&(second, "FAILED".into(), Some(90))));
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_invocations, 2);
+    assert_eq!(budget.used_total_tokens, 220);
+    assert_eq!(budget.remaining_total_tokens, 0);
+    assert_eq!(budget.stop_reasons, ["TOKEN_LIMIT"]);
     assert_eq!(
         last_step_event(&admin, scope, second).await,
         ("FAILED".into(), "model reported usage above the remaining operation token allowance".into())

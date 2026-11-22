@@ -25,6 +25,7 @@ pub enum BudgetError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BudgetView {
     pub max_invocations: i64,
+    /// Successful calls and completed responses rejected for reported token use.
     pub used_invocations: i64,
     pub remaining_invocations: i64,
     pub max_total_tokens: i64,
@@ -169,7 +170,8 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
          LEAST(coalesce(sum(coalesce(prompt_tokens,0)::numeric+coalesce(completion_tokens,0)::numeric),0),9223372036854775807)::bigint, \
          count(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL) \
          FROM niccolo.model_invocations \
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED'",
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 \
+           AND (status='SUCCEEDED' OR (budget_exceeded AND (prompt_tokens IS NOT NULL OR completion_tokens IS NOT NULL)))",
     )
     .bind(s.workspace)
     .bind(s.situation)

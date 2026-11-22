@@ -667,6 +667,8 @@ Checkpoints 1.77–1.81 connect runtime resource limits to operation admission a
 
 Checkpoints 1.83–1.89 strengthen operation accounting and failure recovery. PostgreSQL infinite deadlines preserve their ordering semantics, and extreme reported token counts cannot overflow a budget read or pass a finite invocation cap. The step history records whether a run stopped before the model call, exceeded the remaining reported token allowance, or timed out. Worker failure transitions check the current lease owner in the same database update and preserve the operation version check. HTTP provider errors retain the status code without the response body. Oversized or unrepresentable failure details fall back to a bounded message, and unrepresentable provider attribution fails the invocation before applying its output.
 
+Checkpoint 1.91 counts reported tokens from a completed model response even when the response exceeds its allowance and the invocation fails. The failed response contributes usage to the ledger without publishing its reasoning or recording the step as successful. Unreported usage remains uncertain.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
