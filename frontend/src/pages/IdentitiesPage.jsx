@@ -16,6 +16,7 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
   }, [binding?.person_id]);
 
   const current = identities.find((item) => item.person_id === binding?.person_id);
+  const reasonErrorId=useId();
   const reasonError=situationTextError(reason,2048);
   const labelErrorId=useId();
   const newLabelError=choice==='__new__' ? situationTextError(newLabel,512) : null;
@@ -45,9 +46,9 @@ function SpeakerRow({ speaker, binding, identities, onAssign, onClear, pending }
     </label>}
     {newLabelError && <p id={labelErrorId} role="alert">{newLabelError}</p>}
     <label>Why are you making this mapping?
-      <textarea value={reason} disabled={pending} aria-invalid={Boolean(reasonError)} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
+      <textarea value={reason} disabled={pending} aria-invalid={Boolean(reasonError)} aria-describedby={reasonError?reasonErrorId:undefined} onChange={(event) => setReason(event.target.value)} placeholder="What lets you identify this speaker label?"/>
     </label>
-    {reasonError && <p role="alert">{reasonError}</p>}
+    {reasonError && <p id={reasonErrorId} role="alert">{reasonError}</p>}
     <div className="row">
       <button disabled={!canAssign || pending} onClick={() => onAssign({
         speakerLabel: speaker.speaker_label,
