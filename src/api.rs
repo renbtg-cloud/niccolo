@@ -42,7 +42,7 @@ use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
-use crate::source_import::SourceFormat;
+use crate::source_import::{ParseError, SourceFormat};
 use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
 use crate::{
@@ -643,8 +643,19 @@ impl From<RepositoryError> for ApiError {
 impl From<ImportError> for ApiError {
     fn from(e: ImportError) -> Self {
         match e {
-            ImportError::Parse(_) | ImportError::Locator | ImportError::OperationalEventInvalid => {
-                Self(StatusCode::BAD_REQUEST, "invalid source")
+            ImportError::Parse(error) => {
+                let message = match error {
+                    ParseError::InvalidSize => "source must be non-empty and at most 4 MiB",
+                    ParseError::NotUtf8 => "source must be UTF-8 text",
+                    ParseError::Unsupported(reason) => reason,
+                    ParseError::Empty => "source contains no attributable fragments",
+                    ParseError::Limit => "source exceeds the fragment count or size limit",
+                };
+                Self(StatusCode::BAD_REQUEST, message)
+            }
+            ImportError::Locator => Self(StatusCode::BAD_REQUEST, "invalid source locator"),
+            ImportError::OperationalEventInvalid => {
+                Self(StatusCode::BAD_REQUEST, "invalid operational event identity")
             }
             ImportError::DocumentConflict => Self(StatusCode::CONFLICT, "source document conflict"),
             ImportError::OperationalEventConflict => {

@@ -231,6 +231,25 @@ async fn service_role_cannot_query_auth_tables_or_modify_access() {
     );
 }
 #[tokio::test]
+async fn rejected_source_explains_the_format_limit_without_echoing_evidence() {
+    let (admin, _, workspace, _, token, router) = setup().await;
+    let document = Uuid::new_v4();
+    let (status, response) = invoke(
+        router,
+        request(
+            "POST", &source(workspace, document), Some(&token), Some("message/rfc822"),
+            Some("report.eml"), b"From: Ana\nContent-Type: text/html\n\n<p>Private evidence</p>",
+        ),
+    ).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(response["error"], "non-plain-text MIME");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1",
+    ).bind(workspace).fetch_one(&admin).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
 async fn source_locator_can_preserve_utf8_file_names() {
     let (admin, _, workspace, _, token, router) = setup().await;
     let id = Uuid::new_v4();
