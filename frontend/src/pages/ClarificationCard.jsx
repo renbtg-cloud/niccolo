@@ -1,9 +1,11 @@
+import { situationTextError } from '../state/situationText.js';
 import { useState } from 'react';
 import { useClarificationAnswers } from '../hooks/useClarifications.js';
 
 export function ClarificationCard({ question, draft, onChange, onSubmit, saving }) {
   const [pages,setPages]=useState([null]);
   const history=useClarificationAnswers(question.question_id,pages.at(-1));
+  const validationError=situationTextError(draft);
   const answers=history.data?.answers??[];
   return <div className="clarification">
     <strong>{question.text}</strong>
@@ -20,9 +22,10 @@ export function ClarificationCard({ question, draft, onChange, onSubmit, saving 
     )}</ul>}
     {pages.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setPages(current=>current.slice(0,-1))}>Previous answers</button>}
     {history.data?.next_after && <button type="button" disabled={history.isFetching} onClick={()=>setPages(current=>[...current,history.data.next_after])}>More answers</button>}
-    <form onSubmit={event=>{event.preventDefault();if(!saving && draft.trim())onSubmit(draft.trim());}}>
+    <form onSubmit={event=>{event.preventDefault();if(!saving && draft.trim() && !validationError)onSubmit(draft.trim());}}>
       <label>Your answer<textarea aria-label={`Clarification answer ${question.question_id}`} value={draft} onChange={event=>onChange(event.target.value)} placeholder="Answer in your own words; this becomes attributed context."/></label>
-      <button type="submit" disabled={saving||!draft.trim()}>{saving?'Saving…':'Add answer as context'}</button>
+      {validationError&&<p role="alert">{validationError}</p>}
+      <button type="submit" disabled={saving||!draft.trim()||Boolean(validationError)}>{saving?'Saving…':'Add answer as context'}</button>
     </form>
   </div>;
 }
