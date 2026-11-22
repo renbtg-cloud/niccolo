@@ -20,6 +20,6 @@ export function useClarificationAnswers(questionId, after = null) {
    queryKey:client&&analysis?[...qk.analysis(client.config,analysis,'clarification-answers'),questionId,after]:['clarification-answers','none'],
    enabled:Boolean(client&&analysis&&questionId),
    retry:false,
-   queryFn:async()=> (await client.clarificationAnswers(analysis, questionId, after, 25)).value,
+   queryFn:async ({ signal })=> (await client.clarificationAnswers(analysis, questionId, after, 25, signal)).value,
  });
 }
