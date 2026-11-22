@@ -691,6 +691,8 @@ Checkpoints 1.134–1.136 store the outcome of each newly committed human respon
 
 Checkpoints 1.139–1.145 preserve recorded human intent across replans and reduce database round trips when writing and reading agentic plans. New human responses use the insert result directly. A conflicting insert checks whether an older pending response can still be completed. Plan steps and dependencies are inserted in batches from the same canonical data used for the digest. The controller reads the latest revision with its budget count, then reads steps with their latest events and dependencies. A 64-step test verifies all 2,016 dependency links and the transition in step readiness after the first step completes.
 
+Checkpoints 1.147–1.149 apply two admission checks. The generic BFF operation endpoints reject a non-null human intent before creating an operation. Model invocations must reserve against the current plan revision, and a provider failure observed after that revision is superseded is recorded without another provider attempt. The invocation ledger retains the attempt that was already in flight.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
