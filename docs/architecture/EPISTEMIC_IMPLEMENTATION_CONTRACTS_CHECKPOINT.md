@@ -693,6 +693,8 @@ Checkpoints 1.139–1.145 preserve recorded human intent across replans and redu
 
 Checkpoints 1.147–1.149 apply two admission checks. The generic BFF operation endpoints reject a non-null human intent before creating an operation. Model invocations must reserve against the current plan revision, and a provider failure observed after that revision is superseded is recorded without another provider attempt. The invocation ledger retains the attempt that was already in flight.
 
+Checkpoints 1.151–1.159 validate configured and returned model identities before storage, preserve the answering model’s attribution through explicit failover, and omit provider credentials and error bodies from diagnostics. Provider HTTP 408, 429 and 5xx responses are eligible for retry or explicit failover. Other HTTP failures end the invocation without retry or failover. The operation budget reads its deadline and recorded invocation totals in one query. The model adapter checks the operation deadline before reserving an invocation.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

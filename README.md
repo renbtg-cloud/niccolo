@@ -115,7 +115,10 @@ For a local OpenAI-compatible model runtime, configure
 `NICCOLO_LLM_BASE_URL` (for example `http://127.0.0.1:11434/v1`) and
 `NICCOLO_LLM_MODEL` before starting the API. Keyless HTTP is permitted only
 on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
-Some local models require `NICCOLO_LLM_JSON_MODE=false`.
+Use the provider base URL through its version path, for example `/v1`.
+Supply credentials through `NICCOLO_LLM_API_KEY` and keep query parameters
+and fragments out of the base URL. Some local models require
+`NICCOLO_LLM_JSON_MODE=false`.
 
 For repeated local use, those exports may be kept in the ignored private file
 `.niccolo-local/model.env`; `scripts/start-local-mvp.sh` sources it

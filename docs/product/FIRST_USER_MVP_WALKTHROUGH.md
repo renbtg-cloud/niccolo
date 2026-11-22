@@ -77,7 +77,7 @@ piece of human context.
 
 Supported MVP source files include:
 
-- `.eml` email;
+- `.eml` email with a plain-text UTF-8 or US-ASCII body;
 - `.txt` WhatsApp/plain-text export.
 
 Choose **Import and attach**.
