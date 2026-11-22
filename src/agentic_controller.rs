@@ -451,6 +451,7 @@ fn human_boundary_input_valid(decision: &str, response_text: &str) -> bool {
     matches!(decision, "CONTINUE" | "STOP" | "REPLAN")
         && (decision == "STOP" || !response_text.trim().is_empty())
         && response_text.len() <= 4096
+        && !response_text.contains('\0')
 }
 
 pub async fn resolve_human_boundary(
@@ -563,5 +564,8 @@ mod human_boundary_input_tests {
         assert!(human_boundary_input_valid("CONTINUE", "Please include another source"));
         assert!(!human_boundary_input_valid("UNKNOWN", "yes"));
         assert!(!human_boundary_input_valid("STOP", &"x".repeat(4097)));
+        for decision in ["CONTINUE", "STOP", "REPLAN"] {
+            assert!(!human_boundary_input_valid(decision, "invalid\0response"));
+        }
     }
 }
