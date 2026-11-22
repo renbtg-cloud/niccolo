@@ -116,9 +116,12 @@ export function FeedbackPage(){
     <p>Use different responses for different epistemic states. Rejecting an interpretation is not the same as saying the evidence is insufficient, and neither is the same as not knowing.</p>
     <article className="question-create"><h3>Add an investigative question</h3><label>Question<textarea value={text} disabled={create.isPending} onChange={e=>{create.reset();setText(e.target.value);}} placeholder="What should we explicitly keep open for human judgment?"/></label><button disabled={!text.trim()||create.isPending} onClick={()=>create.mutate()}>{create.isPending?'Adding…':'Add question'}</button>{create.error&&<p className="error">{create.error.message}</p>}{create.isSuccess&&<p role="status">Investigative question recorded. Use question navigation to browse older records.</p>}</article>
     {questions.isLoading&&<p>Loading questions…</p>}
-    {questions.error&&<p className="error">{questions.error.message}</p>}
+    {questions.error&&<div>
+      <p className="error" role="alert">Questions unavailable: {questions.error.message}</p>
+      <button type="button" disabled={questions.isFetching} onClick={()=>void questions.refetch()}>Retry questions</button>
+    </div>}
     <div className="feedback-list">{(questions.data?.questions??[]).map(q=><QuestionCard key={q.question_id} question={q}/>)}</div>
-    {!questions.isLoading&&(questions.data?.questions??[]).length===0&&<p>No investigative questions on this page.</p>}
+    {questions.isSuccess&&(questions.data?.questions??[]).length===0&&<p>No investigative questions on this page.</p>}
     <div className="row">
       <button disabled={questions.isFetching||questionBackStack.length===0} onClick={()=>{
         const stack=questionBackStack.slice();
