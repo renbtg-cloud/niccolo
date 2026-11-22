@@ -44,7 +44,7 @@ export function ExpertWorkbenchPage() {
   const workbench = useQuery({
     queryKey: ['expert-epistemic-workbench', client?.config.workspace, client?.config.situation],
     enabled: !!client,
-    queryFn: async () => (await client.expertWorkbench()).value,
+    queryFn: async ({ signal }) => (await client.expertWorkbench(signal)).value,
   });
   const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
   const actors = useQuery({queryKey:['epistemic-response-actors',client?.config.workspace],enabled:!!client,queryFn:async () => (await client.actors()).value.actors});
