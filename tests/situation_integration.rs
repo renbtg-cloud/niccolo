@@ -648,3 +648,33 @@ async fn new_situation_tables_are_forced_rls_and_have_all_api_gates() {
     }
     assert_ne!(f.workspace, f.other_workspace);
 }
+
+#[tokio::test]
+async fn pdf_transcription_round_trips_as_human_context_without_a_source_record() {
+    let f = setup().await;
+    let situation = Uuid::new_v4();
+    assert_eq!(create(&f, situation, &f.writer, "What changed?").await.0, StatusCode::CREATED);
+    let path = situation_path(f.workspace, situation);
+    let contribution_id = Uuid::new_v4();
+    let transcription = "User transcription from PDF “Relatório.pdf”, pages 12–14, section “Resultados” (original unavailable to Niccolò, whitespace normalized): “A equipe registrou a decisão.”";
+    let body = json!({"kind":"user_reported","text":transcription,"related_evidence_id":null});
+    let write_path = format!("{path}/contributions/{contribution_id}");
+    for expected in [StatusCode::CREATED, StatusCode::OK] {
+        let (status, _) = call(
+            f.router.clone(),
+            request("POST", write_path.clone(), Some(&f.writer), Some(body.clone())),
+        ).await;
+        assert_eq!(status, expected);
+    }
+    let (status, snapshot) = call(f.router.clone(), request("GET", path, Some(&f.reader), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(snapshot["source_document_ids"], json!([]));
+    assert_eq!(snapshot["revision"], 2);
+    let reports = snapshot["contributions"].as_array().unwrap();
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["text"], transcription);
+    assert_eq!(reports[0]["kind"], "USER_REPORTED");
+    assert_eq!(reports[0]["related_evidence_id"], Value::Null);
+    assert_eq!(reports[0]["is_verified_evidence"], false);
+    assert_eq!(reports[0]["author_principal_id"], f.principal.to_string());
+}
