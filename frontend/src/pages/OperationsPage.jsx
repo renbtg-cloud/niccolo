@@ -1,6 +1,7 @@
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { situationTextError, utf8ByteLength } from '../state/situationText.js';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -18,7 +19,10 @@ const initialHumanResponse = {decision:'CONTINUE',responseText:''};
 const intentSchema=z.object({
   mode:z.enum(['sync','async']),
   intent:z.enum(['ABOUT_TO_ACT_OR_SAY','UNDERSTAND','FIGURE_OUT_WHAT_MATTERS']),
-  goal:z.string().max(4096).optional(),
+  goal:z.string().superRefine((value, context)=>{
+    const message=situationTextError(value);
+    if(message) context.addIssue({code:'custom',message});
+  }).optional(),
   stepBudget:z.coerce.number().int().min(1).max(10000),
 });
 const humanSchema=z.object({decision:z.enum(['CONTINUE','STOP','REPLAN']),responseText:z.string().trim().max(4096)}).refine(v=>v.decision==='STOP'||v.responseText.length>0,{path:['responseText']});
@@ -99,6 +103,7 @@ export function OperationsPage(){
  <form onSubmit={handleSubmit(v=>{if (!run.isPending && !modelUnavailable && !readiness.isPending && !readiness.isError) run.mutate(v);})}>
    <label>What are you trying to do?<select disabled={run.isPending} {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
    <label>Goal / question (optional)<textarea disabled={run.isPending} {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
+   {errors.goal&&<p role="alert">{errors.goal.message}</p>}
    <details><summary>Advanced execution</summary><label>Delivery<select disabled={run.isPending} {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Start and follow progress</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" disabled={run.isPending} {...register('stepBudget')}/></label><small>The default settings are appropriate for ordinary use. Change these only when testing execution behavior.</small></details>
    <button disabled={run.isPending||modelUnavailable||readiness.isPending||readiness.isError}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
  </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error" role="alert">{run.error.message}</p>}
