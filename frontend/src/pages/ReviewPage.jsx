@@ -46,7 +46,7 @@ function ReviewContent(){
    return result.value;
  },onSuccess:async(_,variables)=>{
    setClarificationDrafts(current=>({...current,[variables.questionId]:current[variables.questionId]?.trim()===variables.text?'':current[variables.questionId]}));
-   await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']})]);
+   await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:qk.situation(client.config),exact:true})]);
  }});
  const recordReceipt=useMutation({mutationFn:async(kind)=>{
    if(!handoffView?.sha256)throw new Error('No current handoff');
