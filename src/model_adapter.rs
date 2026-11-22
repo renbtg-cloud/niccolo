@@ -508,8 +508,8 @@ impl ParsedEndpoint {
         };
         if host.trim().is_empty()
             || port == 0
-            || path.bytes().any(|b| b.is_ascii_control())
-            || path.contains('#')
+            || path.bytes().any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+            || path.contains(['#', '\\'])
         {
             return Err(ModelError::Invalid);
         }

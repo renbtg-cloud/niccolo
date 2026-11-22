@@ -95,7 +95,7 @@ impl OpenAiCompatibleConfig {
         let local_http = self.base_url.starts_with("http://127.0.0.1:")
             || self.base_url.starts_with("http://localhost:");
         if !(self.base_url.starts_with("https://") || local_http)
-            || self.base_url.contains(['\r', '\n'])
+            || self.base_url.contains(['?', '#'])
             || (self.api_key.is_empty() && !local_http)
             || self.api_key.len() > 4096
             || self.api_key.contains(['\r', '\n'])
@@ -109,7 +109,7 @@ impl OpenAiCompatibleConfig {
         {
             return Err(ProviderConfigError::Invalid);
         }
-        Ok(())
+        self.native_model().map(|_| ())
     }
 
     fn endpoint(&self) -> String {
@@ -251,6 +251,8 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             let output = tokio::task::spawn_blocking(move || {
                 let result = Command::new(curl)
                     .args([
+                        "--disable",
+                        "--globoff",
                         "--silent",
                         "--show-error",
                         "--fail",
@@ -359,6 +361,18 @@ mod tests {
         assert!(c.native_model().is_ok());
         c.base_url = "https://example.com/v1".into();
         assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn compatibility_provider_rejects_ambiguous_base_urls() {
+        for base_url in [
+            "https://user@provider.invalid/v1",
+            "https://provider.invalid/v1?version=1",
+            "https://provider.invalid/v1#fragment",
+            "https://provider.invalid/v1/with space",
+        ] {
+            assert!(CurlOpenAiCompatibleModel::new(config(base_url.into())).is_err());
+        }
     }
 
     #[test]
