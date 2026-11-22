@@ -75,6 +75,8 @@ async fn real_loopback_web_and_persistent_situation_smoke() {
     assert!(bundle.contains("Objection attention"));
     assert!(bundle.contains("RESPONSE_INTERPRETED_ASSENT"));
     assert!(bundle.contains("Response absence and interpretation"));
+    assert!(bundle.contains("Record normative judgment only"));
+    assert!(bundle.contains("epistemic/normative-assessments/"));
     assert!(bundle.contains("epistemic/action-decisions/"));
     assert!(bundle.contains("Record causal assessment only"));
     assert!(bundle.contains("epistemic/intervention-records/"));

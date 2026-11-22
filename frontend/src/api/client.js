@@ -87,6 +87,7 @@ export class NiccoloClient {
   recordInterventionAssessment(assessmentId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/intervention-causal-assessments/${assessmentId}`, {body}); }
   recordInterventionReview(reviewId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/intervention-causal-reviews/${reviewId}`, {body}); }
   recordActorEpistemicState(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/actor-states/${eventId}`, {body}); }
+  recordNormativeAssessment(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/normative-assessments/${eventId}`, {body}); }
   recordActorEpistemicAct(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/actor-acts/${eventId}`, {body}); }
   actors() { return this.request('GET', `/v1/workspaces/${this.config.workspace}/actors`); }
   recordExpertQuestionResponse(questionId, responseId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/questions/${questionId}/responses/${responseId}`, { body }); }

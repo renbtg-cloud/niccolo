@@ -5,6 +5,7 @@ import { ResponseInterpretationPanel } from './ResponseInterpretationPanel.jsx';
 import { InterpretationRelianceReview } from './InterpretationRelianceReview.jsx';
 import { InquiryComparisonPanel } from './InquiryComparisonPanel.jsx';
 import { ActorEpistemicStatePanel } from './ActorEpistemicStatePanel.jsx';
+import { NormativeAssessmentPanel } from './NormativeAssessmentPanel.jsx';
 import { ActorEpistemicActPanel } from './ActorEpistemicActPanel.jsx';
 import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
 import { ActionDecisionPanel } from './ActionDecisionPanel.jsx';
@@ -277,6 +278,7 @@ export function ExpertWorkbenchPage() {
       })}</ul><small>Current judgments in their own revision chains remain separate, including disagreement. Earlier revisions are retained in assessment history.</small></details>}
       <InquiryComparisonPanel key={`${client.config.workspace}:${client.config.situation}`} snapshot={data} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicStatePanel key={`actor-states:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
+      <NormativeAssessmentPanel key={`normative-assessments:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicActPanel key={`actor-acts:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActionRecommendationPanel key={`action-recommendations:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActionDecisionPanel key={`action-decisions:${client.config.workspace}:${client.config.situation}`} snapshot={data} client={client} onChanged={()=>workbench.refetch()}/>
