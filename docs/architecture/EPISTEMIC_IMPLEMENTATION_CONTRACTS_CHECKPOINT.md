@@ -679,6 +679,8 @@ Checkpoints 1.100–1.104 pin step admission to the plan revision selected by th
 
 Checkpoints 1.105–1.108 commit operation state and step events together when starting, pausing or resuming an agentic step. Explicit human responses commit with the resulting transition and, when requested, the replacement plan. If an active step blocks a replan, the operation remains paused and the response can be retried. These changes preserve the record of who supplied the human decision.
 
+Checkpoints 1.110–1.116 keep plan creation and completion aligned with operation state. A paused or closed operation with no plan rejects creation, and the HTTP endpoint reports that conflict. A worker can publish a result or add a human-review follow-up only from the current completed revision. Concurrent follow-up attempts publish at most one new revision. Workers encountering terminal operations return their recorded disposition without creating a plan or resuming execution.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.
