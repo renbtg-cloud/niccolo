@@ -87,7 +87,7 @@ export function OperationsPage(){
      pendingHumanResponse.current={signature,responseId:crypto.randomUUID()};
    }
    return (await client.respondAgentic(active,waitingStep.step_id,{response_id:pendingHumanResponse.current.responseId,decision:v.decision,response_text:v.responseText})).value;
- },onSuccess:async()=>{pendingHumanResponse.current=null;resetHumanResponse(initialHumanResponse);await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:qk.operationObservation(client.config,active),exact:true}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
+ },onSuccess:async()=>{if(!isCurrentSession(generation))return;pendingHumanResponse.current=null;resetHumanResponse(initialHumanResponse);await Promise.all([qc.invalidateQueries({queryKey:['agentic-plan']}),qc.invalidateQueries({queryKey:qk.operationObservation(client.config,active),exact:true}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['analysis']})]);}});
  if(!client)return <p>Connect first.</p>;
  return <section><h2>Analyze this Situation</h2><p>Ask Niccolò to reason over the current Situation. The default path waits for the answer; execution details are optional.</p>
  {modelUnavailable&&<p className="error" role="alert">A reasoning model has not been configured. Configure a local or remote OpenAI-compatible model and restart the Niccolò service before analyzing.</p>}
