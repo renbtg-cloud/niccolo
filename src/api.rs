@@ -333,6 +333,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
         .route("/v1/workspaces/{workspace}/sources/pdf-preview", post(preview_pdf))
         .route(
+            "/v1/workspaces/{workspace}/sources/{document}/pdf-preview",
+            get(preview_stored_pdf),
+        )
+        .route(
             "/v1/workspaces/{workspace}/sources/{document}/speakers",
             get(list_source_speakers),
         )
@@ -979,12 +983,32 @@ async fn preview_pdf(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, ApiError> {
-    use crate::pdf_preview::PreviewError;
     guard(&state, &headers, workspace, Capability::Write).await?;
     if headers.get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()) != Some("application/pdf") {
         return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected application/pdf"));
     }
-    let preview = crate::pdf_preview::extract(&body).await.map_err(|error| match error {
+    pdf_preview_response(&body).await
+}
+
+async fn preview_stored_pdf(
+    State(state): State<AppState>,
+    Path((workspace, document)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Write).await?;
+    let (format, original) = source_catalog::source_original(&state.pool, workspace, document)
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source preview unavailable"))?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "source original unavailable"))?;
+    if format != "PDF" {
+        return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "source is not a PDF"));
+    }
+    pdf_preview_response(&original).await
+}
+
+async fn pdf_preview_response(bytes: &[u8]) -> Result<Response, ApiError> {
+    use crate::pdf_preview::PreviewError;
+    let preview = crate::pdf_preview::extract(bytes).await.map_err(|error| match error {
         PreviewError::Invalid => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "PDF could not be read"),
         PreviewError::Unavailable => ApiError(StatusCode::SERVICE_UNAVAILABLE, "PDF preview requires pdftotext"),
         PreviewError::Busy => ApiError(StatusCode::TOO_MANY_REQUESTS, "PDF preview is busy"),
