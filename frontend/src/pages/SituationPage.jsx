@@ -259,7 +259,7 @@ function ConnectedSituation({client}){
           if (file && source) restoreOriginal.mutate({source, file});
         }}
       />
-      {sources.isLoading && <p>Loading sources…</p>}
+      {sources.isLoading && <p role="status">Loading sources…</p>}
       {sources.error && <div>
         <p className="error" role="alert">Could not load source records: {sources.error.message}</p>
         <button type="button" disabled={sources.isFetching} onClick={()=>void sources.refetch()}>Retry sources</button>
