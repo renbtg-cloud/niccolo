@@ -235,6 +235,58 @@ async fn assert_invalid_provider_attribution(effective_model: &'static str) {
 }
 
 #[tokio::test]
+async fn malformed_provider_response_retains_reported_token_usage() {
+    struct MalformedProvider;
+
+    impl ReasoningModel for MalformedProvider {
+        fn provider(&self) -> &str { "fixture" }
+        fn model(&self) -> &str { "malformed" }
+
+        fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+            Box::pin(async {
+                Err(ModelError::InvalidResponse {
+                    reason: "missing message content",
+                    prompt_tokens: Some(17),
+                    completion_tokens: Some(8),
+                })
+            })
+        }
+    }
+
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (plan_revision, _) = agentic_controller::create_plan(
+        &app, scope, s.principal, &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    ).await.unwrap();
+    let request = ModelRequest {
+        purpose: "INSPECT_SOURCES".into(),
+        input: json!({}),
+        output_contract: json!({}),
+    };
+    let result = model_adapter::invoke_recorded_with_policy(
+        &app,
+        InvocationScope { operation: scope, plan_revision, step_id },
+        s.principal,
+        &MalformedProvider,
+        &request,
+        InvocationPolicy { max_attempts: 3, ..Default::default() },
+    ).await;
+    assert!(matches!(result, Err(ModelError::InvalidResponse { .. })));
+    let row: (String, i32) = sqlx::query_as(
+        "SELECT status,attempt_count FROM niccolo.model_invocations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace).bind(s.situation).bind(scope.operation)
+    .fetch_one(&admin).await.unwrap();
+    assert_eq!(row, ("FAILED".into(), 1));
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_total_tokens, 25);
+    assert!(budget.token_usage_complete);
+}
+
+#[tokio::test]
 async fn model_token_totals_do_not_overflow_budget_accounting() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

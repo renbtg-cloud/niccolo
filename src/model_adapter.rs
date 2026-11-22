@@ -27,8 +27,12 @@ pub enum ModelError {
     Provider(String),
     #[error("model invocation failed: HTTP {0}")]
     HttpStatus(u16),
-    #[error("invalid model response: {0}")]
-    InvalidResponse(&'static str),
+    #[error("invalid model response: {reason}")]
+    InvalidResponse {
+        reason: &'static str,
+        prompt_tokens: Option<i64>,
+        completion_tokens: Option<i64>,
+    },
     #[error("model invocation timed out")]
     Timeout,
     #[error("operation deadline exceeded")]
@@ -436,7 +440,15 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                     });
                 }
             }
-            Ok(Err(e)) => last_error = e,
+            Ok(Err(error)) => {
+                if let ModelError::InvalidResponse { prompt_tokens, completion_tokens, .. } = &error {
+                    reported_usage = (
+                        prompt_tokens.filter(|tokens| *tokens >= 0),
+                        completion_tokens.filter(|tokens| *tokens >= 0),
+                    );
+                }
+                last_error = error;
+            }
             Err(_) => last_error = ModelError::Timeout,
         }
         // A known token-budget breach or malformed provider output must not
@@ -745,18 +757,28 @@ pub(crate) fn parse_openai_envelope(
     provider: &str,
     configured_model: &str,
 ) -> Result<ModelResponse, ModelError> {
-    let envelope: Value = serde_json::from_slice(bytes)
-        .map_err(|_| ModelError::InvalidResponse("provider envelope is not JSON"))?;
+    let envelope: Value = serde_json::from_slice(bytes).map_err(|_| ModelError::InvalidResponse {
+        reason: "provider envelope is not JSON",
+        prompt_tokens: None,
+        completion_tokens: None,
+    })?;
+    let prompt_tokens = envelope.pointer("/usage/prompt_tokens").and_then(Value::as_i64);
+    let completion_tokens = envelope.pointer("/usage/completion_tokens").and_then(Value::as_i64);
+    let invalid_content = |reason| ModelError::InvalidResponse {
+        reason,
+        prompt_tokens,
+        completion_tokens,
+    };
     let content = envelope
         .pointer("/choices/0/message/content")
         .and_then(Value::as_str)
-        .ok_or(ModelError::InvalidResponse("missing message content"))?;
+        .ok_or_else(|| invalid_content("missing message content"))?;
     let value = serde_json::from_str(content)
-        .map_err(|_| ModelError::InvalidResponse("message content is not JSON"))?;
+        .map_err(|_| invalid_content("message content is not JSON"))?;
     Ok(ModelResponse {
         value,
-        prompt_tokens: envelope.pointer("/usage/prompt_tokens").and_then(Value::as_i64),
-        completion_tokens: envelope.pointer("/usage/completion_tokens").and_then(Value::as_i64),
+        prompt_tokens,
+        completion_tokens,
         effective_provider: Some(provider.to_owned()),
         effective_model: Some(
             envelope.get("model").and_then(Value::as_str).unwrap_or(configured_model).to_owned(),
@@ -1111,7 +1133,11 @@ mod bounded_response_tests {
     fn budget_and_invalid_results_are_never_retried() {
         assert!(!retryable_model_error(&ModelError::Budget));
         assert!(!retryable_model_error(&ModelError::Invalid));
-        assert!(!retryable_model_error(&ModelError::InvalidResponse("message content is not JSON")));
+        assert!(!retryable_model_error(&ModelError::InvalidResponse {
+            reason: "message content is not JSON",
+            prompt_tokens: Some(8),
+            completion_tokens: Some(2),
+        }));
         assert!(retryable_model_error(&ModelError::Timeout));
         assert!(retryable_model_error(&ModelError::Provider("transient".into())));
         for status in [408, 429, 500, 503] {

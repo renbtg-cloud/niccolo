@@ -155,7 +155,7 @@ fn openai_compatible_provider_allows_plain_http_only_on_loopback() {
 async fn malformed_success_response_does_not_route_the_request_to_another_model() {
     use std::sync::Arc;
 
-    let (endpoint, server) = one_shot_server("200 OK", r#"{"choices":[{"message":{"content":"private invalid text"}}]}"#);
+    let (endpoint, server) = one_shot_server("200 OK", r#"{"choices":[{"message":{"content":"private invalid text"}}],"usage":{"prompt_tokens":17,"completion_tokens":8}}"#);
     let primary = Arc::new(OpenAiCompatibleModel::new("primary", "configured", &endpoint, "token").unwrap());
     let fallback = Arc::new(DeterministicModel::new("fallback", "test-model").unwrap());
     let router = FailoverModel::new(primary, fallback);
@@ -166,7 +166,11 @@ async fn malformed_success_response_does_not_route_the_request_to_another_model(
     };
     let error = router.invoke(&request).await.unwrap_err();
     server.join().unwrap();
-    assert!(matches!(error, ModelError::InvalidResponse("message content is not JSON")));
+    assert!(matches!(error, ModelError::InvalidResponse {
+        reason: "message content is not JSON",
+        prompt_tokens: Some(17),
+        completion_tokens: Some(8)
+    }));
     assert!(!error.to_string().contains("private invalid text"));
 }
 
