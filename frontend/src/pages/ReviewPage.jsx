@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
@@ -83,7 +84,7 @@ function ReviewContent(){
    return launchApprovedReanalysis({client,priorAnalysis:analysis,goal,ids:pendingReanalysis.current.ids});
  },onSuccess:async(result)=>{pendingReanalysis.current=null;setAnalysis(result.newAnalysis);setActiveOperation(result.agenticOperation);await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:['operation']}),qc.invalidateQueries({queryKey:qk.analysisHistory(client.config),exact:true})]);}});
  if(!client)return <p>Connect first.</p>;
- if(!analysis)return <section><h2>Human review</h2><p>Select or run an analysis first.</p></section>;
+ if(!analysis)return <section><h2>Human review</h2><p><Link to="/operations">Run an analysis</Link> or <Link to="/analysis">choose an earlier analysis</Link> to review.</p></section>;
  if(review.error)return <section><h2>Human review</h2><p className="error">Review unavailable: {review.error.message}</p></section>;
  const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data);
 
@@ -95,7 +96,7 @@ function ReviewContent(){
      {output.error && <p className="error" role="alert">Answer unavailable: {output.error.message}</p>}
      {output.isPending && <p role="status">Checking for a published answer…</p>}
      {!output.isPending && !output.error && !output.data && <p>No answer has been published for this analysis yet.</p>}
-     <article className="review-panel"><h3>Worth looking at next</h3>{dashboard.error ? <p role="alert">Next steps unavailable: {dashboard.error.message}</p> : dashboard.isPending ? <p>Checking next steps…</p> : leads.length? <div className="lead-list">{leads.map(lead=><div className="lead" key={lead.id}><strong>{lead.label}</strong><p>{lead.text}</p><small>{lead.whyNow}{lead.userMayIgnore?' · You may ignore this lead.':''}</small></div>)}</div> : <p>No proactive lead is currently recorded.</p>}<p><small>These are prioritization prompts from the backend; they are not evidence and do not establish truth.</small></p></article>
+     <article className="review-panel"><h3>Worth looking at next</h3>{dashboard.error ? <p role="alert">Next steps unavailable: {dashboard.error.message}</p> : dashboard.isPending ? <p>Checking next steps…</p> : leads.length? <div className="lead-list">{leads.map(lead=><div className="lead" key={lead.id}><strong>{lead.label}</strong><p>{lead.text}</p><small>{lead.whyNow}{lead.userMayIgnore?' · You may ignore this lead.':''}</small></div>)}</div> : <p>No proactive lead is currently recorded.</p>}<p><small>These suggestions can guide what you investigate.</small></p><Link to="/">Add records or human context to the Situation →</Link></article>
      <article className="review-panel"><h3>Download this analysis</h3>
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
        <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
