@@ -485,61 +485,63 @@ pub async fn resolve_human_boundary(
     if !human_boundary_input_valid(decision, response_text) {
         return Err(ControllerError::Invalid);
     }
-    let before = view(pool, scope).await?;
-    let s = before
-        .steps
-        .iter()
-        .find(|x| x.step_id == step)
-        .ok_or(ControllerError::Invisible)?;
-    if s.state != "WAITING_FOR_HUMAN" {
-        return Err(ControllerError::StateConflict);
-    }
-    let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_id).bind(decision).bind(response_text.trim()).bind(actor).execute(&mut *tx).await?;
-    let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).fetch_optional(&mut *tx).await?;
-    if row != Some((decision.into(), response_text.trim().into(), actor)) {
-        return Err(ControllerError::StateConflict);
-    }
-    tx.commit().await?;
-    let op = bff_operations::get(pool, scope).await?;
-    if decision == "STOP" {
-        let v = bff_operations::cancel(
-            pool,
-            scope,
-            op.state_version,
-            actor,
-            "human stopped agentic continuation",
-        )
-        .await?;
-        return Ok(HumanBoundaryResolution {
-            decision: decision.into(),
-            operation_state: v.state,
-            plan_revision: before.plan_revision,
-            step_id: step,
-            human_response_persisted: true,
-            system_inferred_consent: false,
-        });
-    }
-    if op.state == "WAITING_FOR_HUMAN" {
-        let _ = bff_operations::resume(pool, scope, op.state_version, actor).await?;
-    }
-    let mut tx = scoped(pool, scope.workspace, false).await?;
-    sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7),($1,$2,$3,$4,$5,'SUCCEEDED',$8,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_text.trim()).bind(actor).bind(if decision=="REPLAN"{"human requested replanning"}else{"human explicitly continued"}).execute(&mut *tx).await?;
-    tx.commit().await?;
-    if decision == "REPLAN" {
+    let replacement = if decision == "REPLAN" {
         let op = bff_operations::get(pool, scope).await?;
         let analysis = op.target_analysis_id.ok_or(ControllerError::Invalid)?;
         let steps =
             crate::agentic_policy::default_plan(pool, scope.workspace, scope.situation, analysis)
                 .await
                 .map_err(|_| ControllerError::Invalid)?;
-        let _ = create_plan(pool, scope, actor, &steps).await?;
+        validate(&steps)?;
+        Some(steps)
+    } else {
+        None
+    };
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let before = view_plan(&mut tx, scope, &state, budget).await?;
+    let step_view = before
+        .steps
+        .iter()
+        .find(|candidate| candidate.step_id == step)
+        .ok_or(ControllerError::Invisible)?;
+    if step_view.state != "WAITING_FOR_HUMAN"
+        || !matches!(state.as_str(), "WAITING_FOR_HUMAN" | "RUNNING")
+    {
+        return Err(ControllerError::StateConflict);
     }
-    let op = bff_operations::get(pool, scope).await?;
+    if replacement.is_some() && before.steps.iter().any(|step| step.state == "STARTED") {
+        return Err(ControllerError::StateConflict);
+    }
+    sqlx::query("INSERT INTO niccolo.agentic_human_responses(workspace_id,situation_id,operation_id,plan_revision,step_id,response_id,decision,response_text,actor_principal_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_id).bind(decision).bind(response_text.trim()).bind(actor).execute(&mut *tx).await?;
+    let row:Option<(String,String,Uuid)>=sqlx::query_as("SELECT decision,response_text,actor_principal_id FROM niccolo.agentic_human_responses WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).fetch_optional(&mut *tx).await?;
+    if row != Some((decision.into(), response_text.trim().into(), actor)) {
+        return Err(ControllerError::StateConflict);
+    }
+    let version = operation_state_version(&mut tx, scope).await?;
+    let mut plan_revision = before.plan_revision;
+    let operation_state = if decision == "STOP" {
+        bff_operations::cancel_in(
+            &mut tx, scope, version, actor, "human stopped agentic continuation",
+        )
+        .await?;
+        "CANCELLED"
+    } else {
+        if state == "WAITING_FOR_HUMAN" {
+            bff_operations::resume_in(&mut tx, scope, version, actor).await?;
+        }
+        sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7),($1,$2,$3,$4,$5,'SUCCEEDED',$8,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(response_text.trim()).bind(actor).bind(if decision=="REPLAN"{"human requested replanning"}else{"human explicitly continued"}).execute(&mut *tx).await?;
+        if let Some(steps) = replacement {
+            plan_revision = plan_revision.checked_add(1).ok_or(ControllerError::Invalid)?;
+            insert_plan(&mut tx, scope, actor, &steps, plan_revision).await?;
+        }
+        "RUNNING"
+    };
+    tx.commit().await?;
     Ok(HumanBoundaryResolution {
         decision: decision.into(),
-        operation_state: op.state,
-        plan_revision: view(pool, scope).await?.plan_revision,
+        operation_state: operation_state.into(),
+        plan_revision,
         step_id: step,
         human_response_persisted: true,
         system_inferred_consent: false,

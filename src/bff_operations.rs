@@ -484,11 +484,24 @@ pub async fn cancel(
     actor: Uuid,
     reason: &str,
 ) -> Result<OperationView, BffOperationError> {
+    let mut tx = scoped(pool, scope.workspace, false).await?;
+    cancel_in(&mut tx, scope, expected_version, actor, reason).await?;
+    tx.commit().await?;
+    get(pool, scope).await
+}
+
+pub(crate) async fn cancel_in(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: OperationScope,
+    expected_version: i64,
+    actor: Uuid,
+    reason: &str,
+) -> Result<(), BffOperationError> {
     if reason.trim().is_empty() || reason.len() > 4096 {
         return Err(BffOperationError::Invalid);
     }
-    transition(
-        pool,
+    apply_transition(
+        tx,
         scope,
         Transition {
             expected_version,
@@ -500,6 +513,7 @@ pub async fn cancel(
             event_value: &serde_json::json!({"reason":reason}),
             actor,
         },
+        None,
     )
     .await
 }

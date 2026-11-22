@@ -1056,6 +1056,60 @@ async fn failed_resume_keeps_the_operation_and_step_paused() {
 }
 
 #[tokio::test]
+async fn deferred_replan_leaves_the_human_response_and_pause_retryable() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let gate = Uuid::new_v4();
+    let active = Uuid::new_v4();
+    agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[
+            step(gate, 1, "REQUEST_HUMAN_DECISION", true, vec![]),
+            step(active, 2, "INSPECT_SOURCES", false, vec![]),
+        ],
+    ).await.unwrap();
+    for id in [gate, active] {
+        agentic_controller::start_step(&app, scope, id, s.principal).await.unwrap();
+    }
+    agentic_controller::finish_step(&app, scope, gate, s.principal, "WAITING_FOR_HUMAN", "review")
+        .await
+        .unwrap();
+
+    let response = Uuid::new_v4();
+    let result = agentic_controller::resolve_human_boundary(
+        &app, scope, gate, response, s.principal, "REPLAN", "use a different approach",
+    ).await;
+    assert!(matches!(result, Err(agentic_controller::ControllerError::StateConflict)));
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "WAITING_FOR_HUMAN");
+    assert_eq!(last_step_event(&admin, scope, gate).await.0, "WAITING_FOR_HUMAN");
+    let responses: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.agentic_human_responses
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(responses, 0);
+
+    agentic_controller::finish_step(&app, scope, active, s.principal, "SUCCEEDED", "completed")
+        .await
+        .unwrap();
+    let result = agentic_controller::resolve_human_boundary(
+        &app, scope, gate, response, s.principal, "REPLAN", "use a different approach",
+    ).await.unwrap();
+    assert_eq!(result.plan_revision, 2);
+    assert_eq!(result.operation_state, "RUNNING");
+    assert!(result.human_response_persisted);
+    assert!(!result.system_inferred_consent);
+}
+
+#[tokio::test]
 async fn v219_v222_human_gate_pauses_and_resumes_same_operation() {
     let (a, p) = pools().await;
     let s = seed(&a).await;
