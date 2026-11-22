@@ -134,6 +134,48 @@ async fn malformed_agentic_budget_is_rejected_before_creating_an_operation() {
 }
 
 #[tokio::test]
+async fn agentic_plan_creation_reports_conflict_after_cancellation() {
+    let s = setup().await;
+    let operation = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO niccolo.bff_operations
+         (workspace_id,situation_id,operation_id,operation_kind,target_analysis_id,
+          input_json,input_sha256,step_budget,requested_by_principal_id)
+         SELECT workspace_id,situation_id,$3,'AGENTIC_ANALYSIS',analysis_id,
+                '{}',$4,12,requested_by_principal_id
+         FROM niccolo.situation_analysis_snapshots
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$5",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(operation)
+    .bind("a".repeat(64))
+    .bind(s.analysis)
+    .execute(&s.admin)
+    .await
+    .unwrap();
+    let (status, _, _) = invoke(
+        s.router.clone(),
+        req(
+            "POST",
+            &path(&s, operation, "/cancel"),
+            &s.token,
+            Some(json!({"expected_version":1,"reason":"stop"})),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, response) = invoke(
+        s.router.clone(),
+        req("POST", &path(&s, operation, "/agentic"), &s.token, None, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(response["error"], "operation cannot accept a new plan");
+}
+
+#[tokio::test]
 async fn malformed_operation_deadline_is_a_client_error() {
     let s = setup().await;
     let operation = Uuid::new_v4();

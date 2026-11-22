@@ -5154,7 +5154,15 @@ async fn plan_agentic_operation(
     }
     let (view, created) = agentic_runtime::ensure_default_plan_with_status(&state.pool, scope, actor)
         .await
-        .map_err(|_| {
+        .map_err(|error| {
+            if matches!(
+                error,
+                agentic_runtime::RuntimeError::Controller(
+                    agentic_controller::ControllerError::StateConflict
+                )
+            ) {
+                return ApiError(StatusCode::CONFLICT, "operation cannot accept a new plan");
+            }
             ApiError(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "agentic planning unavailable",
