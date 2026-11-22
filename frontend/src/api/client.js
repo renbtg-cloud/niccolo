@@ -8,11 +8,11 @@ export function intentPath(c, id) { return `${situationPath(c)}/bff/intents/${id
 export function analysisPath(c, id) { return `${situationPath(c)}/analysis-snapshots/${id}`; }
 export class NiccoloClient {
   constructor(config, fetchImpl = fetch) { this.config = config; this.fetch = fetchImpl; }
-  async request(method, path, { body, etag } = {}) {
+  async request(method, path, { body, etag, signal } = {}) {
     const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (etag) headers['If-None-Match'] = etag;
-    const response = await this.fetch(path, { method, headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body) });
+    const response = await this.fetch(path, { method, headers, cache: 'no-store', signal, body: body === undefined ? undefined : JSON.stringify(body) });
     if (response.status === 304) return { notModified: true, etag: response.headers.get('etag') ?? etag };
     const value = await response.json().catch(() => ({}));
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
@@ -125,7 +125,7 @@ export class NiccoloClient {
   runAsync(operationId, task) { return this.request('POST', `${operationPath(this.config,operationId)}/async`, { body: task }); }
   operation(operationId, etag) { return this.request('GET', operationPath(this.config,operationId), { etag }); }
   waitOperation(operationId, afterVersion, timeoutMs = 5000) { return this.request('GET', `${operationPath(this.config,operationId)}/wait?after_version=${afterVersion}&timeout_ms=${timeoutMs}`); }
-  observeOperation(operationId, afterVersion = 0, afterEvent = 0, timeoutMs = 5000, limit = 100) { return this.request('GET', `${operationPath(this.config,operationId)}/observe?after_version=${afterVersion}&after_event=${afterEvent}&timeout_ms=${timeoutMs}&limit=${limit}`); }
+  observeOperation(operationId, afterVersion = 0, afterEvent = 0, timeoutMs = 5000, limit = 100, signal) { return this.request('GET', `${operationPath(this.config,operationId)}/observe?after_version=${afterVersion}&after_event=${afterEvent}&timeout_ms=${timeoutMs}&limit=${limit}`, { signal }); }
   agentic(operationId) { return this.request('GET', `${operationPath(this.config,operationId)}/agentic`); }
   planAgentic(operationId) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic`); }
   respondAgentic(operationId, stepId, body) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic/steps/${stepId}/human-response`, { body }); }
