@@ -1,5 +1,6 @@
 use niccolo_evidence::model_adapter::{
-    DeterministicModel, ModelError, ModelRequest, OpenAiCompatibleModel, ReasoningModel,
+    DeterministicModel, FailoverModel, ModelError, ModelFuture, ModelRequest, ModelResponse,
+    OpenAiCompatibleModel, ReasoningModel, UnavailableModel,
 };
 use serde_json::json;
 use std::io::{Read, Write};
@@ -161,5 +162,49 @@ fn configured_model_identity_rejects_nul() {
             OpenAiCompatibleModel::new(provider, model, "http://localhost/v1", ""),
             Err(ModelError::Invalid)
         ));
+    }
+}
+
+#[tokio::test]
+async fn failover_preserves_attribution_reported_by_the_answering_provider() {
+    use std::sync::Arc;
+
+    struct RoutedProvider;
+
+    impl ReasoningModel for RoutedProvider {
+        fn provider(&self) -> &str {
+            "gateway"
+        }
+
+        fn model(&self) -> &str {
+            "configured-alias"
+        }
+
+        fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+            Box::pin(async {
+                Ok(ModelResponse {
+                    value: json!({}),
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    effective_provider: Some("upstream-provider".into()),
+                    effective_model: Some("actual-model".into()),
+                    fallback_used: false,
+                })
+            })
+        }
+    }
+
+    let request = ModelRequest {
+        purpose: "SYNTHESIZE".into(),
+        input: json!({}),
+        output_contract: json!({}),
+    };
+    let direct = FailoverModel::new(Arc::new(RoutedProvider), Arc::new(UnavailableModel));
+    let failover = FailoverModel::new(Arc::new(UnavailableModel), Arc::new(RoutedProvider));
+    for (router, used_fallback) in [(direct, false), (failover, true)] {
+        let response = router.invoke(&request).await.unwrap();
+        assert_eq!(response.effective_provider.as_deref(), Some("upstream-provider"));
+        assert_eq!(response.effective_model.as_deref(), Some("actual-model"));
+        assert_eq!(response.fallback_used, used_fallback);
     }
 }

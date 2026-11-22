@@ -172,14 +172,14 @@ impl ReasoningModel for FailoverModel {
         Box::pin(async move {
             match self.primary.invoke(request).await {
                 Ok(mut r) => {
-                    r.effective_provider = Some(self.primary.provider().into());
-                    r.effective_model = Some(self.primary.model().into());
+                    r.effective_provider.get_or_insert_with(|| self.primary.provider().into());
+                    r.effective_model.get_or_insert_with(|| self.primary.model().into());
                     Ok(r)
                 }
                 Err(_) => {
                     let mut r = self.fallback.invoke(request).await?;
-                    r.effective_provider = Some(self.fallback.provider().into());
-                    r.effective_model = Some(self.fallback.model().into());
+                    r.effective_provider.get_or_insert_with(|| self.fallback.provider().into());
+                    r.effective_model.get_or_insert_with(|| self.fallback.model().into());
                     r.fallback_used = true;
                     Ok(r)
                 }
