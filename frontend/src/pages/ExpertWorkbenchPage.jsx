@@ -60,7 +60,7 @@ export function ExpertWorkbenchPage() {
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
-  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState([]);
+  const [selectedEvidence, setSelectedEvidence] = useState(()=>new Map());
   const [evidenceSearchText, setEvidenceSearchText] = useState('');
   const [groundRoles, setGroundRoles] = useState({});
   const [groundMemberRationales, setGroundMemberRationales] = useState({});
@@ -89,13 +89,15 @@ export function ExpertWorkbenchPage() {
     [data.nodes, selectedGroundIds],
   );
   const evidenceChoices = useMemo(() => {
-    const merged = new Map(data.evidence.map((item) => [item.evidence_id, item]));
+    const merged = new Map(selectedEvidence);
+    for (const item of data.evidence) merged.set(item.evidence_id,item);
+    /* current results take precedence over the saved display copy */
     for (const item of searchEvidence.data?.results ?? []) merged.set(item.evidence_id, item);
     return [...merged.values()];
-  }, [data.evidence, searchEvidence.data]);
+  }, [data.evidence, searchEvidence.data, selectedEvidence]);
   const selectedGroundEvidence = useMemo(
-    () => evidenceChoices.filter((item) => selectedEvidenceIds.includes(item.evidence_id)),
-    [evidenceChoices, selectedEvidenceIds],
+    () => evidenceChoices.filter((item) => selectedEvidence.has(item.evidence_id)),
+    [evidenceChoices, selectedEvidence],
   );
   const assessmentHistory = data.assessments ?? [];
   const attentionGroups = objectionAttentionGroups(assessmentHistory);
@@ -196,7 +198,15 @@ export function ExpertWorkbenchPage() {
           {searchEvidence.isPending && <p role="status">Searching attached evidence…</p>}
           {searchEvidence.error && <p className="error" role="alert">Evidence search failed: {searchEvidence.error.message}</p>}
           {searchEvidence.isSuccess && searchEvidence.data?.results?.length===0 && <p>No additional fragments matched “{searchEvidence.variables}”.</p>}
-          {evidenceChoices.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidenceIds.includes(item.evidence_id)} onChange={(e) => setSelectedEvidenceIds((current) => e.target.checked ? [...current, item.evidence_id] : current.filter((id) => id !== item.evidence_id))} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label>{selectedEvidenceIds.includes(item.evidence_id) && <input aria-label="Why this evidence is a ground" placeholder="Why this exact fragment belongs in this grounding set" value={groundMemberRationales[`evidence:${item.evidence_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`evidence:${item.evidence_id}`]: e.target.value })} />}</div>)}
+          {evidenceChoices.map((item) => <div key={item.evidence_id} className="ground-member-row evidence-ground"><label><input type="checkbox" checked={selectedEvidence.has(item.evidence_id)} onChange={(e) => {
+            const checked=e.target.checked;
+            setSelectedEvidence(current=>{
+              const next=new Map(current);
+              if(checked) next.set(item.evidence_id,item);
+              else next.delete(item.evidence_id);
+              return next;
+            });
+          }} /> EVIDENCE · {item.document_locator} · #{item.ordinal} · {item.speaker_label}: {item.content}</label>{selectedEvidence.has(item.evidence_id) && <input aria-label="Why this evidence is a ground" placeholder="Why this exact fragment belongs in this grounding set" value={groundMemberRationales[`evidence:${item.evidence_id}`] ?? ''} maxLength={2048} onChange={(e) => setGroundMemberRationales({ ...groundMemberRationales, [`evidence:${item.evidence_id}`]: e.target.value })} />}</div>)}
           {data.evidence_truncated && <small>Showing the first 256 admissible source fragments attached to this Situation. Search above to reach material outside this bounded list.</small>}
         </fieldset>
         <label>Why these grounds belong together<textarea value={grounding.rationale} maxLength={4096} onChange={(e) => setGrounding({ ...grounding, rationale: e.target.value })} /></label>
