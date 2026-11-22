@@ -75,7 +75,7 @@ export function IdentitiesPage() {
   const situation = useQuery({
     queryKey: client ? qk.situation(client.config) : ['situation','none'],
     enabled: !!client,
-    queryFn: async () => (await client.situation()).value,
+    queryFn: async ({ signal }) => (await client.situation(signal)).value,
   });
   const sources = useQuery({
     queryKey: client ? [...qk.sources(client.config), sourceCursor] : ['sources','none'],
