@@ -624,6 +624,49 @@ async fn concurrent_plans_allocate_distinct_consecutive_revisions() {
 }
 
 #[tokio::test]
+async fn concurrent_step_starts_share_one_plan_budget_and_do_not_start_twice() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    for distinct_steps in [false, true] {
+        let scope = op(&app, s, if distinct_steps { 1 } else { 2 }).await;
+        let first = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let last = if distinct_steps { other } else { first };
+        agentic_controller::create_plan(
+            &app,
+            scope,
+            s.principal,
+            &[
+                step(first, 1, "INSPECT_SOURCES", false, vec![]),
+                step(other, 2, "CHECK_ASSUMPTIONS", false, vec![]),
+            ],
+        )
+        .await
+        .unwrap();
+        let queued = bff_operations::get(&app, scope).await.unwrap();
+        bff_operations::start(&app, scope, queued.state_version, s.principal)
+            .await
+            .unwrap();
+        let (a, b) = tokio::join!(
+            agentic_controller::start_step(&app, scope, first, s.principal),
+            agentic_controller::start_step(&app, scope, last, s.principal),
+        );
+        let err = match (a, b) {
+            (Ok(_), Err(err)) | (Err(err), Ok(_)) => err,
+            other => panic!("expected one successful start, got {other:?}"),
+        };
+        if distinct_steps {
+            assert!(matches!(err, agentic_controller::ControllerError::BudgetExhausted));
+        } else {
+            assert!(matches!(err, agentic_controller::ControllerError::NotReady));
+        }
+        let view = agentic_controller::view(&app, scope).await.unwrap();
+        assert_eq!(view.budget_used, 1);
+        assert_eq!(view.steps.iter().filter(|step| step.state == "STARTED").count(), 1);
+    }
+}
+
+#[tokio::test]
 async fn v211_v214_plan_is_versioned_hashed_and_rejects_cycles() {
     let (a, p) = pools().await;
     let s = seed(&a).await;
