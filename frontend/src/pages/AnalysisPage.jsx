@@ -36,8 +36,8 @@ export function AnalysisPage(){
    <p>Selected: <code>{analysis||'none'}</code></p>
    <article className="analysis-history"><h3>Analysis history</h3>
      {history.isLoading&&<p>Loading analysis history…</p>}
-     {history.error&&<p className="error">{history.error.message}</p>}
-     {!history.isLoading&&rows.length===0&&<p>No analyses have been recorded yet.</p>}
+     {history.error&&<p className="error" role="alert">Analysis history unavailable: {history.error.message}</p>}
+     {history.isSuccess&&rows.length===0&&<p>No analyses have been recorded yet.</p>}
      <ul>{rows.map(entry=><li key={entry.analysis_id} style={{marginLeft:`${entry.depth*18}px`}}>
        <button className={entry.analysis_id===analysis?'history-selected':''} onClick={()=>setAnalysis(entry.analysis_id)}>{entry.goal||'Analysis without explicit goal'}</button>
        <div><small>Revision {entry.input_revision} · {analysisHistoryLabel(entry)}{entry.reanalysis_of?` · reanalysis of ${entry.reanalysis_of}`:''}</small></div>
