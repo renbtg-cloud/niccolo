@@ -71,6 +71,7 @@ function ReviewContent(){
  }});
  const exportPackage=useMutation({mutationFn:async()=>{
    const result=await client.presentationPackage(analysis);
+   if (!isCurrentSession(generation)) return 0;
    const files=result.value?.files;
    const archive=presentationZip(result.value);
    const url=URL.createObjectURL(archive);
