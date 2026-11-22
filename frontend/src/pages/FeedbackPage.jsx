@@ -14,6 +14,7 @@ function QuestionCard({ question }) {
   const qc = useQueryClient();
   const [response,setResponse] = useState('insufficient_evidence');
   const [reason,setReason] = useState('');
+  const [showEvents,setShowEvents] = useState(false);
   const [eventCursor,setEventCursor] = useState(0);
   const [eventBackStack,setEventBackStack] = useState([]);
   const [positionsCursor,setPositionsCursor] = useState(null);
@@ -21,6 +22,7 @@ function QuestionCard({ question }) {
   const pendingFeedback = useRef(null);
   const history = useQuery({
     queryKey:['question-feedback',client.config.workspace,question.question_id,eventCursor],
+    enabled:showEvents,
     queryFn:async ({ signal })=> (await client.questionFeedback(question.question_id,eventCursor,100, signal)).value,
   });
   const positions = useQuery({
@@ -72,7 +74,7 @@ function QuestionCard({ question }) {
           setPositionsCursor(positions.data.next_after);
         }}>Next positions</button>
       </div>
-      <details><summary>Feedback event history</summary>
+      <details onToggle={event=>setShowEvents(event.currentTarget.open)}><summary>Feedback event history</summary>
         {history.isLoading&&<p>Loading feedback events…</p>}
         {history.error&&<p className="error">{history.error.message}</p>}
         <ul>{(history.data?.events??[]).map(item=><li key={item.event_id}>#{item.event_no} · {item.response.replaceAll('_',' ')} · {item.human_reason}</li>)}</ul>
