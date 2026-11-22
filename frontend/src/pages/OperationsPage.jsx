@@ -102,7 +102,7 @@ export function OperationsPage(){
  </div>}
  <form onSubmit={handleSubmit(v=>{if (!run.isPending && !modelUnavailable && !readiness.isPending && !readiness.isError) run.mutate(v);})}>
    <label>What are you trying to do?<select disabled={run.isPending} {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
-   <label>Goal / question (optional)<textarea disabled={run.isPending} {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
+   <label>Goal / question (optional)<textarea disabled={run.isPending} aria-invalid={Boolean(errors.goal)} {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
    {errors.goal&&<p role="alert">{errors.goal.message}</p>}
    <details><summary>Advanced execution</summary><label>Delivery<select disabled={run.isPending} {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Start and follow progress</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" disabled={run.isPending} {...register('stepBudget')}/></label><small>The default settings are appropriate for ordinary use. Change these only when testing execution behavior.</small></details>
    <button disabled={run.isPending||modelUnavailable||readiness.isPending||readiness.isError}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
