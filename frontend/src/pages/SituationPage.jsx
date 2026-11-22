@@ -51,6 +51,7 @@ function ConnectedSituation({client}){
   const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve the document identity across retries after a partial upload.
   const pendingDocumentId = useRef(null);
+  const pendingIngest = useRef(null);
   const sourceFileInput = useRef(null);
   const restoreFileInput = useRef(null);
   const pendingRestoreDocument = useRef(null);
@@ -146,18 +147,22 @@ function ConnectedSituation({client}){
       const descriptor = sourceDescriptor(selected);
       const documentId = pendingDocumentId.current ?? crypto.randomUUID();
       pendingDocumentId.current = documentId;
-      const ingested = await client.ingestSource(documentId, {
-        locator: descriptor.locator,
-        contentType: descriptor.contentType,
-        body: selected,
-      });
+      if (pendingIngest.current?.documentId !== documentId) {
+        const ingested = await client.ingestSource(documentId, {
+          locator: descriptor.locator,
+          contentType: descriptor.contentType,
+          body: selected,
+        });
+        pendingIngest.current = { documentId, value: ingested.value };
+      }
       const attached = await client.addSituationSource(documentId);
-      return { documentId, ingest: ingested.value, situation: attached.value };
+      return { documentId, ingest: pendingIngest.current.value, situation: attached.value };
     },
     onSuccess: async () => {
       setFile(null);
       if (sourceFileInput.current) sourceFileInput.current.value = '';
       pendingDocumentId.current = null;
+      pendingIngest.current = null;
       await refresh();
     },
     // If ingestion succeeded but attachment failed, surface the imported record
@@ -215,6 +220,7 @@ function ConnectedSituation({client}){
         disabled={upload.isPending}
         onChange={(event) => {
           pendingDocumentId.current = null;
+          pendingIngest.current = null;
           upload.reset();
           const selected=event.target.files?.[0] ?? null;
           setFile(selected);
