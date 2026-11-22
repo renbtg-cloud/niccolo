@@ -671,6 +671,8 @@ Checkpoint 1.91 counts reported tokens from a completed model response even when
 
 Checkpoint 1.92 reserves an invocation slot when its ledger entry starts, including calls still in progress and calls that later fail. A timeout without usage figures leaves the reported token total as a lower bound. The remaining token figure is therefore an upper bound while any invocation has missing or partial usage. Checkpoint 1.93 also preserves valid usage when structured provider output is rejected for invalid attribution or size.
 
+Checkpoints 1.94–1.97 align the agentic plan and step ledger with the operation transaction. Concurrent plan writers allocate consecutive revisions. A step start checks the latest plan, dependency readiness and available step budget while holding the operation row lock. Concurrent finishes of a started step record one outcome. The read view loads operation state and plan details in one PostgreSQL snapshot. These protections preserve existing human pause and resume semantics.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

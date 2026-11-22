@@ -156,14 +156,18 @@ fn validate(steps: &[StepInput]) -> Result<(), ControllerError> {
     }
     Ok(())
 }
-async fn lock_operation(
+async fn read_operation_state(
     tx: &mut Transaction<'_, Postgres>,
     scope: OperationScope,
+    lock_for_update: bool,
 ) -> Result<(String, i32), ControllerError> {
-    sqlx::query_as(
+    sqlx::query_as(if lock_for_update {
         "SELECT state,step_budget FROM niccolo.bff_operations
-         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 FOR UPDATE",
-    )
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 FOR UPDATE"
+    } else {
+        "SELECT state,step_budget FROM niccolo.bff_operations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3"
+    })
     .bind(scope.workspace)
     .bind(scope.situation)
     .bind(scope.operation)
@@ -183,7 +187,7 @@ pub async fn create_plan(
     let sha = format!("{:x}", Sha256::digest(json.as_bytes()));
     let mut tx = scoped(pool, scope.workspace, false).await?;
     // Serialize revision allocation before reading the plan history.
-    lock_operation(&mut tx, scope).await?;
+    read_operation_state(&mut tx, scope, true).await?;
     let rev:i64=sqlx::query_scalar("SELECT coalesce(max(plan_revision),0)+1 FROM niccolo.agentic_plans WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.operation).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO niccolo.agentic_plans(workspace_id,situation_id,operation_id,plan_revision,plan_sha256,created_by_principal_id) VALUES($1,$2,$3,$4,$5,$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(rev).bind(&sha).bind(actor).execute(&mut *tx).await?;
     let mut ordered = steps.to_vec();
@@ -200,9 +204,9 @@ pub async fn create_plan(
     Ok((rev, sha))
 }
 pub async fn view(pool: &PgPool, scope: OperationScope) -> Result<ControllerView, ControllerError> {
-    let op = bff_operations::get(pool, scope).await?;
     let mut tx = scoped(pool, scope.workspace, true).await?;
-    let result = view_plan(&mut tx, scope, &op.state, op.step_budget).await?;
+    let (operation_state, step_budget) = read_operation_state(&mut tx, scope, false).await?;
+    let result = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     tx.commit().await?;
     Ok(result)
 }
@@ -294,7 +298,7 @@ pub async fn start_step(
         bff_operations::start(pool, scope, op.state_version, actor).await?;
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (operation_state, step_budget) = lock_operation(&mut tx, scope).await?;
+    let (operation_state, step_budget) = read_operation_state(&mut tx, scope, true).await?;
     if operation_state != "RUNNING" {
         return Err(ControllerError::StateConflict);
     }
@@ -320,7 +324,7 @@ pub async fn finish_step(
         return Err(ControllerError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
-    let (operation_state, step_budget) = lock_operation(&mut tx, scope).await?;
+    let (operation_state, step_budget) = read_operation_state(&mut tx, scope, true).await?;
     let before = view_plan(&mut tx, scope, &operation_state, step_budget).await?;
     let s = before
         .steps
