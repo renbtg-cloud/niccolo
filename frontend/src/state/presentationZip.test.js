@@ -16,6 +16,7 @@ describe('portable analysis ZIP', () => {
     const firstName = new TextDecoder().decode(bytes.subarray(30, 30 + firstNameLength));
     expect(firstName).toBe('data/numbers.txt');
     expect(view.getUint32(14, true)).toBe(0xcbf43926);
+    expect(view.getUint16(12, true)).toBe(0x21);
     const firstContent = new TextDecoder().decode(bytes.subarray(30 + firstNameLength, 30 + firstNameLength + 9));
     expect(firstContent).toBe('123456789');
     const endOffset = bytes.length - 22;
@@ -23,6 +24,7 @@ describe('portable analysis ZIP', () => {
     expect(view.getUint16(endOffset + 10, true)).toBe(2);
     const directoryOffset = view.getUint32(endOffset + 16, true);
     expect(view.getUint32(directoryOffset, true)).toBe(0x02014b50);
+    expect(view.getUint16(directoryOffset + 14, true)).toBe(0x21);
   });
 
   it('rejects traversal, malformed payload and oversized exports', () => {
