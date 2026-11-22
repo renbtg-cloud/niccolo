@@ -32,7 +32,7 @@ import {
   reassessmentReviewRequest,
 } from '../state/expertWorkbench.js';
 
-function useWorkbenchMutation(client, workbenchQuery, fn) {
+function useWorkbenchMutation(workbenchQuery, fn) {
   return useMutation({
     mutationFn: fn,
     onSuccess: async () => workbenchQuery.refetch(),
@@ -68,18 +68,18 @@ export function ExpertWorkbenchPage() {
   const [applicability, setApplicability] = useState({route: '', condition: '', assessment: 'UNASSESSED', rationale: ''});
 
   const searchEvidence = useMutation({ mutationFn: async (query) => (await client.searchExpertEvidence(query, 20)).value });
-  const createNode = useWorkbenchMutation(client, workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
-  const createRelation = useWorkbenchMutation(client, workbench, async (body) => client.createExpertRelation(crypto.randomUUID(), body));
-  const createArgument = useWorkbenchMutation(client, workbench, async (body) => client.createExpertArgument(crypto.randomUUID(), body));
-  const createGrounding = useWorkbenchMutation(client, workbench, async ({ argumentId, body }) => client.createExpertGrounding(argumentId, crypto.randomUUID(), body));
-  const reviewReassessment = useWorkbenchMutation(client, workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
-  const recordApplicability = useWorkbenchMutation(client, workbench, async ({route, body}) => client.recordExpertApplicability(route.argument_id, route.grounding_set_id, crypto.randomUUID(), body));
-  const recordAssessment = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
-  const recordResponse = useWorkbenchMutation(client, workbench, async ({questionId,responseId,body}) => client.recordExpertQuestionResponse(questionId,responseId,body));
-  const recordDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordExpertAssessmentDependency(crypto.randomUUID(), body));
-  const recordMeaningDependency = useWorkbenchMutation(client, workbench, async (body) => client.recordInterpretationDependency(crypto.randomUUID(), body));
-  const reviewDependency = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDependency(id, crypto.randomUUID(), body));
-  const reviewDownstream = useWorkbenchMutation(client, workbench, async ({id, body}) => client.reviewExpertAssessmentDownstream(id, crypto.randomUUID(), body));
+  const createNode = useWorkbenchMutation(workbench, async (body) => client.createExpertNode(crypto.randomUUID(), body));
+  const createRelation = useWorkbenchMutation(workbench, async (body) => client.createExpertRelation(crypto.randomUUID(), body));
+  const createArgument = useWorkbenchMutation(workbench, async (body) => client.createExpertArgument(crypto.randomUUID(), body));
+  const createGrounding = useWorkbenchMutation(workbench, async ({ argumentId, body }) => client.createExpertGrounding(argumentId, crypto.randomUUID(), body));
+  const reviewReassessment = useWorkbenchMutation(workbench, async ({ impact, body }) => client.reviewExpertReassessment(impact.trigger_relation_id, impact.argument_id, crypto.randomUUID(), body));
+  const recordApplicability = useWorkbenchMutation(workbench, async ({route, body}) => client.recordExpertApplicability(route.argument_id, route.grounding_set_id, crypto.randomUUID(), body));
+  const recordAssessment = useWorkbenchMutation(workbench, async (body) => client.recordExpertAssessment(crypto.randomUUID(), body));
+  const recordResponse = useWorkbenchMutation(workbench, async ({questionId,responseId,body}) => client.recordExpertQuestionResponse(questionId,responseId,body));
+  const recordDependency = useWorkbenchMutation(workbench, async (body) => client.recordExpertAssessmentDependency(crypto.randomUUID(), body));
+  const recordMeaningDependency = useWorkbenchMutation(workbench, async (body) => client.recordInterpretationDependency(crypto.randomUUID(), body));
+  const reviewDependency = useWorkbenchMutation(workbench, async ({id, body}) => client.reviewExpertAssessmentDependency(id, crypto.randomUUID(), body));
+  const reviewDownstream = useWorkbenchMutation(workbench, async ({id, body}) => client.reviewExpertAssessmentDownstream(id, crypto.randomUUID(), body));
   const mutations = [createNode, createRelation, createArgument, createGrounding, reviewReassessment, recordApplicability, recordAssessment, recordResponse, recordDependency, recordMeaningDependency, reviewDependency, reviewDownstream];
   const mutationError = mutations.find((m) => m.error)?.error;
   const busy = mutations.some((m) => m.isPending);
