@@ -64,3 +64,8 @@ it('writes the same bytes regardless of the insertion order', async () => {
   const second = presentationZip(pkg({ 'a.txt': 'first', 'é.txt': 'accent', 'z.txt': 'last' }));
   expect(await first.arrayBuffer()).toEqual(await second.arrayBuffer());
 });
+
+it('bounds archive metadata even when every exported file is empty', () => {
+  const files = Object.fromEntries(Array.from({length: 5000}, (_,index)=>[`${'a'.repeat(950)}-${index}.txt`, '']));
+  expect(() => presentationZip(pkg(files))).toThrow(/archive is too large/);
+});
