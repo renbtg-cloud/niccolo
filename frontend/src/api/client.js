@@ -42,6 +42,9 @@ export class NiccoloClient {
       body: file, contentType: 'application/pdf', signal,
     });
   }
+  previewStoredPdf(documentId, signal) {
+    return this.request('GET', `${sourcesPath(this.config)}/${documentId}/pdf-preview`, { signal });
+  }
   async downloadSourceOriginal(documentId) {
     const url = `${sourcesPath(this.config)}/${documentId}/original`;
     const response = await this.fetch(url, {

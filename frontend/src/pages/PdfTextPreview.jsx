@@ -28,9 +28,9 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
     active.current = request;
     setBusy(true);
     try {
-      const original = stored ? await client.downloadSourceOriginal(stored.document_id) : file;
-      request.signal.throwIfAborted();
-      const { value } = await client.previewPdf(original, request.signal);
+      const { value } = stored
+        ? await client.previewStoredPdf(stored.document_id, request.signal)
+        : await client.previewPdf(file, request.signal);
       request.signal.throwIfAborted();
       if (!Array.isArray(value?.pages)) throw new Error('Invalid PDF preview response.');
       setPreview({ ...value, title: stored?.locator ?? file.name, documentId: stored?.document_id });
