@@ -543,8 +543,9 @@ pub async fn recover_stale_started(
     if !(30..=86400).contains(&stale_after_seconds) {
         return Err(ControllerError::Invalid);
     }
-    let before = view(pool, scope).await?;
     let mut tx = scoped(pool, scope.workspace, false).await?;
+    let (state, budget) = read_operation_state(&mut tx, scope, true).await?;
+    let before = view_plan(&mut tx, scope, &state, budget).await?;
     let stale:Vec<Uuid>=sqlx::query_scalar("SELECT s.step_id FROM niccolo.agentic_steps s WHERE s.workspace_id=$1 AND s.situation_id=$2 AND s.operation_id=$3 AND s.plan_revision=$4 AND (SELECT e.event_kind FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)='STARTED' AND (SELECT e.created_at FROM niccolo.agentic_step_events e WHERE e.workspace_id=s.workspace_id AND e.situation_id=s.situation_id AND e.operation_id=s.operation_id AND e.plan_revision=s.plan_revision AND e.step_id=s.step_id ORDER BY e.event_seq DESC LIMIT 1)<clock_timestamp()-make_interval(secs=>$5)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(stale_after_seconds).fetch_all(&mut *tx).await?;
     for step in stale {
         sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code='RECOVERY_STALE',error_message='orphaned invocation recovered after stale threshold',completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND status='STARTED'").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).execute(&mut *tx).await?;

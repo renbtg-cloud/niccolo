@@ -1420,7 +1420,31 @@ async fn v1401_v1500_stale_started_step_recovers_without_resetting_completed_wor
   let steps=agentic_policy::default_plan(&app,s.workspace,s.situation,s.analysis).await.unwrap();let(rev,_)=agentic_controller::create_plan(&app,scope,s.principal,&steps).await.unwrap();let first=steps[0].step_id;
   agentic_controller::start_step(&app,scope,first,s.principal).await.unwrap();
   sqlx::query("UPDATE niccolo.agentic_step_events SET created_at=clock_timestamp()-interval '10 minutes' WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND event_kind='STARTED'").bind(s.workspace).bind(s.situation).bind(scope.operation).bind(rev).bind(first).execute(&admin).await.unwrap();
-  let recovered=agentic_controller::recover_stale_started(&app,scope,s.principal,120).await.unwrap();assert!(recovered.ready_step_ids.contains(&first));assert_eq!(recovered.steps.iter().find(|x|x.step_id==first).unwrap().state,"PENDING");
+        let (first_recovery, second_recovery) = tokio::join!(
+            agentic_controller::recover_stale_started(&app, scope, s.principal, 120),
+            agentic_controller::recover_stale_started(&app, scope, s.principal, 120),
+        );
+        for recovered in [first_recovery.unwrap(), second_recovery.unwrap()] {
+            assert!(recovered.ready_step_ids.contains(&first));
+            assert_eq!(
+                recovered.steps.iter().find(|step| step.step_id == first).unwrap().state,
+                "PENDING"
+            );
+        }
+        let recoveries: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM niccolo.agentic_step_events
+             WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+               AND plan_revision=$4 AND step_id=$5 AND event_kind='RETRY_READY'",
+        )
+        .bind(s.workspace)
+        .bind(s.situation)
+        .bind(scope.operation)
+        .bind(rev)
+        .bind(first)
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+        assert_eq!(recoveries, 1);
   agentic_controller::start_step(&app,scope,first,s.principal).await.unwrap();agentic_controller::finish_step(&app,scope,first,s.principal,"SUCCEEDED","retry completed").await.unwrap();
   let again=agentic_controller::recover_stale_started(&app,scope,s.principal,120).await.unwrap();assert_eq!(again.steps.iter().find(|x|x.step_id==first).unwrap().state,"SUCCEEDED");
  }).await;
