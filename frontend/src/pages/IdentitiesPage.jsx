@@ -211,7 +211,7 @@ export function IdentitiesPage() {
 
     <div className="speaker-list">
       {speakerRows.map((speaker) => <SpeakerRow
-        key={speaker.speaker_label}
+        key={JSON.stringify([documentId,speaker.speaker_label])}
         speaker={speaker}
         binding={bindingBySpeaker.get(speaker.speaker_label)}
         identities={identityRows}
