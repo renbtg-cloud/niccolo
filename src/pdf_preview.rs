@@ -7,7 +7,8 @@ use tokio::{
     sync::Semaphore,
 };
 
-pub(crate) const MAX_PAGES: usize = 20;
+const MAX_PAGES: usize = 20;
+pub(crate) const MAX_START_PAGE: usize = 999_999;
 const MAX_OUTPUT: u64 = 512 * 1024;
 static PREVIEWS: Semaphore = Semaphore::const_new(2);
 
@@ -30,21 +31,31 @@ pub(crate) struct Page {
 pub(crate) struct Preview {
     pub pages: Vec<Page>,
     pub truncated: bool,
+    pub next_page: Option<usize>,
 }
 
-pub(crate) async fn extract(bytes: &[u8]) -> Result<Preview, PreviewError> {
-    if !bytes.starts_with(b"%PDF-") {
+pub(crate) async fn extract(bytes: &[u8], first: usize) -> Result<Preview, PreviewError> {
+    if !bytes.starts_with(b"%PDF-") || !(1..=MAX_START_PAGE).contains(&first) {
         return Err(PreviewError::Invalid);
     }
     let _permit = PREVIEWS.try_acquire().map_err(|_| PreviewError::Busy)?;
-    tokio::time::timeout(Duration::from_secs(5), read_text(bytes))
+    tokio::time::timeout(Duration::from_secs(5), read_text(bytes, first))
         .await
         .map_err(|_| PreviewError::Timeout)?
 }
 
-async fn read_text(bytes: &[u8]) -> Result<Preview, PreviewError> {
+async fn read_text(bytes: &[u8], first: usize) -> Result<Preview, PreviewError> {
     let mut child = Command::new("pdftotext")
-        .args(["-f", "1", "-l", "21", "-enc", "UTF-8", "-", "-"])
+        .args([
+            "-f",
+            &first.to_string(),
+            "-l",
+            &(first + MAX_PAGES).to_string(),
+            "-enc",
+            "UTF-8",
+            "-",
+            "-",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -85,23 +96,26 @@ async fn read_text(bytes: &[u8]) -> Result<Preview, PreviewError> {
     {
         return Err(PreviewError::Invalid);
     }
-    parse_pages(&output)
+    parse_pages(&output, first)
 }
 
-fn parse_pages(output: &[u8]) -> Result<Preview, PreviewError> {
+fn parse_pages(output: &[u8], first: usize) -> Result<Preview, PreviewError> {
     let text = std::str::from_utf8(output).map_err(|_| PreviewError::Invalid)?;
     let mut pages = text.split_terminator('\x0c').enumerate();
     let preview = pages
         .by_ref()
         .take(MAX_PAGES)
         .map(|(index, page)| Page {
-            number: index + 1,
+            number: index + first,
             text: page.trim().to_owned(),
         })
         .collect();
+    let truncated = pages.next().is_some();
+    let next = first + MAX_PAGES;
     Ok(Preview {
         pages: preview,
-        truncated: pages.next().is_some(),
+        truncated,
+        next_page: (truncated && next <= MAX_START_PAGE).then_some(next),
     })
 }
 
@@ -111,7 +125,7 @@ mod tests {
 
     #[test]
     fn preserves_page_numbers_even_when_the_first_page_has_no_text() {
-        let result = parse_pages("\x0c a página \n\x0c".as_bytes()).unwrap();
+        let result = parse_pages("\x0c a página \n\x0c".as_bytes(), 1).unwrap();
         assert_eq!(result.pages.len(), 2);
         assert_eq!(result.pages[0].text, "");
         assert_eq!(result.pages[1].number, 2);
@@ -121,8 +135,12 @@ mod tests {
 
     #[test]
     fn reports_pages_omitted_from_the_preview() {
-        let result = parse_pages("text\x0c".repeat(MAX_PAGES + 1).as_bytes()).unwrap();
+        let result = parse_pages("text\x0c".repeat(MAX_PAGES + 1).as_bytes(), 1).unwrap();
         assert_eq!(result.pages.len(), MAX_PAGES);
         assert!(result.truncated);
+        assert_eq!(result.next_page, Some(21));
+        let second = parse_pages(b"page\x0c", 21).unwrap();
+        assert_eq!(second.pages[0].number, 21);
+        assert_eq!(second.next_page, None);
     }
 }

@@ -987,15 +987,25 @@ async fn preview_pdf(
     if headers.get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()) != Some("application/pdf") {
         return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected application/pdf"));
     }
-    pdf_preview_response(&body).await
+    pdf_preview_response(&body, 1).await
+}
+
+#[derive(serde::Deserialize)]
+struct PdfPreviewQuery {
+    first_page: Option<usize>,
 }
 
 async fn preview_stored_pdf(
     State(state): State<AppState>,
     Path((workspace, document)): Path<(Uuid, Uuid)>,
     headers: HeaderMap,
+    Query(query): Query<PdfPreviewQuery>,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Write).await?;
+    let first = query.first_page.unwrap_or(1);
+    if !(1..=crate::pdf_preview::MAX_START_PAGE).contains(&first) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "first_page must be between 1 and 999999"));
+    }
     let (format, original) = source_catalog::source_original(&state.pool, workspace, document)
         .await
         .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source preview unavailable"))?
@@ -1003,12 +1013,12 @@ async fn preview_stored_pdf(
     if format != "PDF" {
         return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "source is not a PDF"));
     }
-    pdf_preview_response(&original).await
+    pdf_preview_response(&original, first).await
 }
 
-async fn pdf_preview_response(bytes: &[u8]) -> Result<Response, ApiError> {
+async fn pdf_preview_response(bytes: &[u8], first: usize) -> Result<Response, ApiError> {
     use crate::pdf_preview::PreviewError;
-    let preview = crate::pdf_preview::extract(bytes).await.map_err(|error| match error {
+    let preview = crate::pdf_preview::extract(bytes, first).await.map_err(|error| match error {
         PreviewError::Invalid => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "PDF could not be read"),
         PreviewError::Unavailable => ApiError(StatusCode::SERVICE_UNAVAILABLE, "PDF preview requires pdftotext"),
         PreviewError::Busy => ApiError(StatusCode::TOO_MANY_REQUESTS, "PDF preview is busy"),
