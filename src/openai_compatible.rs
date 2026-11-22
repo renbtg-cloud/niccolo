@@ -163,12 +163,9 @@ impl CurlOpenAiCompatibleModel {
         let content = value
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ModelError::Provider("provider response missing message content".into())
-            })?;
-        let parsed: Value = serde_json::from_str(content).map_err(|e| {
-            ModelError::Provider(format!("provider returned non-JSON content: {e}"))
-        })?;
+            .ok_or(ModelError::InvalidResponse("missing message content"))?;
+        let parsed: Value = serde_json::from_str(content)
+            .map_err(|_| ModelError::InvalidResponse("message content is not JSON"))?;
         let prompt_tokens = value
             .pointer("/usage/prompt_tokens")
             .and_then(Value::as_i64);
@@ -294,9 +291,8 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
             if !status.is_some_and(|code| (200..300).contains(&code)) {
                 return Err(ModelError::Provider("missing provider HTTP status".into()));
             }
-            let envelope: Value = serde_json::from_slice(body).map_err(|e| {
-                ModelError::Provider(format!("invalid provider JSON envelope: {e}"))
-            })?;
+            let envelope: Value = serde_json::from_slice(body)
+                .map_err(|_| ModelError::InvalidResponse("provider envelope is not JSON"))?;
             self.parse_response(envelope)
         })
     }

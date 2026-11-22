@@ -27,6 +27,8 @@ pub enum ModelError {
     Provider(String),
     #[error("model invocation failed: HTTP {0}")]
     HttpStatus(u16),
+    #[error("invalid model response: {0}")]
+    InvalidResponse(&'static str),
     #[error("model invocation timed out")]
     Timeout,
     #[error("operation deadline exceeded")]
@@ -697,13 +699,13 @@ impl OpenAiCompatibleModel {
             return Err(ModelError::HttpStatus(status));
         }
         let value: Value = serde_json::from_slice(&payload)
-            .map_err(|e| ModelError::Provider(format!("invalid provider JSON: {e}")))?;
+            .map_err(|_| ModelError::InvalidResponse("provider envelope is not JSON"))?;
         let content = value
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
-            .ok_or_else(|| ModelError::Provider("missing choices[0].message.content".into()))?;
+            .ok_or(ModelError::InvalidResponse("missing message content"))?;
         let output: Value = serde_json::from_str(content)
-            .map_err(|e| ModelError::Provider(format!("assistant content was not JSON: {e}")))?;
+            .map_err(|_| ModelError::InvalidResponse("message content is not JSON"))?;
         Ok(ModelResponse {
             value: output,
             prompt_tokens: value
@@ -1031,6 +1033,7 @@ mod bounded_response_tests {
     fn budget_and_invalid_results_are_never_retried() {
         assert!(!retryable_model_error(&ModelError::Budget));
         assert!(!retryable_model_error(&ModelError::Invalid));
+        assert!(!retryable_model_error(&ModelError::InvalidResponse("message content is not JSON")));
         assert!(retryable_model_error(&ModelError::Timeout));
         assert!(retryable_model_error(&ModelError::Provider("transient".into())));
         for status in [408, 429, 500, 503] {
