@@ -2,6 +2,7 @@
 // No npm dependency, no server-side archive, no external network publication.
 const encoder = new TextEncoder();
 const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = MAX_BYTES + 1024 * 1024;
 
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -87,7 +88,7 @@ export function presentationZip(pkg) {
     offset += header.length + bytes.length;
     directorySize += central.length;
   }
-  if (offset + directorySize + 22 > 0xffffffff) {
+  if (offset + directorySize + 22 > MAX_ARCHIVE_BYTES) {
     throw new Error('Export archive is too large.');
   }
   const end = new Uint8Array(22);
