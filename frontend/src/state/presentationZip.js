@@ -15,13 +15,15 @@ function crc32(bytes) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu;
+
 function entryPathValid(path) {
   return typeof path === 'string' && path.length > 0
     && !path.startsWith('/')
     && !path.includes(String.fromCharCode(92))
     && !/[<>:"|?*]/u.test(path)
     && !/\p{Cc}/u.test(path)
-    && path.split('/').every(part => part.length > 0 && !/[. ]$/u.test(part));
+    && path.split('/').every(part => part.length > 0 && !/[. ]$/u.test(part) && !WINDOWS_DEVICE.test(part));
 
 }
 
