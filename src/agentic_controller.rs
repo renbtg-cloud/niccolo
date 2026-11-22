@@ -434,8 +434,9 @@ async fn start_step_checked(
         return Err(ControllerError::StateConflict);
     }
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','controller started step',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
+    let started = view_plan(&mut tx, scope, "RUNNING", step_budget).await?;
     tx.commit().await?;
-    view(pool, scope).await
+    Ok(started)
 }
 pub async fn finish_step(
     pool: &PgPool,
@@ -467,8 +468,14 @@ pub async fn finish_step(
     if outcome == "WAITING_FOR_HUMAN" {
         bff_operations::wait_for_human_in(&mut tx, scope, version, actor, note).await?;
     }
+    let state = if outcome == "WAITING_FOR_HUMAN" {
+        "WAITING_FOR_HUMAN"
+    } else {
+        &operation_state
+    };
+    let finished = view_plan(&mut tx, scope, state, step_budget).await?;
     tx.commit().await?;
-    view(pool, scope).await
+    Ok(finished)
 }
 pub async fn resume_step(
     pool: &PgPool,
@@ -492,8 +499,9 @@ pub async fn resume_step(
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'RESUMED',$6,$7)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(note).bind(actor).execute(&mut *tx).await?;
     // RESUMED means active again, so add a STARTED event as the latest operational state.
     sqlx::query("INSERT INTO niccolo.agentic_step_events(workspace_id,situation_id,operation_id,plan_revision,step_id,event_kind,note,recorded_by_principal_id) VALUES($1,$2,$3,$4,$5,'STARTED','resumed after human input',$6)").bind(scope.workspace).bind(scope.situation).bind(scope.operation).bind(before.plan_revision).bind(step).bind(actor).execute(&mut *tx).await?;
+    let resumed = view_plan(&mut tx, scope, "RUNNING", budget).await?;
     tx.commit().await?;
-    view(pool, scope).await
+    Ok(resumed)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
