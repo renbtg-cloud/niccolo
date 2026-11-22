@@ -208,3 +208,35 @@ async fn failover_preserves_attribution_reported_by_the_answering_provider() {
         assert_eq!(response.fallback_used, used_fallback);
     }
 }
+
+#[tokio::test]
+async fn failover_uses_another_provider_only_for_retryable_errors() {
+    use std::sync::Arc;
+
+    struct RejectingProvider(u16);
+
+    impl ReasoningModel for RejectingProvider {
+        fn provider(&self) -> &str {
+            "primary"
+        }
+
+        fn model(&self) -> &str {
+            "configured-model"
+        }
+
+        fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
+            Box::pin(async move { Err(ModelError::HttpStatus(self.0)) })
+        }
+    }
+
+    let request = ModelRequest {
+        purpose: "SYNTHESIZE".into(),
+        input: json!({}),
+        output_contract: json!({}),
+    };
+    let fallback = Arc::new(DeterministicModel::new("fallback", "test-model").unwrap());
+    let permanent = FailoverModel::new(Arc::new(RejectingProvider(401)), fallback.clone());
+    assert!(matches!(permanent.invoke(&request).await, Err(ModelError::HttpStatus(401))));
+    let transient = FailoverModel::new(Arc::new(RejectingProvider(503)), fallback);
+    assert!(transient.invoke(&request).await.unwrap().fallback_used);
+}

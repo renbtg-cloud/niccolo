@@ -178,13 +178,14 @@ impl ReasoningModel for FailoverModel {
                     r.effective_model.get_or_insert_with(|| self.primary.model().into());
                     Ok(r)
                 }
-                Err(_) => {
+                Err(error) if retryable_model_error(&error) => {
                     let mut r = self.fallback.invoke(request).await?;
                     r.effective_provider.get_or_insert_with(|| self.fallback.provider().into());
                     r.effective_model.get_or_insert_with(|| self.fallback.model().into());
                     r.fallback_used = true;
                     Ok(r)
                 }
+                Err(error) => Err(error),
             }
         })
     }
