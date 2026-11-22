@@ -100,7 +100,7 @@ export function OperationsPage(){
    <p className="error" role="alert">Niccolò is not ready to analyze: {readiness.error.message}</p>
    <button type="button" disabled={readiness.isFetching} onClick={()=>void readiness.refetch()}>Retry readiness</button>
  </div>}
- <form onSubmit={handleSubmit(v=>{if (!run.isPending && !modelUnavailable && !readiness.isPending && !readiness.isError) run.mutate(v);})}>
+ <form aria-busy={run.isPending} onSubmit={handleSubmit(v=>{if (!run.isPending && !modelUnavailable && !readiness.isPending && !readiness.isError) run.mutate(v);})}>
    <label>What are you trying to do?<select disabled={run.isPending} {...register('intent')}><option value="ABOUT_TO_ACT_OR_SAY">I am about to say or do something</option><option value="UNDERSTAND">I am trying to understand something</option><option value="FIGURE_OUT_WHAT_MATTERS">Help me figure out what matters</option></select></label>
    <label>Goal / question (optional)<textarea disabled={run.isPending} aria-invalid={Boolean(errors.goal)} {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
    {errors.goal&&<p role="alert">{errors.goal.message}</p>}
