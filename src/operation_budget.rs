@@ -38,7 +38,7 @@ pub struct BudgetView {
     pub deadline_active: bool,
     pub within_deadline: bool,
     /// SQL server clock; 0 means expired (or less than 1 ms remains).
-    /// None means no deadline was configured; it does NOT mean unlimited costs.
+    /// None means no finite future cutoff; model cost limits still apply.
     pub remaining_deadline_ms: Option<i64>,
     /// Explicit actual reasons why more model calls cannot be started.
     pub stop_reasons: Vec<String>,
@@ -148,7 +148,8 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
     let mut tx = scoped(pool, s.workspace).await?;
     let row: Option<(String, Option<i64>)> = sqlx::query_as(
         "SELECT input_json, \
-         CASE WHEN deadline_at IS NULL THEN NULL \
+         CASE WHEN deadline_at IS NULL OR deadline_at = 'infinity'::timestamptz THEN NULL \
+         WHEN deadline_at = '-infinity'::timestamptz THEN 0 \
          ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (deadline_at - clock_timestamp()))*1000)::bigint) END \
          FROM niccolo.bff_operations \
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",

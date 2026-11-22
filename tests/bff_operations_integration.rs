@@ -333,6 +333,26 @@ async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
 }
 
 #[tokio::test]
+async fn postgres_infinite_deadlines_keep_their_ordering_semantics() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    for (deadline, remaining, within_deadline) in [
+        ("infinity", None, true),
+        ("-infinity", Some(0), false),
+    ] {
+        let scope = op(s, Uuid::new_v4());
+        let mut request = input(s, "BUILD_BRIEFING", None);
+        request.deadline_at = Some(deadline.into());
+        bff_operations::submit(&app, scope, &request).await.unwrap();
+        let budget = operation_budget::view(&app, scope).await.unwrap();
+        assert_eq!(budget.remaining_deadline_ms, remaining);
+        assert_eq!(budget.deadline_active, remaining.is_some());
+        assert_eq!(budget.within_deadline, within_deadline);
+        assert_eq!(budget.can_start_model_call, within_deadline);
+    }
+}
+
+#[tokio::test]
 async fn adaptive_admission_serializes_competing_workers_at_workspace_limit() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
