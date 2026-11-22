@@ -23,7 +23,7 @@ pub enum ProviderConfigError {
     Invalid,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OpenAiCompatibleConfig {
     pub provider: String,
     pub base_url: String,
@@ -32,6 +32,18 @@ pub struct OpenAiCompatibleConfig {
     pub curl_bin: String,
     pub max_time_secs: u64,
     pub json_mode: bool,
+}
+
+impl std::fmt::Debug for OpenAiCompatibleConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OpenAiCompatibleConfig")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("max_time_secs", &self.max_time_secs)
+            .field("json_mode", &self.json_mode)
+            .finish_non_exhaustive()
+    }
 }
 
 impl OpenAiCompatibleConfig {
@@ -316,6 +328,18 @@ mod tests {
             purpose: "SYNTHESIZE".into(),
             input: json!({"analysis_id":"a","reasoning_packet":{"sources":[]}}),
             output_contract: json!({"type":"object","required":["niccolo_artifact"]}),
+        }
+    }
+
+    #[test]
+    fn provider_debug_output_omits_credentials_and_endpoint() {
+        let config = config("https://provider.invalid/v1".into());
+        let native = config.native_model().unwrap();
+        let curl = CurlOpenAiCompatibleModel::new(config.clone()).unwrap();
+        for debug in [format!("{config:?}"), format!("{native:?}"), format!("{curl:?}")] {
+            assert!(!debug.contains("secret-test-key"));
+            assert!(!debug.contains("provider.invalid"));
+            assert!(debug.contains("mock-model"));
         }
     }
 

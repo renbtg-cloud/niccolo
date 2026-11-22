@@ -534,7 +534,7 @@ impl ParsedEndpoint {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OpenAiCompatibleModel {
     provider: String,
     model: String,
@@ -543,6 +543,18 @@ pub struct OpenAiCompatibleModel {
     json_mode: bool,
     transport_timeout_secs: u64,
 }
+impl std::fmt::Debug for OpenAiCompatibleModel {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OpenAiCompatibleModel")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("json_mode", &self.json_mode)
+            .field("transport_timeout_secs", &self.transport_timeout_secs)
+            .finish_non_exhaustive()
+    }
+}
+
 impl OpenAiCompatibleModel {
     pub fn new(
         provider: &str,
