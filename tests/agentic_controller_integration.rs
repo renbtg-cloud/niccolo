@@ -753,6 +753,23 @@ async fn v211_v214_plan_is_versioned_hashed_and_rejects_cycles() {
         .await
         .is_err()
     );
+    let mut invalid_label = step(y, 2, "SYNTHESIZE", false, vec![x]);
+    invalid_label.label = "invalid\0label".into();
+    for invalid in [
+        step(y, 2, "SYNTHESIZE", false, vec![x, x]),
+        invalid_label,
+    ] {
+        assert!(matches!(
+            agentic_controller::create_plan(
+                &p,
+                sc,
+                s.principal,
+                &[step(x, 1, "INSPECT_SOURCES", false, vec![]), invalid],
+            )
+            .await,
+            Err(agentic_controller::ControllerError::Invalid)
+        ));
+    }
     let (rev, sha) = agentic_controller::create_plan(
         &p,
         sc,

@@ -673,6 +673,8 @@ Checkpoint 1.92 reserves an invocation slot when its ledger entry starts, includ
 
 Checkpoints 1.94–1.97 align the agentic plan and step ledger with the operation transaction. Concurrent plan writers allocate consecutive revisions. A step start checks the latest plan, dependency readiness and available step budget while holding the operation row lock. Concurrent finishes of a started step record one outcome. The read view loads operation state and plan details in one PostgreSQL snapshot. These protections preserve existing human pause and resume semantics.
 
+Checkpoints 1.98–1.99 make default planning repeatable across requests and worker startup. Both paths use the operation's persisted intent and reuse the existing plan when one has already been created. Explicit replanning still allocates a new revision. Invalid dependency lists and labels that cannot be stored are rejected before writing a plan.
+
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 
 The existing prohibition remains: Niccolò may model and analyze kinetic attacks and consequences but must not recommend or develop operational plans for kinetic attacks against persons or installations.

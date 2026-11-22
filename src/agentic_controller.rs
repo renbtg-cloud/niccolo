@@ -118,6 +118,8 @@ fn validate(steps: &[StepInput]) -> Result<(), ControllerError> {
                 || !valid_kind(&s.kind)
                 || s.label.trim().is_empty()
                 || s.label.len() > 1024
+                || s.label.contains('\0')
+                || s.depends_on.iter().collect::<BTreeSet<_>>().len() != s.depends_on.len()
                 || s.depends_on
                     .iter()
                     .any(|d| *d == s.step_id || !ids.contains(d))
