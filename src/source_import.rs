@@ -79,7 +79,7 @@ fn check_fragment(f: &SourceFragment) -> Result<(), ParseError> {
         Ok(())
     }
 }
-fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
+fn parse_eml(src: &str, legacy: bool) -> Result<Vec<SourceFragment>, ParseError> {
     let mut from: Option<&str> = None;
     let mut content_type: Option<&str> = None;
     let mut transfer: Option<&str> = None;
@@ -144,7 +144,7 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
                 "charset=us-ascii" | "charset=\"us-ascii\"" => true,
                 _ => return Err(ParseError::Unsupported("MIME parameter")),
             };
-            if charset.replace(declared_ascii).is_some() {
+            if charset.replace(declared_ascii).is_some() && !legacy {
                 return Err(ParseError::Unsupported("duplicate MIME charset"));
             }
         }
@@ -155,7 +155,7 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         return Err(ParseError::Unsupported("encoded email body"));
     }
     let content = &src[begin..];
-    if charset == Some(true) && !content.is_ascii() {
+    if !legacy && charset == Some(true) && !content.is_ascii() {
         return Err(ParseError::Unsupported("non-ASCII email body"));
     }
     if content.trim().is_empty() {
@@ -172,7 +172,7 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     Ok(vec![f])
 }
 
-fn looks_like_datetime(dt: &str) -> bool {
+fn looks_like_datetime(dt: &str, legacy: bool) -> bool {
     // Reject impossible calendar dates: otherwise a quoted line with a malformed
     // timestamp can silently split a message and misattribute its content.
     // The locale-dependent format remains deliberately limited to day/month/year.
@@ -189,13 +189,21 @@ fn looks_like_datetime(dt: &str) -> bool {
         return false;
     };
     let mut time_parts = time.trim().split(':');
-    let (Some(hour), Some(minute), None) = (
+    let (Some(hour), Some(minute), seconds, None) = (
+        time_parts.next(),
         time_parts.next(),
         time_parts.next(),
         time_parts.next(),
     ) else {
         return false;
     };
+    if seconds.is_some_and(|seconds| {
+        legacy || seconds.len() != 2
+            || !seconds.bytes().all(|byte| byte.is_ascii_digit())
+            || seconds.parse::<u8>().map_or(true, |value| value >= 60)
+    }) {
+        return false;
+    }
     if ![day, month, year, hour, minute].iter().all(|v| {
         !v.is_empty() && v.len() <= 4 && v.bytes().all(|b| b.is_ascii_digit())
     }) || hour.len() != 2 || minute.len() != 2 || year.len() < 2 {
@@ -223,16 +231,16 @@ fn looks_like_datetime(dt: &str) -> bool {
     (1..=days_in_month).contains(&day)
 }
 
-fn message_speaker(line: &str) -> Option<&str> {
+fn message_speaker(line: &str, legacy: bool) -> Option<&str> {
     let rest = if let Some(tail) = line.strip_prefix('[') {
         let (stamp, rest) = tail.split_once("] ")?;
-        if !looks_like_datetime(stamp) {
+        if !looks_like_datetime(stamp, legacy) {
             return None;
         }
         rest
     } else {
         let (stamp, rest) = line.split_once(" - ")?;
-        if !looks_like_datetime(stamp) {
+        if !looks_like_datetime(stamp, legacy) {
             return None;
         }
         rest
@@ -245,7 +253,7 @@ fn message_speaker(line: &str) -> Option<&str> {
         Some(speaker)
     }
 }
-fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
+fn parse_whatsapp(src: &str, legacy: bool) -> Result<Vec<SourceFragment>, ParseError> {
     let mut pending: Option<(usize, String)> = None;
     let mut results = Vec::new();
     let mut finish = |start: usize, end: usize, label: String| -> Result<(), ParseError> {
@@ -271,7 +279,7 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         } else {
             line
         };
-        if let Some(speaker) = message_speaker(header) {
+        if let Some(speaker) = message_speaker(header, legacy) {
             if let Some((old, label)) = pending.replace((start, speaker.to_owned())) {
                 finish(old, start, label)?;
             }
@@ -289,6 +297,22 @@ fn parse_whatsapp(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
 }
 
 pub fn parse_source(format: SourceFormat, raw: &[u8]) -> Result<ParsedSource, ParseError> {
+    parse_source_version(format, raw, false)
+}
+
+/// Reproduce boundaries accepted by earlier imports solely to verify replay.
+pub(crate) fn parse_source_for_replay(
+    format: SourceFormat,
+    raw: &[u8],
+) -> Result<ParsedSource, ParseError> {
+    parse_source_version(format, raw, true)
+}
+
+fn parse_source_version(
+    format: SourceFormat,
+    raw: &[u8],
+    legacy: bool,
+) -> Result<ParsedSource, ParseError> {
     if raw.is_empty() || raw.len() > MAX_DOCUMENT_BYTES {
         return Err(ParseError::InvalidSize);
     }
@@ -297,8 +321,8 @@ pub fn parse_source(format: SourceFormat, raw: &[u8]) -> Result<ParsedSource, Pa
         return Err(ParseError::Unsupported("NUL in text"));
     }
     let fragments = match format {
-        SourceFormat::Eml => parse_eml(src)?,
-        SourceFormat::WhatsappExport => parse_whatsapp(src)?,
+        SourceFormat::Eml => parse_eml(src, legacy)?,
+        SourceFormat::WhatsappExport => parse_whatsapp(src, legacy)?,
     };
     let sha256 = format!("{:x}", Sha256::digest(raw));
     Ok(ParsedSource {
@@ -359,6 +383,22 @@ mod tests {
     }
 
     #[test]
+    fn whatsapp_accepts_optional_seconds_without_splitting_impossible_times() {
+        let first = "[12/3/2025, 15:03:49] Alice: olá\n";
+        let quoted = "[12/3/2025, 15:03:60] Quoted: invalid timestamp\n";
+        let second = "[12/3/2025, 15:04] Bob: oi\n";
+        let raw = format!("{first}{quoted}{second}");
+        let parsed = parse_source(SourceFormat::WhatsappExport, raw.as_bytes()).unwrap();
+        assert_eq!(parsed.fragments.len(), 2);
+        let boundary = (first.len() + quoted.len()) as i32;
+        assert_eq!(parsed.fragments[0].byte_end, boundary);
+        assert_eq!(parsed.fragments[0].content, format!("{first}{quoted}"));
+        assert_eq!(parsed.fragments[1].byte_start, boundary);
+        assert_eq!(parsed.fragments[1].speaker_label, "Bob");
+        assert_eq!(parsed.fragments[1].content, second);
+    }
+
+    #[test]
     fn impossible_calendar_dates_remain_message_content() {
         let src = "[28/02/2025, 12:00] Ana: Start\n[29/02/2025, 12:01] Fake: quoted line\n[31/04/2025, 12:02] Fake: another quoted line\n[01/03/2025, 12:03] Beto: valid\n";
         let parsed = parse_source(SourceFormat::WhatsappExport, src.as_bytes()).unwrap();
@@ -366,10 +406,10 @@ mod tests {
         assert!(parsed.fragments[0].content.contains("29/02/2025"));
         assert!(parsed.fragments[0].content.contains("31/04/2025"));
         assert_eq!(parsed.fragments[1].speaker_label, "Beto");
-        assert!(looks_like_datetime("29/02/2024, 12:01"));
-        assert!(!looks_like_datetime("29/02/2025, 12:01"));
-        assert!(!looks_like_datetime("00/12/2025, 12:01"));
-        assert!(!looks_like_datetime("01/13/2025, 12:01"));
+        assert!(looks_like_datetime("29/02/2024, 12:01", false));
+        assert!(!looks_like_datetime("29/02/2025, 12:01", false));
+        assert!(!looks_like_datetime("00/12/2025, 12:01", false));
+        assert!(!looks_like_datetime("01/13/2025, 12:01", false));
     }
 
     #[test]

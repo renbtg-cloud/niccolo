@@ -1,7 +1,9 @@
 //! Atomic source-fragment ingestion with byte-level provenance and idempotent retries.
 //! No principal authentication is provided here. `workspace` MUST come from
 //! an upstream trusted authorization decision, never from a client-supplied id.
-use crate::source_import::{ParseError, ParsedSource, SourceFormat, parse_source};
+use crate::source_import::{
+    ParseError, ParsedSource, SourceFormat, parse_source, parse_source_for_replay,
+};
 use sqlx::PgPool;
 use thiserror::Error;
 use uuid::Uuid;
@@ -65,7 +67,14 @@ pub async fn ingest_source_with_operational_id(
     if locator.is_empty() || locator.len() > 1024 || locator.chars().any(char::is_control) {
         return Err(ImportError::Locator);
     }
-    let parsed = parse_source(format, raw)?;
+    // Earlier parser rules can verify existing records but cannot admit a new document.
+    let (parsed, parse_error) = match parse_source(format, raw) {
+        Ok(parsed) => (parsed, None),
+        Err(error) => match parse_source_for_replay(format, raw) {
+            Ok(parsed) => (parsed, Some(error)),
+            Err(_) => return Err(error.into()),
+        },
+    };
     let mut tx = pool.begin().await?;
     let privileged: bool = sqlx::query_scalar(
         "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
@@ -160,13 +169,23 @@ pub async fn ingest_source_with_operational_id(
         }
     }
 
-    let inserted=sqlx::query(
-        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) \
-         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id,document_id) DO NOTHING"
-    )
-      .bind(workspace).bind(document_id).bind(format.db_value()).bind(locator)
-      .bind(&parsed.sha256).bind(parsed.byte_length)
-      .execute(&mut *tx).await?.rows_affected()==1;
+    let inserted = if parse_error.is_none() {
+        sqlx::query(
+            "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
+             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id,document_id) DO NOTHING",
+        )
+        .bind(workspace)
+        .bind(document_id)
+        .bind(format.db_value())
+        .bind(locator)
+        .bind(&parsed.sha256)
+        .bind(parsed.byte_length)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected() == 1
+    } else {
+        false
+    };
 
     let fragment_ids = if inserted {
         write_fragments(&mut tx, workspace, document_id, locator, &parsed).await?
@@ -185,9 +204,9 @@ pub async fn ingest_source_with_operational_id(
                 || h != &parsed.sha256
                 || *size != parsed.byte_length
         }) {
-            return Err(ImportError::DocumentConflict);
+            return Err(parse_error.map_or(ImportError::DocumentConflict, ImportError::Parse));
         }
-        verify_replay(&mut tx, workspace, document_id, &parsed).await?
+        verify_replay(&mut tx, workspace, document_id, &parsed, format, raw).await?
     };
 
     // Metadata/fragments and the byte-exact original commit atomically.
@@ -296,6 +315,8 @@ async fn verify_replay(
     workspace: Uuid,
     document_id: Uuid,
     parsed: &ParsedSource,
+    format: SourceFormat,
+    raw: &[u8],
 ) -> Result<Vec<Uuid>, ImportError> {
     let stored: Vec<(i32, Uuid, i32, i32, String, String)> = sqlx::query_as(
         "SELECT f.ordinal,f.evidence_id,f.byte_start,f.byte_end,f.speaker_label,e.content \
@@ -307,25 +328,24 @@ async fn verify_replay(
     .bind(document_id)
     .fetch_all(&mut **tx)
     .await?;
-    if stored.len() != parsed.fragments.len() {
+    let matches = |candidate: &ParsedSource| {
+        stored.len() == candidate.fragments.len()
+            && stored.iter().zip(&candidate.fragments).all(|(row, expected)| {
+                let (ordinal, _, start, end, speaker, content) = row;
+                (*ordinal, *start, *end, speaker.as_str(), content.as_str())
+                    == (
+                        expected.ordinal,
+                        expected.byte_start,
+                        expected.byte_end,
+                        expected.speaker_label.as_str(),
+                        expected.content.as_str(),
+                    )
+            })
+    };
+    if !matches(parsed)
+        && !parse_source_for_replay(format, raw).is_ok_and(|legacy| matches(&legacy))
+    {
         return Err(ImportError::DocumentConflict);
     }
-    let mut ids = Vec::with_capacity(stored.len());
-    for ((ordinal, id, start, end, speaker, content), expected) in
-        stored.into_iter().zip(&parsed.fragments)
-    {
-        if (ordinal, start, end, speaker.as_str(), content.as_str())
-            != (
-                expected.ordinal,
-                expected.byte_start,
-                expected.byte_end,
-                expected.speaker_label.as_str(),
-                expected.content.as_str(),
-            )
-        {
-            return Err(ImportError::DocumentConflict);
-        }
-        ids.push(id);
-    }
-    Ok(ids)
+    Ok(stored.into_iter().map(|(_, id, ..)| id).collect())
 }

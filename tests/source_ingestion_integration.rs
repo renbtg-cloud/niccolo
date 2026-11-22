@@ -104,6 +104,72 @@ async fn source_bytes_are_retained_exactly_in_the_authoritative_database() {
 }
 
 #[tokio::test]
+async fn parser_upgrades_preserve_historical_fragment_replays() {
+    let (admin, service) = pools().await;
+    let workspace = workspace(&admin).await;
+    let email_header = "From: Ana\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\n";
+    let email = format!("{email_header}olá");
+    let whatsapp = "[02/11/2026, 12:00] Ana: first\n[02/11/2026, 12:01:05] Bob: second\n";
+
+    for (format, raw, start, fresh_fragment_count) in [
+        (SourceFormat::Eml, email.as_str(), email_header.len(), None),
+        (SourceFormat::WhatsappExport, whatsapp, 0, Some(2)),
+    ] {
+        let locator = "fixture://previous-parser";
+        let (document, evidence) = seed_historical_fragment(
+            &admin, workspace, format, locator, raw, start,
+        ).await;
+        let replay = ingest_source(&service, workspace, document, format, locator, raw.as_bytes())
+            .await.unwrap();
+        assert!(replay.replayed);
+        assert_eq!(replay.fragment_ids, vec![evidence]);
+
+        let fresh = ingest_source(
+            &service, workspace, Uuid::new_v4(), format, locator, raw.as_bytes(),
+        ).await;
+        match fresh_fragment_count {
+            Some(count) => assert_eq!(fresh.unwrap().fragment_ids.len(), count),
+            None => assert!(matches!(fresh, Err(ImportError::Parse(_)))),
+        }
+    }
+}
+
+async fn seed_historical_fragment(
+    admin: &PgPool,
+    workspace: Uuid,
+    format: SourceFormat,
+    locator: &str,
+    raw: &str,
+    start: usize,
+) -> (Uuid, Uuid) {
+    use sha2::{Digest, Sha256};
+
+    let document = Uuid::new_v4();
+    let evidence = Uuid::new_v4();
+    let sha = format!("{:x}", Sha256::digest(raw.as_bytes()));
+    let end = raw.len();
+    sqlx::query(
+        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
+         VALUES ($1,$2,$3,$4,$5,$6)",
+    )
+    .bind(workspace).bind(document).bind(format.db_value()).bind(locator).bind(sha).bind(end as i64)
+    .execute(admin).await.unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class,admissible)
+         VALUES ($1,$2,$3,$4,'REPORTED_SPEECH',true)",
+    )
+    .bind(workspace).bind(evidence).bind(format!("{locator}#bytes={start}-{end}")).bind(&raw[start..])
+    .execute(admin).await.unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
+         VALUES ($1,$2,0,$3,$4,$5,'Ana')",
+    )
+    .bind(workspace).bind(document).bind(evidence).bind(start as i32).bind(end as i32)
+    .execute(admin).await.unwrap();
+    (document, evidence)
+}
+
+#[tokio::test]
 async fn original_bytes_are_not_visible_outside_the_authorized_workspace() {
     let (admin, service) = pools().await;
     let w = workspace(&admin).await;
