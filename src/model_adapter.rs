@@ -299,6 +299,10 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                 // returning early here would strand this invocation as STARTED.
                 if response.prompt_tokens.is_some_and(|n| n < 0)
                     || response.completion_tokens.is_some_and(|n| n < 0)
+                    || [response.effective_provider.as_deref(), response.effective_model.as_deref()]
+                        .into_iter()
+                        .flatten()
+                        .any(|identity| identity.contains('\0'))
                 {
                     last_error = ModelError::Invalid;
                 } else if policy.max_total_tokens.is_some_and(|max| total > i128::from(max)) {

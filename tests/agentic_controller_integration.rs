@@ -109,6 +109,7 @@ async fn last_step_event(
 struct ReportedUsageModel {
     prompt_tokens: i64,
     completion_tokens: i64,
+    effective_model: Option<&'static str>,
     calls: AtomicUsize,
 }
 
@@ -123,7 +124,7 @@ impl ReasoningModel for ReportedUsageModel {
                 prompt_tokens: Some(self.prompt_tokens),
                 completion_tokens: Some(self.completion_tokens),
                 effective_provider: None,
-                effective_model: None,
+                effective_model: self.effective_model.map(str::to_owned),
                 fallback_used: false,
             })
         })
@@ -183,6 +184,38 @@ async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
 }
 
 #[tokio::test]
+async fn invalid_provider_attribution_fails_the_invocation_without_stranding_it() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 32).await;
+    let model = ReportedUsageModel {
+        calls: AtomicUsize::new(0),
+        prompt_tokens: 90,
+        completion_tokens: 20,
+        effective_model: Some("fixture\0model"),
+    };
+    assert!(
+        niccolo_evidence::bff_executor::execute(&app, scope, s.principal, &model)
+            .await
+            .is_err()
+    );
+    assert_eq!(model.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "FAILED");
+    let (status, effective_model): (String, Option<String>) = sqlx::query_as(
+        "SELECT status,effective_model FROM niccolo.model_invocations
+         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(scope.operation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(status, "FAILED");
+    assert_eq!(effective_model, None);
+}
+
+#[tokio::test]
 async fn model_token_totals_do_not_overflow_budget_accounting() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -210,6 +243,7 @@ async fn model_token_totals_do_not_overflow_budget_accounting() {
         calls: AtomicUsize::new(0),
         prompt_tokens: i64::MAX,
         completion_tokens: 1,
+        effective_model: None,
     };
     assert!(matches!(
         model_adapter::invoke_recorded_with_policy(
@@ -253,6 +287,7 @@ async fn model_token_budget_breach_is_not_retried_or_misreported() {
         calls: AtomicUsize::new(0),
         prompt_tokens: 90,
         completion_tokens: 20,
+        effective_model: None,
     };
     let result = model_adapter::invoke_recorded_with_policy(
         &app,
@@ -325,6 +360,7 @@ async fn runtime_rejects_a_response_over_the_remaining_operation_budget() {
         calls: AtomicUsize::new(0),
         prompt_tokens: 90,
         completion_tokens: 20,
+        effective_model: None,
     };
     assert!(matches!(
         agentic_runtime::run_until_boundary(&app, scope, s.principal, &model).await,
