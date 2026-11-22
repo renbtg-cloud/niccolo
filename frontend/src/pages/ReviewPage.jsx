@@ -48,6 +48,7 @@ function ReviewContent(){
    pendingClarification.current.delete(signature);
    return result.value;
  },onSuccess:async(_,variables)=>{
+   if(!isCurrentSession(generation))return;
    setClarificationDrafts(current=>{
      if(current[variables.questionId]?.trim()!==variables.text) return current;
      const remaining={...current};
