@@ -327,7 +327,8 @@ function ConnectedSituation({client}){
       {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
       {correctContext.isSuccess&&<p role="status">Context correction recorded.</p>}
       {correctContext.error&&<p className="error" role="alert">{correctContext.error.message}</p>}
-      {retractContext.error&&<p className="error">{retractContext.error.message}</p>}
+      {retractContext.isSuccess&&<p role="status">Context retracted.</p>}
+      {retractContext.error&&<p className="error" role="alert">{retractContext.error.message}</p>}
     </article>
 
     <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.sourceCount}</strong> attached record(s)</li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add records or human context when they would make the reasoning better grounded.</p>}<small>This is a preparation summary, not a completeness score and not a gate.</small>{guide.sourceCount>0&&<p><Link to="/identities">Review who source labels refer to →</Link></p>}</article>
