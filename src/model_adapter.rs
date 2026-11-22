@@ -25,6 +25,8 @@ pub enum ModelError {
     Invalid,
     #[error("model invocation failed: {0}")]
     Provider(String),
+    #[error("model invocation failed: HTTP {0}")]
+    HttpStatus(u16),
     #[error("model invocation timed out")]
     Timeout,
     #[error("model invocation is no longer active")]
@@ -259,7 +261,10 @@ pub async fn invoke_recorded<M: ReasoningModel + ?Sized>(
 }
 
 fn retryable_model_error(error: &ModelError) -> bool {
-    matches!(error, ModelError::Provider(_) | ModelError::Timeout)
+    matches!(
+        error,
+        ModelError::Provider(_) | ModelError::Timeout | ModelError::HttpStatus(408 | 429 | 500..=599)
+    )
 }
 
 pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
@@ -665,7 +670,7 @@ impl OpenAiCompatibleModel {
         if !(200..300).contains(&status) {
             // Providers can echo request contents in error bodies. Keep the
             // status for diagnosis without copying the body into ledgers.
-            return Err(ModelError::Provider(format!("HTTP {status}")));
+            return Err(ModelError::HttpStatus(status));
         }
         let value: Value = serde_json::from_slice(&payload)
             .map_err(|e| ModelError::Provider(format!("invalid provider JSON: {e}")))?;
@@ -1004,6 +1009,12 @@ mod bounded_response_tests {
         assert!(!retryable_model_error(&ModelError::Invalid));
         assert!(retryable_model_error(&ModelError::Timeout));
         assert!(retryable_model_error(&ModelError::Provider("transient".into())));
+        for status in [408, 429, 500, 503] {
+            assert!(retryable_model_error(&ModelError::HttpStatus(status)));
+        }
+        for status in [301, 400, 401, 403, 404, 422] {
+            assert!(!retryable_model_error(&ModelError::HttpStatus(status)));
+        }
     }
 
     #[test]

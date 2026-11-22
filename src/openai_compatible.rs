@@ -269,7 +269,7 @@ impl ReasoningModel for CurlOpenAiCompatibleModel {
                 .unwrap_or((&[], &[]));
             let status = std::str::from_utf8(status).ok().and_then(|s| s.parse::<u16>().ok());
             if let Some(code) = status.filter(|code| (300..=599).contains(code)) {
-                return Err(ModelError::Provider(format!("HTTP {code}")));
+                return Err(ModelError::HttpStatus(code));
             }
             if !output.status.success() {
                 if output.status.code() == Some(28) {
