@@ -22,7 +22,7 @@ describe('primary analysis path', () => {
   });
 
   it('explains unavailable model setup before starting costly analysis work', () => {
-    expect(operations).toContain('client.readiness()');
+    expect(operations).toContain('useRuntimeReadiness(client)');
     expect(operations).toContain('readiness.data?.model_configured===false');
     expect(operations).toContain('A reasoning model has not been configured.');
     expect(operations).toContain('run.isPending||modelUnavailable||readiness.isPending||readiness.isError');

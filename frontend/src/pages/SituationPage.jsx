@@ -1,3 +1,4 @@
+import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -66,13 +67,7 @@ function ConnectedSituation({client}){
     enabled: !!client,
     queryFn: async () => (await client.sources(sourceCursor, 100)).value,
   });
-  const readiness = useQuery({
-    queryKey: ['mvp-runtime-readiness'],
-    enabled: !!client,
-    queryFn: async () => (await client.readiness()).value,
-    staleTime: 60000,
-    retry: false,
-  });
+  const readiness = useRuntimeReadiness(client);
   const refresh = async () => Promise.all([
     qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
     qc.invalidateQueries({ queryKey: qk.sources(client.config) }),

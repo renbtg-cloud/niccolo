@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -37,13 +38,7 @@ function AnswerPanel({ output, operation, error }) {
 
 export function OperationsPage(){
  const client=useClient(); const qc=useQueryClient();
- const readiness=useQuery({
-   queryKey:['mvp-runtime-readiness'],
-   enabled:!!client,
-   queryFn:async()=> (await client.readiness()).value,
-   staleTime:60000,
-   retry:false,
- });
+ const readiness = useRuntimeReadiness(client);
  const modelUnavailable=readiness.data?.model_configured===false;
  const pendingLaunch=useRef(null);
  const pendingHumanResponse=useRef(null);
