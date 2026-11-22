@@ -126,7 +126,7 @@ export class NiccoloClient {
   operation(operationId, etag) { return this.request('GET', operationPath(this.config,operationId), { etag }); }
   waitOperation(operationId, afterVersion, timeoutMs = 5000) { return this.request('GET', `${operationPath(this.config,operationId)}/wait?after_version=${afterVersion}&timeout_ms=${timeoutMs}`); }
   observeOperation(operationId, afterVersion = 0, afterEvent = 0, timeoutMs = 5000, limit = 100, signal) { return this.request('GET', `${operationPath(this.config,operationId)}/observe?after_version=${afterVersion}&after_event=${afterEvent}&timeout_ms=${timeoutMs}&limit=${limit}`, { signal }); }
-  agentic(operationId) { return this.request('GET', `${operationPath(this.config,operationId)}/agentic`); }
+  agentic(operationId, signal) { return this.request('GET', `${operationPath(this.config,operationId)}/agentic`, { signal }); }
   planAgentic(operationId) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic`); }
   respondAgentic(operationId, stepId, body) { return this.request('POST', `${operationPath(this.config,operationId)}/agentic/steps/${stepId}/human-response`, { body }); }
   operationEvents(operationId, after = 0, limit = 50) { return this.request('GET', `${operationPath(this.config,operationId)}/events?after=${after}&limit=${limit}`); }

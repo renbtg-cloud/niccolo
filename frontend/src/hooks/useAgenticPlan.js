@@ -13,7 +13,7 @@ export function useAgenticPlan(operationId, terminal = false) {
   return useQuery({
     queryKey: client && operationId ? qk.agentic(client.config, operationId) : ['agentic-plan','none'],
     enabled: Boolean(client && operationId),
-    queryFn: async () => (await client.agentic(operationId)).value,
+    queryFn: async ({ signal }) => (await client.agentic(operationId, signal)).value,
     retry: false,
     refetchInterval: terminal ? false : agenticPlanPollInterval,
   });
