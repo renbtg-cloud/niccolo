@@ -6,6 +6,6 @@ export function useQuestions(after = null) {
   return useQuery({
     queryKey: client ? ['questions', client.config.workspace, after] : ['questions','none'],
     enabled: Boolean(client),
-    queryFn: async () => (await client.questions(after, 100)).value,
+    queryFn: async ({ signal }) => (await client.questions(after, 100, signal)).value,
   });
 }
