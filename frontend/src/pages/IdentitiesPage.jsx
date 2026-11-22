@@ -214,8 +214,8 @@ export function IdentitiesPage() {
       }}>Next people</button>
     </div>
 
-    {(sources.error || situation.error || identities.error || speakers.error || bindings.error || history.error) &&
-      <p className="error">{(sources.error || situation.error || identities.error || speakers.error || bindings.error || history.error).message}</p>}
+    {(sources.error || situation.error || identities.error || speakers.error || bindings.error) &&
+      <p className="error">{(sources.error || situation.error || identities.error || speakers.error || bindings.error).message}</p>}
 
     {documentId&&!speakers.isLoading&&<article className="identity-summary"><strong>{mappingSummary.mappedCount}/{mappingSummary.speakerCount}</strong> source label(s) mapped by a human.{mappingSummary.unmappedCount>0?<p>{mappingSummary.unmappedCount} label(s) remain unmapped. That is allowed; Niccolò will not infer identity merely because labels match.</p>:mappingSummary.speakerCount>0?<p>Every extracted label in this record has an explicit mapping. Coverage does not prove that the mappings are correct.</p>:null}<small>Identity mappings are human assertions with history, not verified facts.</small></article>}
 
@@ -236,6 +236,8 @@ export function IdentitiesPage() {
 
     {documentId && <details open={historyOpen} onToggle={event=>setHistoryOpen(event.currentTarget.open)}>
       <summary>Identity mapping history</summary>
+      {history.isError && <div><p role="alert">Mapping history unavailable: {history.error.message}</p>
+        <button type="button" disabled={history.isFetching} onClick={()=>void history.refetch()}>Retry mapping history</button></div>}
       <ol>
         {(history.data?.events ?? []).map((event) => <li key={event.event_id}>
           <strong>{event.speaker_label}</strong> — {event.operation.toLowerCase()}
