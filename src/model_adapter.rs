@@ -321,21 +321,44 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                         break;
                     }
                     let response_sha = digest(&response_json);
-                    let mut tx = scoped(pool, scope.operation.workspace, false).await?;
-                    let changed = sqlx::query("UPDATE niccolo.model_invocations SET response_json=$7,response_sha256=$8,status='SUCCEEDED',prompt_tokens=$9,completion_tokens=$10,attempt_count=$11,latency_ms=$12,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-                  .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&response_json).bind(&response_sha).bind(response.prompt_tokens).bind(response.completion_tokens).bind(attempt as i32).bind(started.elapsed().as_millis() as i64).execute(&mut *tx).await?.rows_affected();
-                    if changed != 1 {
-                        return Err(ModelError::InvocationNoLongerActive);
-                    }
                     let effective_provider = response
                         .effective_provider
-                        .clone()
                         .unwrap_or_else(|| model.provider().into());
                     let effective_model = response
                         .effective_model
-                        .clone()
                         .unwrap_or_else(|| model.model().into());
-                    sqlx::query("UPDATE niccolo.model_invocations SET effective_provider=$7,effective_model=$8,fallback_used=$9 WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6").bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(&effective_provider).bind(&effective_model).bind(response.fallback_used).execute(&mut *tx).await?;
+                    let mut tx = scoped(pool, scope.operation.workspace, false).await?;
+                    let changed = sqlx::query(
+                        "UPDATE niccolo.model_invocations
+                         SET response_json=$7, response_sha256=$8, status='SUCCEEDED',
+                             prompt_tokens=$9, completion_tokens=$10, attempt_count=$11,
+                             latency_ms=$12, effective_provider=$13, effective_model=$14,
+                             fallback_used=$15, completed_at=clock_timestamp()
+                         WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3
+                           AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6
+                           AND status='STARTED'",
+                    )
+                    .bind(scope.operation.workspace)
+                    .bind(scope.operation.situation)
+                    .bind(scope.operation.operation)
+                    .bind(scope.plan_revision)
+                    .bind(scope.step_id)
+                    .bind(invocation)
+                    .bind(&response_json)
+                    .bind(&response_sha)
+                    .bind(response.prompt_tokens)
+                    .bind(response.completion_tokens)
+                    .bind(attempt as i32)
+                    .bind(started.elapsed().as_millis() as i64)
+                    .bind(&effective_provider)
+                    .bind(&effective_model)
+                    .bind(response.fallback_used)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+                    if changed != 1 {
+                        return Err(ModelError::InvocationNoLongerActive);
+                    }
                     tx.commit().await?;
                     return Ok(InvocationView {
                         invocation_id: invocation,
