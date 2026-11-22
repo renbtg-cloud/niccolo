@@ -117,7 +117,7 @@ function ConnectedSituation({client}){
     mutationFn: async (source) => {
       const blob = await client.downloadSourceOriginal(source.document_id);
       if (!isCurrentSession(generation)) return;
-      const ext = source.format === 'EML' ? 'eml' : 'txt';
+      const ext = { EML: 'eml', PDF: 'pdf' }[source.format] ?? 'txt';
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       try {
@@ -227,14 +227,14 @@ function ConnectedSituation({client}){
 
     <article className="source-upload">
       <h3>Add records</h3>
-      <p>Upload an email (.eml) or a plain-text WhatsApp/text export (.txt). Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
+      <p>Upload an email (.eml), a plain-text WhatsApp export (.txt), or an original PDF (.pdf). Use the PDF passage form under Human context to choose what Niccolò should consider. Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
       <input
         ref={sourceFileInput}
         aria-label="Source file"
         aria-invalid={Boolean(fileError)}
         aria-describedby={fileError?fileErrorId:undefined}
         type="file"
-        accept=".eml,.txt,message/rfc822,text/plain"
+        accept=".eml,.txt,.pdf,message/rfc822,text/plain,application/pdf"
         disabled={upload.isPending}
         onChange={(event) => {
           pendingDocumentId.current = null;

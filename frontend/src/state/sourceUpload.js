@@ -8,7 +8,7 @@ function validateSourceSize(file) {
 
 export function sourceDescriptor(file) {
   if (!file || typeof file.name !== 'string' || !file.name.trim()) {
-    throw new Error('Choose an email (.eml) or WhatsApp/text export (.txt).');
+    throw new Error('Choose an email (.eml) WhatsApp/text export (.txt), or PDF (.pdf).');
   }
   validateSourceSize(file);
   const name = file.name.trim();
@@ -25,8 +25,10 @@ export function sourceDescriptor(file) {
     contentType = 'message/rfc822';
   } else if (lower.endsWith('.txt')) {
     contentType = 'text/plain';
+  } else if (lower.endsWith('.pdf')) {
+    contentType = 'application/pdf';
   } else {
-    throw new Error('Unsupported source type. Use .eml or .txt.');
+    throw new Error('Unsupported source type. Use .eml, .txt, or .pdf.');
   }
   return { locator: name, contentType };
 }
@@ -39,6 +41,7 @@ export function restoreSourceRequest(source, file) {
   const contentType = {
     EML: 'message/rfc822',
     WHATSAPP_EXPORT: 'text/plain',
+    PDF: 'application/pdf',
   }[source.format];
   if (!contentType) throw new Error('This source format does not support restoring an original.');
   return {
