@@ -293,17 +293,15 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
         .await;
         match outcome {
             Ok(Ok(response)) => {
-                let total = response
-                    .prompt_tokens
-                    .unwrap_or(0)
-                    .saturating_add(response.completion_tokens.unwrap_or(0));
+                let total = i128::from(response.prompt_tokens.unwrap_or(0))
+                    + i128::from(response.completion_tokens.unwrap_or(0));
                 // A broken provider response must reach the FAILED ledger transition;
                 // returning early here would strand this invocation as STARTED.
                 if response.prompt_tokens.is_some_and(|n| n < 0)
                     || response.completion_tokens.is_some_and(|n| n < 0)
                 {
                     last_error = ModelError::Invalid;
-                } else if policy.max_total_tokens.is_some_and(|max| total > max) {
+                } else if policy.max_total_tokens.is_some_and(|max| total > i128::from(max)) {
                     last_error = ModelError::Budget;
                 } else {
                     let response_json = serde_json::to_string(&response.value)?;

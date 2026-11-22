@@ -28,6 +28,7 @@ pub struct BudgetView {
     pub used_invocations: i64,
     pub remaining_invocations: i64,
     pub max_total_tokens: i64,
+    /// Saturates at the largest representable token total.
     pub used_total_tokens: i64,
     pub remaining_total_tokens: i64,
     /// Number of completed calls whose provider did not report all usage.
@@ -165,7 +166,7 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
     let input: Value = serde_json::from_str(&input).map_err(|_| BudgetError::Invalid)?;
     let (used_invocations, used_total_tokens, missing_usage): (i64, i64, i64) = sqlx::query_as(
         "SELECT count(*), \
-         coalesce(sum(coalesce(prompt_tokens,0)::bigint+coalesce(completion_tokens,0)::bigint),0)::bigint, \
+         LEAST(coalesce(sum(coalesce(prompt_tokens,0)::numeric+coalesce(completion_tokens,0)::numeric),0),9223372036854775807)::bigint, \
          count(*) FILTER (WHERE prompt_tokens IS NULL OR completion_tokens IS NULL) \
          FROM niccolo.model_invocations \
          WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND status='SUCCEEDED'",

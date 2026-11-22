@@ -87,20 +87,22 @@ fn step(id: Uuid, n: i32, kind: &str, human: bool, deps: Vec<Uuid>) -> StepInput
         depends_on: deps,
     }
 }
-struct OverBudgetModel {
+struct ReportedUsageModel {
+    prompt_tokens: i64,
+    completion_tokens: i64,
     calls: AtomicUsize,
 }
 
-impl ReasoningModel for OverBudgetModel {
+impl ReasoningModel for ReportedUsageModel {
     fn provider(&self) -> &str { "over-budget-fixture" }
     fn model(&self) -> &str { "static-response" }
     fn invoke<'a>(&'a self, _request: &'a ModelRequest) -> ModelFuture<'a> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async {
+        Box::pin(async move {
             Ok(ModelResponse {
                 value: json!({"status":"ok"}),
-                prompt_tokens: Some(90),
-                completion_tokens: Some(20),
+                prompt_tokens: Some(self.prompt_tokens),
+                completion_tokens: Some(self.completion_tokens),
                 effective_provider: None,
                 effective_model: None,
                 fallback_used: false,
@@ -162,6 +164,59 @@ async fn successful_model_call_without_usage_is_flagged_as_unaccounted() {
 }
 
 #[tokio::test]
+async fn model_token_totals_do_not_overflow_budget_accounting() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s, 10).await;
+    let step_id = Uuid::new_v4();
+    let (plan_revision, _) = agentic_controller::create_plan(
+        &app,
+        scope,
+        s.principal,
+        &[step(step_id, 1, "INSPECT_SOURCES", false, vec![])],
+    )
+    .await
+    .unwrap();
+    let invocation = InvocationScope {
+        operation: scope,
+        plan_revision,
+        step_id,
+    };
+    let request = ModelRequest {
+        purpose: "INSPECT_SOURCES".into(),
+        input: json!({}),
+        output_contract: json!({}),
+    };
+    let model = ReportedUsageModel {
+        calls: AtomicUsize::new(0),
+        prompt_tokens: i64::MAX,
+        completion_tokens: 1,
+    };
+    assert!(matches!(
+        model_adapter::invoke_recorded_with_policy(
+            &app,
+            invocation,
+            s.principal,
+            &model,
+            &request,
+            InvocationPolicy {
+                max_total_tokens: Some(i64::MAX),
+                ..InvocationPolicy::default()
+            },
+        )
+        .await,
+        Err(ModelError::Budget)
+    ));
+    model_adapter::invoke_recorded(&app, invocation, s.principal, &model, &request)
+        .await
+        .unwrap();
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_total_tokens, i64::MAX);
+    assert_eq!(budget.remaining_total_tokens, 0);
+    assert_eq!(budget.stop_reasons, ["TOKEN_LIMIT"]);
+}
+
+#[tokio::test]
 async fn model_token_budget_breach_is_not_retried_or_misreported() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -175,7 +230,11 @@ async fn model_token_budget_breach_is_not_retried_or_misreported() {
     )
     .await
     .unwrap();
-    let model = OverBudgetModel { calls: AtomicUsize::new(0) };
+    let model = ReportedUsageModel {
+        calls: AtomicUsize::new(0),
+        prompt_tokens: 90,
+        completion_tokens: 20,
+    };
     let result = model_adapter::invoke_recorded_with_policy(
         &app,
         InvocationScope { operation: scope, plan_revision: revision, step_id },
@@ -243,7 +302,11 @@ async fn runtime_rejects_a_response_over_the_remaining_operation_budget() {
     )
     .await
     .unwrap();
-    let model = OverBudgetModel { calls: AtomicUsize::new(0) };
+    let model = ReportedUsageModel {
+        calls: AtomicUsize::new(0),
+        prompt_tokens: 90,
+        completion_tokens: 20,
+    };
     assert!(matches!(
         agentic_runtime::run_until_boundary(&app, scope, s.principal, &model).await,
         Err(agentic_runtime::RuntimeError::Model(ModelError::Budget))
