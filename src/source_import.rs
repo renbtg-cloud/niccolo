@@ -131,20 +131,21 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
     }
     let begin = body_start.ok_or(ParseError::Unsupported("email header/body delimiter"))?;
     let label = from.ok_or(ParseError::Unsupported("email From"))?;
+    let mut charset = None;
     if let Some(ct) = content_type {
         let normalized = ct.to_ascii_lowercase();
         let mut pieces = normalized.split(';').map(str::trim);
         if pieces.next() != Some("text/plain") {
             return Err(ParseError::Unsupported("non-plain-text MIME"));
         }
-        for param in pieces {
-            if !param.is_empty()
-                && param != "charset=utf-8"
-                && param != "charset=us-ascii"
-                && param != "charset=\"utf-8\""
-                && param != "charset=\"us-ascii\""
-            {
-                return Err(ParseError::Unsupported("MIME parameter"));
+        for param in pieces.filter(|param| !param.is_empty()) {
+            let declared_ascii = match param {
+                "charset=utf-8" | "charset=\"utf-8\"" => false,
+                "charset=us-ascii" | "charset=\"us-ascii\"" => true,
+                _ => return Err(ParseError::Unsupported("MIME parameter")),
+            };
+            if charset.replace(declared_ascii).is_some() {
+                return Err(ParseError::Unsupported("duplicate MIME charset"));
             }
         }
     }
@@ -154,6 +155,9 @@ fn parse_eml(src: &str) -> Result<Vec<SourceFragment>, ParseError> {
         return Err(ParseError::Unsupported("encoded email body"));
     }
     let content = &src[begin..];
+    if charset == Some(true) && !content.is_ascii() {
+        return Err(ParseError::Unsupported("non-ASCII email body"));
+    }
     if content.trim().is_empty() {
         return Err(ParseError::Empty);
     }
@@ -387,6 +391,28 @@ mod tests {
             &src.as_bytes()[fragment.byte_start as usize..fragment.byte_end as usize]
         );
         assert_eq!(fragment.content, "Olá!\r\n");
+    }
+
+    #[test]
+    fn accepts_utf8_bodies_and_rejects_conflicting_charset_declarations() {
+        let email = |parameters: &str, body: &str| {
+            format!("From: Alice\r\nContent-Type: text/plain; {parameters}\r\n\r\n{body}")
+        };
+        let utf8 = email("charset=\"UTF-8\"", "olá");
+        let ascii = email("charset=US-ASCII", "hello");
+        for (source, expected) in [(utf8, "olá"), (ascii, "hello")] {
+            let parsed = parse_source(SourceFormat::Eml, source.as_bytes()).unwrap();
+            assert_eq!(parsed.fragments[0].content, expected);
+        }
+
+        let incompatible = email("charset=us-ascii", "olá");
+        let duplicate = email("charset=utf-8; charset=us-ascii", "hello");
+        for source in [incompatible, duplicate] {
+            assert!(matches!(
+                parse_source(SourceFormat::Eml, source.as_bytes()),
+                Err(ParseError::Unsupported(_))
+            ));
+        }
     }
 
     #[test]
