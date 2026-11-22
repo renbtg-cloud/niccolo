@@ -18,8 +18,8 @@ export function ClarificationCard({ question, draft, onChange, onSubmit, saving 
     {answers.length > 0 && <ul>{answers.map(answer =>
       <li key={answer.answer_id}>{answer.text}<div><small>Recorded later as {answer.kind}; not evidence and not part of the original frozen input.</small></div></li>
     )}</ul>}
-    {pages.length>1 && <button type="button" onClick={()=>setPages(current=>current.slice(0,-1))}>Previous answers</button>}
-    {history.data?.next_after && <button type="button" onClick={()=>setPages(current=>[...current,history.data.next_after])}>More answers</button>}
+    {pages.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setPages(current=>current.slice(0,-1))}>Previous answers</button>}
+    {history.data?.next_after && <button type="button" disabled={history.isFetching} onClick={()=>setPages(current=>[...current,history.data.next_after])}>More answers</button>}
     <form onSubmit={event=>{event.preventDefault();if(!saving && draft.trim())onSubmit(draft.trim());}}>
       <label>Your answer<textarea aria-label={`Clarification answer ${question.question_id}`} value={draft} onChange={event=>onChange(event.target.value)} placeholder="Answer in your own words; this becomes attributed context."/></label>
       <button type="submit" disabled={saving||!draft.trim()}>{saving?'Saving…':'Add answer as context'}</button>
