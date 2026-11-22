@@ -100,7 +100,7 @@ export function OperationsPage(){
    <label>Goal / question (optional)<textarea {...register('goal')} placeholder="Use your own words. Niccolò can work from the Situation even if you leave this blank."/></label>
    <details><summary>Advanced execution</summary><label>Delivery<select {...register('mode')}><option value="sync">Wait for the answer</option><option value="async">Return immediately and observe by PULL</option></select></label><label>Reasoning step budget<input aria-label="Step budget" type="number" {...register('stepBudget')}/></label><small>The default settings are appropriate for ordinary use. Change these only when testing execution behavior.</small></details>
    <button disabled={run.isPending||modelUnavailable||readiness.isPending||readiness.isError}>{run.isPending?'Analyzing…':'Analyze this Situation'}</button>
- </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error">{run.error.message}</p>}
+ </form>{Object.keys(errors).length>0&&<p className="error">Check the request fields.</p>}{run.error&&<p className="error" role="alert">{run.error.message}</p>}
  {observed.isError && <div>
    <p role="alert">Could not refresh analysis progress. The last known progress may be out of date.</p>
    <button type="button" disabled={observed.isFetching} onClick={()=>void observed.refetch()}>Retry progress</button>
