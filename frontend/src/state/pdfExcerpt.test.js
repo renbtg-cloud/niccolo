@@ -16,3 +16,11 @@ it('requires a title, a page and a passage', () => {
 it('counts attribution and multibyte text toward the stored context limit', () => {
   expect(() => pdfExcerptContext({ ...draft, excerpt: 'é'.repeat(2048) })).toThrow(/4096 UTF-8 bytes/);
 });
+
+it('records a range and heading while rejecting reversed and malformed ranges', () => {
+  expect(pdfExcerptContext({ ...draft, endPage: '14', section: ' Resultados ' }))
+    .toContain('pages 12–14, section “Resultados”');
+  expect(pdfExcerptContext({ ...draft, endPage: '12' })).toContain('page 12');
+  expect(() => pdfExcerptContext({ ...draft, endPage: '11' })).toThrow(/last page/);
+  expect(() => pdfExcerptContext({ ...draft, endPage: '1e3' })).toThrow(/last page/);
+});
