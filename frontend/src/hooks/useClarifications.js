@@ -10,10 +10,18 @@ export function useClarifications(){
    enabled:!!client&&!!analysis,
    queryFn:async()=>{
      const root=(await client.analysisClarifications(analysis)).value;
-     const clarifications=await Promise.all((root.clarifications??[]).map(async question=>{
-       const answers=(await client.clarificationAnswers(analysis,question.question_id)).value;
-       return {...question,answers:answers.answers??[]};
-     }));
+     const questions=root.clarifications??[];
+     const results=await Promise.allSettled(questions.map(question =>
+       client.clarificationAnswers(analysis,question.question_id)
+     ));
+     const clarifications=questions.map((question,index)=>{
+       const result=results[index];
+       return {
+         ...question,
+         answers: result.status==='fulfilled' ? result.value.value.answers??[] : [],
+         answersUnavailable: result.status==='rejected',
+       };
+     });
      return {...root,clarifications};
    },
  });
