@@ -89,6 +89,8 @@ To discuss part of a PDF, open **Use a passage from a PDF** under **Human contex
 
 With `pdftotext` installed on the Niccolò server, use **Preview a PDF on this Niccolò server** in the same panel. The preview accepts files up to 4 MiB, shows up to 20 pages, and extracts embedded text. Select text on a page and choose **Use selected text in the passage form**. Review its location and prepare it before saving. The preview does not retain the PDF, perform OCR, or attest that the extracted content is complete. For scanned pages and unavailable previews, use the manual passage form or describe the relevant material as human context.
 
+To keep the original alongside your context, upload the PDF under **Add records** and choose **Import and attach**. Then choose it under **Or preview an attached PDF**. A saved passage that matches the selected text and page records the ID of the stored original. The catalog keeps the exact bytes available for download. You select which passages become human context.
+
 ## 6. Check readiness before Analyze
 
 The bottom of the Situation screen shows whether the local service has a reasoning model.
