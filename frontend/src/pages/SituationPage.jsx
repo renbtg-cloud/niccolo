@@ -207,7 +207,8 @@ function ConnectedSituation({client}){
         pending={updateFocus.isPending}
         onSubmit={(focus) => updateFocus.mutate(focus)}
       />
-      {updateFocus.error && <p className="error">{updateFocus.error.message}</p>}
+      {updateFocus.isSuccess && <p role="status">Situation focus saved.</p>}
+      {updateFocus.error && <p className="error" role="alert">{updateFocus.error.message}</p>}
     </details>
 
     <article className="source-upload">
