@@ -34,11 +34,11 @@ function AnswerPanel({ output, operation, error, pending }) {
  </article>;
  if(pending)return <p role="status">Checking for a published answer…</p>;
  if(!operation)return <p>Start an analysis to get a provisional answer.</p>;
- if(operation.state==='WAITING_FOR_HUMAN')return <p>Niccolò needs your decision before it can continue the current reasoning plan.</p>;
+ if(operation.state==='WAITING_FOR_HUMAN')return <p role="status">Niccolò needs your decision before it can continue the current reasoning plan.</p>;
  if(operation.state==='FAILED')return <p className="error" role="alert">Analysis failed{operation.error_code ? ` (${operation.error_code})` : ''}. No answer was published. You can start another analysis.</p>;
  if(operation.state==='CANCELLED')return <p role="status">This analysis was cancelled. No answer was published. You can start another analysis.</p>;
  if(operation.terminal)return <p role="status">This run finished without a published synthesis. You can start another analysis.</p>;
- return <p>Niccolò is working from the frozen analysis input. The answer will appear here when synthesis is published.</p>;
+ return <p role="status">Niccolò is working from the frozen analysis input. The answer will appear here when synthesis is published.</p>;
 }
 
 export function OperationsPage(){
