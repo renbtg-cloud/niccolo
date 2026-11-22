@@ -69,3 +69,9 @@ it('bounds archive metadata even when every exported file is empty', () => {
   const files = Object.fromEntries(Array.from({length: 5000}, (_,index)=>[`${'a'.repeat(950)}-${index}.txt`, '']));
   expect(() => presentationZip(pkg(files))).toThrow(/archive is too large/);
 });
+
+it('rejects forbidden Windows filename characters and control characters', () => {
+  for (const path of ['a?.txt', 'a|b.txt', 'a\u0085.txt']) {
+    expect(() => presentationZip(pkg({[path]:'content'}))).toThrow(/path or contents/);
+  }
+});
