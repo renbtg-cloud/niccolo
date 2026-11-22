@@ -108,12 +108,12 @@ async fn openai_compatible_provider_posts_structured_request_and_parses_json_con
 }
 
 #[tokio::test]
-async fn openai_compatible_provider_surfaces_non_success_without_accepting_body_as_reasoning() {
+async fn openai_compatible_provider_reports_status_without_copying_error_body() {
     let (endpoint, server) = one_shot_server("429 Too Many Requests", "{\"error\":\"rate limited\"}");
     let model =
         OpenAiCompatibleModel::new("mock-provider", "model", &endpoint, "token").unwrap();
     let error = model.invoke(&request()).await.unwrap_err();
-    assert!(error.to_string().contains("HTTP 429"));
+    assert_eq!(error.to_string(), "model invocation failed: HTTP 429");
     let _ = server.join().unwrap();
 }
 
