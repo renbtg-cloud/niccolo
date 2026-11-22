@@ -115,3 +115,12 @@ describe('original source downloads', () => {
     await expect(client.downloadSourceOriginal('legacy')).rejects.toThrow('source original unavailable');
   });
 });
+
+it('passes the observation cancellation signal to fetch', async () => {
+  const controller = new AbortController();
+  const client = new NiccoloClient({ workspace: 'w', situation: 's', token: 'fixture' }, async (_, options) => {
+    expect(options.signal).toBe(controller.signal);
+    return { status: 200, ok: true, json: async () => ({}), headers: new Headers() };
+  });
+  await client.observeOperation('operation', 0, 0, 5000, 100, controller.signal);
+});
