@@ -174,7 +174,10 @@ function ConnectedSituation({client}){
       {create.error && <p className="error">{create.error.message}</p>}
     </section>;
   }
-  if (situation.error) return <p className="error">{situation.error.message}</p>;
+  if (situation.error) return <section>
+    <p className="error" role="alert">Could not load the Situation: {situation.error.message}</p>
+    <button type="button" disabled={situation.isFetching} onClick={()=>void situation.refetch()}>Retry Situation</button>
+  </section>;
 
   const snapshot = situation.data;
   const attached = new Set(snapshot?.source_document_ids ?? []);
