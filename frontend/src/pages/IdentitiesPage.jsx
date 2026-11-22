@@ -70,6 +70,8 @@ export function IdentitiesPage() {
   const resetDocumentSelection = (id) => {
     pendingAssign.current = null;
     pendingClear.current = null;
+    assign.reset();
+    clear.reset();
     setHistoryPages({documentId:id,cursors:[0]});
     setDocumentId(id);
   };
