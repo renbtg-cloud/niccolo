@@ -310,6 +310,7 @@ function ConnectedSituation({client}){
       </div>
       {attach.isSuccess && <p role="status">Record attached to this Situation.</p>}
       {attach.error && <p className="error" role="alert">Could not attach the record: {attach.error.message}</p>}
+      {restoreOriginal.isPending && <p role="status">Checking and restoring the original file…</p>}
       {restoreOriginal.isSuccess && <p role="status">Original source restored.</p>}
       {restoreOriginal.error && <p className="error" role="alert">{restoreOriginal.error.message}</p>}
       {downloadOriginal.isPending && <p role="status">Preparing the original file…</p>}
