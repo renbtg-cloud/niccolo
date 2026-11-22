@@ -173,6 +173,13 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             },
         };
         let budget = operation_budget::require_available(pool, scope).await?;
+        let mut policy = InvocationPolicy {
+            max_total_tokens: Some(budget.remaining_total_tokens),
+            ..InvocationPolicy::default()
+        };
+        if let Some(remaining_ms) = budget.remaining_deadline_ms {
+            policy.timeout_ms = policy.timeout_ms.min(remaining_ms as u64);
+        }
         let invocation = model_adapter::invoke_recorded_with_policy(
             pool,
             InvocationScope {
@@ -183,10 +190,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             actor,
             model,
             &request,
-            InvocationPolicy {
-                max_total_tokens: Some(budget.remaining_total_tokens),
-                ..InvocationPolicy::default()
-            },
+            policy,
         )
         .await;
         match invocation {
