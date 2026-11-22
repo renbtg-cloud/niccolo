@@ -14,6 +14,7 @@ export function ClarificationCard({ question, draft, onChange, onSubmit, saving 
       <p role="alert">Recorded answers could not be loaded for this question.</p>
       <button type="button" disabled={history.isFetching} onClick={()=>void history.refetch()}>Retry loading answers</button>
     </div>}
+    {history.isSuccess && answers.length===0 && <p>No answers are recorded on this page.</p>}
     {answers.length > 0 && <ul>{answers.map(answer =>
       <li key={answer.answer_id}>{answer.text}<div><small>Recorded later as {answer.kind}; not evidence and not part of the original frozen input.</small></div></li>
     )}</ul>}
