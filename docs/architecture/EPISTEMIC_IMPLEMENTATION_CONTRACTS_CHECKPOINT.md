@@ -669,7 +669,7 @@ Checkpoints 1.83–1.89 strengthen operation accounting and failure recovery. Po
 
 Checkpoint 1.91 counts reported tokens from a completed model response even when the response exceeds its allowance and the invocation fails. The failed response contributes usage to the ledger without publishing its reasoning or recording the step as successful. Unreported usage remains uncertain.
 
-Checkpoint 1.92 reserves an invocation slot when its ledger entry starts, including calls still in progress and calls that later fail. A timeout without usage figures leaves the reported token total as a lower bound. The remaining token figure is therefore an upper bound while any invocation has missing or partial usage.
+Checkpoint 1.92 reserves an invocation slot when its ledger entry starts, including calls still in progress and calls that later fail. A timeout without usage figures leaves the reported token total as a lower bound. The remaining token figure is therefore an upper bound while any invocation has missing or partial usage. Checkpoint 1.93 also preserves valid usage when structured provider output is rejected for invalid attribution or size.
 
 Protective recommendations under uncertainty should prefer proportionate, reversible and structurally useful measures such as evidence preservation, privilege review, separation of duties, independent review and provenance verification rather than silently converting suspicion into accusation or punishment.
 

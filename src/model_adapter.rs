@@ -284,7 +284,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let started = Instant::now();
     let mut last_error = ModelError::Provider("no attempt made".into());
     let mut attempts_made = 0;
-    let mut rejected_usage = (None, None);
+    let mut reported_usage = (None, None);
     for attempt in 1..=policy.max_attempts {
         attempts_made = attempt;
         let outcome = tokio::time::timeout(
@@ -294,12 +294,16 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
         .await;
         match outcome {
             Ok(Ok(response)) => {
+                let invalid_usage = response.prompt_tokens.is_some_and(|n| n < 0)
+                    || response.completion_tokens.is_some_and(|n| n < 0);
+                if !invalid_usage {
+                    reported_usage = (response.prompt_tokens, response.completion_tokens);
+                }
                 let total = i128::from(response.prompt_tokens.unwrap_or(0))
                     + i128::from(response.completion_tokens.unwrap_or(0));
                 // A broken provider response must reach the FAILED ledger transition;
                 // returning early here would strand this invocation as STARTED.
-                if response.prompt_tokens.is_some_and(|n| n < 0)
-                    || response.completion_tokens.is_some_and(|n| n < 0)
+                if invalid_usage
                     || [response.effective_provider.as_deref(), response.effective_model.as_deref()]
                         .into_iter()
                         .flatten()
@@ -307,7 +311,6 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
                 {
                     last_error = ModelError::Invalid;
                 } else if policy.max_total_tokens.is_some_and(|max| total > i128::from(max)) {
-                    rejected_usage = (response.prompt_tokens, response.completion_tokens);
                     last_error = ModelError::Budget;
                 } else {
                     let response_json = serde_json::to_string(&response.value)?;
@@ -360,7 +363,7 @@ pub async fn invoke_recorded_with_policy<M: ReasoningModel + ?Sized>(
     let message = crate::bff_operations::persistable_failure_detail(&message);
     let mut tx = scoped(pool, scope.operation.workspace, false).await?;
     sqlx::query("UPDATE niccolo.model_invocations SET status='FAILED',error_code=$7,error_message=$8,attempt_count=$9,latency_ms=$10,budget_exceeded=$11,prompt_tokens=$12,completion_tokens=$13,completed_at=clock_timestamp() WHERE workspace_id=$1 AND situation_id=$2 AND operation_id=$3 AND plan_revision=$4 AND step_id=$5 AND invocation_id=$6 AND status='STARTED'")
-      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(message).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).bind(rejected_usage.0).bind(rejected_usage.1).execute(&mut *tx).await?;
+      .bind(scope.operation.workspace).bind(scope.operation.situation).bind(scope.operation.operation).bind(scope.plan_revision).bind(scope.step_id).bind(invocation).bind(if budget{"BUDGET_EXCEEDED"}else if matches!(last_error,ModelError::Timeout){"TIMEOUT"}else{"PROVIDER_ERROR"}).bind(message).bind(attempts_made as i32).bind(started.elapsed().as_millis() as i64).bind(budget).bind(reported_usage.0).bind(reported_usage.1).execute(&mut *tx).await?;
     tx.commit().await?;
     Err(last_error)
 }

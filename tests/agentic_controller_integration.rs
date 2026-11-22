@@ -213,6 +213,10 @@ async fn invalid_provider_attribution_fails_the_invocation_without_stranding_it(
     .unwrap();
     assert_eq!(status, "FAILED");
     assert_eq!(effective_model, None);
+    let budget = operation_budget::view(&app, scope).await.unwrap();
+    assert_eq!(budget.used_invocations, 1);
+    assert_eq!(budget.used_total_tokens, 110);
+    assert!(budget.token_usage_complete);
 }
 
 #[tokio::test]
