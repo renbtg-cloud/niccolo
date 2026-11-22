@@ -109,6 +109,7 @@ export function FeedbackPage(){
   const [questionBackStack,setQuestionBackStack]=useState([]);
   const questions=useQuestions(questionCursor);
   const [text,setText]=useState('');
+  const questionError=situationTextError(text);
   const pendingQuestion = useRef(null);
   const create=useMutation({
     mutationFn:()=>{
@@ -123,7 +124,7 @@ export function FeedbackPage(){
   if(!client)return <p>Connect first.</p>;
   return <section><h2>Questions & human feedback</h2>
     <p>Use different responses for different epistemic states. Rejecting an interpretation is not the same as saying the evidence is insufficient, and neither is the same as not knowing.</p>
-    <article className="question-create"><h3>Add an investigative question</h3><label>Question<textarea value={text} disabled={create.isPending} onChange={e=>{create.reset();setText(e.target.value);}} placeholder="What should we explicitly keep open for human judgment?"/></label><button disabled={!text.trim()||create.isPending} onClick={()=>create.mutate()}>{create.isPending?'Adding…':'Add question'}</button>{create.error&&<p className="error">{create.error.message}</p>}{create.isSuccess&&<p role="status">Investigative question recorded. Use question navigation to browse older records.</p>}</article>
+    <article className="question-create"><h3>Add an investigative question</h3><label>Question<textarea value={text} disabled={create.isPending} onChange={e=>{create.reset();setText(e.target.value);}} placeholder="What should we explicitly keep open for human judgment?"/></label>{questionError&&<p role="alert">{questionError}</p>}<button disabled={!text.trim()||create.isPending||Boolean(questionError)} onClick={()=>create.mutate()}>{create.isPending?'Adding…':'Add question'}</button>{create.error&&<p className="error">{create.error.message}</p>}{create.isSuccess&&<p role="status">Investigative question recorded. Use question navigation to browse older records.</p>}</article>
     {questions.isLoading&&<p>Loading questions…</p>}
     {questions.error&&<div>
       <p className="error" role="alert">Questions unavailable: {questions.error.message}</p>
