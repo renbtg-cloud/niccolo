@@ -181,6 +181,7 @@ export function IdentitiesPage() {
   if (!client) return <p>Connect first.</p>;
 
   const identityRows = identities.data?.identities ?? [];
+  const identityNameById = new Map(identityRows.map(person=>[person.person_id,person.display_label]));
   return <section>
     <h2>Identity review</h2>
     <p>Speaker labels come from the source artifact. Matching labels are never automatically treated as the same person. Every mapping below is an explicit human action with an append-only reason.</p>
@@ -255,7 +256,7 @@ export function IdentitiesPage() {
       <ol>
         {(history.data?.events ?? []).map((event) => <li key={event.event_id}>
           <strong>{event.speaker_label}</strong> — {event.operation.toLowerCase()}
-          {event.person_id ? ` → ${identityRows.find((item) => item.person_id === event.person_id)?.display_label ?? event.person_id}` : ''}
+          {event.person_id ? ` → ${identityNameById.get(event.person_id) ?? event.person_id}` : ''}
           <div><small>{event.human_reason}</small></div>
         </li>)}
       </ol>
