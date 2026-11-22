@@ -49,6 +49,7 @@ function ConnectedSituation({client}){
   const [sourceBackStack, setSourceBackStack] = useState([]);
   // Preserve the document identity across retries after a partial upload.
   const pendingDocumentId = useRef(null);
+  const sourceFileInput = useRef(null);
   const restoreFileInput = useRef(null);
   const pendingRestoreDocument = useRef(null);
   const pendingContribution = useRef(null);
@@ -149,6 +150,7 @@ function ConnectedSituation({client}){
     },
     onSuccess: async () => {
       setFile(null);
+      if (sourceFileInput.current) sourceFileInput.current.value = '';
       pendingDocumentId.current = null;
       await refresh();
     },
@@ -197,6 +199,7 @@ function ConnectedSituation({client}){
       <h3>Add records</h3>
       <p>Upload an email (.eml) or a plain-text WhatsApp/text export (.txt). Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
       <input
+        ref={sourceFileInput}
         aria-label="Source file"
         type="file"
         accept=".eml,.txt,message/rfc822,text/plain"
