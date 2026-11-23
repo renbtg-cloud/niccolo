@@ -31,6 +31,7 @@ function ReviewContent(){
  const pendingReanalysis=useRef(null);
  const pendingClarification=useRef(new Map());
  const pendingReceipt=useRef(null);
+ const navigate=useNavigate();
  const generation=useSessionStore(s=>s.generation);
  const client=useClient(); const analysis=useUiStore(s=>s.analysis); const activeOperation=useUiStore(s=>s.activeOperation); const setAnalysis=useUiStore(s=>s.setAnalysis); const setActiveOperation=useUiStore(s=>s.setActiveOperation); const dashboard=useDashboard(); const revision=useReanalysisRevision(analysis); const qc=useQueryClient(); const [reanalysisGoal,setReanalysisGoal]=useState('');
  const observed=useOperationObserver(activeOperation);
