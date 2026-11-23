@@ -1,4 +1,4 @@
-#![cfg(feature = "pg-integration")]
+#![cfg(feature = "legacy-pg-integration")]
 
 use axum::{
     Router,

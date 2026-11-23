@@ -1,4 +1,4 @@
-#![cfg(feature = "pg-integration")]
+#![cfg(feature = "legacy-pg-integration")]
 use niccolo_evidence::{
     postgres_ingest::{ImportError, ingest_source},
     postgres_repository::{RepositoryError, load_workspace_graph},

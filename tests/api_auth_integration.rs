@@ -5,11 +5,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{
-    api,
-    authz::{self, Capability},
-    source_import::SourceFormat,
-};
+use niccolo_evidence::{api, authz::{self, Capability}};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
@@ -562,7 +558,6 @@ async fn unsupported_provisioning_options_are_rejected() {
             .await
             .is_err()
     );
-    let _ = SourceFormat::Eml;
 }
 
 #[tokio::test]

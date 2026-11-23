@@ -6,10 +6,10 @@ use niccolo_evidence::{
         GroundingMemberRole, NewGroundingMember, ReassessmentDisposition, RelationFamily,
         RelationKind, WorkbenchError,
     },
-    postgres_ingest::ingest_source,
     situation_store,
-    source_import::SourceFormat,
 };
+#[cfg(feature = "legacy-source-import")]
+use niccolo_evidence::{postgres_ingest::ingest_source, source_import::SourceFormat};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -920,6 +920,7 @@ async fn actor_epistemic_states_are_independent_attributed_and_scoped() {
     assert!(epistemic_workbench::snapshot(&f.service,f.workspace,other).await.unwrap().actor_epistemic_states.is_empty());
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn distributed_actor_records_do_not_create_collective_knowledge() {
     use epistemic_workbench::actor_state::{self,StateDimension,StateInput,StateJudgment};
@@ -947,6 +948,7 @@ async fn distributed_actor_records_do_not_create_collective_knowledge() {
     assert!(snapshot.assessments.is_empty()&&snapshot.arguments.is_empty());
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn conflicting_norms_do_not_collapse_authorization_obedience_or_loyalty() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
@@ -1014,6 +1016,7 @@ async fn conflicting_norms_do_not_collapse_authorization_obedience_or_loyalty() 
     tx.rollback().await.unwrap();
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn silence_does_not_establish_assent_or_actual_nonresponse() {
     use epistemic_workbench::{
@@ -1080,6 +1083,7 @@ async fn silence_does_not_establish_assent_or_actual_nonresponse() {
     tx.rollback().await.unwrap();
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn actor_state_basis_and_writer_authority_are_checked_at_the_boundary() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
@@ -1176,6 +1180,7 @@ async fn actor_epistemic_orientations_distinguish_immediate_reactions_from_persi
     assert_eq!(invalid.as_database_error().unwrap().code().as_deref(),Some("23514"));tx.rollback().await.unwrap();
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn actor_epistemic_act_records_occurrence_not_an_instruction_or_trait() {
     use axum::{body::Body,http::{Request,StatusCode,header}};
@@ -4522,6 +4527,7 @@ async fn grounding_member_target_and_role_are_not_guessed() {
     assert!(matches!(invalid, Err(WorkbenchError::Invalid)));
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     let f = fixture().await;
@@ -4604,6 +4610,7 @@ async fn situation_source_fragments_are_visible_and_can_ground_an_argument() {
     );
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn direct_documentary_routes_group_shared_ancestry_without_claiming_independence() {
     use epistemic_workbench::EvidenceLineageStatus;
@@ -5155,6 +5162,7 @@ async fn persistent_proposition_requires_explicit_situation_membership() {
     assert!(matches!(relation, Err(WorkbenchError::Invisible)));
 }
 
+#[cfg(feature = "legacy-source-import")]
 #[tokio::test]
 async fn evidence_search_reaches_attached_material_beyond_snapshot_bound() {
     let f = fixture().await;

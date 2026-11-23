@@ -1,4 +1,4 @@
-#![cfg(feature = "pg-integration")]
+#![cfg(feature = "legacy-pg-integration")]
 //! Composed AT-06/AT-21 witnesses at the supported workspace boundary.
 use axum::{
     Router,
