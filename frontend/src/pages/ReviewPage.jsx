@@ -111,6 +111,10 @@ function ReviewContent(){
    <p className="error" role="alert">Review unavailable: {review.error.message}</p>
    <button type="button" disabled={review.isFetching} onClick={()=>void review.refetch()}>Retry review</button>
  </section>;
+ const answerFeedback = area => answerClarification.variables?.area === area && <>
+   {answerClarification.isSuccess && <p role="status">Answer saved as human context.</p>}
+   {answerClarification.error && <p className="error" role="alert">{answerClarification.error.message}</p>}
+ </>;
  const coverage=coverageSignals(r); const changes=recordedChanges(r); const leads=proactiveLeads(d); const reanalysis=reanalysisPrompt(d); const revisionChanges=reanalysisChanges(revision.data);
 
  return <section><h2>Human review</h2>
@@ -134,13 +138,13 @@ function ReviewContent(){
          <summary>Answer this question</summary>
          <ClarificationAnswerForm questionId={lead.id} draft={clarificationDrafts[lead.id]??''}
            onChange={text=>setClarificationDrafts(current=>({...current,[lead.id]:text}))}
-           onSubmit={text=>answerClarification.mutate({questionId:lead.id,text})}
+           onSubmit={text=>answerClarification.mutate({questionId:lead.id,text,area:"leads"})}
            saving={answerClarification.isPending}/>
        </details> : <button type="button" disabled={!lead.text?.trim()} onClick={()=>{
          if (!isCurrentSession(generation)) return;
          useSessionStore.getState().stageInvestigationDraft(lead.text, generation);
          navigate('/');
-       }}>Draft as an investigative preference</button>}</div>)}</div> : <p>No investigation lead is available for this analysis yet.</p>}{d?.proactive?.truncated&&<p><small>Showing the highest-priority leads from {d.proactive.candidate_count} candidates.</small></p>}<Link to="/">Add records or human context to the Situation →</Link>{answerClarification.isSuccess&&<p role="status">Answer saved as human context.</p>}{answerClarification.error&&<p className="error" role="alert">{answerClarification.error.message}</p>}</article>
+       }}>Draft as an investigative preference</button>}</div>)}</div> : <p>No investigation lead is available for this analysis yet.</p>}{d?.proactive?.truncated&&<p><small>Showing the highest-priority leads from {d.proactive.candidate_count} candidates.</small></p>}<Link to="/">Add records or human context to the Situation →</Link>{answerFeedback("leads")}</article>
      <article className="review-panel"><h3>Download this analysis</h3>
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
        <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>
@@ -175,11 +179,11 @@ function ReviewContent(){
      </div> : clarifications.data?.clarifications?.length? <div className="clarification-list">{clarifications.data.clarifications.map(question=><ClarificationCard
          key={question.question_id} question={question} draft={clarificationDrafts[question.question_id]??''}
          onChange={text=>setClarificationDrafts(current=>({...current,[question.question_id]:text}))}
-         onSubmit={text=>answerClarification.mutate({questionId:question.question_id,text})}
+         onSubmit={text=>answerClarification.mutate({questionId:question.question_id,text,area:"history"})}
          saving={answerClarification.isPending}
        />)}</div> : <p>No clarification question is currently recorded.</p>}
        {questionPages.length>1 && <button type="button" disabled={clarifications.isFetching} onClick={()=>setQuestionPages(pages=>pages.slice(0,-1))}>Previous questions</button>}
-       {clarifications.data?.next_after && <button type="button" disabled={clarifications.isFetching} onClick={()=>setQuestionPages(pages=>[...pages,clarifications.data.next_after])}>More questions</button>}<p><small>Clarification questions are not evidence. Answers are new attributed human context and never rewrite the analysis input that motivated the question.</small></p></article>
+       {clarifications.data?.next_after && <button type="button" disabled={clarifications.isFetching} onClick={()=>setQuestionPages(pages=>[...pages,clarifications.data.next_after])}>More questions</button>}<p><small>Clarification questions are not evidence. Answers are new attributed human context and never rewrite the analysis input that motivated the question.</small></p>{answerFeedback("history")}</article>
      <article className="review-panel"><h3>Reanalysis</h3>{dashboard.error ? <p>Reanalysis recommendations are unavailable.</p> : dashboard.isPending ? <p>Checking for changes…</p> : reanalysis? <><p>The backend reports material post-analysis change:</p><ul>{reanalysis.reasons.map(x=><li key={x}>{x}</li>)}</ul><p><strong>Your approval is required.</strong> This recommendation does not start a new analysis automatically, and the old output remains preserved.</p><label>Goal for the new analysis<textarea aria-label="Reanalysis goal" value={reanalysisGoal} disabled={approveReanalysis.isPending} aria-invalid={Boolean(reanalysisGoalError)} aria-describedby={reanalysisGoalError?reanalysisGoalErrorId:undefined} onChange={e=>setReanalysisGoal(e.target.value)} placeholder={r.goal||'What should the new analysis revisit?'}/></label>{reanalysisGoalError&&<p id={reanalysisGoalErrorId} role="alert">{reanalysisGoalError}</p>}<button disabled={approveReanalysis.isPending||Boolean(reanalysisGoalError)} onClick={()=>approveReanalysis.mutate()}>{approveReanalysis.isPending?'Starting reanalysis…':'Approve and start reanalysis'}</button>{approveReanalysis.error&&<p className="error" role="alert">{approveReanalysis.error.message}</p>}</> : <p>No reanalysis recommendation is currently recorded.</p>}</article>
      <details className="desktop-only"><summary>Raw review data</summary><div className="inspector-grid"><pre>{JSON.stringify(r,null,2)}</pre><pre>{JSON.stringify(d,null,2)}</pre></div></details>
    </>}
