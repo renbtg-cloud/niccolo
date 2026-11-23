@@ -1,5 +1,32 @@
 # Active test progress
 
+## v1.518-v1.535 — human-controlled source requests and recovered offline toolchain
+
+FINAL STATUS: DONE
+
+Validated on commit `d1e8aa3d3da10fe3ea1ccfd2b594ec8dd3b70426` in the reconstructed local environment:
+
+- Rust 1.99.1 installed from the preserved offline distribution;
+- PostgreSQL 17.11 server/client installed locally, with the disposable restricted-role test database running migration 0151;
+- Node 24.11.0 and npm 11.6.1 restored from the preserved offline distribution and cache;
+- full Rust/PostgreSQL regression: 0/700 failed; 700/700 passed;
+- frontend: 0/224 failed; 224/224 passed across 40 test files;
+- production frontend build: passed;
+- strict Clippy over all targets with `pg-integration` and `-D warnings`: passed;
+- local documentation links and root layout: 0/116 failed; 116/116 passed.
+
+Validated behavior:
+
+- source-request decisions are authenticated writes, exactly replayable, conflict detecting and serialized per request;
+- only valid state transitions are accepted; stale decisions return conflict and the Review UI refreshes current state;
+- accepting a request records human intent but never fetches external material or promotes it to evidence;
+- proposals and every attributed decision remain inspectable in deterministic `event_no` order;
+- Review exposes accept/defer/decline/reopen controls, attributed history and explicit human ownership of external acquisition;
+- source-request and handoff text rejects control characters at the backend boundary;
+- full-regression cleanup is warning-free under the restored Rust toolchain without weakening lint policy.
+
+---
+
 ## v2.161-v2.320 — human steering and identity-review product flow
 
 FINAL STATUS: DONE
