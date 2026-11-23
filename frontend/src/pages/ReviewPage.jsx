@@ -21,6 +21,7 @@ import { useHandoffReceipts } from '../hooks/useHandoffReceipts.js';
 import { handoffSummary, receiptSummary } from '../state/handoffPresentation.js';
 import { reanalysisChanges } from '../state/reanalysisRevisionPresentation.js';
 import { presentationZip } from '../state/presentationZip.js';
+import { SourceRequestPanel } from './SourceRequestPanel.jsx';
 
 export function ReviewPage(){
  const selectedAnalysis=useUiStore(s=>s.analysis);
@@ -146,6 +147,10 @@ function ReviewContent(){
          useSessionStore.getState().stageInvestigationDraft(lead.text, generation);
          navigate('/');
        }}>Draft as an investigative preference</button>}</div>)}</div> : <p>No investigation lead is available for this analysis yet.</p>}{d?.proactive?.truncated&&<p><small>Showing the highest-priority leads from {d.proactive.candidate_count} candidates.</small></p>}<Link to="/">Add records or human context to the Situation →</Link>{answerFeedback("leads")}</article>
+     <SourceRequestPanel client={client} analysis={analysis} generation={generation} onChanged={()=>Promise.all([
+       qc.invalidateQueries({queryKey:qk.analysis(client.config,analysis,'source-requests')}),
+       qc.invalidateQueries({queryKey:qk.dashboard(client.config,analysis,activeOperation)}),
+     ])}/>
      <article className="review-panel"><h3>Download this analysis</h3>
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
        <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>

@@ -9,6 +9,7 @@ const feedback = readFileSync(new URL('./FeedbackPage.jsx', import.meta.url), 'u
 const questionsHook = readFileSync(new URL('../hooks/useQuestions.js', import.meta.url), 'utf8');
 const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'utf8');
 const identities = readFileSync(new URL('./IdentitiesPage.jsx', import.meta.url), 'utf8');
+const sourceRequests = readFileSync(new URL('./SourceRequestPanel.jsx', import.meta.url), 'utf8');
 
 describe('buyer-facing primary surfaces', () => {
   it('remounts every route after changing the authenticated session', () => {
@@ -81,6 +82,14 @@ describe('buyer-facing primary surfaces', () => {
       expect(surface).toContain('observed.operation?.target_analysis_id===analysis');
       expect(surface).toContain('useAnalysisOutput(analysis,');
     }
+  });
+
+  it('keeps source acquisition under explicit human control', () => {
+    expect(review).toContain('<SourceRequestPanel');
+    expect(sourceRequests).toContain('Record decision only');
+    expect(sourceRequests).toContain('does not fetch messages, files or links');
+    expect(sourceRequests).toContain('The external action remains yours.');
+    expect(sourceRequests).toContain('pending.current?.signature !== signature');
   });
 
   it('makes sources and human identity catalogs navigable past the first page', () => {
