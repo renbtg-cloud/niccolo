@@ -381,6 +381,17 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
     .execute(&f.admin)
     .await
     .unwrap();
+    let list_path = format!("{}/source-requests", analysis(&f, s, a));
+    let (status, listed) = call(
+        f.router.clone(),
+        req("GET", list_path.clone(), &f.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["source_requests"][0]["request_id"], request_id.to_string());
+    assert_eq!(listed["source_requests"][0]["state"], "PROPOSED");
+    assert_eq!(listed["human_owns_external_action"], true);
+    assert_eq!(listed["acceptance_fetches_external_material"], false);
     let path = format!(
         "{}/source-requests/{request_id}/events/{event_id}",
         analysis(&f, s, a)
@@ -409,6 +420,10 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
         assert_eq!(result["accepted_means_fetched"], false);
         assert_eq!(result["system_fetched_external_material"], false);
     }
+    let (status, listed) = call(f.router.clone(), req("GET", list_path, &f.reader, None)).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["source_requests"][0]["state"], "DEFERRED");
+    assert_eq!(listed["source_requests"][0]["accepted_means_fetched"], false);
     let (status, conflict) = call(
         f.router.clone(),
         req(

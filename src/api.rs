@@ -458,6 +458,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_bff_dashboard),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/source-requests",
+            get(list_source_requests),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/source-requests/{request}/events/{event}",
             post(record_source_request_event),
         )
@@ -4799,6 +4803,38 @@ async fn get_bff_dashboard(
 struct SourceRequestEventRequest {
     kind: String,
     note: String,
+}
+
+async fn list_source_requests(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let source_requests = human_handoff::source_requests(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await
+    .map_err(|_| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "source requests unavailable",
+        )
+    })?;
+    Ok(no_store(
+        json!({
+            "analysis_id": analysis,
+            "source_requests": source_requests,
+            "human_owns_external_action": true,
+            "acceptance_fetches_external_material": false
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn record_source_request_event(
