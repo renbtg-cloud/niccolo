@@ -87,7 +87,10 @@ export class NiccoloClient {
   answerClarification(id, questionId, answerId, text) { return this.request('POST', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers/${answerId}`, { body: { text } }); }
   reanalysisRevision(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/reanalysis-revision`, { signal }); }
   analysisCoverage(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`, { signal }); }
-  analysisContext(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/context-usage`, { signal }); }
+  analysisContext(id, signal, after = null) {
+    const query = after ? `?after=${encodeURIComponent(after)}` : '';
+    return this.request('GET', `${analysisPath(this.config,id)}/context-usage${query}`, { signal });
+  }
   analysisDelta(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/delta`, { signal }); }
   analysisOutput(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/output`, { signal }); }
   presentationPackage(id) { return this.request('GET', `${analysisPath(this.config,id)}/presentation-package`); }

@@ -1,3 +1,4 @@
+import { FrozenContext } from './FrozenContext.jsx';
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { ClarificationCard } from './ClarificationCard.jsx';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -145,6 +146,7 @@ function ReviewContent(){
        <article><h3>What Niccolò actually used</h3>{coverage.map(x=><p key={x.label}><strong>{x.used}/{x.total}</strong> {x.label.toLowerCase()}</p>)}{r.sources?.opaque_pdfs > 0 && <p><strong>{r.sources.opaque_pdfs}</strong> attached PDF original(s). Selected passages and page descriptions are counted as human context. The reasoning model receives source fragments and human context, with PDF originals retained separately.</p>}<p><small>These are recorded coverage counts, not a completeness or truth score.</small></p></article>
        <article><h3>What changed afterward</h3>{changes.length? <ul>{changes.map(x=><li key={x}>{x}</li>)}</ul> : <p>No recorded Situation delta after the frozen input.</p>}</article>
      </div>
+     {r.human_context?.present_in_input > 0 && <FrozenContext client={client} analysis={analysis}/>}
      {revision.isError&&<article className="review-panel">
        <h3>Recorded reanalysis changes</h3>
        <p role="alert">The comparison could not be loaded.</p>
