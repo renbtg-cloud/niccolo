@@ -1114,6 +1114,56 @@ async fn source_request_proposal_concurrency_creates_one_immutable_request() {
 }
 
 #[tokio::test]
+async fn source_request_event_concurrency_replays_one_attributed_decision() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let request_id = Uuid::new_v4();
+    human_handoff::propose_source_request(
+        &app,
+        scope(s),
+        &SourceRequestInput {
+            request_id,
+            text: "obtain the original exchange".into(),
+            source_kind: "message".into(),
+            rationale: "establish the order of recorded statements".into(),
+            proposed_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+    let event = SourceRequestEvent {
+        event_id: Uuid::new_v4(),
+        kind: "ACCEPTED".into(),
+        note: "I will obtain it outside Niccolò.".into(),
+        recorded_by: s.principal,
+    };
+    let mut tasks = Vec::new();
+    for _ in 0..24 {
+        let app = app.clone();
+        let event = event.clone();
+        tasks.push(tokio::spawn(async move {
+            human_handoff::append_source_request_event(&app, scope(s), request_id, &event)
+                .await
+                .unwrap()
+        }));
+    }
+    let mut created = 0;
+    let mut replayed = 0;
+    for task in tasks {
+        if task.await.unwrap() {
+            replayed += 1;
+        } else {
+            created += 1;
+        }
+    }
+    assert_eq!((created, replayed), (1, 23));
+    let requests = human_handoff::source_requests(&app, scope(s)).await.unwrap();
+    assert_eq!(requests[0].state, "ACCEPTED");
+    assert_eq!(requests[0].events.len(), 1);
+    assert_eq!(requests[0].events[0].event_id, event.event_id);
+}
+
+#[tokio::test]
 async fn v166_v170_claim_assessment_is_purpose_bound_and_not_truth() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
