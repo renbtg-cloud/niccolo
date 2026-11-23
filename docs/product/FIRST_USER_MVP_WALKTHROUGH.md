@@ -25,7 +25,7 @@ Private local files are written under `.niccolo-local/`.
 
 ## 2. Configure a reasoning model
 
-Niccolò can prepare Situations and retain sources without a reasoning model, but **Analyze**
+Niccolò can prepare Situations and retain explicit human material without a reasoning model, but **Analyze**
 requires an OpenAI-compatible model.
 
 For a loopback model runtime, either export the settings before starting:
@@ -72,31 +72,39 @@ This creates the Situation. It does not create a verdict.
 
 ## 5. Add material
 
-A first pass can run from the focus alone, but the useful path is to add at least one source or
-piece of human context.
+A first pass can run from the focus alone, but it is usually more useful to add explicit material.
 
-Supported MVP source files include:
+The restricted MVP accepts **no file upload and invokes no parser**. It does not read raw text,
+email, WhatsApp exports, PDFs, images, audio, or video. Keep every original wherever you already
+store it; Niccolò does not become its storage owner.
 
-- `.eml` email with a plain-text UTF-8 or US-ASCII body;
-- `.txt` WhatsApp export with day/month/year timestamps and a sender label. Bracketed and hyphen-separated formats accept hours and minutes, with optional seconds.
+Under **External artifacts**, create a reference with:
 
-Choose **Import and attach**. If an older catalog record has no retained original, choose **Restore original** on that record and select the same file. Niccolò verifies it against the existing record before retaining the bytes.
+- an artifact type and human-readable label;
+- optional declared MIME type, byte length, or SHA-256;
+- an optional external location such as an S3 URI or filesystem path;
+- an honest declared access status, including `NONE`, `UNKNOWN`, or `UNVERIFIED`.
 
-For information that is remembered, hypothetical, or an investigative preference rather than a
-source record, use **Human context** instead. Niccolò keeps that separate from verified evidence.
+A location is metadata only. Niccolò does not dereference it, and `AVAILABLE` is a human claim
+rather than proof that the service opened anything. Do not paste durable credentials or signed
+access URLs into a locator.
 
-To discuss part of a PDF, open **Use a passage from a PDF** under **Human context**. Enter the file name, the first page as shown in your PDF reader, and the text you selected. Add the last page for a passage that spans pages and the section title if available. Review the prepared transcription before saving it. The saved entry identifies the passage as user-transcribed and combines lines into one paragraph. The original PDF remains in your reader.
+To make something in the artifact available for reasoning, choose **Describe or transcribe
+something in this artifact**. Supply the exact text yourself, identify who produced the
+representation, bound its scope (for example `pages 7-9` or `00:13:20-00:13:45`), and record
+its completeness, qualification, and limitations. This representation remains attributable and
+challengeable; it is not silently promoted to truth and does not imply that Niccolò inspected the
+original.
 
-With `pdftotext` installed on the Niccolò server, use **Preview a PDF on this Niccolò server** in the same panel. The preview accepts files up to 4 MiB, shows up to 20 pages, and extracts embedded text. Select text on a page and choose **Use selected text in the passage form**. Review its location and prepare it before saving. The preview does not retain the PDF, perform OCR, or attest that the extracted content is complete. For scanned pages and figures, choose **Describe something on the page in my own words**. Niccolò labels what you write as a human description of the page.
-
-To keep the original alongside your context, upload the PDF under **Add records** and choose **Import and attach**. Then choose it under **Or preview an attached PDF**. Use **Go to page** to open a known page, or **Next 20 pages** when available to browse beyond the first preview window. For a manual transcription or description, choose the retained file under **Original for this passage** and enter the page or range. Both selected text and manual reports linked this way include the retained original ID in the saved context. The attached-PDF pickers use the Situation’s sources across all catalog pages. The catalog keeps the exact bytes available for download. You select which passages become human context.
+For something remembered, hypothetical, or an investigative preference, use **Human context**.
+Keep this separate from an artifact representation so the provenance boundary stays visible.
 
 ## 6. Check readiness before Analyze
 
 The bottom of the Situation screen shows whether the local service has a reasoning model.
 
 If no model is configured, stop here, configure it, and restart Niccolò. Do not debug the
-Situation or re-upload files: the problem is runtime configuration.
+Situation or artifact references: the problem is runtime configuration.
 
 If the model is configured, choose:
 
@@ -127,7 +135,7 @@ Review should make it possible to inspect, as available for that analysis:
 
 - what the answer says;
 - what input reached reasoning;
-- source/claim coverage;
+- artifact/representation and claim coverage;
 - competing interpretations;
 - unresolved clarifications;
 - useful next leads;
@@ -137,9 +145,9 @@ Review should make it possible to inspect, as available for that analysis:
 
 The answer is provisional reasoning over recorded input, not a declaration of truth. Open **Read the human context in this analysis** to revisit the exact reports, assumptions, and preferences in that analysis. Each entry shows whether it was recorded as used.
 
-Under **Worth looking at next**, check the reason beside each available lead. For a clarification lead, choose **Answer this question** and submit your answer directly. To pursue another kind of lead later, choose **Draft as an investigative preference**, edit it in the Situation, and select **Add context** to save it. Use the link to the Situation to add a record or human context. To revisit an earlier answer, choose it from **Analysis history**. A newly launched analysis also appears in that history. Use **Older analyses** to browse earlier entries. In **Clarifications**, use **More questions** when the review has additional questions. Use **More answers** on a question to browse its recorded responses. An answer you save appears as human context in the Situation. While a saved answer or its correction remains active, the question drops out of the current list of suggested leads. If you retract the last active answer, it can return as a lead. The original question and answer history remain available in Clarifications.
+Under **Worth looking at next**, check the reason beside each available lead. For a clarification lead, choose **Answer this question** and submit your answer directly. To pursue another kind of lead later, choose **Draft as an investigative preference**, edit it in the Situation, and select **Add context** to save it. Use the link to the Situation to add an artifact reference, attributed representation, or human context. To revisit an earlier answer, choose it from **Analysis history**. A newly launched analysis also appears in that history. Use **Older analyses** to browse earlier entries. In **Clarifications**, use **More questions** when the review has additional questions. Use **More answers** on a question to browse its recorded responses. An answer you save appears as human context in the Situation. While a saved answer or its correction remains active, the question drops out of the current list of suggested leads. If you retract the last active answer, it can return as a lead. The original question and answer history remain available in Clarifications.
 
-Under **Requests for more source material**, accept, defer or decline a proposal and explain why. After accepting it, mark the acquisition complete when you have finished the external step. A settled or completed request can be reopened later. Every decision remains attributed and visible in sequence. Acceptance records human intent only: it does not fetch a message, file or link. Completion is also only your attributed report; it does not prove that material exists, attach it or turn it into evidence. If you choose to obtain something, perform that external action yourself and add the resulting record through the Situation.
+Under **Requests for more source material**, accept, defer or decline a proposal and explain why. After accepting it, mark the acquisition complete when you have finished the external step. A settled or completed request can be reopened later. Every decision remains attributed and visible in sequence. Acceptance records human intent only: it does not fetch a message, file or link. Completion is also only your attributed report; it does not prove that material exists, attach it or turn it into evidence. If you choose to obtain something, perform that external action yourself, then add an artifact reference and explicitly attributed representation through the Situation.
 
 ## What to record during a human usability test
 
@@ -148,7 +156,7 @@ Do not teach the tester the architecture first. Record where they hesitate or as
 1. Did they understand what a Situation is?
 2. Did they understand the prepared URL / token split?
 3. Did they know whether the model was configured before clicking Analyze?
-4. Did they distinguish uploaded records from Human context?
+4. Did they distinguish an external artifact, an attributed representation, and Human context?
 5. Did they know what to type as the focus?
 6. Did they understand when the first answer was ready?
 7. Did they naturally open Review?
