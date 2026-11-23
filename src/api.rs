@@ -2105,7 +2105,7 @@ async fn analysis_review(
             "reanalysis_of":r.reanalysis_of,"input_revision":r.input_revision,
             "current_situation_revision":r.current_revision,"input_is_current":r.input_is_current,
             "output_present":r.output_present,
-            "sources":{"present_in_input":r.input_source_count,"catalogued_fragments":r.catalogued_fragment_count,"examined_fragments":r.examined_fragment_count},
+            "sources":{"present_in_input":r.input_source_count,"opaque_pdfs":r.input_pdf_count,"catalogued_fragments":r.catalogued_fragment_count,"examined_fragments":r.examined_fragment_count},
             "human_context":{"present_in_input":r.input_context_count,"recorded_as_used":r.used_context_count},
             "clarifications":{"questions":r.clarification_question_count,"answered_questions":r.answered_question_count,"answers":r.clarification_answer_count},
             "delta":{"focus_changed":r.focus_changed,"sources_added":r.added_source_count,"sources_removed":r.removed_source_count,"context_added":r.added_context_count,"context_removed":r.removed_context_count},

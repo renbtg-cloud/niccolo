@@ -618,6 +618,17 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     );
     assert_eq!(output["historical_output_preserved"], true);
 
+    let review_url = format!("{situation_path}/analysis-snapshots/{analysis}/review");
+    let (status, review) = invoke(
+        h.router.clone(),
+        json_request("GET", &review_url, &h.token, None),
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(review["sources"]["present_in_input"], 2);
+    assert_eq!(review["sources"]["opaque_pdfs"], 1);
+    assert_eq!(review["sources"]["catalogued_fragments"], 2);
+    assert_eq!(review["human_context"]["recorded_as_used"], 1);
+
     let epistemic_path = format!("{situation_path}/analysis-snapshots/{analysis}/bff/epistemic");
     let (status, epistemic) = invoke(
         h.router.clone(),

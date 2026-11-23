@@ -25,6 +25,7 @@ pub struct AnalysisReview {
     pub focus_changed: bool,
     pub output_present: bool,
     pub input_source_count: i64,
+    pub input_pdf_count: i64,
     pub catalogued_fragment_count: i64,
     pub examined_fragment_count: i64,
     pub input_context_count: i64,
@@ -84,7 +85,17 @@ pub async fn get(
         return Err(AnalysisReviewError::Invisible);
     };
     let output_present:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_outputs WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3)").bind(workspace).bind(situation).bind(analysis).fetch_one(&mut *tx).await?;
-    let input_source_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.situation_revision_sources WHERE workspace_id=$1 AND situation_id=$2 AND revision=$3").bind(workspace).bind(situation).bind(input_revision).fetch_one(&mut *tx).await?;
+    let (input_source_count, input_pdf_count): (i64, i64) = sqlx::query_as(
+        "SELECT count(*),count(*) FILTER (WHERE d.format='PDF')
+         FROM niccolo.situation_revision_sources rs
+         JOIN niccolo.source_documents d USING(workspace_id,document_id)
+         WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(input_revision)
+    .fetch_one(&mut *tx)
+    .await?;
     let catalogued_fragment_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.source_fragments f JOIN niccolo.situation_revision_sources rs ON rs.workspace_id=f.workspace_id AND rs.document_id=f.document_id WHERE rs.workspace_id=$1 AND rs.situation_id=$2 AND rs.revision=$3").bind(workspace).bind(situation).bind(input_revision).fetch_one(&mut *tx).await?;
     let examined_fragment_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.situation_analysis_examined_fragments WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3").bind(workspace).bind(situation).bind(analysis).fetch_one(&mut *tx).await?;
     let input_context_count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.situation_revision_contributions WHERE workspace_id=$1 AND situation_id=$2 AND revision=$3").bind(workspace).bind(situation).bind(input_revision).fetch_one(&mut *tx).await?;
@@ -108,6 +119,7 @@ pub async fn get(
         focus_changed,
         output_present,
         input_source_count,
+        input_pdf_count,
         catalogued_fragment_count,
         examined_fragment_count,
         input_context_count,
