@@ -47,8 +47,13 @@ it('distinguishes unchanged extractor text from a human-edited passage', () => {
   expect(pdfExcerptContext({ ...selected, document: 'Another.pdf' })).toMatch(/^User transcription from PDF/);
 });
 
-it('includes the attached original ID only for a matching extracted passage', () => {
-  const preview = {document: draft.document.trim(), page:draft.page, excerpt:draft.excerpt.trim(), documentId:'stored-pdf'};
-  expect(pdfExcerptContext({...draft,preview})).toContain('stored original stored-pdf');
-  expect(pdfExcerptContext({...draft,page:'13',preview})).not.toContain('stored original stored-pdf');
+it('retains a deliberately referenced original for descriptions and edited passages', () => {
+  const original = { document_id: 'stored-pdf' };
+  const preview = {document: draft.document.trim(), page:draft.page, excerpt:draft.excerpt.trim(), documentId:original.document_id};
+  expect(pdfExcerptContext({...draft,preview}, original)).toMatch(/^User-selected extracted text from PDF/);
+  const edited = pdfExcerptContext({...draft,page:'13',preview}, original);
+  expect(edited).toMatch(/^User transcription from PDF/);
+  expect(edited).toContain('stored original stored-pdf');
+  expect(pdfExcerptContext(draft, original)).toContain('stored original stored-pdf');
+  expect(pdfExcerptContext({...draft,preview})).not.toContain('stored original stored-pdf');
 });

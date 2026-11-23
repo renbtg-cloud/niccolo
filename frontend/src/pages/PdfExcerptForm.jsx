@@ -4,6 +4,7 @@ import { pdfExcerptContext } from '../state/pdfExcerpt.js';
 
 export function PdfExcerptForm({ client, documents, onPrepare, onDraftChange, disabled, saving, previewOutdated }) {
   const [draft, setDraft] = useState({ document: '', page: '', endPage: '', section: '', excerpt: '' });
+  const original = documents.find(item => item.document_id === draft.documentId);
   const [error, setError] = useState(null);
   const errorId = useId();
 
@@ -18,7 +19,10 @@ export function PdfExcerptForm({ client, documents, onPrepare, onDraftChange, di
     if (disabled) return;
     let context;
     try {
-      context = pdfExcerptContext(draft);
+      if (draft.documentId && !original) {
+        throw Object.assign(new Error('This PDF is no longer attached. Choose a reference again.'), { field: 'original' });
+      }
+      context = pdfExcerptContext(draft, original);
     } catch (validationError) {
       setError(validationError);
       event.currentTarget.elements.namedItem(validationError.field)?.focus();
@@ -46,7 +50,23 @@ export function PdfExcerptForm({ client, documents, onPrepare, onDraftChange, di
     }}/>
     <form onSubmit={prepare}>
       <fieldset disabled={saving}>
-      <label>PDF title or file name<input {...field('document')} value={draft.document} onChange={event=>change('document',event.target.value)} required/></label>
+      {documents.length > 0 || draft.documentId ? <label>Original for this passage
+        <select {...field('original')} value={draft.documentId ?? ''} onChange={event=>{
+          const selected = documents.find(item => item.document_id === event.target.value);
+          onDraftChange?.();
+          setDraft(current => ({
+            ...current,
+            documentId: selected?.document_id,
+            document: selected?.locator ?? current.document,
+          }));
+          setError(null);
+        }}>
+          <option value="">Use a manually entered reference</option>
+          {draft.documentId && !original && <option value={draft.documentId}>Previously attached PDF unavailable</option>}
+          {documents.map(item => <option key={item.document_id} value={item.document_id}>{item.locator}</option>)}
+        </select>
+      </label> : null}
+      <label>PDF title or file name<input {...field('document')} value={draft.document} readOnly={Boolean(original)} onChange={event=>change('document',event.target.value)} required/></label>
       <label>First page in your PDF reader<input inputMode="numeric" {...field('page')} value={draft.page} onChange={event=>change('page',event.target.value)} required/></label>
       <label>Last page, if different<input inputMode="numeric" {...field('endPage')} value={draft.endPage} onChange={event=>change('endPage',event.target.value)}/></label>
       <label>Section title (optional)<input {...field('section')} value={draft.section} onChange={event=>change('section',event.target.value)}/></label>
