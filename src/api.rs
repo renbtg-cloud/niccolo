@@ -9,6 +9,7 @@ use crate::analysis_delta::{self, AnalysisDeltaError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
+use crate::artifacts::{self, ArtifactError, ArtifactInput};
 use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
@@ -354,6 +355,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             get(get_situation).post(create_situation),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/artifacts",
+            get(list_situation_artifacts),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/artifacts/{artifact}",
+            post(record_situation_artifact),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/focus",
             post(set_situation_focus),
         )
@@ -680,6 +689,17 @@ impl From<ImportError> for ApiError {
         }
     }
 }
+impl From<ArtifactError> for ApiError {
+    fn from(error: ArtifactError) -> Self {
+        match error {
+            ArtifactError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid artifact metadata"),
+            ArtifactError::Conflict => Self(StatusCode::CONFLICT, "artifact identity conflict"),
+            ArtifactError::Privileged | ArtifactError::Database(_) => {
+                Self(StatusCode::INTERNAL_SERVER_ERROR, "artifact registry unavailable")
+            }
+        }
+    }
+}
 fn bearer(headers: &HeaderMap) -> Result<&str, ApiError> {
     unique_bearer(headers).ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid bearer token"))
 }
@@ -862,6 +882,73 @@ struct SourceQuery {
     limit: Option<i64>,
     after: Option<Uuid>,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArtifactRequest {
+    artifact_type: String,
+    label: String,
+    declared_mime_type: Option<String>,
+    declared_byte_length: Option<i64>,
+    declared_sha256: Option<String>,
+}
+
+async fn record_situation_artifact(
+    State(state): State<AppState>,
+    Path((workspace, situation, artifact)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<ArtifactRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let replayed = artifacts::record_for_situation(
+        &state.pool,
+        workspace,
+        situation,
+        &ArtifactInput {
+            artifact_id: artifact,
+            artifact_type: request.artifact_type,
+            label: request.label,
+            declared_mime_type: request.declared_mime_type,
+            declared_byte_length: request.declared_byte_length,
+            declared_sha256: request.declared_sha256,
+            recorded_by: recorder,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "artifact_id":artifact,
+            "replayed":replayed,
+            "source_bytes_stored":false,
+            "artifact_was_inspected":false,
+            "parsers_invoked":false
+        }),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
+}
+
+async fn list_situation_artifacts(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let artifacts = artifacts::list_for_situation(&state.pool, workspace, situation).await?;
+    Ok(no_store(
+        json!({
+            "artifacts":artifacts,
+            "parser_free_mvp":true,
+            "source_bytes_accepted":false,
+            "locators_dereferenced":false
+        }),
+        StatusCode::OK,
+    ))
+}
+
 async fn list_sources(
     State(state): State<AppState>,
     Path(workspace): Path<Uuid>,
