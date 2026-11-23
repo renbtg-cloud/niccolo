@@ -35,6 +35,9 @@ function SourceRequestDecisionCard({ request, client, analysis, generation, onCh
       setNote('');
       await onChanged();
     },
+    onError: async error => {
+      if (isCurrentSession(generation) && error.status === 409) await onChanged();
+    },
   });
   return <li>
     <strong>{request.text}</strong>

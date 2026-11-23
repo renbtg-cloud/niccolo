@@ -92,6 +92,7 @@ describe('buyer-facing primary surfaces', () => {
     expect(sourceRequests).toContain('pending.current?.signature !== signature');
     expect(sourceRequests).toContain('Attributed decision history');
     expect(sourceRequests).toContain('event.recorded_by');
+    expect(sourceRequests).toContain('error.status === 409');
   });
 
   it('makes sources and human identity catalogs navigable past the first page', () => {
