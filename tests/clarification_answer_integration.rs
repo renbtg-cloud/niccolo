@@ -445,6 +445,7 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
     assert_eq!(listed["source_requests"][0]["state"], "DEFERRED");
     assert_eq!(listed["source_requests"][0]["events"][0]["event_id"], event_id.to_string());
     assert_eq!(listed["source_requests"][0]["events"][0]["kind"], "DEFERRED");
+    assert!(listed["source_requests"][0]["events"][0]["event_no"].as_i64().unwrap() > 0);
     assert_eq!(listed["source_requests"][0]["events"][0]["note"], "I will revisit this tomorrow.");
     assert!(listed["source_requests"][0]["events"][0]["recorded_by"].is_string());
     assert!(listed["source_requests"][0]["events"][0]["recorded_at"].is_string());

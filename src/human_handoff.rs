@@ -74,6 +74,7 @@ pub struct SourceRequestEvent {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceRequestEventView {
+    pub event_no: i64,
     pub event_id: Uuid,
     pub kind: String,
     pub note: String,
@@ -165,7 +166,7 @@ pub async fn append_source_request_event(
     let current: Option<String> = sqlx::query_scalar(
         "SELECT event_kind FROM niccolo.situation_analysis_source_request_events \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND request_id=$4 \
-         ORDER BY created_at DESC,event_id DESC LIMIT 1",
+         ORDER BY event_no DESC LIMIT 1",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
@@ -216,11 +217,11 @@ pub async fn source_requests(
     .bind(scope.analysis)
     .fetch_all(&mut *tx)
     .await?;
-    let event_rows: Vec<(Uuid, Uuid, String, String, Uuid, String)> = sqlx::query_as(
-        "SELECT request_id,event_id,event_kind,note,recorded_by_principal_id,created_at::text \
+    let event_rows: Vec<(Uuid, i64, Uuid, String, String, Uuid, String)> = sqlx::query_as(
+        "SELECT request_id,event_no,event_id,event_kind,note,recorded_by_principal_id,created_at::text \
          FROM niccolo.situation_analysis_source_request_events \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
-         ORDER BY created_at,event_id",
+         ORDER BY event_no",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
@@ -229,8 +230,9 @@ pub async fn source_requests(
     .await?;
     tx.commit().await?;
     let mut events = BTreeMap::<Uuid, Vec<SourceRequestEventView>>::new();
-    for (request_id, event_id, kind, note, recorded_by, recorded_at) in event_rows {
+    for (request_id, event_no, event_id, kind, note, recorded_by, recorded_at) in event_rows {
         events.entry(request_id).or_default().push(SourceRequestEventView {
+            event_no,
             event_id,
             kind,
             note,

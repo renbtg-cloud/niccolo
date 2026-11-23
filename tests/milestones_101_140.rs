@@ -1030,6 +1030,7 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
     assert_eq!(r[0].state, "ACCEPTED");
     assert_eq!(r[0].proposed_by, s.principal);
     assert_eq!(r[0].events.len(), 1);
+    assert!(r[0].events[0].event_no > 0);
     assert_eq!(r[0].events[0].event_id, event_id);
     assert_eq!(r[0].events[0].recorded_by, s.principal);
     assert_eq!(r[0].events[0].note, "human approves request");
