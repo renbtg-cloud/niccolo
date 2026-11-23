@@ -85,6 +85,8 @@ export class NiccoloClient {
   analysisClarifications(id, after = null, limit = 25, signal) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications${q}`, { signal }); }
   clarificationAnswers(id, questionId, after = null, limit = 25, signal) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers${q}`, { signal }); }
   answerClarification(id, questionId, answerId, text) { return this.request('POST', `${analysisPath(this.config,id)}/clarifications/${questionId}/answers/${answerId}`, { body: { text } }); }
+  sourceRequests(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/source-requests`, { signal }); }
+  recordSourceRequestEvent(id, requestId, eventId, kind, note) { return this.request('POST', `${analysisPath(this.config,id)}/source-requests/${requestId}/events/${eventId}`, { body: { kind, note } }); }
   reanalysisRevision(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/reanalysis-revision`, { signal }); }
   analysisCoverage(id, signal) { return this.request('GET', `${analysisPath(this.config,id)}/coverage`, { signal }); }
   analysisContext(id, signal, after = null) {
