@@ -29,6 +29,9 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('No authored non-contextual grounding route currently depends on this object.');
     expect(page).toContain('Reachability means participation, not sufficiency.');
     expect(page).toContain("route.source_is_direct_ground?'Direct ground':'Downstream dependency'");
+    expect(page).toContain('unreached_parallel_route_count');
+    expect(page).toContain('other authored route(s) to this conclusion remain untouched by this source');
+    expect(page).toContain('No recorded parallel route is not proof that no alternative route exists.');
     expect(page).toContain('It does not invent a hypothesis, promote a what-if assumption into fact');
     expect(page).toContain('does not treat a hypothetical observation as an observation that occurred');
   });

@@ -79,7 +79,7 @@ function AuthoredImpactPanel({snapshot}) {
           <p>{impact.route_impacts.length} reachable authored route(s) touching {impact.reached_conclusion_object_ids.length} conclusion(s). Reachability means participation, not sufficiency.</p>
           <ul>{impact.route_impacts.map(route=><li key={`${route.argument_id}:${route.grounding_set_id}`}>
             <strong>{route.effect}/{route.adequacy}</strong> → {label(route.conclusion_object_id)}
-            <br/><small>{route.source_is_direct_ground?'Direct ground':'Downstream dependency'} · depth {route.depth} · {route.non_context_member_count} non-context joint ground(s). Route directions remain separate.</small>
+            <br/><small>{route.source_is_direct_ground?'Direct ground':'Downstream dependency'} · depth {route.depth} · {route.non_context_member_count} non-context joint ground(s) · {route.unreached_parallel_route_count>0?`${route.unreached_parallel_route_count} other authored route(s) to this conclusion remain untouched by this source`:'no other recorded route to this conclusion remains outside this projection'}. Route directions remain separate.</small>
             {route.reachable_ground_object_ids.length>0&&<details><summary>Reachable grounds on this route</summary><ul>{route.reachable_ground_object_ids.map(id=><li key={id}>{label(id)}</li>)}</ul></details>}
           </li>)}</ul>
         </>}
@@ -87,7 +87,7 @@ function AuthoredImpactPanel({snapshot}) {
         {impact.source_kind==='HYPOTHESIS'&&(impact.tested_by_question_ids.length>0?<p><strong>Questions explicitly testing it:</strong> {impact.tested_by_question_ids.map(label).join(' · ')}</p>:<p>No investigative question is explicitly linked as testing this hypothesis.</p>)}
       </li>;
     })}</ul>
-    <small>This is deterministic structural analysis. It establishes neither truth nor confidence and does not treat a hypothetical observation as an observation that occurred.</small>
+    <small>This is deterministic structural analysis. It establishes neither truth nor confidence and does not treat a hypothetical observation as an observation that occurred. No recorded parallel route is not proof that no alternative route exists.</small>
   </details>;
 }
 
