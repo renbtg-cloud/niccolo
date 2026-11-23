@@ -14,3 +14,15 @@ it('rejects late completions after logout and after a same-Situation reconnect',
   expect(isCurrentSession(original)).toBe(false);
   expect(isCurrentSession(useSessionStore.getState().generation)).toBe(true);
 });
+
+
+it('holds an investigation draft only in its active session', () => {
+  const credentials = {workspace:'w', situation:'s', token:'fixture'};
+  useSessionStore.getState().connect(credentials);
+  const generation = useSessionStore.getState().generation;
+  useSessionStore.getState().stageInvestigationDraft('Look for the original', generation);
+  expect(useSessionStore.getState().investigationDraft).toBe('Look for the original');
+  useSessionStore.getState().connect(credentials);
+  useSessionStore.getState().stageInvestigationDraft('Late old draft', generation);
+  expect(useSessionStore.getState().investigationDraft).toBe('');
+});

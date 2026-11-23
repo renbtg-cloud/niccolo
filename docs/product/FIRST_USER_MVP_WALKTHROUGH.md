@@ -136,7 +136,7 @@ Review should make it possible to inspect, as available for that analysis:
 
 The answer is provisional reasoning over recorded input, not a declaration of truth. Open **Read the human context in this analysis** to revisit the exact reports, assumptions, and preferences in that analysis. Each entry shows whether it was recorded as used.
 
-Under **Worth looking at next**, check the reason beside each available lead. Use the link to the Situation to add a record or human context. To revisit an earlier answer, choose it from **Analysis history**. A newly launched analysis also appears in that history. Use **Older analyses** to browse earlier entries. In **Clarifications**, use **More questions** when the review has additional questions. Use **More answers** on a question to browse its recorded responses. An answer you save appears as human context in the Situation.
+Under **Worth looking at next**, check the reason beside each available lead. To pursue one later, choose **Draft as an investigative preference**, edit it in the Situation, and select **Add context** to save it. Use the link to the Situation to add a record or human context. To revisit an earlier answer, choose it from **Analysis history**. A newly launched analysis also appears in that history. Use **Older analyses** to browse earlier entries. In **Clarifications**, use **More questions** when the review has additional questions. Use **More answers** on a question to browse its recorded responses. An answer you save appears as human context in the Situation.
 
 ## What to record during a human usability test
 

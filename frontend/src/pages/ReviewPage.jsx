@@ -3,7 +3,7 @@ import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { ClarificationCard } from './ClarificationCard.jsx';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { situationTextError, utf8ByteLength } from '../state/situationText.js';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useId, useRef, useState } from 'react';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
@@ -129,7 +129,12 @@ function ReviewContent(){
      {output.isPending && <p role="status">Checking for a published answer…</p>}
      {!output.isPending && !output.error && !output.data && <p>No answer has been published for this analysis yet.</p>}
      <article className="review-panel"><h3>Worth looking at next</h3>{dashboard.error ? <div><p role="alert">Next steps unavailable: {dashboard.error.message}</p>
-       <button type="button" disabled={dashboard.isFetching} onClick={()=>void dashboard.refetch()}>Retry next steps</button></div> : dashboard.isPending ? <p role="status">Checking next steps…</p> : leads.length? <div className="lead-list">{leads.map(lead=><div className="lead" key={lead.id}><strong>{lead.label}</strong><p>{lead.text}</p><small>{lead.whyNow}{lead.userMayIgnore?' · You may ignore this lead.':''}</small></div>)}</div> : <p>No investigation lead is available for this analysis yet.</p>}{d?.proactive?.truncated&&<p><small>Showing the highest-priority leads from {d.proactive.candidate_count} candidates.</small></p>}<Link to="/">Add records or human context to the Situation →</Link></article>
+       <button type="button" disabled={dashboard.isFetching} onClick={()=>void dashboard.refetch()}>Retry next steps</button></div> : dashboard.isPending ? <p role="status">Checking next steps…</p> : leads.length? <div className="lead-list">{leads.map(lead=><div className="lead" key={lead.id}><strong>{lead.label}</strong><p>{lead.text}</p><small>{lead.whyNow}{lead.userMayIgnore?' · You may ignore this lead.':''}</small>
+       <button type="button" disabled={!lead.text?.trim()} onClick={()=>{
+         if (!isCurrentSession(generation)) return;
+         useSessionStore.getState().stageInvestigationDraft(lead.text, generation);
+         navigate('/');
+       }}>Draft as an investigative preference</button></div>)}</div> : <p>No investigation lead is available for this analysis yet.</p>}{d?.proactive?.truncated&&<p><small>Showing the highest-priority leads from {d.proactive.candidate_count} candidates.</small></p>}<Link to="/">Add records or human context to the Situation →</Link></article>
      <article className="review-panel"><h3>Download this analysis</h3>
        <p>Save a portable ZIP containing the recorded published analysis, CSV tables, a Python inspector and SHA-256 checksums. Original uploaded documents and complete model reasoning are not included. This does not upload anything to GitHub or another service.</p>
        <button disabled={!output.data||exportPackage.isPending} onClick={()=>exportPackage.mutate()}>{exportPackage.isPending?'Preparing ZIP…':'Download portable analysis ZIP'}</button>

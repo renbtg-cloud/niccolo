@@ -1,7 +1,7 @@
 import { PdfExcerptForm } from './PdfExcerptForm.jsx';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
@@ -66,11 +66,12 @@ function ConnectedSituation({client}){
   const pendingRestoreDocument = useRef(null);
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
-  const [contextKind,setContextKind]=useState('user_reported');
+  const [initialLead] = useState(() => useSessionStore.getState().investigationDraft);
+  const [contextKind,setContextKind]=useState(initialLead ? 'investigative_preference' : 'user_reported');
   const contextEditor=useRef(null);
   const [pdfContext,setPdfContext]=useState(false);
   const [pdfPreviewOutdated,setPdfPreviewOutdated]=useState(false);
-  const [contextText,setContextText]=useState('');
+  const [contextText,setContextText]=useState(initialLead);
   const contextErrorId=useId();
   const contextError=situationTextError(contextText);
 
@@ -80,6 +81,14 @@ function ConnectedSituation({client}){
     queryFn: async ({ signal }) => (await client.situation(signal)).value,
     retry: false,
   });
+  const focusLeadDraft = useRef(Boolean(initialLead));
+  const situationLoaded = Boolean(situation.data);
+  useEffect(() => {
+    if (!focusLeadDraft.current || !situationLoaded) return;
+    focusLeadDraft.current = false;
+    useSessionStore.getState().stageInvestigationDraft('', generation);
+    contextEditor.current?.focus();
+  }, [generation, situationLoaded]);
   const sources = useQuery({
     queryKey: client ? [...qk.sources(client.config), sourceCursor] : ['sources','none'],
     enabled: !!client,
@@ -334,6 +343,7 @@ function ConnectedSituation({client}){
         onPrepare={text=>{addContext.reset();setPdfPreviewOutdated(false);setContextKind('user_reported');setPdfContext(true);setContextText(text);contextEditor.current?.focus();}}/>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
       <label>Kind<select value={contextKind} disabled={addContext.isPending||pdfContext} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
+      {initialLead && contextText && contextKind === 'investigative_preference' && !addContext.isSuccess && <p>Review this draft and choose Add context when it reflects what you want to investigate.</p>}
       {pdfContext&&<p role="status">This PDF passage or description will be saved as a human report. Edit the passage or its reference above, then prepare it again.</p>}
       <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} readOnly={pdfContext} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
       {pdfContext&&<small>{utf8ByteLength(contextText.trim())} / 4096 UTF-8 bytes, including the source reference.</small>}
