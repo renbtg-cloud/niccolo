@@ -984,6 +984,28 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
         .await,
         Err(human_handoff::HandoffError::Conflict)
     ));
+    let invalid_event = sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_source_request_events \
+         (workspace_id,situation_id,analysis_id,request_id,event_id,event_kind,note,recorded_by_principal_id) \
+         VALUES($1,$2,$3,$4,$5,'ACCEPTED',$6,$7)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(id)
+    .bind(Uuid::new_v4())
+    .bind("invalid\nmultiline decision")
+    .bind(s.principal)
+    .execute(&admin)
+    .await
+    .unwrap_err();
+    assert_eq!(
+        invalid_event
+            .as_database_error()
+            .and_then(|error| error.code())
+            .as_deref(),
+        Some("23514")
+    );
     let event_id = Uuid::new_v4();
     let replayed = human_handoff::append_source_request_event(
         &app,
