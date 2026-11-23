@@ -5,9 +5,9 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz};
+use niccolo_evidence::{analysis_structure::AnalysisScope, api, authz, reasoning_packet};
 use serde_json::{Value, json};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -16,6 +16,7 @@ struct Setup {
     workspace: Uuid,
     situation: Uuid,
     token: String,
+    service: PgPool,
 }
 
 async fn setup() -> Setup {
@@ -40,7 +41,7 @@ async fn setup() -> Setup {
     let token = authz::provision_token(&admin, principal, workspace, true, true, 1)
         .await
         .unwrap();
-    let router = api::router(service);
+    let router = api::router(service.clone());
     let (status, _) = invoke(
         router.clone(),
         request(
@@ -57,6 +58,7 @@ async fn setup() -> Setup {
         workspace,
         situation,
         token,
+        service,
     }
 }
 
@@ -219,7 +221,7 @@ async fn http_flow_records_human_material_without_accepting_or_reading_artifact_
     assert_eq!(related["relationship_is_verified"], false);
 
     let (status, list) = invoke(
-        setup.router,
+        setup.router.clone(),
         request(
             "GET",
             &format!(
@@ -250,6 +252,65 @@ async fn http_flow_records_human_material_without_accepting_or_reading_artifact_
     assert_eq!(list["representations"][0]["artifact_was_parsed"], false);
     assert_eq!(list["relationships"].as_array().unwrap().len(), 1);
     assert_eq!(list["relationships"][0]["relationship_is_verified"], false);
+
+    let analysis = Uuid::new_v4();
+    let (status, frozen) = invoke(
+        setup.router,
+        request(
+            "POST",
+            &format!(
+                "/v1/workspaces/{}/situations/{}/analysis-snapshots/{analysis}",
+                setup.workspace, setup.situation
+            ),
+            &setup.token,
+            Some(json!({"goal":"Compare the human-supplied material"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let digest = authz::credential_digest(&setup.token).unwrap();
+    let packet = authz::with_auth_digest(digest, async {
+        reasoning_packet::build(
+            &setup.service,
+            AnalysisScope {
+                workspace: setup.workspace,
+                situation: setup.situation,
+                analysis,
+            },
+        )
+        .await
+        .unwrap()
+    })
+    .await;
+    assert_eq!(packet.version, 2);
+    assert_eq!(
+        packet.frozen_input.revision,
+        frozen["input_revision"].as_i64().unwrap()
+    );
+    assert_eq!(packet.frozen_input.artifacts.len(), 2);
+    assert_eq!(packet.frozen_input.artifact_storage_references.len(), 1);
+    assert_eq!(packet.frozen_input.artifact_representations.len(), 1);
+    assert_eq!(packet.frozen_input.artifact_relationships.len(), 1);
+    assert_eq!(packet.frozen_input.artifact_original_bytes_included, 0);
+    assert!(!packet.frozen_input.artifact_packet_truncated);
+    assert!(
+        packet
+            .frozen_input
+            .artifacts
+            .iter()
+            .all(|artifact| !artifact.source_bytes_included && !artifact.artifact_was_inspected)
+    );
+    assert!(
+        packet
+            .frozen_input
+            .artifact_representations
+            .iter()
+            .all(
+                |representation| representation.content_was_explicitly_supplied
+                    && !representation.artifact_was_parsed
+                    && !representation.representation_establishes_truth
+            )
+    );
 }
 
 #[tokio::test]

@@ -52,6 +52,53 @@ pub struct FrozenSourceFragment {
     pub source_class: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenArtifact {
+    pub artifact_id: Uuid,
+    pub artifact_type: String,
+    pub label: String,
+    pub declared_mime_type: Option<String>,
+    pub declared_byte_length: Option<i64>,
+    pub declared_sha256: Option<String>,
+    pub source_bytes_included: bool,
+    pub artifact_was_inspected: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenArtifactStorageReference {
+    pub artifact_id: Uuid,
+    pub storage_reference_id: Uuid,
+    pub storage_type: String,
+    pub locator: String,
+    pub access_status: String,
+    pub access_status_basis: String,
+    pub locator_was_dereferenced: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenArtifactRepresentation {
+    pub artifact_id: Uuid,
+    pub representation_id: Uuid,
+    pub representation_type: String,
+    pub producer_type: String,
+    pub producer_label: Option<String>,
+    pub production_method: Option<String>,
+    pub scope_locator: String,
+    pub content: String,
+    pub completeness_status: String,
+    pub epistemic_qualification: Option<String>,
+    pub limitations: Option<String>,
+    pub content_was_explicitly_supplied: bool,
+    pub artifact_was_parsed: bool,
+    pub representation_establishes_truth: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenArtifactRelationship {
+    pub relationship_id: Uuid,
+    pub subject_artifact_id: Uuid,
+    pub object_artifact_id: Uuid,
+    pub relationship_type: String,
+    pub qualification: Option<String>,
+    pub relationship_is_verified: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PacketClaim {
     pub claim_id: Uuid,
     pub ordinal: i32,
@@ -79,6 +126,15 @@ pub struct FrozenInputPacket {
     pub source_fragment_count_included: usize,
     pub source_bytes_included: usize,
     pub source_packet_truncated: bool,
+    pub artifacts: Vec<FrozenArtifact>,
+    pub artifact_storage_references: Vec<FrozenArtifactStorageReference>,
+    pub artifact_representations: Vec<FrozenArtifactRepresentation>,
+    pub artifact_relationships: Vec<FrozenArtifactRelationship>,
+    pub artifact_representation_count_total: i64,
+    pub artifact_representation_count_included: usize,
+    pub artifact_representation_bytes_included: usize,
+    pub artifact_packet_truncated: bool,
+    pub artifact_original_bytes_included: usize,
     pub contributions: Vec<FrozenContribution>,
     pub input_is_current: bool,
     pub current_revision: i64,
@@ -146,8 +202,33 @@ fn dep<E: std::fmt::Display>(e: E) -> PacketError {
 }
 const MAX_SOURCE_FRAGMENTS: i64 = 256;
 const MAX_SOURCE_BYTES: usize = 384 * 1024;
+const MAX_ARTIFACT_REPRESENTATIONS: i64 = 256;
+const MAX_ARTIFACT_REPRESENTATION_BYTES: usize = 384 * 1024;
 
 type FrozenFragmentRow = (Uuid, Uuid, i32, String, String, String, String, String);
+type FrozenArtifactRow = (
+    Uuid,
+    String,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<String>,
+);
+type FrozenArtifactStorageRow = (Uuid, Uuid, String, String, String, String);
+type FrozenArtifactRepresentationRow = (
+    Uuid,
+    Uuid,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+);
+type FrozenArtifactRelationshipRow = (Uuid, Uuid, Uuid, String, Option<String>);
 
 async fn packet_tx(
     pool: &PgPool,
@@ -309,6 +390,229 @@ async fn frozen_source_fragments(
     }
     Ok((fragments, total, bytes, truncated))
 }
+
+async fn frozen_artifact_material(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    revision: i64,
+) -> Result<
+    (
+        Vec<FrozenArtifact>,
+        Vec<FrozenArtifactStorageReference>,
+        Vec<FrozenArtifactRepresentation>,
+        Vec<FrozenArtifactRelationship>,
+        i64,
+        usize,
+        bool,
+    ),
+    PacketError,
+> {
+    let mut tx = packet_tx(pool, workspace).await?;
+    let artifacts: Vec<FrozenArtifactRow> = sqlx::query_as(
+        "SELECT a.artifact_id,a.artifact_type,a.label,a.declared_mime_type,
+                a.declared_byte_length,a.declared_sha256
+         FROM niccolo.situation_revision_artifacts ra
+         JOIN niccolo.artifacts a USING(workspace_id,artifact_id)
+         WHERE ra.workspace_id=$1 AND ra.situation_id=$2 AND ra.revision=$3
+         ORDER BY a.artifact_id LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(dep)?;
+    let storage: Vec<FrozenArtifactStorageRow> = sqlx::query_as(
+        "SELECT rr.artifact_id,rr.storage_reference_id,r.storage_type,r.locator,
+                e.access_status,e.status_basis
+         FROM niccolo.situation_revision_artifact_storage_references rr
+         JOIN niccolo.artifact_storage_references r
+           ON r.workspace_id=rr.workspace_id AND r.artifact_id=rr.artifact_id
+          AND r.storage_reference_id=rr.storage_reference_id
+         JOIN niccolo.artifact_storage_access_events e
+           ON e.workspace_id=rr.workspace_id AND e.artifact_id=rr.artifact_id
+          AND e.storage_reference_id=rr.storage_reference_id
+          AND e.access_event_id=rr.access_event_id
+         WHERE rr.workspace_id=$1 AND rr.situation_id=$2 AND rr.revision=$3
+         ORDER BY rr.artifact_id,rr.storage_reference_id LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(dep)?;
+    let representation_total: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+         FROM niccolo.situation_revision_artifact_representations
+         WHERE workspace_id=$1 AND situation_id=$2 AND revision=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(dep)?;
+    let representation_rows: Vec<FrozenArtifactRepresentationRow> = sqlx::query_as(
+        "SELECT r.artifact_id,r.representation_id,r.representation_type,r.producer_type,
+                r.producer_label,r.production_method,r.scope_locator,r.content,
+                r.completeness_status,r.epistemic_qualification,r.limitations
+         FROM niccolo.situation_revision_artifact_representations rr
+         JOIN niccolo.situation_artifact_representations r
+           ON r.workspace_id=rr.workspace_id AND r.situation_id=rr.situation_id
+          AND r.representation_id=rr.representation_id
+         WHERE rr.workspace_id=$1 AND rr.situation_id=$2 AND rr.revision=$3
+         ORDER BY r.representation_id LIMIT $4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .bind(MAX_ARTIFACT_REPRESENTATIONS + 1)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(dep)?;
+    let relationships: Vec<FrozenArtifactRelationshipRow> = sqlx::query_as(
+        "SELECT r.relationship_id,r.subject_artifact_id,r.object_artifact_id,
+                r.relationship_type,r.qualification
+         FROM niccolo.situation_revision_artifact_relationships rr
+         JOIN niccolo.situation_artifact_relationships r
+           ON r.workspace_id=rr.workspace_id AND r.situation_id=rr.situation_id
+          AND r.relationship_id=rr.relationship_id
+         WHERE rr.workspace_id=$1 AND rr.situation_id=$2 AND rr.revision=$3
+         ORDER BY r.relationship_id LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(revision)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(dep)?;
+    tx.commit().await.map_err(dep)?;
+    let mut packet_truncated =
+        artifacts.len() > 1000 || storage.len() > 1000 || relationships.len() > 1000;
+    let artifacts = artifacts
+        .into_iter()
+        .take(1000)
+        .map(
+            |(
+                artifact_id,
+                artifact_type,
+                label,
+                declared_mime_type,
+                declared_byte_length,
+                declared_sha256,
+            )| FrozenArtifact {
+                artifact_id,
+                artifact_type,
+                label,
+                declared_mime_type,
+                declared_byte_length,
+                declared_sha256,
+                source_bytes_included: false,
+                artifact_was_inspected: false,
+            },
+        )
+        .collect();
+    let storage = storage
+        .into_iter()
+        .take(1000)
+        .map(
+            |(
+                artifact_id,
+                storage_reference_id,
+                storage_type,
+                locator,
+                access_status,
+                access_status_basis,
+            )| FrozenArtifactStorageReference {
+                artifact_id,
+                storage_reference_id,
+                storage_type,
+                locator,
+                access_status,
+                access_status_basis,
+                locator_was_dereferenced: false,
+            },
+        )
+        .collect();
+    let relationships = relationships
+        .into_iter()
+        .take(1000)
+        .map(
+            |(
+                relationship_id,
+                subject_artifact_id,
+                object_artifact_id,
+                relationship_type,
+                qualification,
+            )| FrozenArtifactRelationship {
+                relationship_id,
+                subject_artifact_id,
+                object_artifact_id,
+                relationship_type,
+                qualification,
+                relationship_is_verified: false,
+            },
+        )
+        .collect();
+    let mut representation_bytes = 0usize;
+    let mut representations = Vec::new();
+    for (
+        artifact_id,
+        representation_id,
+        representation_type,
+        producer_type,
+        producer_label,
+        production_method,
+        scope_locator,
+        content,
+        completeness_status,
+        epistemic_qualification,
+        limitations,
+    ) in representation_rows
+    {
+        if representations.len() >= MAX_ARTIFACT_REPRESENTATIONS as usize {
+            packet_truncated = true;
+            break;
+        }
+        let next = representation_bytes.saturating_add(content.len());
+        if next > MAX_ARTIFACT_REPRESENTATION_BYTES {
+            packet_truncated = true;
+            break;
+        }
+        representation_bytes = next;
+        representations.push(FrozenArtifactRepresentation {
+            artifact_id,
+            representation_id,
+            representation_type,
+            producer_type,
+            producer_label,
+            production_method,
+            scope_locator,
+            content,
+            completeness_status,
+            epistemic_qualification,
+            limitations,
+            content_was_explicitly_supplied: true,
+            artifact_was_parsed: false,
+            representation_establishes_truth: false,
+        });
+    }
+    if representations.len() as i64 != representation_total {
+        packet_truncated = true;
+    }
+    Ok((
+        artifacts,
+        storage,
+        representations,
+        relationships,
+        representation_total,
+        representation_bytes,
+        packet_truncated,
+    ))
+}
+
 pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacket, PacketError> {
     let frozen =
         analysis_snapshot::materialize(pool, scope.workspace, scope.situation, scope.analysis)
@@ -320,6 +624,21 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         source_bytes_included,
         source_packet_truncated,
     ) = frozen_source_fragments(
+        pool,
+        scope.workspace,
+        scope.situation,
+        frozen.input.revision,
+    )
+    .await?;
+    let (
+        artifacts,
+        artifact_storage_references,
+        artifact_representations,
+        artifact_relationships,
+        artifact_representation_count_total,
+        artifact_representation_bytes_included,
+        artifact_packet_truncated,
+    ) = frozen_artifact_material(
         pool,
         scope.workspace,
         scope.situation,
@@ -418,7 +737,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             .map_err(dep)?;
     Ok(ReasoningPacket {
         format: "niccolo.reasoning-packet".into(),
-        version: 1,
+        version: 2,
         workspace_id: scope.workspace,
         situation_id: scope.situation,
         analysis_id: scope.analysis,
@@ -441,6 +760,15 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             source_fragment_count_total,
             source_bytes_included,
             source_packet_truncated,
+            artifacts,
+            artifact_storage_references,
+            artifact_representation_count_included: artifact_representations.len(),
+            artifact_representations,
+            artifact_relationships,
+            artifact_representation_count_total,
+            artifact_representation_bytes_included,
+            artifact_packet_truncated,
+            artifact_original_bytes_included: 0,
             contributions: frozen
                 .input
                 .contributions
