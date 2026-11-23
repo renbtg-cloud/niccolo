@@ -340,6 +340,7 @@ The reconciliation has now begun to land incrementally:
 - `0099_reasoning_proposal_ledger.sql` separated model proposal identity from canonical reasoning objects;
 - `0100_expert_epistemic_workbench.sql` added expert-authored Hypothesis, Assumption, InformationGap, Finding and Argument objects, typed semantic/causal/contextual/genealogical relations, and joint/alternative grounding structures;
 - `src/epistemic_workbench.rs`, API endpoints and the frontend Workbench expose the structured expert-authoring slice;
+- the Workbench deterministically projects explicit downstream impacts from human-authored Hypothesis and Assumption objects while keeping route direction, adequacy, depth, joint participation, contradictions and testing questions separate; reachability is neither truth nor sufficiency;
 - the investigator free-text compiler is deliberately post-MVP.
 
-The next architectural work should deepen **selective revision/downstream reassessment and reasoning over the explicit expert-authored graph**, while continuing to generalize persistent identity across older analysis-scoped objects.
+The next architectural work should deepen **selective revision/downstream reassessment over the explicit expert-authored graph**, while continuing to generalize persistent identity across older analysis-scoped objects. Hypothesis invention remains human work in the restricted MVP.
