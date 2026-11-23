@@ -8,7 +8,7 @@ use axum::{
 use http_body_util::BodyExt;
 use niccolo_evidence::{api, authz};
 use serde_json::{Value, json};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 use uuid::Uuid;
 
