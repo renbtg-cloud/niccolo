@@ -19,7 +19,7 @@ Historical revisions keep their original source/contribution membership even aft
 All routes remain loopback-only POC routes behind the existing bearer-token and restrictive RLS boundary.
 
 - `POST /v1/workspaces/{workspace}/situations/{situation}` — create idempotently.
-- `GET /v1/workspaces/{workspace}/situations/{situation}` — current frozen snapshot.
+- `GET /v1/workspaces/{workspace}/situations/{situation}` — current frozen snapshot plus `attached_pdfs`, an array of `document_id` and `locator` entries for attached PDFs with retained bytes. The list is independent of the source catalog cursor. Historical revision snapshots omit this preview metadata.
 - `POST .../focus` — change current focus and create a revision.
 - `POST .../sources/{document}` — add an already-imported source document and create a revision.
 - `POST .../contributions/{contribution}` — append human context / WHAT-IF / investigative preference.

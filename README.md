@@ -261,6 +261,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 
 - Provenance-aware source and evidence representation, including multi-parent derivations and withdrawal-sensitive traversal.
 - Import and attribution primitives for bounded plain-text email and WhatsApp exports; source revision and fragment tracking.
+- Retained PDF originals, bounded page-text preview with `pdftotext`, and attributed human reports that reference selected pages.
 - Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.

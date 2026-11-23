@@ -487,6 +487,29 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
     .await;
     assert_eq!(status, StatusCode::CREATED);
 
+    let pdf = Uuid::new_v4();
+    let (status, imported_pdf) = invoke(
+        h.router.clone(),
+        raw_request(
+            "POST",
+            &format!("/v1/workspaces/{}/sources/{pdf}", h.workspace),
+            &h.token,
+            "application/pdf",
+            "schedule.pdf",
+            "%PDF-1.4\n%%EOF\n", // This test exercises opaque retention only.
+        ),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(imported_pdf["fragment_ids"], json!([]));
+    let (status, _) = invoke(
+        h.router.clone(),
+        json_request("POST", &format!("{situation_path}/sources/{pdf}"), &h.token, None),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let report = format!(
+        "User description of PDF “schedule.pdf”, page 3 (stored original {pdf}, whitespace normalized): “Ana marked noon as tentative.”"
+    );
+
     let contribution = Uuid::new_v4();
     let contribution_path = format!("{situation_path}/contributions/{contribution}");
     let (status, context) = invoke(
@@ -497,7 +520,7 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
             &h.token,
             Some(json!({
                 "kind":"user_reported",
-                "text":"I remember Ana sounding unusually certain.",
+                "text":report,
                 "related_evidence_id":null
             })),
         ),
@@ -705,10 +728,17 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
         "provider requests must include source fragment text from the frozen Situation input"
     );
     assert!(
-        wires
-            .iter()
-            .any(|wire| wire.contains("I remember Ana sounding unusually certain.")),
-        "human context must remain available to the provider separately from source evidence"
+        wires.iter().filter(|wire| wire.contains("SYNTHESIZE")).any(|wire| {
+            let request = model_request_from_wire(wire);
+            let input = &request["input"]["reasoning_packet"]["frozen_input"];
+            input["sources"].as_array().is_some_and(|sources| sources.contains(&json!(pdf)))
+                && input["contributions"][0]["text"] == report
+                && input["contributions"][0]["kind"] == "USER_REPORTED"
+                && input["source_fragments"].as_array().is_some_and(|fragments| {
+                    !fragments.is_empty() && fragments.iter().all(|fragment| fragment["document_id"] == json!(document))
+                })
+        }),
+        "the frozen input must retain the PDF and attributed report without manufacturing PDF evidence"
     );
     assert!(
         wires.iter().any(|wire| {
