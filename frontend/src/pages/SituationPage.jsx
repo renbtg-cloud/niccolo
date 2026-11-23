@@ -3,7 +3,7 @@ import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { qk } from '../api/keys.js';
+import { invalidateSituationReview, qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { restoreSourceRequest, sourceDescriptor } from '../state/sourceUpload.js';
@@ -98,7 +98,7 @@ function ConnectedSituation({client}){
   const refresh = async () => {
     if (!isCurrentSession(generation)) return;
     return Promise.all([
-      qc.invalidateQueries({ queryKey: qk.situation(client.config) }),
+      invalidateSituationReview(qc, client.config),
       qc.invalidateQueries({ queryKey: qk.sources(client.config) }),
     ]);
   };

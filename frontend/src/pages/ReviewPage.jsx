@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { situationTextError, utf8ByteLength } from '../state/situationText.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { useId, useRef, useState } from 'react';
-import { qk } from '../api/keys.js';
+import { invalidateSituationReview, qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { useDashboard } from '../hooks/useDashboard.js';
 import { useUiStore } from '../stores/ui.js';
@@ -63,7 +63,7 @@ function ReviewContent(){
      delete remaining[variables.questionId];
      return remaining;
    });
-   await Promise.all([qc.invalidateQueries({queryKey:['analysis']}),qc.invalidateQueries({queryKey:['dashboard']}),qc.invalidateQueries({queryKey:qk.situation(client.config),exact:true})]);
+   await invalidateSituationReview(qc, client.config);
  }});
  const recordReceipt=useMutation({mutationFn:async(kind)=>{
    if(!handoffView?.sha256)throw new Error('No current handoff');

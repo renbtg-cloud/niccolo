@@ -14,3 +14,13 @@ export const qk = {
   analysis: (c, id, view) => ['analysis', c.workspace, c.situation, id, view],
   dashboard: (c, id, operation) => ['dashboard', c.workspace, c.situation, id, operation ?? null],
 };
+
+export function invalidateSituationReview(queryClient, config) {
+  const scope = [config.workspace, config.situation];
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: qk.situation(config) }),
+    queryClient.invalidateQueries({ queryKey: ['analysis', ...scope] }),
+    queryClient.invalidateQueries({ queryKey: ['dashboard', ...scope] }),
+    queryClient.invalidateQueries({ queryKey: qk.analysisHistory(config) }),
+  ]);
+}
