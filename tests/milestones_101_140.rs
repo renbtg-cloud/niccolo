@@ -1024,17 +1024,34 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
         .await,
         Err(human_handoff::HandoffError::StateConflict)
     ));
+    let completed_id = Uuid::new_v4();
+    assert!(!human_handoff::append_source_request_event(
+        &app,
+        scope(s),
+        id,
+        &SourceRequestEvent {
+            event_id: completed_id,
+            kind: "COMPLETED".into(),
+            note: "human reports that the acquisition step is complete".into(),
+            recorded_by: s.principal,
+        },
+    )
+    .await
+    .unwrap());
     let r = human_handoff::source_requests(&app, scope(s))
         .await
         .unwrap();
-    assert_eq!(r[0].state, "ACCEPTED");
+    assert_eq!(r[0].state, "COMPLETED");
     assert_eq!(r[0].proposed_by, s.principal);
-    assert_eq!(r[0].events.len(), 1);
+    assert_eq!(r[0].events.len(), 2);
     assert!(r[0].events[0].event_no > 0);
     assert_eq!(r[0].events[0].event_id, event_id);
     assert_eq!(r[0].events[0].recorded_by, s.principal);
     assert_eq!(r[0].events[0].note, "human approves request");
+    assert_eq!(r[0].events[1].event_id, completed_id);
+    assert_eq!(r[0].events[1].kind, "COMPLETED");
     assert!(!r[0].accepted_means_fetched);
+    assert!(!r[0].completion_establishes_evidence);
 }
 
 #[tokio::test]

@@ -92,6 +92,7 @@ pub struct SourceRequestView {
     pub state: String,
     pub events: Vec<SourceRequestEventView>,
     pub accepted_means_fetched: bool,
+    pub completion_establishes_evidence: bool,
 }
 pub async fn propose_source_request(
     pool: &PgPool,
@@ -117,7 +118,7 @@ pub async fn append_source_request_event(
 ) -> Result<bool, HandoffError> {
     if !matches!(
         e.kind.as_str(),
-        "ACCEPTED" | "DECLINED" | "DEFERRED" | "REOPENED"
+        "ACCEPTED" | "DECLINED" | "DEFERRED" | "REOPENED" | "COMPLETED"
     ) || !valid(&e.note)
     {
         return Err(HandoffError::Invalid);
@@ -177,7 +178,8 @@ pub async fn append_source_request_event(
     let current = current.as_deref().unwrap_or("PROPOSED");
     let valid_transition = match current {
         "PROPOSED" | "REOPENED" => matches!(e.kind.as_str(), "ACCEPTED" | "DECLINED" | "DEFERRED"),
-        "ACCEPTED" | "DECLINED" | "DEFERRED" => e.kind == "REOPENED",
+        "ACCEPTED" => matches!(e.kind.as_str(), "COMPLETED" | "REOPENED"),
+        "DECLINED" | "DEFERRED" | "COMPLETED" => e.kind == "REOPENED",
         _ => false,
     };
     if !valid_transition {
@@ -258,6 +260,7 @@ pub async fn source_requests(
                 state,
                 events,
                 accepted_means_fetched: false,
+                completion_establishes_evidence: false,
             }
         })
         .collect())
