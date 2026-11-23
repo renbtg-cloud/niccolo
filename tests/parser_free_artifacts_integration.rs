@@ -205,6 +205,44 @@ async fn external_artifacts_remain_useful_without_bytes_or_parser_output() {
     .await
     .unwrap();
     assert_eq!(payloads, 0);
+
+    let revision: i64 = sqlx::query_scalar(
+        "SELECT current_revision FROM niccolo.situations
+         WHERE workspace_id=$1 AND situation_id=$2",
+    )
+    .bind(seed.workspace)
+    .bind(seed.situation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(revision, 5);
+    let frozen: (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT
+           (SELECT count(*) FROM niccolo.situation_revision_artifacts
+             WHERE workspace_id=$1 AND situation_id=$2 AND revision=5),
+           (SELECT count(*) FROM niccolo.situation_revision_artifact_storage_references
+             WHERE workspace_id=$1 AND situation_id=$2 AND revision=5),
+           (SELECT count(*) FROM niccolo.situation_revision_artifact_representations
+             WHERE workspace_id=$1 AND situation_id=$2 AND revision=5),
+           (SELECT count(*) FROM niccolo.situation_revision_artifact_relationships
+             WHERE workspace_id=$1 AND situation_id=$2 AND revision=5)",
+    )
+    .bind(seed.workspace)
+    .bind(seed.situation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(frozen, (2, 1, 1, 1));
+    let distinct_fingerprints: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT fingerprint) FROM niccolo.situation_revisions
+         WHERE workspace_id=$1 AND situation_id=$2",
+    )
+    .bind(seed.workspace)
+    .bind(seed.situation)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(distinct_fingerprints, 5);
 }
 
 #[tokio::test]

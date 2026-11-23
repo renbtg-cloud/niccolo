@@ -84,6 +84,7 @@ pub struct MutationResult {
 }
 
 type ActiveContributionRow = (Uuid, Uuid, String, String, String, Option<Uuid>);
+type ArtifactStorageRevisionRow = (Uuid, Uuid, Uuid);
 
 pub(crate) fn clean_text(input: &str) -> Result<String, SituationStoreError> {
     let trimmed = input.trim();
@@ -253,7 +254,55 @@ pub(crate) async fn checkpoint(
     .bind(situation)
     .fetch_all(&mut **tx)
     .await?;
-    let fingerprint = fingerprint(&focus, &sources, &active);
+    let artifacts: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT artifact_id FROM niccolo.situation_artifacts
+         WHERE workspace_id=$1 AND situation_id=$2 ORDER BY artifact_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut **tx)
+    .await?;
+    let artifact_storage: Vec<ArtifactStorageRevisionRow> = sqlx::query_as(
+        "SELECT DISTINCT ON (r.artifact_id,r.storage_reference_id)
+                r.artifact_id,r.storage_reference_id,e.access_event_id
+         FROM niccolo.situation_artifacts sa
+         JOIN niccolo.artifact_storage_references r USING(workspace_id,artifact_id)
+         JOIN niccolo.artifact_storage_access_events e
+           ON e.workspace_id=r.workspace_id AND e.artifact_id=r.artifact_id
+          AND e.storage_reference_id=r.storage_reference_id
+         WHERE sa.workspace_id=$1 AND sa.situation_id=$2
+         ORDER BY r.artifact_id,r.storage_reference_id,e.event_no DESC",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut **tx)
+    .await?;
+    let artifact_representations: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT artifact_id,representation_id
+         FROM niccolo.situation_artifact_representations
+         WHERE workspace_id=$1 AND situation_id=$2 ORDER BY representation_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut **tx)
+    .await?;
+    let artifact_relationships: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT relationship_id FROM niccolo.situation_artifact_relationships
+         WHERE workspace_id=$1 AND situation_id=$2 ORDER BY relationship_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut **tx)
+    .await?;
+    let fingerprint = fingerprint(
+        &focus,
+        &sources,
+        &active,
+        &artifacts,
+        &artifact_storage,
+        &artifact_representations,
+        &artifact_relationships,
+    );
     let revision = previous_revision + 1;
     sqlx::query(
         "INSERT INTO niccolo.situation_revisions(workspace_id,situation_id,revision,focus,fingerprint,actor_principal_id,cause) \
@@ -290,6 +339,59 @@ pub(crate) async fn checkpoint(
         .execute(&mut **tx)
         .await?;
     }
+    for artifact in &artifacts {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_revision_artifacts
+             (workspace_id,situation_id,revision,artifact_id) VALUES($1,$2,$3,$4)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(revision)
+        .bind(artifact)
+        .execute(&mut **tx)
+        .await?;
+    }
+    for (artifact, reference, access_event) in &artifact_storage {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_revision_artifact_storage_references
+             (workspace_id,situation_id,revision,artifact_id,storage_reference_id,access_event_id)
+             VALUES($1,$2,$3,$4,$5,$6)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(revision)
+        .bind(artifact)
+        .bind(reference)
+        .bind(access_event)
+        .execute(&mut **tx)
+        .await?;
+    }
+    for (artifact, representation) in &artifact_representations {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_revision_artifact_representations
+             (workspace_id,situation_id,revision,artifact_id,representation_id)
+             VALUES($1,$2,$3,$4,$5)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(revision)
+        .bind(artifact)
+        .bind(representation)
+        .execute(&mut **tx)
+        .await?;
+    }
+    for relationship in &artifact_relationships {
+        sqlx::query(
+            "INSERT INTO niccolo.situation_revision_artifact_relationships
+             (workspace_id,situation_id,revision,relationship_id) VALUES($1,$2,$3,$4)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(revision)
+        .bind(relationship)
+        .execute(&mut **tx)
+        .await?;
+    }
     sqlx::query(
         "UPDATE niccolo.situations SET current_revision=$3,updated_at=clock_timestamp() \
          WHERE workspace_id=$1 AND situation_id=$2",
@@ -321,7 +423,15 @@ pub(crate) async fn checkpoint(
     })
 }
 
-fn fingerprint(focus: &str, sources: &[Uuid], contributions: &[ActiveContributionRow]) -> String {
+fn fingerprint(
+    focus: &str,
+    sources: &[Uuid],
+    contributions: &[ActiveContributionRow],
+    artifacts: &[Uuid],
+    artifact_storage: &[ArtifactStorageRevisionRow],
+    artifact_representations: &[(Uuid, Uuid)],
+    artifact_relationships: &[Uuid],
+) -> String {
     let mut digest = Sha256::new();
     digest.update(b"niccolo-situation-pg-v1\0");
     digest.update(focus.as_bytes());
@@ -343,6 +453,25 @@ fn fingerprint(focus: &str, sources: &[Uuid], contributions: &[ActiveContributio
             digest.update(evidence.as_bytes());
         }
         digest.update(b"\0");
+    }
+    digest.update(b"artifacts\0");
+    for id in artifacts {
+        digest.update(id.as_bytes());
+    }
+    digest.update(b"artifact-storage\0");
+    for (artifact, reference, access_event) in artifact_storage {
+        digest.update(artifact.as_bytes());
+        digest.update(reference.as_bytes());
+        digest.update(access_event.as_bytes());
+    }
+    digest.update(b"artifact-representations\0");
+    for (artifact, representation) in artifact_representations {
+        digest.update(artifact.as_bytes());
+        digest.update(representation.as_bytes());
+    }
+    digest.update(b"artifact-relationships\0");
+    for relationship in artifact_relationships {
+        digest.update(relationship.as_bytes());
     }
     format!("{:x}", digest.finalize())
 }

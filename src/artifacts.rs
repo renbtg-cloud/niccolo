@@ -52,6 +52,28 @@ async fn scoped(
     Ok(tx)
 }
 
+async fn checkpoint(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    cause: &'static str,
+) -> Result<(), ArtifactError> {
+    use crate::situation_store::SituationStoreError;
+    crate::situation_store::checkpoint(tx, workspace, situation, actor, cause)
+        .await
+        .map(|_| ())
+        .map_err(|error| match error {
+            SituationStoreError::Database(error) => ArtifactError::Database(error),
+            SituationStoreError::Privileged => ArtifactError::Privileged,
+            SituationStoreError::Invalid => ArtifactError::Invalid,
+            SituationStoreError::Conflict | SituationStoreError::Inactive => {
+                ArtifactError::Conflict
+            }
+            SituationStoreError::Invisible => ArtifactError::Invisible,
+        })
+}
+
 fn one_line(value: &str, max: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max && !value.chars().any(char::is_control)
 }
@@ -440,6 +462,16 @@ pub async fn record_for_situation(
             return Err(ArtifactError::Conflict);
         }
     }
+    if inserted || attached {
+        checkpoint(
+            &mut tx,
+            workspace,
+            situation,
+            input.recorded_by,
+            "ARTIFACT_ADDED",
+        )
+        .await?;
+    }
     tx.commit().await?;
     Ok(!inserted && !attached)
 }
@@ -772,6 +804,16 @@ pub async fn record_storage_reference(
             return Err(ArtifactError::Conflict);
         }
     }
+    if inserted || event_inserted {
+        checkpoint(
+            &mut tx,
+            workspace,
+            situation,
+            input.recorded_by,
+            "ARTIFACT_STORAGE_RECORDED",
+        )
+        .await?;
+    }
     tx.commit().await?;
     Ok(!inserted && !event_inserted)
 }
@@ -847,6 +889,16 @@ pub async fn record_representation(
             return Err(ArtifactError::Conflict);
         }
     }
+    if inserted {
+        checkpoint(
+            &mut tx,
+            workspace,
+            situation,
+            input.recorded_by,
+            "ARTIFACT_REPRESENTATION_ADDED",
+        )
+        .await?;
+    }
     tx.commit().await?;
     Ok(!inserted)
 }
@@ -905,6 +957,16 @@ pub async fn record_relationship(
         {
             return Err(ArtifactError::Conflict);
         }
+    }
+    if inserted {
+        checkpoint(
+            &mut tx,
+            workspace,
+            situation,
+            input.recorded_by,
+            "ARTIFACT_RELATIONSHIP_ADDED",
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(!inserted)
