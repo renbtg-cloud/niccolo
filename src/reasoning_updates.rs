@@ -13,6 +13,8 @@ pub enum UpdateError {
     Serialization(#[from] serde_json::Error),
     #[error("invalid reasoning update")]
     Invalid,
+    #[error("restricted MVP hypotheses and assumptions must be authored by a human")]
+    HumanAuthorshipRequired,
     #[error("reasoning update replay conflict")]
     Conflict,
 }
@@ -226,6 +228,27 @@ fn validate(x: &ReasoningUpdate) -> Result<(), UpdateError> {
         if !ids.insert(q.query_id) || !observation_query_ledger::valid_intent(q) {
             return Err(UpdateError::Invalid);
         }
+    }
+    Ok(())
+}
+
+/// Enforce the restricted-MVP boundary at the model-runtime edge.
+///
+/// Historical compatibility structures can still deserialize older candidate
+/// interpretations and assumptions, but an autonomous model invocation may
+/// not create or target them. Hypotheses and what-if assumptions enter the
+/// current Workbench only through explicit human authoring.
+pub fn validate_restricted_mvp_authorship(x: &ReasoningUpdate) -> Result<(), UpdateError> {
+    if !x.candidate_interpretations.is_empty()
+        || !x.assumptions.is_empty()
+        || x.clarifications
+            .iter()
+            .any(|question| !question.discriminates_interpretation_ids.is_empty())
+        || x.source_queries
+            .iter()
+            .any(|query| query.interpretation_id.is_some())
+    {
+        return Err(UpdateError::HumanAuthorshipRequired);
     }
     Ok(())
 }
@@ -534,6 +557,25 @@ pub async fn apply(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn restricted_mvp_rejects_model_authored_hypotheses_assumptions_and_targets() {
+        let candidate = Uuid::new_v4();
+        for update in [
+            json!({"niccolo_update":{"candidate_interpretations":[{"interpretation_id":candidate,"text":"Model theory","rationale":"Plausible is not human-authored"}]}}),
+            json!({"niccolo_update":{"assumptions":[{"assumption_id":Uuid::new_v4(),"statement":"What if X?","basis_note":"Invented by model"}]}}),
+            json!({"niccolo_update":{"clarifications":[{"question_id":Uuid::new_v4(),"text":"Question?","reason":"Reason","discriminates_interpretation_ids":[candidate]}]}}),
+            json!({"niccolo_update":{"source_queries":[{"query_id":Uuid::new_v4(),"query":"needle","rationale":"search","expected_observation":"result","direction":"DISCRIMINATE","interpretation_id":candidate}]}}),
+        ] {
+            let parsed = parse(&update).unwrap().unwrap();
+            assert!(matches!(
+                validate_restricted_mvp_authorship(&parsed),
+                Err(UpdateError::HumanAuthorshipRequired)
+            ));
+        }
+        let allowed = parse(&json!({"niccolo_update":{"evidence_gaps":[{"gap_id":Uuid::new_v4(),"description":"Missing timestamp","requested_source_kind":null}],"clarifications":[{"question_id":Uuid::new_v4(),"text":"When was it sent?","reason":"Resolve chronology"}]}})).unwrap().unwrap();
+        validate_restricted_mvp_authorship(&allowed).unwrap();
+    }
 
     #[test]
     fn parses_discriminating_clarification_metadata() {
