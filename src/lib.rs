@@ -429,6 +429,7 @@ pub mod analysis_manifest;
 pub mod analysis_read_models;
 pub mod analysis_structure;
 pub mod analysis_timeline;
+pub mod artifacts;
 pub mod attention_control;
 pub mod control_ledger;
 pub mod decision_points;
