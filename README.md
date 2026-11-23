@@ -15,10 +15,10 @@ A **Situation** is the working space for a human question or project. A Situatio
 | Capability | How it serves the person |
 | --- | --- |
 | **Reference external artifacts** | Record that an email, export, document, image, audio file, video, or physical object exists elsewhere without uploading, opening, or parsing it. Preserve declared identity, location, scope, attribution, and limitations. |
-| **Separate evidence from interpretation** | Distinguish a source quotation, a person's reported belief, an inference, a hypothetical scenario, and a question worth investigating. |
+| **Separate evidence from interpretation** | Distinguish a source quotation, a person's reported belief, an inference, a human-authored hypothetical scenario, and a question worth investigating. |
 | **Reason across relationships** | Compare claims, people, events, timelines, and potentially conflicting accounts without automatically declaring one of them true. |
 | **Discover useful questions** | Propose a small number of promising investigative leads and explain what missing information could change the analysis. |
-| **Consider alternatives** | Surface credible competing explanations, assumptions, gaps, consequences, and reasons to revise a conclusion. |
+| **Examine human-authored alternatives** | Let the investigator record competing hypotheses, assumptions, and what-if scenarios, then expose their explicit consequences, tensions, gaps, and reasons to revise a conclusion. Niccolò does not invent the hypotheses. |
 | **Work with changing context** | Let the human correct an attribution, retract a premise, add an artifact reference or representation, challenge a hypothesis, or change priorities; keep the analysis history intelligible. |
 | **Plan without commandeering** | Organize bounded investigation steps, note dependencies and stop conditions, and pause at decisions requiring the human. |
 | **Remember the reasoning trail** | Preserve provenance, frozen input revisions, feedback, and the differences between earlier and later analyses. |
@@ -29,7 +29,7 @@ These are **product capabilities and directions**, not a promise that every inte
 
 Imagine two people describing the same event differently in private email and a group conversation. In the restricted MVP, the user can reference both external records, explicitly supply the relevant descriptions or transcriptions with attribution and scope, add a personal recollection, and ask: *What can I reasonably conclude, what remains ambiguous, and what should I ask next?*
 
-Niccolò should show which statements have documentary support, distinguish a copied report from an independent observation, identify apparent tensions without inventing motives, and propose a few targeted ways to clarify the picture. A user can reject an interpretation as wrong, say that the evidence is insufficient, or say they do not know; those responses are not treated as interchangeable.
+Niccolò should show which statements have documentary support, distinguish a copied report from an independent observation, identify apparent tensions without inventing motives, trace the consequences of hypotheses or what-if assumptions explicitly authored by the investigator, and propose a few targeted ways to clarify the picture. A user can reject an interpretation as wrong, say that the evidence is insufficient, or say they do not know; those responses are not treated as interchangeable.
 
 If new context arrives, the previous analysis remains associated with the evidence and assumptions available at the time. A new analysis can explicitly revisit it rather than rewriting history.
 
@@ -45,7 +45,7 @@ The intended experience is organized around a Situation, rather than a single is
 
 1. **Start with an intention.** Describe the situation, a concern, or a decision to explore.
 2. **Add explicit material.** Reference artifacts where they already live and supply attributed descriptions, transcriptions, assumptions, recollections, or investigative preferences. The MVP accepts no file upload and invokes no parser.
-3. **Explore.** Review attributed claims, disagreements, alternative explanations, open questions, and the system's proposed next investigative steps.
+3. **Explore.** Review attributed claims, disagreements, human-authored alternative explanations, their structural impacts, open questions, and the system's proposed next investigative steps.
 4. **Steer.** Correct, reject, question, prioritize, and add context whenever useful. A human correction creates a traceable revision rather than silently overwriting the record.
 5. **Decide what happens next.** Choose whether to pursue a lead, request more information, revisit an answer, or stop. Review and approval are not automatic permission to execute external actions.
 
@@ -254,7 +254,7 @@ The backend is organized by responsibility rather than by one undifferentiated r
 | First-party web application | `frontend/src/` |
 | Behavioral and integration tests | `tests/`, `frontend/src/**/*.test.js`, validation scripts |
 
-When extending the system, preserve the distinctions between *source*, *attributed statement*, *human contribution*, *machine hypothesis*, and *verified observation*. Preserve historical analysis snapshots, human-originated decisions and workspace boundaries. Tests should assert these invariants, not only happy-path HTTP results.
+When extending the system, preserve the distinctions between *source*, *attributed statement*, *human contribution*, *human-authored hypothesis or assumption*, *system analysis*, and *verified observation*. Preserve historical analysis snapshots, human-originated decisions and workspace boundaries. Tests should assert these invariants, not only happy-path HTTP results.
 
 A useful development sequence is: identify the domain invariant; add a migration/domain contract if required; implement the service/API boundary; add adversarial and authorization tests; exercise the relevant human interaction; update documentation of the public interface.
 
@@ -269,6 +269,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - Runtime and browser boundaries that accept no file upload, expose no PDF preview, retain no new artifact bytes, dereference no locator, and invoke no parser in the restricted MVP.
 - Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
+- Deterministic Workbench impact analysis for explicitly human-authored hypotheses and what-if assumptions: explicit grounding routes, downstream conclusions, contradictions, and testing questions remain inspectable without becoming truth claims or aggregate scores.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
 - Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.
 - A first-party React interface and associated client-state/test infrastructure.
@@ -279,7 +280,7 @@ These foundations are not equivalent to a complete consumer onboarding, producti
 
 - **Human-centered discovery:** proactive but bounded exploration of a Situation, including two or three promising investigative leads with reasons and evidence gaps.
 - **Post-MVP artifact interpretation:** only after the parser-free MVP is stable and epistemologically precise, experiment first with raw text (deterministic NLP, LLM, or a measured hybrid), then evaluate email, messaging, PDF, image, audio, and video adapters as parallel, attributable observation layers.
-- **Contextual interpretation:** consider motivations, perceptions, misunderstandings, and social dynamics as *competing hypotheses*, never asserted diagnoses or facts about people.
+- **Contextual interpretation:** let investigators represent possible motivations, perceptions, misunderstandings, and social dynamics as explicitly human-authored competing hypotheses, never asserted diagnoses or facts about people.
 - **Goal-directed reasoning:** select what to investigate next according to the person's purpose, budget, stop conditions, missing evidence, and available tools.
 - **Human-guided iteration:** learn from distinct kinds of feedback, preserve provenance and disagreement, and perform selective reanalysis when new information actually changes the question.
 - **Model integration and empirical evolution:** evaluate candidate reasoning strategies against reproducible tests, compare model costs and quality, and improve the product without quietly delegating essential authority to a third party.

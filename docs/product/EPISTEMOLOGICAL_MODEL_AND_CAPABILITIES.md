@@ -2367,11 +2367,13 @@ The complete ontology remains richer than any single screen, but the MVP deliber
 
 This is not a promise that every internal distinction becomes a form field. The UI should expose abstractions when explicit human authorship is useful and hide machinery that does not improve the investigation.
 
-### AI proposal boundary
+### Human-authored hypothesis boundary
 
-Model-generated reasoning inside Niccolò may propose hypotheses, challenges, questions or other structure. Proposal is not canonical epistemic fact. Proposed structure should be materialized only when it preserves a necessary distinction or has identifiable investigative value; plausible but operationally useless elaboration is epistemic spam.
+In the restricted MVP, **humans formulate the hypotheses, assumptions and what-if scenarios**. Niccolò may analyze only the structure the investigator explicitly authored: it can expose grounding routes, downstream conclusions, contradictions, questions that test a hypothesis, and places requiring renewed attention. Structural reachability does not establish truth, sufficiency or a composed directional effect.
 
-Automatic interpretation of the investigator's own free text into epistemic abstractions is a separate capability and is **outside the MVP**.
+Niccolò does not create a missing hypothesis, silently convert an assumption into a fact, or pretend that a user-authored scenario was observed. A future machine-proposal capability would require a separately approved product boundary, explicit proposal staging and attribution; it is not part of the current MVP contract.
+
+Automatic interpretation of the investigator's own free text into epistemic abstractions is also a separate capability and is **outside the MVP**.
 
 ### Uncertainty
 
@@ -2593,6 +2595,8 @@ The investigator can create and connect objects such as:
 - arguments;
 - typed semantic, causal, contextual and genealogical relations;
 - grounding structures, including joint and alternative routes.
+
+For every authored Hypothesis or Assumption, the Workbench can deterministically project the explicitly connected impact structure. It preserves each route's own direction and adequacy, direct versus downstream depth, joint-member count, contradictions, and hypothesis-testing questions. It does not combine these into a score, infer an omitted route, treat reachability as sufficiency, or promote the source into an actual-world fact.
 
 Free text may of course appear **inside an explicitly selected abstraction** - for example, the text of a Hypothesis or Finding. The important point is that the user selected the semantic role. Niccolò does not infer that role from an unstructured investigator narrative in the MVP.
 
