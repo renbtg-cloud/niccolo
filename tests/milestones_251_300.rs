@@ -562,7 +562,7 @@ async fn v451_v500_investigation_queue_is_bounded_ranked_and_never_executes_exte
 }
 
 #[tokio::test]
-async fn review_respects_a_deferred_source_request_until_reopened() {
+async fn review_hides_deferred_and_completed_source_requests_until_reopened() {
     use niccolo_evidence::human_handoff::{self, SourceRequestEvent, SourceRequestInput};
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
@@ -580,7 +580,12 @@ async fn review_respects_a_deferred_source_request_until_reopened() {
             rationale: "It may establish the order of events".into(),
             proposed_by: s.principal,
         }).await.unwrap();
-        for (state, shown) in [("DEFERRED", false), ("REOPENED", true)] {
+        for (state, live, reasoning) in [
+            ("DEFERRED", false, true),
+            ("REOPENED", true, true),
+            ("ACCEPTED", true, true),
+            ("COMPLETED", false, false),
+        ] {
             human_handoff::append_source_request_event(&app, scope, request_id, &SourceRequestEvent {
                 event_id: Uuid::new_v4(),
                 kind: state.into(),
@@ -588,9 +593,11 @@ async fn review_respects_a_deferred_source_request_until_reopened() {
                 recorded_by: s.principal,
             }).await.unwrap();
             let dashboard = niccolo_evidence::bff_dashboard::get(&app, scope, None).await.unwrap();
-            assert_eq!(dashboard.proactive.leads.iter().any(|lead| lead.id == request_id), shown);
+            assert_eq!(dashboard.proactive.leads.iter().any(|lead| lead.id == request_id), live);
             let packet = reasoning_packet::build(&app, scope).await.unwrap();
-            assert!(packet.proactive_leads.leads.iter().any(|lead| lead.id == request_id));
+            assert_eq!(packet.proactive_leads.leads.iter().any(|lead| lead.id == request_id), reasoning);
+            let signals = agentic_policy::signals(&app, s.workspace, s.situation, s.analysis).await.unwrap();
+            assert_eq!(signals.source_requests > 0, state != "COMPLETED");
         }
     }).await;
 }

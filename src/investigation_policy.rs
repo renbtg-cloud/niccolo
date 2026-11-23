@@ -144,7 +144,7 @@ async fn queue_with_questions(
         });
     }
     for r in requests.into_iter().filter(|r| match r.state.as_str() {
-        "DECLINED" => false,
+        "DECLINED" | "COMPLETED" => false,
         "DEFERRED" => !live,
         _ => true,
     }) {
