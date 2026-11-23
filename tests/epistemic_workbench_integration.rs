@@ -101,6 +101,222 @@ fn recommendation_input(ground: Uuid, recipient: Uuid) -> epistemic_workbench::a
 }
 
 #[tokio::test]
+async fn persisted_human_authored_what_if_exposes_only_explicit_structural_impacts() {
+    let f = fixture().await;
+    let sit = situation(
+        &f,
+        "Test a human-authored what-if without promoting it to fact",
+    )
+    .await;
+    let what_if = node(
+        &f,
+        sit,
+        ExpertNodeKind::Assumption,
+        "What if this person had been seen at the scene?",
+    )
+    .await;
+    let hypothesis = node(
+        &f,
+        sit,
+        ExpertNodeKind::Hypothesis,
+        "The person had an opportunity to be present",
+    )
+    .await;
+    let alternative = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The person was elsewhere at the relevant time",
+    )
+    .await;
+    let intermediate = node(
+        &f,
+        sit,
+        ExpertNodeKind::Proposition,
+        "The timeline would require renewed scrutiny",
+    )
+    .await;
+    let downstream = node(
+        &f,
+        sit,
+        ExpertNodeKind::Finding,
+        "The current investigative priority would be challenged",
+    )
+    .await;
+    let question = node(
+        &f,
+        sit,
+        ExpertNodeKind::Question,
+        "Can an independent witness place the person there?",
+    )
+    .await;
+
+    let first_argument = Uuid::new_v4();
+    let first_set = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_argument,
+        intermediate,
+        ArgumentMode::Abductive,
+        "Explore the investigator-authored scenario",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_argument,
+        first_set,
+        GroundingEffect::Supports,
+        GroundingAdequacy::Partial,
+        "The what-if participates jointly and remains unverified",
+        &[
+            NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role: GroundingMemberRole::Assumption,
+                ground_object_id: Some(what_if),
+                evidence_id: None,
+                rationale: "Human-authored counterfactual premise".into(),
+            },
+            NewGroundingMember {
+                member_id: Uuid::new_v4(),
+                role: GroundingMemberRole::Premise,
+                ground_object_id: Some(hypothesis),
+                evidence_id: None,
+                rationale: "Separate authored hypothesis".into(),
+            },
+        ],
+    )
+    .await
+    .unwrap();
+
+    let second_argument = Uuid::new_v4();
+    let second_set = Uuid::new_v4();
+    epistemic_workbench::create_argument(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second_argument,
+        downstream,
+        ArgumentMode::Deductive,
+        "Trace one explicitly authored downstream consequence",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        second_argument,
+        second_set,
+        GroundingEffect::Challenges,
+        GroundingAdequacy::Unspecified,
+        "Keep the downstream direction attached to this route",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(intermediate),
+            evidence_id: None,
+            rationale: "Explicit intermediate conclusion".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        Uuid::new_v4(),
+        RelationFamily::Semantic,
+        RelationKind::Contradicts,
+        what_if,
+        alternative,
+        "The authored scenario conflicts with the alibi proposition",
+    )
+    .await
+    .unwrap();
+    epistemic_workbench::create_relation(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        Uuid::new_v4(),
+        RelationFamily::Contextual,
+        RelationKind::TestsHypothesis,
+        question,
+        hypothesis,
+        "The investigator authored a question that tests the hypothesis",
+    )
+    .await
+    .unwrap();
+
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit)
+        .await
+        .unwrap();
+    let what_if_impact = snapshot
+        .authored_object_impacts
+        .iter()
+        .find(|impact| impact.source_object_id == what_if)
+        .unwrap();
+    assert_eq!(what_if_impact.source_kind, ExpertNodeKind::Assumption);
+    assert_eq!(
+        what_if_impact.reached_conclusion_object_ids,
+        vec![intermediate, downstream]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(what_if_impact.contradicted_object_ids, vec![alternative]);
+    assert!(what_if_impact.tested_by_question_ids.is_empty());
+    assert!(what_if_impact.structural_routes_only);
+    assert!(!what_if_impact.establishes_truth);
+    assert!(!what_if_impact.directional_effects_are_aggregated);
+    assert!(!what_if_impact.treats_assumption_as_fact);
+    assert_eq!(what_if_impact.route_impacts.len(), 2);
+
+    let direct = what_if_impact
+        .route_impacts
+        .iter()
+        .find(|impact| impact.grounding_set_id == first_set)
+        .unwrap();
+    assert_eq!(direct.depth, 1);
+    assert_eq!(direct.non_context_member_count, 2);
+    assert!(direct.source_is_direct_ground);
+    assert_eq!(direct.effect, GroundingEffect::Supports);
+
+    let indirect = what_if_impact
+        .route_impacts
+        .iter()
+        .find(|impact| impact.grounding_set_id == second_set)
+        .unwrap();
+    assert_eq!(indirect.depth, 2);
+    assert!(!indirect.source_is_direct_ground);
+    assert_eq!(indirect.effect, GroundingEffect::Challenges);
+    assert_eq!(indirect.reachable_ground_object_ids, vec![intermediate]);
+
+    let hypothesis_impact = snapshot
+        .authored_object_impacts
+        .iter()
+        .find(|impact| impact.source_object_id == hypothesis)
+        .unwrap();
+    assert_eq!(hypothesis_impact.tested_by_question_ids, vec![question]);
+    assert!(!snapshot
+        .authored_object_impacts
+        .iter()
+        .any(|impact| impact.source_object_id == alternative));
+}
+
+#[tokio::test]
 async fn recommendation_qualified_basis_preserves_alternative_structural_grounds() {
     use epistemic_workbench::action_recommendation::{self, BasisKind, QualifiedBasis, RecommendationInput};
     let f = fixture().await;
