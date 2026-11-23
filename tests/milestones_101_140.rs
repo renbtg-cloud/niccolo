@@ -1164,6 +1164,54 @@ async fn source_request_event_concurrency_replays_one_attributed_decision() {
 }
 
 #[tokio::test]
+async fn competing_source_request_decisions_commit_only_one_state() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let request_id = Uuid::new_v4();
+    human_handoff::propose_source_request(
+        &app,
+        scope(s),
+        &SourceRequestInput {
+            request_id,
+            text: "obtain the signed original".into(),
+            source_kind: "primary document".into(),
+            rationale: "compare it with the quoted terms".into(),
+            proposed_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+    let mut tasks = Vec::new();
+    for kind in ["ACCEPTED", "DEFERRED"] {
+        let app = app.clone();
+        let event = SourceRequestEvent {
+            event_id: Uuid::new_v4(),
+            kind: kind.into(),
+            note: format!("Concurrent {kind} decision"),
+            recorded_by: s.principal,
+        };
+        tasks.push(tokio::spawn(async move {
+            human_handoff::append_source_request_event(&app, scope(s), request_id, &event).await
+        }));
+    }
+    let mut results = Vec::new();
+    for task in tasks {
+        results.push(task.await.unwrap());
+    }
+    assert_eq!(results.iter().filter(|result| matches!(result, Ok(false))).count(), 1);
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, Err(human_handoff::HandoffError::StateConflict)))
+            .count(),
+        1
+    );
+    let requests = human_handoff::source_requests(&app, scope(s)).await.unwrap();
+    assert!(matches!(requests[0].state.as_str(), "ACCEPTED" | "DEFERRED"));
+    assert_eq!(requests[0].events.len(), 1);
+}
+
+#[tokio::test]
 async fn v166_v170_claim_assessment_is_purpose_bound_and_not_truth() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
