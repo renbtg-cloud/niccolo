@@ -25,6 +25,9 @@ function LocationForm({client,artifactId,onSaved}){
     <label>External locator<input value={draft.locator} onChange={e=>setDraft({...draft,locator:e.target.value})} placeholder="s3://bucket/key or file:///path"/></label>
     <label>Niccolò access<select value={draft.accessStatus} onChange={e=>setDraft({...draft,accessStatus:e.target.value})}><option>UNKNOWN</option><option>NONE</option><option>AVAILABLE</option><option>TEMPORARILY_UNAVAILABLE</option><option>ACCESS_DENIED</option><option>NOT_FOUND</option><option>UNVERIFIED</option></select></label>
     <label>Provider, if useful<input value={draft.provider} onChange={e=>setDraft({...draft,provider:e.target.value})}/></label>
+    <label>Environment label<input value={draft.environmentLabel} onChange={e=>setDraft({...draft,environmentLabel:e.target.value})} placeholder="client production, shared drive…"/></label>
+    <label>Resolver profile<input value={draft.resolverProfile} onChange={e=>setDraft({...draft,resolverProfile:e.target.value})} placeholder="human procedure or future adapter name"/></label>
+    <label>Location notes<textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></label>
     <label>Access note<textarea value={draft.accessNote} onChange={e=>setDraft({...draft,accessNote:e.target.value})}/></label>
     <button disabled={mutation.isPending||!draft.locator.trim()}>{mutation.isPending?'Recording…':'Record external location'}</button>
     {error&&<p className="error" role="alert">{error}</p>}{mutation.error&&<p className="error" role="alert">{mutation.error.message}</p>}
@@ -47,6 +50,7 @@ function RepresentationForm({client,artifactId,onSaved}){
     <label>Representation type<select value={draft.representationType} onChange={e=>setDraft({...draft,representationType:e.target.value})}><option>HUMAN_DESCRIPTION</option><option>HUMAN_TRANSCRIPTION</option><option>SUMMARY</option><option>TABLE_TRANSCRIPTION</option><option>FRAME_DESCRIPTION</option><option>OTHER</option></select></label>
     <label>Who produced it<select value={draft.producerType} onChange={e=>setDraft({...draft,producerType:e.target.value})}><option value="USER">You</option><option value="THIRD_PARTY_HUMAN">Another person</option><option value="EXTERNAL_SYSTEM">External system</option><option value="UNKNOWN">Unknown</option></select></label>
     <label>Producer label<input value={draft.producerLabel} onChange={e=>setDraft({...draft,producerLabel:e.target.value})}/></label>
+    <label>Production method<input value={draft.productionMethod} onChange={e=>setDraft({...draft,productionMethod:e.target.value})} placeholder="typed while watching externally, supplied by Ana…"/></label>
     <label>Scope within artifact<input value={draft.scopeLocator} onChange={e=>setDraft({...draft,scopeLocator:e.target.value})} placeholder="pages 7-9, 00:13:20-00:13:45…"/></label>
     <label>Explicitly supplied text<textarea rows="6" value={draft.content} onChange={e=>setDraft({...draft,content:e.target.value})}/></label>
     <label>Completeness<select value={draft.completenessStatus} onChange={e=>setDraft({...draft,completenessStatus:e.target.value})}><option>PARTIAL</option><option>COMPLETE</option><option>UNKNOWN</option></select></label>

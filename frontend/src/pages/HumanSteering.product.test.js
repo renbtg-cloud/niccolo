@@ -10,6 +10,10 @@ describe('human steering surfaces',()=>{
   it('keeps human attribution explicit but non-gating',()=>{
     expect(situation).toContain('<ArtifactReferencePanel client={client}/>');
     expect(artifacts).toContain('Who produced it');
+    expect(artifacts).toContain('Production method');
+    expect(artifacts).toContain('Scope within artifact');
+    expect(artifacts).toContain('Qualification');
+    expect(artifacts).toContain('Limitations');
     expect(artifacts).toContain('Representations remain attributable and challengeable.');
     expect(identities).toContain('Coverage does not prove that the mappings are correct.');
   });
