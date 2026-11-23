@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { artifactRequest, representationRequest, storageReferenceRequest } from './artifacts.js';
+import { artifactRequest, relationshipRequest, representationRequest, storageReferenceRequest } from './artifacts.js';
 
 describe('parser-free artifact state', () => {
   it('records declared identity without accepting file bytes', () => {
@@ -19,5 +19,15 @@ describe('parser-free artifact state', () => {
       representation_type:'HUMAN_TRANSCRIPTION',producer_type:'USER',scope_locator:'pages 7-9',
       content:'First line\nSecond line',completeness_status:'PARTIAL',
     });
+  });
+  it('records only qualified relationships between distinct artifacts', () => {
+    expect(relationshipRequest({
+      subjectArtifactId:'transcript',objectArtifactId:'video',
+      relationshipType:' CLAIMED_TO_BE_TRANSCRIPTION_OF ',qualification:'Declared by Ana',
+    })).toEqual({
+      subject_artifact_id:'transcript',object_artifact_id:'video',
+      relationship_type:'CLAIMED_TO_BE_TRANSCRIPTION_OF',qualification:'Declared by Ana',
+    });
+    expect(() => relationshipRequest({subjectArtifactId:'same',objectArtifactId:'same',relationshipType:'COPY_OF'})).toThrow(/itself/);
   });
 });

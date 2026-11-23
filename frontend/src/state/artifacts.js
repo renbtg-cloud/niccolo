@@ -67,3 +67,16 @@ export function representationRequest(draft) {
     limitations: optionalText(draft.limitations, 4096),
   };
 }
+
+export function relationshipRequest(draft) {
+  const subject = String(draft.subjectArtifactId ?? '').trim();
+  const object = String(draft.objectArtifactId ?? '').trim();
+  if (!subject || !object) throw new Error('Choose both related artifacts.');
+  if (subject === object) throw new Error('An artifact cannot be related to itself in this declaration.');
+  return {
+    subject_artifact_id: subject,
+    object_artifact_id: object,
+    relationship_type: oneLine(draft.relationshipType, 128),
+    qualification: optionalText(draft.qualification, 4096),
+  };
+}

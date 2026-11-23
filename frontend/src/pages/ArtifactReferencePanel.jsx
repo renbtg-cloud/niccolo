@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { qk } from '../api/keys.js';
-import { artifactRequest, representationRequest, storageReferenceRequest } from '../state/artifacts.js';
+import { artifactRequest, relationshipRequest, representationRequest, storageReferenceRequest } from '../state/artifacts.js';
 
 const blankArtifact = {artifactType:'',label:'',declaredMimeType:'',declaredByteLength:'',declaredSha256:''};
 const blankStorage = {storageType:'UNKNOWN',locator:'',provider:'',environmentLabel:'',resolverProfile:'',notes:'',accessStatus:'UNKNOWN',accessNote:''};
 const blankRepresentation = {representationType:'HUMAN_DESCRIPTION',producerType:'USER',producerLabel:'',productionMethod:'',scopeLocator:'whole artifact',content:'',completenessStatus:'PARTIAL',epistemicQualification:'',limitations:''};
+const blankRelationship = {subjectArtifactId:'',objectArtifactId:'',relationshipType:'CLAIMED_TO_BE_REPRESENTATION_OF',qualification:''};
 
 function LocationForm({client,artifactId,onSaved}){
   const [draft,setDraft]=useState(blankStorage);
@@ -56,6 +57,29 @@ function RepresentationForm({client,artifactId,onSaved}){
   </form>;
 }
 
+function RelationshipForm({client,artifacts,onSaved}){
+  const [draft,setDraft]=useState(blankRelationship);
+  const [error,setError]=useState(null);
+  const pending=useRef(null);
+  const mutation=useMutation({
+    mutationFn:()=>{
+      const body=relationshipRequest(draft);const signature=JSON.stringify(body);
+      if(pending.current?.signature!==signature)pending.current={signature,id:crypto.randomUUID()};
+      return client.recordArtifactRelationship(pending.current.id,body);
+    },
+    onSuccess:async()=>{pending.current=null;setDraft(blankRelationship);setError(null);await onSaved();},
+  });
+  if(artifacts.length<2)return <p>Reference at least two artifacts before declaring a relationship.</p>;
+  return <form onSubmit={event=>{event.preventDefault();try{relationshipRequest(draft);setError(null);mutation.mutate();}catch(e){setError(e.message);}}}>
+    <label>Subject artifact<select value={draft.subjectArtifactId} onChange={e=>setDraft({...draft,subjectArtifactId:e.target.value})}><option value="">Choose…</option>{artifacts.map(item=><option key={item.artifact_id} value={item.artifact_id}>{item.label}</option>)}</select></label>
+    <label>Relationship<select value={draft.relationshipType} onChange={e=>setDraft({...draft,relationshipType:e.target.value})}><option>CLAIMED_TO_BE_REPRESENTATION_OF</option><option>CLAIMED_TO_BE_TRANSCRIPTION_OF</option><option>CLAIMED_TO_BE_DERIVED_FROM</option><option>CLAIMED_TO_BE_COPY_OF</option><option>RELATED_TO</option></select></label>
+    <label>Object artifact<select value={draft.objectArtifactId} onChange={e=>setDraft({...draft,objectArtifactId:e.target.value})}><option value="">Choose…</option>{artifacts.map(item=><option key={item.artifact_id} value={item.artifact_id}>{item.label}</option>)}</select></label>
+    <label>Qualification<textarea value={draft.qualification} onChange={e=>setDraft({...draft,qualification:e.target.value})} placeholder="Who makes this claim and what remains uncertain?"/></label>
+    <button disabled={mutation.isPending}>{mutation.isPending?'Recording…':'Record qualified relationship'}</button>
+    {error&&<p className="error" role="alert">{error}</p>}{mutation.error&&<p className="error" role="alert">{mutation.error.message}</p>}
+  </form>;
+}
+
 export function ArtifactReferencePanel({client}){
   const qc=useQueryClient();
   const [draft,setDraft]=useState(blankArtifact);
@@ -97,6 +121,8 @@ export function ArtifactReferencePanel({client}){
         <details><summary>Describe or transcribe something in this artifact</summary><RepresentationForm client={client} artifactId={artifact.artifact_id} onSaved={refresh}/></details>
       </li>;
     })}</ul>
+    <details><summary>Relate two artifacts</summary><RelationshipForm client={client} artifacts={view.artifacts} onSaved={refresh}/></details>
+    {view.relationships.length>0&&<ul>{view.relationships.map(item=><li key={item.relationship_id}><small>{view.artifacts.find(artifact=>artifact.artifact_id===item.subject_artifact_id)?.label??item.subject_artifact_id} {item.relationship_type} {view.artifacts.find(artifact=>artifact.artifact_id===item.object_artifact_id)?.label??item.object_artifact_id} · unverified declaration{item.qualification?` · ${item.qualification}`:''}</small></li>)}</ul>}
     <small>Recorded access is a human declaration, not proof that Niccolò accessed the location. Representations remain attributable and challengeable.</small>
   </article>;
 }
