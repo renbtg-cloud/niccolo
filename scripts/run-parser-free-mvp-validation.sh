@@ -39,5 +39,10 @@ echo '[6/7] Run the browser regression suite'
 
 echo '[7/7] Build the parser-free production browser bundle'
 (cd frontend && "$NPM" run build)
+test ! -e frontend/dist/assets/app.js.map
+if tail -n 2 frontend/dist/assets/app.js | rg -q 'sourceMappingURL'; then
+  echo 'The production bundle unexpectedly exposes a source-map reference.' >&2
+  exit 1
+fi
 
 echo 'Parser-free restricted MVP validation passed.'

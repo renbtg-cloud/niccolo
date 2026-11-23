@@ -39,7 +39,7 @@ jobs:
       - name: Validate local MVP shell syntax before compiling
         run: |
           set -euo pipefail
-          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/start-local-mvp.sh scripts/smoke-local-first-run.sh; do
+          for script in scripts/bootstrap-local-mvp.sh scripts/build-mvp.sh scripts/start-local-mvp.sh scripts/smoke-local-first-run.sh scripts/run-parser-free-mvp-validation.sh; do
             bash -n "$script"
           done
       - name: Standalone Python export template tests
@@ -108,10 +108,12 @@ jobs:
           SQL
       - name: Run authenticated PostgreSQL endpoint integration
         run: cargo test --locked --features pg-integration --test human_credence_integration -- --nocapture
-      - name: Run source-grounded claim scoring integration
-        run: cargo test --locked --features pg-integration --test grounded_claim_weights_integration -- --nocapture
-      - name: Run full PostgreSQL integration regression with bounded concurrency
-        run: cargo test --locked --features pg-integration --tests -- --test-threads=2
+      - name: Run parser-free artifact persistence integration
+        run: cargo test --locked --features pg-integration --test parser_free_artifacts_integration -- --nocapture
+      - name: Run parser-free HTTP and frozen-input integration
+        run: cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration -- --nocapture
+      - name: Run durable operation integration without source ingestion
+        run: cargo test --locked --features pg-integration --test bff_operations_integration -- --nocapture
       - name: Run canonical Aurelius & Finch demonstration
         run: |
           rm -rf artifacts/law-firm-canonical
@@ -146,7 +148,10 @@ jobs:
         run: npm test
       - name: Build frontend
         working-directory: frontend
-        run: npm run build
+        run: |
+          npm run build
+          test ! -e dist/assets/app.js.map
+          ! tail -n 2 dist/assets/app.js | grep -q sourceMappingURL
 
   first-run:
     needs: unit
