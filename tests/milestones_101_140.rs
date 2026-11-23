@@ -937,19 +937,35 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let id = Uuid::new_v4();
-    human_handoff::propose_source_request(
+    let proposal = SourceRequestInput {
+        request_id: id,
+        text: "obtain original contract".into(),
+        source_kind: "primary document".into(),
+        rationale: "resolve provenance gap".into(),
+        proposed_by: s.principal,
+    };
+    assert!(!human_handoff::propose_source_request(
         &app,
         scope(s),
-        &SourceRequestInput {
-            request_id: id,
-            text: "obtain original contract".into(),
-            source_kind: "primary document".into(),
-            rationale: "resolve provenance gap".into(),
-            proposed_by: s.principal,
-        },
+        &proposal,
     )
     .await
-    .unwrap();
+    .unwrap());
+    assert!(human_handoff::propose_source_request(&app, scope(s), &proposal)
+        .await
+        .unwrap());
+    assert!(matches!(
+        human_handoff::propose_source_request(
+            &app,
+            scope(s),
+            &SourceRequestInput {
+                text: "obtain a rewritten contract".into(),
+                ..proposal.clone()
+            },
+        )
+        .await,
+        Err(human_handoff::HandoffError::Conflict)
+    ));
     let event_id = Uuid::new_v4();
     let replayed = human_handoff::append_source_request_event(
         &app,
