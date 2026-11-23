@@ -1071,6 +1071,49 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
 }
 
 #[tokio::test]
+async fn source_request_proposal_concurrency_creates_one_immutable_request() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let request_id = Uuid::new_v4();
+    let proposal = SourceRequestInput {
+        request_id,
+        text: "obtain the original signed agreement".into(),
+        source_kind: "primary document".into(),
+        rationale: "distinguish the signed terms from later recollection".into(),
+        proposed_by: s.principal,
+    };
+    let mut tasks = Vec::new();
+    for _ in 0..24 {
+        let app = app.clone();
+        let proposal = proposal.clone();
+        tasks.push(tokio::spawn(async move {
+            human_handoff::propose_source_request(&app, scope(s), &proposal)
+                .await
+                .unwrap()
+        }));
+    }
+    let mut created = 0;
+    let mut replayed = 0;
+    for task in tasks {
+        if task.await.unwrap() {
+            replayed += 1;
+        } else {
+            created += 1;
+        }
+    }
+    assert_eq!((created, replayed), (1, 23));
+    assert_eq!(
+        human_handoff::source_requests(&app, scope(s))
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| request.request_id == request_id)
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn v166_v170_claim_assessment_is_purpose_bound_and_not_truth() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
