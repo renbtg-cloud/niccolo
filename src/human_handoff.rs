@@ -48,7 +48,10 @@ async fn scoped(
     Ok(tx)
 }
 fn valid(s: &str) -> bool {
-    !s.trim().is_empty() && s.len() <= 4096
+    !s.trim().is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)
+}
+fn valid_label(s: &str) -> bool {
+    !s.trim().is_empty() && s.len() <= 256 && !s.chars().any(char::is_control)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,8 +84,7 @@ pub async fn propose_source_request(
     r: &SourceRequestInput,
 ) -> Result<(), HandoffError> {
     if !valid(&r.text)
-        || r.source_kind.trim().is_empty()
-        || r.source_kind.len() > 256
+        || !valid_label(&r.source_kind)
         || !valid(&r.rationale)
     {
         return Err(HandoffError::Invalid);

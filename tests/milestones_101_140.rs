@@ -994,6 +994,21 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
         .await,
         Err(human_handoff::HandoffError::Conflict)
     ));
+    assert!(matches!(
+        human_handoff::append_source_request_event(
+            &app,
+            scope(s),
+            id,
+            &SourceRequestEvent {
+                event_id: Uuid::new_v4(),
+                kind: "DECLINED".into(),
+                note: "first line\nsecond line".into(),
+                recorded_by: s.principal,
+            },
+        )
+        .await,
+        Err(human_handoff::HandoffError::Invalid)
+    ));
     let r = human_handoff::source_requests(&app, scope(s))
         .await
         .unwrap();
