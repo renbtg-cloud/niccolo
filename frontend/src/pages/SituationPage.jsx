@@ -1,4 +1,3 @@
-import { PdfExcerptForm } from './PdfExcerptForm.jsx';
 import { ArtifactReferencePanel } from './ArtifactReferencePanel.jsx';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,8 +6,7 @@ import { Link } from 'react-router-dom';
 import { invalidateSituationReview, qk } from '../api/keys.js';
 import { useClient } from '../hooks/useClient.js';
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
-import { restoreSourceRequest, sourceDescriptor } from '../state/sourceUpload.js';
-import { situationTextError, utf8ByteLength } from '../state/situationText.js';
+import { situationTextError } from '../state/situationText.js';
 import { situationGuide } from '../state/situationGuide.js';
 
 function ContributionItem({ item, pending, onCorrect, onRetract }) {
@@ -54,24 +52,11 @@ export function SituationPage(){
 function ConnectedSituation({client}){
   const qc = useQueryClient();
   const generation = useSessionStore(s=>s.generation);
-  const [file, setFile] = useState(null);
-  const fileErrorId=useId();
-  const [fileError,setFileError] = useState(null);
-  const [sourceCursor, setSourceCursor] = useState(null);
-  const [sourceBackStack, setSourceBackStack] = useState([]);
-  // Preserve the document identity across retries after a partial upload.
-  const pendingDocumentId = useRef(null);
-  const pendingIngest = useRef(null);
-  const sourceFileInput = useRef(null);
-  const restoreFileInput = useRef(null);
-  const pendingRestoreDocument = useRef(null);
   const pendingContribution = useRef(null);
   const pendingCorrection = useRef(null);
   const [initialLead] = useState(() => useSessionStore.getState().investigationDraft);
   const [contextKind,setContextKind]=useState(initialLead ? 'investigative_preference' : 'user_reported');
   const contextEditor=useRef(null);
-  const [pdfContext,setPdfContext]=useState(false);
-  const [pdfPreviewOutdated,setPdfPreviewOutdated]=useState(false);
   const [contextText,setContextText]=useState(initialLead);
   const contextErrorId=useId();
   const contextError=situationTextError(contextText);
@@ -90,18 +75,10 @@ function ConnectedSituation({client}){
     useSessionStore.getState().stageInvestigationDraft('', generation);
     contextEditor.current?.focus();
   }, [generation, situationLoaded]);
-  const sources = useQuery({
-    queryKey: client ? [...qk.sources(client.config), sourceCursor] : ['sources','none'],
-    enabled: !!client,
-    queryFn: async ({ signal }) => (await client.sources(sourceCursor, 100, signal)).value,
-  });
   const readiness = useRuntimeReadiness(client);
   const refresh = async () => {
     if (!isCurrentSession(generation)) return;
-    return Promise.all([
-      invalidateSituationReview(qc, client.config),
-      qc.invalidateQueries({ queryKey: qk.sources(client.config) }),
-    ]);
+    return invalidateSituationReview(qc, client.config);
   };
 
   const create = useMutation({
@@ -112,35 +89,6 @@ function ConnectedSituation({client}){
     mutationFn: (focus) => client.setFocus(focus),
     onSuccess: refresh,
   });
-  const attach = useMutation({
-    mutationFn: (documentId) => client.addSituationSource(documentId),
-    onSuccess: refresh,
-  });
-  const restoreOriginal = useMutation({
-    mutationFn: ({source, file}) => {
-      const {documentId, ...request} = restoreSourceRequest(source, file);
-      return client.ingestSource(documentId, request);
-    },
-    onSuccess: refresh,
-  });
-  const downloadOriginal = useMutation({
-    mutationFn: async (source) => {
-      const blob = await client.downloadSourceOriginal(source.document_id);
-      if (!isCurrentSession(generation)) return;
-      const ext = { EML: 'eml', PDF: 'pdf' }[source.format] ?? 'txt';
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      try {
-        link.href = url;
-        link.download = `niccolo-source-${source.document_id}.${ext}`;
-        document.body.append(link);
-        link.click();
-      } finally {
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-      }
-    },
-  });
   const addContext = useMutation({
     mutationFn: async () => {
       const text = contextText.trim();
@@ -150,7 +98,7 @@ function ConnectedSituation({client}){
       }
       return client.addSituationContribution(pendingContribution.current.id, contextKind, text, null);
     },
-    onSuccess: async () => { pendingContribution.current = null; setContextText(''); setPdfContext(false); await refresh(); },
+    onSuccess: async () => { pendingContribution.current = null; setContextText(''); await refresh(); },
   });
   const correctContext = useMutation({
     mutationFn: ({item,text}) => {
@@ -165,34 +113,6 @@ function ConnectedSituation({client}){
   const retractContext = useMutation({
     mutationFn: (item) => client.retractSituationContribution(item.contribution_id),
     onSuccess: refresh,
-  });
-  const upload = useMutation({
-    mutationFn: async (selected) => {
-      const descriptor = sourceDescriptor(selected);
-      const documentId = pendingDocumentId.current ?? crypto.randomUUID();
-      pendingDocumentId.current = documentId;
-      if (pendingIngest.current?.documentId !== documentId) {
-        const ingested = await client.ingestSource(documentId, {
-          locator: descriptor.locator,
-          contentType: descriptor.contentType,
-          body: selected,
-        });
-        pendingIngest.current = { documentId, value: ingested.value };
-      }
-      if (!isCurrentSession(generation)) throw new Error('The session ended before the record could be attached.');
-      const attached = await client.addSituationSource(documentId);
-      return { documentId, ingest: pendingIngest.current.value, situation: attached.value };
-    },
-    onSuccess: async () => {
-      setFile(null);
-      if (sourceFileInput.current) sourceFileInput.current.value = '';
-      pendingDocumentId.current = null;
-      pendingIngest.current = null;
-      await refresh();
-    },
-    // If ingestion succeeded but attachment failed, surface the imported record
-    // in the catalog so the user can attach it without uploading a duplicate.
-    onError: refresh,
   });
 
   if (situation.isLoading) return <p role="status">Loading Situation…</p>;
@@ -211,8 +131,6 @@ function ConnectedSituation({client}){
   </section>;
 
   const snapshot = situation.data;
-  const attached = new Set(snapshot?.source_document_ids ?? []);
-  const documents = sources.data?.documents ?? [];
   const guide = situationGuide(snapshot);
 
   return <section>
@@ -237,126 +155,14 @@ function ConnectedSituation({client}){
 
     <ArtifactReferencePanel client={client}/>
 
-    <article className="source-upload">
-      <h3>Add records</h3>
-      <p>Upload an email (.eml), a plain-text WhatsApp export (.txt), or an original PDF (.pdf). Use the PDF passage form under Human context to choose what Niccolò should consider. Niccolò preserves the uploaded bytes and attribution boundaries; a speaker label is not automatically a verified identity.</p>
-      <input
-        ref={sourceFileInput}
-        aria-label="Source file"
-        aria-invalid={Boolean(fileError)}
-        aria-describedby={fileError?fileErrorId:undefined}
-        type="file"
-        accept=".eml,.txt,.pdf,message/rfc822,text/plain,application/pdf"
-        disabled={upload.isPending}
-        onChange={(event) => {
-          pendingDocumentId.current = null;
-          pendingIngest.current = null;
-          upload.reset();
-          const selected=event.target.files?.[0] ?? null;
-          setFile(selected);
-          try {
-            if(selected) sourceDescriptor(selected);
-            setFileError(null);
-          } catch(error) {
-            setFileError(error.message);
-          }
-        }}
-      />
-      <button disabled={!file || Boolean(fileError) || upload.isPending} onClick={() => file && upload.mutate(file)}>
-        {upload.isPending ? 'Importing…' : upload.isError && pendingIngest.current ? 'Retry attachment' : 'Import and attach'}
-      </button>
-      {file && <small>Selected: {file.name} · {file.size} bytes</small>}
-      {fileError && <p id={fileErrorId} className="error" role="alert">{fileError}</p>}
-      {upload.error && <p className="error" role="alert">
-        {pendingIngest.current ? 'The record was imported. Attachment failed: ' : 'Import failed: '}{upload.error.message}
-      </p>}
-      {upload.data && <p role="status">Record imported and attached to this Situation.</p>}
-    </article>
-
-    <article>
-      <h3>Source catalog</h3>
-      <input
-        type="file"
-        hidden
-        ref={restoreFileInput}
-        aria-label="Original source file"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          const source = pendingRestoreDocument.current;
-          event.target.value = '';
-          pendingRestoreDocument.current = null;
-          if (file && source && !restoreOriginal.isPending) restoreOriginal.mutate({source, file});
-        }}
-      />
-      {sources.isLoading && <p role="status">Loading sources…</p>}
-      {sources.error && <div>
-        <p className="error" role="alert">Could not load source records: {sources.error.message}</p>
-        <button type="button" disabled={sources.isFetching} onClick={()=>void sources.refetch()}>Retry sources</button>
-      </div>}
-      {sources.isSuccess && documents.length === 0 && <p>{sourceCursor ? "No source records on this page." : "No source records have been imported yet."}</p>}
-      <ul className="source-list">
-        {documents.map((document) => <li key={document.document_id}>
-          <div>
-            <strong>{document.locator}</strong>
-            <div><small>{document.format} · {document.fragment_count} attributed fragment(s) · {document.byte_length} bytes</small></div>
-            {document.original_bytes_available === false
-              ? <div><small className="error">Original bytes unavailable. Choose the exact original file to restore them.</small></div>
-              : document.original_bytes_available === true
-                ? <div><small>Original bytes preserved</small></div>
-                : null}
-          </div>
-          {attached.has(document.document_id)
-            ? <span className="status-current">Attached</span>
-            : <button disabled={attach.isPending} onClick={() => attach.mutate(document.document_id)}>Attach to Situation</button>}
-          {document.original_bytes_available === false && <button
-            disabled={restoreOriginal.isPending}
-            onClick={() => {
-              restoreOriginal.reset();
-              pendingRestoreDocument.current = document;
-              restoreFileInput.current?.click();
-            }}
-          >Restore original</button>}
-          {document.original_bytes_available&&<button disabled={downloadOriginal.isPending} onClick={()=>downloadOriginal.mutate(document)}>Download original</button>}
-        </li>)}
-      </ul>
-      <div className="row">
-        <button disabled={sources.isFetching || sourceBackStack.length === 0} onClick={() => {
-          const stack = sourceBackStack.slice();
-          setSourceCursor(stack.pop() ?? null);
-          setSourceBackStack(stack);
-        }}>Previous sources</button>
-        <button disabled={sources.isFetching || !sources.data?.next_after} onClick={() => {
-          setSourceBackStack(stack => [...stack, sourceCursor]);
-          setSourceCursor(sources.data.next_after);
-        }}>Next sources</button>
-      </div>
-      {attach.isSuccess && <p role="status">Record attached to this Situation.</p>}
-      {attach.error && <p className="error" role="alert">Could not attach the record: {attach.error.message}</p>}
-      {restoreOriginal.isPending && <p role="status">Checking and restoring the original file…</p>}
-      {restoreOriginal.isSuccess && <p role="status">Original source restored.</p>}
-      {restoreOriginal.error && <p className="error" role="alert">{restoreOriginal.error.message}</p>}
-      {downloadOriginal.isPending && <p role="status">Preparing the original file…</p>}
-      {downloadOriginal.error && <p className="error" role="alert">{downloadOriginal.error.message}</p>}
-    </article>
-
     <article className="human-context">
       <h3>Human context</h3>
-      <PdfExcerptForm client={client} documents={snapshot?.attached_pdfs ?? []} saving={addContext.isPending} previewOutdated={pdfContext&&pdfPreviewOutdated} disabled={addContext.isPending||(!pdfContext&&Boolean(contextText.trim()))}
-        onDraftChange={()=>{if(pdfContext)setPdfPreviewOutdated(true);}}
-        onPrepare={text=>{addContext.reset();setPdfPreviewOutdated(false);setContextKind('user_reported');setPdfContext(true);setContextText(text);contextEditor.current?.focus();}}/>
       <p>Add what you remember, a what-if assumption, or an investigative preference. These remain attributed human context and are never silently promoted to evidence.</p>
-      <label>Kind<select value={contextKind} disabled={addContext.isPending||pdfContext} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
+      <label>Kind<select value={contextKind} disabled={addContext.isPending} onChange={e=>setContextKind(e.target.value)}><option value="user_reported">What I remember / report</option><option value="hypothetical">What if…</option><option value="investigative_preference">What I want Niccolò to examine</option></select></label>
       {initialLead && contextText && contextKind === 'investigative_preference' && !addContext.isSuccess && <p>Review this draft and choose Add context when it reflects what you want to investigate.</p>}
-      {pdfContext&&<p role="status">This PDF passage or description will be saved as a human report. Edit the passage or its reference above, then prepare it again.</p>}
-      <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} readOnly={pdfContext} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
-      {pdfContext&&<small>{utf8ByteLength(contextText.trim())} / 4096 UTF-8 bytes, including the source reference.</small>}
+      <label>Context<textarea ref={contextEditor} aria-label="Human context text" value={contextText} disabled={addContext.isPending} aria-invalid={Boolean(contextError)} aria-describedby={contextError?contextErrorId:undefined} onChange={e=>setContextText(e.target.value)} placeholder="Add context in your own words"/></label>
       {contextError&&<p id={contextErrorId} role="alert">{contextError}</p>}
-      <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)||(pdfContext&&pdfPreviewOutdated)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
-      {pdfContext&&<button type="button" disabled={addContext.isPending} onClick={()=>{
-        setPdfContext(false);
-        setContextText('');
-        addContext.reset();
-      }}>Clear prepared transcription</button>}
+      <button disabled={!contextText.trim()||addContext.isPending||Boolean(contextError)} onClick={()=>addContext.mutate()}>{addContext.isPending?'Adding…':'Add context'}</button>
       {addContext.isSuccess&&<p role="status">Human context recorded.</p>}
       {addContext.error&&<p className="error" role="alert">{addContext.error.message}</p>}
       {snapshot.contributions?.length>0 ? <ul className="context-list">{snapshot.contributions.map((item)=><ContributionItem key={item.contribution_id} item={item} pending={correctContext.isPending||retractContext.isPending} onCorrect={(item,text)=>correctContext.mutate({item,text})} onRetract={(item)=>retractContext.mutate(item)}/>)}</ul> : <p>No human context has been added yet.</p>}
@@ -366,7 +172,7 @@ function ConnectedSituation({client}){
       {retractContext.error&&<p className="error" role="alert">{retractContext.error.message}</p>}
     </article>
 
-    <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.sourceCount}</strong> attached record(s)</li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add records or human context when they would make the reasoning better grounded.</p>}<small>This is a preparation summary, not a completeness score and not a gate.</small>{guide.sourceCount>0&&<p><Link to="/identities">Review who source labels refer to →</Link></p>}</article>
+    <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add external artifact references, attributed representations, or human context when they would improve the reasoning.</p>}<small>This is a preparation summary, not a completeness score and not a gate. Artifact references are shown in their dedicated section above.</small></article>
     <article className="next-action"><h3>Ready to reason?</h3>
       {readiness.isPending
         ? <p>Checking reasoning readiness…</p>
@@ -376,8 +182,8 @@ function ConnectedSituation({client}){
               <button type="button" disabled={readiness.isFetching} onClick={()=>void readiness.refetch()}>Retry readiness</button>
             </div>
           : readiness.data?.model_configured === false
-            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and records are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting, or use .niccolo-local/model.env.</small></>
-            : <><p>Start an analysis whenever a first pass would be useful. You can add more records or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></>}
+            ? <><p><strong>A reasoning model is not configured yet.</strong> Your Situation and explicit epistemic material are safe to prepare now, but Analyze needs an OpenAI-compatible model configured on the local service.</p><small>For the local MVP, set NICCOLO_LLM_BASE_URL and NICCOLO_LLM_MODEL before starting, or use .niccolo-local/model.env.</small></>
+            : <><p>Start an analysis whenever a first pass would be useful. You can add more artifact references, representations, or context later and reanalyze without rewriting the earlier result.</p><Link to="/operations">Analyze this Situation →</Link></>}
     </article>
 
     <details className="desktop-only">

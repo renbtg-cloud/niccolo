@@ -10,6 +10,7 @@ const questionsHook = readFileSync(new URL('../hooks/useQuestions.js', import.me
 const analysis = readFileSync(new URL('./AnalysisPage.jsx', import.meta.url), 'utf8');
 const identities = readFileSync(new URL('./IdentitiesPage.jsx', import.meta.url), 'utf8');
 const sourceRequests = readFileSync(new URL('./SourceRequestPanel.jsx', import.meta.url), 'utf8');
+const artifacts = readFileSync(new URL('./ArtifactReferencePanel.jsx', import.meta.url), 'utf8');
 
 describe('buyer-facing primary surfaces', () => {
   it('remounts every route after changing the authenticated session', () => {
@@ -55,16 +56,13 @@ describe('buyer-facing primary surfaces', () => {
     expect(situation).not.toContain('snapshot.revision])}');
   });
 
-  it('retains upload document identity when a partial import must be retried', () => {
-    expect(situation).toContain('pendingDocumentId.current ?? crypto.randomUUID()');
-    expect(situation).toContain('pendingDocumentId.current = documentId');
-    expect(situation).toContain('pendingDocumentId.current = null');
-    expect(situation).toContain('pendingIngest.current?.documentId !== documentId');
-    expect(situation).toContain('Retry attachment');
-    expect(situation.indexOf('session ended before the record could be attached'))
-      .toBeLessThan(situation.indexOf('await client.addSituationSource(documentId)'));
-    expect(situation).toContain('onError: refresh');
-    expect(situation).toContain('upload.reset();');
+  it('accepts only explicit parser-free material on the Situation surface', () => {
+    expect(situation).toContain('<ArtifactReferencePanel client={client}/>');
+    expect(artifacts).toContain('Register an artifact without uploading it.');
+    expect(artifacts).toContain('It does not open or parse the artifact.');
+    expect(situation).not.toContain('type="file"');
+    expect(situation).not.toContain('ingestSource');
+    expect(situation).not.toContain('PdfExcerptForm');
     expect(situation).toContain('pendingContribution.current?.signature !== signature');
     expect(situation).toContain('pendingCorrection.current?.signature !== signature');
     expect(situation).toContain('pendingContribution.current.id');
@@ -98,10 +96,10 @@ describe('buyer-facing primary surfaces', () => {
     expect(sourceRequests).toContain('does not prove that material exists');
   });
 
-  it('makes sources and human identity catalogs navigable past the first page', () => {
-    expect(situation).toContain('Next sources');
-    expect(situation).toContain('Previous sources');
-    expect(situation).toContain('client.sources(sourceCursor, 100, signal)');
+  it('keeps the legacy identity catalog navigable without exposing source ingestion on Situation', () => {
+    expect(situation).not.toContain('Next sources');
+    expect(situation).not.toContain('client.sources(');
+    expect(situation).not.toContain('addSituationSource');
     expect(identities).toContain('Next source records');
     expect(identities).toContain('Next people');
     expect(identities).toContain('client.identities(identityCursor, 100, signal)');
