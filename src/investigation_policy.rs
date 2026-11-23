@@ -57,6 +57,23 @@ pub async fn queue(
     scope: AnalysisScope,
     branch_budget: usize,
 ) -> Result<InvestigationQueue, InvestigationError> {
+    queue_with_questions(pool, scope, branch_budget, false).await
+}
+
+pub(crate) async fn live_queue(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    branch_budget: usize,
+) -> Result<InvestigationQueue, InvestigationError> {
+    queue_with_questions(pool, scope, branch_budget, true).await
+}
+
+async fn queue_with_questions(
+    pool: &PgPool,
+    scope: AnalysisScope,
+    branch_budget: usize,
+    unanswered_only: bool,
+) -> Result<InvestigationQueue, InvestigationError> {
     if !(1..=32).contains(&branch_budget) {
         return Err(InvestigationError::Invalid);
     }
@@ -67,16 +84,14 @@ pub async fn queue(
     let requests = human_handoff::source_requests(pool, scope)
         .await
         .map_err(dep)?;
-    let (questions, _) = clarification::list(
-        pool,
-        scope.workspace,
-        scope.situation,
-        scope.analysis,
-        None,
-        100,
-    )
-    .await
-    .map_err(dep)?;
+    let questions = if unanswered_only {
+        clarification::unanswered(pool, scope).await.map_err(dep)?
+    } else {
+        clarification::list(pool, scope.workspace, scope.situation, scope.analysis, None, 100)
+            .await
+            .map_err(dep)?
+            .0
+    };
     let question_values = clarification::values(
         pool,
         scope.workspace,

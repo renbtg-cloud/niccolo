@@ -258,6 +258,28 @@ pub async fn list(
     after: Option<Uuid>,
     limit: i64,
 ) -> Result<(Vec<Clarification>, Option<Uuid>), ClarificationError> {
+    list_filtered(pool, workspace, situation, analysis, after, limit, false).await
+}
+
+pub(crate) async fn unanswered(
+    pool: &PgPool,
+    scope: crate::analysis_structure::AnalysisScope,
+) -> Result<Vec<Clarification>, ClarificationError> {
+    let (questions, _) = list_filtered(
+        pool, scope.workspace, scope.situation, scope.analysis, None, 100, true,
+    ).await?;
+    Ok(questions)
+}
+
+async fn list_filtered(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    analysis: Uuid,
+    after: Option<Uuid>,
+    limit: i64,
+    unanswered_only: bool,
+) -> Result<(Vec<Clarification>, Option<Uuid>), ClarificationError> {
     if !(1..=100).contains(&limit) {
         return Err(ClarificationError::Invalid);
     }
@@ -277,11 +299,28 @@ pub async fn list(
         return Err(ClarificationError::Invisible);
     };
     let rows: Vec<(Uuid, String, String, Uuid)> = sqlx::query_as(
-        "SELECT q.question_id,q.question,c.reason,c.proposed_by_principal_id \
+        "WITH RECURSIVE answer_lineage(question_id, contribution_id) AS (
+             SELECT question_id,contribution_id
+             FROM niccolo.situation_analysis_clarification_answers
+             WHERE $6 AND workspace_id=$1 AND situation_id=$2 AND analysis_id=$3
+             UNION
+             SELECT a.question_id,c.corrected_by
+             FROM answer_lineage a
+             JOIN niccolo.situation_contributions c ON c.workspace_id=$1 AND c.situation_id=$2
+                  AND c.contribution_id=a.contribution_id
+             WHERE c.corrected_by IS NOT NULL
+         )
+         SELECT q.question_id,q.question,c.reason,c.proposed_by_principal_id \
          FROM niccolo.situation_analysis_clarification_questions c \
          JOIN niccolo.investigative_questions q USING(workspace_id,question_id) \
          WHERE c.workspace_id=$1 AND c.situation_id=$2 AND c.analysis_id=$3 \
-           AND ($4::uuid IS NULL OR c.question_id>$4) \
+           AND ($4::uuid IS NULL OR c.question_id>$4)
+           AND (NOT $6 OR NOT EXISTS (
+             SELECT 1 FROM answer_lineage a
+             JOIN niccolo.situation_contributions ac ON ac.workspace_id=$1 AND ac.situation_id=$2
+                  AND ac.contribution_id=a.contribution_id
+             WHERE a.question_id=c.question_id AND ac.status='ACTIVE'
+           ))
          ORDER BY c.question_id LIMIT $5",
     )
     .bind(workspace)
@@ -289,6 +328,7 @@ pub async fn list(
     .bind(analysis)
     .bind(after)
     .bind(limit + 1)
+    .bind(unanswered_only)
     .fetch_all(&mut *tx)
     .await?;
     let more = rows.len() as i64 > limit;

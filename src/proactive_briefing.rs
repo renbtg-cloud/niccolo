@@ -35,14 +35,19 @@ pub async fn build(
     let q = investigation_policy::queue(pool, scope, 3)
         .await
         .map_err(|e| BriefingError::Dependency(e.to_string()))?;
+    Ok(from_queue(&q))
+}
+
+pub(crate) fn from_queue(q: &investigation_policy::InvestigationQueue) -> ProactiveBriefing {
     let leads = q
         .items
-        .into_iter()
+        .iter()
+        .take(3)
         .map(|x| ProactiveLead {
             id: x.id,
-            kind: x.kind,
-            text: x.text,
-            why_now: x.rationale,
+            kind: x.kind.clone(),
+            text: x.text.clone(),
+            why_now: x.rationale.clone(),
             information_value_score: x.information_value_score,
             lead_is_evidence: false,
             lead_establishes_truth: false,
@@ -50,10 +55,10 @@ pub async fn build(
             system_may_execute_external_action: false,
         })
         .collect();
-    Ok(ProactiveBriefing {
+    ProactiveBriefing {
         leads,
         candidate_count: q.candidate_count,
-        truncated: q.truncated,
+        truncated: q.candidate_count > 3,
         user_owns_which_lead_to_pursue: true,
-    })
+    }
 }

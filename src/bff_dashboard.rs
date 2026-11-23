@@ -58,10 +58,10 @@ pub async fn get(
     let review = analysis_review::get(pool, scope.workspace, scope.situation, scope.analysis)
         .await
         .map_err(dep)?;
-    let investigation = investigation_policy::queue(pool, scope, 8)
+    let investigation = investigation_policy::live_queue(pool, scope, 8)
         .await
         .map_err(dep)?;
-    let proactive = proactive_briefing::build(pool, scope).await.map_err(dep)?;
+    let proactive = proactive_briefing::from_queue(&investigation);
     let reanalysis = reanalysis_advisor::assess(pool, scope).await.map_err(dep)?;
     let (operation, controller) = if let Some(id) = operation {
         let os = OperationScope {

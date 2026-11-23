@@ -311,3 +311,39 @@ async fn reader_cannot_answer_and_concurrent_retry_creates_one_binding() {
     let count:i64=sqlx::query_scalar("SELECT count(*) FROM niccolo.situation_analysis_clarification_answers WHERE workspace_id=$1 AND situation_id=$2 AND answer_id=$3").bind(f.workspace).bind(s).bind(ans).fetch_one(&f.admin).await.unwrap();
     assert_eq!(count, 1);
 }
+
+#[tokio::test]
+async fn live_lead_returns_only_after_the_current_answer_is_retracted() {
+    let f = setup().await;
+    let (s, a, q, answer, replacement) = (
+        Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(),
+    );
+    seed(&f, s, a, q).await;
+    let dashboard = format!("{}/bff/dashboard", analysis(&f, s, a));
+    let lead_count = || async {
+        let (status, result) = call(f.router.clone(), req("GET", dashboard.clone(), &f.reader, None)).await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        result["proactive"]["leads"].as_array().unwrap().len()
+    };
+    assert_eq!(lead_count().await, 1);
+    let (status, _) = call(f.router.clone(), req(
+        "POST", format!("{}/answers/{answer}", question(&f, s, a, q)),
+        &f.writer, Some(json!({"text":"I saw the final decision on Tuesday."})),
+    )).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(lead_count().await, 0);
+
+    let (status, _) = call(f.router.clone(), req(
+        "POST", format!("{}/contributions/{answer}/corrections/{replacement}", sit(&f, s)),
+        &f.writer, Some(json!({"text":"I saw the final decision on Wednesday."})),
+    )).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(lead_count().await, 0);
+
+    let (status, _) = call(f.router.clone(), req(
+        "POST", format!("{}/contributions/{replacement}/retract", sit(&f, s)),
+        &f.writer, Some(json!({})),
+    )).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(lead_count().await, 1);
+}
