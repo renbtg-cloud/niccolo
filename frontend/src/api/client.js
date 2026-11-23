@@ -22,43 +22,6 @@ export class NiccoloClient {
     if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
     return { value, etag: response.headers.get('etag'), pollAfterMs: Number(response.headers.get('x-poll-after-ms')) || value.retry_after_ms || null };
   }
-  async requestRaw(method, path, { body, contentType, locator, signal } = {}) {
-    const headers = { Accept: 'application/json', Authorization: `Bearer ${this.config.token}` };
-    if (contentType) headers['Content-Type'] = contentType;
-    if (locator) {
-      if (locator.trim() === locator && /^[\x20-\x7e]+$/u.test(locator)) {
-        headers['X-Source-Locator'] = locator;
-      } else {
-        const bytes = new TextEncoder().encode(locator);
-        headers['X-Source-Locator-Utf8'] = btoa(String.fromCharCode(...bytes));
-      }
-    }
-    const response = await this.fetch(path, { method, headers, cache: 'no-store', body, signal });
-    const value = await response.json().catch(() => ({}));
-    if (!response.ok) throw new ApiError(response.status, value.error ?? `HTTP ${response.status}`);
-    return { value, etag: response.headers.get('etag') };
-  }
-  previewPdf(file, signal) {
-    return this.requestRaw('POST', `${sourcesPath(this.config)}/pdf-preview`, {
-      body: file, contentType: 'application/pdf', signal,
-    });
-  }
-  previewStoredPdf(documentId, signal, firstPage = 1) {
-    return this.request('GET', `${sourcesPath(this.config)}/${documentId}/pdf-preview?first_page=${firstPage}`, { signal });
-  }
-  async downloadSourceOriginal(documentId) {
-    const url = `${sourcesPath(this.config)}/${documentId}/original`;
-    const response = await this.fetch(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${this.config.token}`, Accept: 'application/octet-stream' },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new ApiError(response.status, error.error ?? `HTTP ${response.status}`);
-    }
-    return response.blob();
-  }
   readiness(signal) { return this.request('GET', '/readyz', { signal }); }
   situation(signal) { return this.request('GET', situationPath(this.config), { signal }); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
@@ -80,8 +43,6 @@ export class NiccoloClient {
   effectiveIdentities(documentId, signal) { return this.request('GET', `${documentPath(this.config, documentId)}/identities`, { signal }); }
   identityHistory(documentId, after = 0, limit = 100, signal) { return this.request('GET', `${documentPath(this.config, documentId)}/identity-history?after=${after}&limit=${limit}`, { signal }); }
   recordIdentityEvent(eventId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/identity-events/${eventId}`, { body }); }
-  ingestSource(documentId, { locator, contentType, body }) { return this.requestRaw('POST', `${sourcesPath(this.config)}/${documentId}`, { body, contentType, locator }); }
-  addSituationSource(documentId) { return this.request('POST', `${situationPath(this.config)}/sources/${documentId}`); }
   addSituationContribution(contributionId, kind, text, relatedEvidenceId = null) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}`, { body: { kind, text, related_evidence_id: relatedEvidenceId } }); }
   correctSituationContribution(contributionId, replacementId, text, relatedEvidenceId = null) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}/corrections/${replacementId}`, { body: { text, related_evidence_id: relatedEvidenceId } }); }
   retractSituationContribution(contributionId) { return this.request('POST', `${situationPath(this.config)}/contributions/${contributionId}/retract`, { body: {} }); }

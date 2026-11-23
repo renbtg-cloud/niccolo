@@ -26,39 +26,6 @@ describe('BFF client',()=>{
 
  it('reads the backend-owned epistemic reasoning view',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{claims:[],claims_are_verified_facts:false,browser_is_domain_authority:false});});const r=await x.epistemic('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');expect(calls[0][0]).toContain('/analysis-snapshots/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bff/epistemic');expect(calls[0][1]).toBe('GET');expect(r.value.claims_are_verified_facts).toBe(false);});
 
- it('uploads raw source bytes and attaches the document to the Situation',async()=>{
-   const calls=[];
-   const x=new NiccoloClient(c,async(u,o)=>{
-     calls.push([u,o]);
-     return response(o.method==='POST'?201:200,{document_id:'doc',source_document_ids:['doc']});
-   });
-   const raw=new Uint8Array([65,66,67]);
-   await x.ingestSource('doc',{locator:'chat.txt',contentType:'text/plain',body:raw});
-   await x.addSituationSource('doc');
-   expect(calls[0][0]).toContain('/v1/workspaces/11111111-1111-4111-8111-111111111111/sources/doc');
-   expect(calls[0][1].headers['Content-Type']).toBe('text/plain');
-   expect(calls[0][1].headers['X-Source-Locator']).toBe('chat.txt');
-   expect(calls[0][1].body).toBe(raw);
-   expect(calls[1][0]).toContain('/situations/22222222-2222-4222-8222-222222222222/sources/doc');
-   expect(calls[1][1].method).toBe('POST');
- });
- it('preserves Unicode upload names using an ASCII-safe UTF-8 header', async () => {
-   const calls = [];
-   const client = new NiccoloClient(c, async (_url, options) => {
-     calls.push(new Headers(options.headers));
-     return response(201, {document_id: 'doc'});
-   });
-   const locators = ['Recepção — reunião.txt', ' historical.txt '];
-   for (const locator of locators) {
-     await client.ingestSource('doc', { locator, contentType: 'text/plain', body: new Uint8Array([65]) });
-   }
-   for (const [index, locator] of locators.entries()) {
-     expect(calls[index].has('X-Source-Locator')).toBe(false);
-     const encoded = calls[index].get('X-Source-Locator-Utf8');
-     const decoded = Uint8Array.from(atob(encoded), byte => byte.charCodeAt(0));
-     expect(new TextDecoder().decode(decoded)).toBe(locator);
-   }
- });
  it('lists the workspace source catalog through the BFF client',async()=>{
    const calls=[];
    const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{documents:[],next_after:null});});
@@ -105,30 +72,6 @@ describe('BFF client',()=>{
  it('reads provider reasoning input observability including explicit truncation',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{source_fragment_count_total:300,source_fragment_count_included:256,source_packet_truncated:true,reasoning_packet_sha256:'abc'});});const r=await x.reasoningInput('a');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/reasoning-input');expect(r.value.source_packet_truncated).toBe(true);expect(r.value.source_fragment_count_included).toBe(256);});
  it('reads the deterministic reasoning handoff independently of active operation state',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o.method]);return response(200,{handoff:{version:2,handoff_grants_authority:false},handoff_sha256:'a'.repeat(64),read_model_is_authority:false});});const r=await x.reasoningHandoff('a');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/handoff');expect(calls[0][1]).toBe('GET');expect(r.value.handoff.version).toBe(2);expect(r.value.read_model_is_authority).toBe(false);});
  it('lists and records SHA-bound handoff receipts without client-supplied recipient',async()=>{const calls=[];const x=new NiccoloClient(c,async(u,o)=>{calls.push([u,o]);return response(o.method==='POST'?201:200,o.method==='POST'?{receipt_id:'r',recipient_principal_id:'server-derived',receipt_means_agreement:false,receipt_grants_authority:false}:{receipts:[{kind:'REVIEWED'}],receipt_means_agreement:false,receipt_grants_authority:false});});const list=await x.handoffReceipts('a');await x.recordHandoffReceipt('a','r','a'.repeat(64),'REVIEWED','looked at it');expect(calls[0][0]).toContain('/analysis-snapshots/a/bff/handoff/receipts');expect(calls[0][1].method).toBe('GET');expect(calls[1][0]).toContain('/analysis-snapshots/a/bff/handoff/receipts/r');expect(JSON.parse(calls[1][1].body)).toEqual({handoff_sha256:'a'.repeat(64),kind:'REVIEWED',note:'looked at it'});expect(JSON.parse(calls[1][1].body)).not.toHaveProperty('recipient_principal_id');expect(list.value.receipt_means_agreement).toBe(false);});
-});
-
-describe('original source downloads', () => {
-  it('downloads exact binary bytes with session authorization', async () => {
-    const source = new Blob([new Uint8Array([0, 255, 10, 65])]);
-    const calls = [];
-    const client = new NiccoloClient(c, async (url, options) => {
-      calls.push([url, options]);
-      return { ok: true, status: 200, blob: async () => source };
-    });
-    const result = await client.downloadSourceOriginal('doc');
-    expect(new Uint8Array(await result.arrayBuffer())).toEqual(new Uint8Array([0, 255, 10, 65]));
-    expect(calls[0][0]).toContain('/sources/doc/original');
-    expect(calls[0][1].headers.Authorization).toBe('Bearer x');
-    expect(calls[0][1].cache).toBe('no-store');
-  });
-
-  it('does not present missing legacy source bytes as a successful download', async () => {
-    const client = new NiccoloClient(c, async () => ({
-      ok: false, status: 404,
-      json: async () => ({ error: 'source original unavailable' }),
-    }));
-    await expect(client.downloadSourceOriginal('legacy')).rejects.toThrow('source original unavailable');
-  });
 });
 
 it('passes the observation cancellation signal to fetch', async () => {
