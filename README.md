@@ -235,6 +235,8 @@ Integration suites require the configured disposable PostgreSQL database, schema
 
 The normal `niccolo-api` build is parser-free. The `pg-integration` feature also enables `legacy-source-import` only so historical integration fixtures can still validate old data paths while they are retired; neither feature is part of the restricted MVP runtime. The historical `niccolo-source-demo` binary cannot be built without that explicit compatibility feature.
 
+For the current restricted-MVP acceptance boundary, run `bash scripts/run-parser-free-mvp-validation.sh`. It checks the default API build, unit tests, PostgreSQL artifact contracts, retired byte routes, browser regressions, and the production bundle as one explicit gate.
+
 ## Building on Niccolò
 
 The backend is organized by responsibility rather than by one undifferentiated reasoning prompt:
