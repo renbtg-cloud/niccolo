@@ -236,6 +236,20 @@ async fn http_flow_records_human_material_without_accepting_or_reading_artifact_
     assert_eq!(list["parser_free_mvp"], true);
     assert_eq!(list["source_bytes_accepted"], false);
     assert_eq!(list["locators_dereferenced"], false);
+    assert_eq!(list["storage_references"].as_array().unwrap().len(), 1);
+    assert_eq!(list["storage_references"][0]["access_status"], "NONE");
+    assert_eq!(
+        list["storage_references"][0]["locator_was_dereferenced"],
+        false
+    );
+    assert_eq!(list["representations"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        list["representations"][0]["content_was_explicitly_supplied"],
+        true
+    );
+    assert_eq!(list["representations"][0]["artifact_was_parsed"], false);
+    assert_eq!(list["relationships"].as_array().unwrap().len(), 1);
+    assert_eq!(list["relationships"][0]["relationship_is_verified"], false);
 }
 
 #[tokio::test]

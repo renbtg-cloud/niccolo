@@ -710,6 +710,9 @@ impl From<ArtifactError> for ApiError {
             ArtifactError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid artifact metadata"),
             ArtifactError::Conflict => Self(StatusCode::CONFLICT, "artifact identity conflict"),
             ArtifactError::Invisible => Self(StatusCode::NOT_FOUND, "artifact unavailable"),
+            ArtifactError::Limit => {
+                Self(StatusCode::UNPROCESSABLE_ENTITY, "artifact view exceeds MVP limit")
+            }
             ArtifactError::Privileged | ArtifactError::Database(_) => {
                 Self(StatusCode::INTERNAL_SERVER_ERROR, "artifact registry unavailable")
             }
@@ -990,16 +993,8 @@ async fn list_situation_artifacts(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let artifacts = artifacts::list_for_situation(&state.pool, workspace, situation).await?;
-    Ok(no_store(
-        json!({
-            "artifacts":artifacts,
-            "parser_free_mvp":true,
-            "source_bytes_accepted":false,
-            "locators_dereferenced":false
-        }),
-        StatusCode::OK,
-    ))
+    let view = artifacts::situation_view(&state.pool, workspace, situation).await?;
+    Ok(no_store(json!(view), StatusCode::OK))
 }
 
 async fn record_artifact_storage_reference(

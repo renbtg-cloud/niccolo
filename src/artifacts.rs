@@ -19,6 +19,8 @@ pub enum ArtifactError {
     Conflict,
     #[error("artifact is not attached to this Situation")]
     Invisible,
+    #[error("artifact read model exceeds the MVP bound")]
+    Limit,
 }
 
 async fn scoped(
@@ -72,6 +74,37 @@ type ArtifactRow = (
     Uuid,
     String,
 );
+type StorageReferenceRow = (
+    Uuid,
+    Uuid,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    Option<String>,
+    Uuid,
+    String,
+);
+type RepresentationRow = (
+    Uuid,
+    Uuid,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Uuid,
+    String,
+);
+type RelationshipRow = (Uuid, Uuid, Uuid, String, Option<String>, Uuid, String);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactInput {
@@ -96,6 +129,67 @@ pub struct ArtifactView {
     pub recorded_at: String,
     pub source_bytes_stored: bool,
     pub artifact_was_inspected: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageReferenceView {
+    pub artifact_id: Uuid,
+    pub storage_reference_id: Uuid,
+    pub storage_type: String,
+    pub locator: String,
+    pub provider: Option<String>,
+    pub environment_label: Option<String>,
+    pub resolver_profile: Option<String>,
+    pub notes: Option<String>,
+    pub access_status: String,
+    pub access_status_basis: String,
+    pub access_note: Option<String>,
+    pub recorded_by: Uuid,
+    pub recorded_at: String,
+    pub locator_was_dereferenced: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepresentationView {
+    pub artifact_id: Uuid,
+    pub representation_id: Uuid,
+    pub representation_type: String,
+    pub producer_type: String,
+    pub producer_label: Option<String>,
+    pub production_method: Option<String>,
+    pub scope_locator: String,
+    pub content: String,
+    pub completeness_status: String,
+    pub epistemic_qualification: Option<String>,
+    pub limitations: Option<String>,
+    pub recorded_by: Uuid,
+    pub recorded_at: String,
+    pub content_was_explicitly_supplied: bool,
+    pub artifact_was_parsed: bool,
+    pub representation_establishes_truth: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactRelationshipView {
+    pub relationship_id: Uuid,
+    pub subject_artifact_id: Uuid,
+    pub object_artifact_id: Uuid,
+    pub relationship_type: String,
+    pub qualification: Option<String>,
+    pub recorded_by: Uuid,
+    pub recorded_at: String,
+    pub relationship_is_verified: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationArtifactView {
+    pub artifacts: Vec<ArtifactView>,
+    pub storage_references: Vec<StorageReferenceView>,
+    pub representations: Vec<RepresentationView>,
+    pub relationships: Vec<ArtifactRelationshipView>,
+    pub parser_free_mvp: bool,
+    pub source_bytes_accepted: bool,
+    pub locators_dereferenced: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -363,12 +457,15 @@ pub async fn list_for_situation(
          FROM niccolo.situation_artifacts sa
          JOIN niccolo.artifacts a USING(workspace_id,artifact_id)
          WHERE sa.workspace_id=$1 AND sa.situation_id=$2
-         ORDER BY sa.added_at,a.artifact_id",
+         ORDER BY sa.added_at,a.artifact_id LIMIT 1001",
     )
     .bind(workspace)
     .bind(situation)
     .fetch_all(&mut *tx)
     .await?;
+    if rows.len() > 1000 {
+        return Err(ArtifactError::Limit);
+    }
     tx.commit().await?;
     Ok(rows
         .into_iter()
@@ -396,6 +493,168 @@ pub async fn list_for_situation(
             },
         )
         .collect())
+}
+
+pub async fn situation_view(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<SituationArtifactView, ArtifactError> {
+    let artifacts = list_for_situation(pool, workspace, situation).await?;
+    let mut tx = scoped(pool, workspace, true).await?;
+    let storage_rows: Vec<StorageReferenceRow> = sqlx::query_as(
+        "SELECT r.artifact_id,r.storage_reference_id,r.storage_type,r.locator,r.provider,
+                r.environment_label,r.resolver_profile,r.notes,
+                COALESCE(access.access_status,'UNKNOWN'),
+                COALESCE(access.status_basis,'HUMAN_DECLARATION'),access.note,
+                r.recorded_by_principal_id,r.recorded_at::text
+         FROM niccolo.situation_artifacts sa
+         JOIN niccolo.artifact_storage_references r USING(workspace_id,artifact_id)
+         LEFT JOIN LATERAL (
+           SELECT e.access_status,e.status_basis,e.note
+           FROM niccolo.artifact_storage_access_events e
+           WHERE e.workspace_id=r.workspace_id AND e.artifact_id=r.artifact_id
+             AND e.storage_reference_id=r.storage_reference_id
+           ORDER BY e.event_no DESC LIMIT 1
+         ) access ON true
+         WHERE sa.workspace_id=$1 AND sa.situation_id=$2
+         ORDER BY r.recorded_at,r.storage_reference_id LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?;
+    let representation_rows: Vec<RepresentationRow> = sqlx::query_as(
+        "SELECT artifact_id,representation_id,representation_type,producer_type,
+                producer_label,production_method,scope_locator,content,completeness_status,
+                epistemic_qualification,limitations,recorded_by_principal_id,recorded_at::text
+         FROM niccolo.situation_artifact_representations
+         WHERE workspace_id=$1 AND situation_id=$2
+         ORDER BY recorded_at,representation_id LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?;
+    let relationship_rows: Vec<RelationshipRow> = sqlx::query_as(
+        "SELECT relationship_id,subject_artifact_id,object_artifact_id,relationship_type,
+                qualification,recorded_by_principal_id,recorded_at::text
+         FROM niccolo.situation_artifact_relationships
+         WHERE workspace_id=$1 AND situation_id=$2
+         ORDER BY recorded_at,relationship_id LIMIT 1001",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?;
+    if storage_rows.len() > 1000
+        || representation_rows.len() > 1000
+        || relationship_rows.len() > 1000
+    {
+        return Err(ArtifactError::Limit);
+    }
+    tx.commit().await?;
+    Ok(SituationArtifactView {
+        artifacts,
+        storage_references: storage_rows
+            .into_iter()
+            .map(
+                |(
+                    artifact_id,
+                    storage_reference_id,
+                    storage_type,
+                    locator,
+                    provider,
+                    environment_label,
+                    resolver_profile,
+                    notes,
+                    access_status,
+                    access_status_basis,
+                    access_note,
+                    recorded_by,
+                    recorded_at,
+                )| StorageReferenceView {
+                    artifact_id,
+                    storage_reference_id,
+                    storage_type,
+                    locator,
+                    provider,
+                    environment_label,
+                    resolver_profile,
+                    notes,
+                    access_status,
+                    access_status_basis,
+                    access_note,
+                    recorded_by,
+                    recorded_at,
+                    locator_was_dereferenced: false,
+                },
+            )
+            .collect(),
+        representations: representation_rows
+            .into_iter()
+            .map(
+                |(
+                    artifact_id,
+                    representation_id,
+                    representation_type,
+                    producer_type,
+                    producer_label,
+                    production_method,
+                    scope_locator,
+                    content,
+                    completeness_status,
+                    epistemic_qualification,
+                    limitations,
+                    recorded_by,
+                    recorded_at,
+                )| RepresentationView {
+                    artifact_id,
+                    representation_id,
+                    representation_type,
+                    producer_type,
+                    producer_label,
+                    production_method,
+                    scope_locator,
+                    content,
+                    completeness_status,
+                    epistemic_qualification,
+                    limitations,
+                    recorded_by,
+                    recorded_at,
+                    content_was_explicitly_supplied: true,
+                    artifact_was_parsed: false,
+                    representation_establishes_truth: false,
+                },
+            )
+            .collect(),
+        relationships: relationship_rows
+            .into_iter()
+            .map(
+                |(
+                    relationship_id,
+                    subject_artifact_id,
+                    object_artifact_id,
+                    relationship_type,
+                    qualification,
+                    recorded_by,
+                    recorded_at,
+                )| ArtifactRelationshipView {
+                    relationship_id,
+                    subject_artifact_id,
+                    object_artifact_id,
+                    relationship_type,
+                    qualification,
+                    recorded_by,
+                    recorded_at,
+                    relationship_is_verified: false,
+                },
+            )
+            .collect(),
+        parser_free_mvp: true,
+        source_bytes_accepted: false,
+        locators_dereferenced: false,
+    })
 }
 
 /// Add a location declaration and its initial human-declared access state.
