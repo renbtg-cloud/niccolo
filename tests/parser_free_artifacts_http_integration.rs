@@ -361,3 +361,35 @@ async fn durable_presigned_credentials_are_rejected_at_the_http_boundary() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(error["error"], "invalid artifact metadata");
 }
+
+#[tokio::test]
+async fn mvp_runtime_has_no_upload_attachment_download_or_parser_routes() {
+    let setup = setup().await;
+    let document = Uuid::new_v4();
+    let workspace_sources = format!("/v1/workspaces/{}/sources", setup.workspace);
+    let retired = [
+        ("POST", format!("{workspace_sources}/{document}")),
+        ("POST", format!("{workspace_sources}/pdf-preview")),
+        ("GET", format!("{workspace_sources}/{document}/pdf-preview")),
+        ("GET", format!("{workspace_sources}/{document}/original")),
+        (
+            "POST",
+            format!(
+                "/v1/workspaces/{}/situations/{}/sources/{document}",
+                setup.workspace, setup.situation
+            ),
+        ),
+    ];
+
+    for (method, uri) in retired {
+        let request = Request::builder()
+            .method(method)
+            .uri(&uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", setup.token))
+            .header(header::CONTENT_TYPE, "application/pdf")
+            .body(Body::from("%PDF bytes that the MVP must never accept"))
+            .unwrap();
+        let (status, _) = invoke(setup.router.clone(), request).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "retired route remained: {uri}");
+    }
+}

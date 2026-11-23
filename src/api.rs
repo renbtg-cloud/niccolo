@@ -38,7 +38,6 @@ use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError
 use crate::model_adapter::{ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
-use crate::postgres_ingest::{self, ImportError};
 use crate::postgres_repository::{self, RepositoryError};
 use crate::presentation_package::{self, PresentationError};
 use crate::purpose_history::{self, NewPurpose, PurposeError};
@@ -47,7 +46,6 @@ use crate::reanalysis_revision;
 use crate::review_governance::{self, HandoffReceipt, ReviewGovernanceError};
 use crate::situation_store::{self, ContributionKind, SituationStoreError};
 use crate::source_catalog;
-use crate::source_import::{ParseError, SourceFormat};
 use crate::source_scope::{self, SourceScopeError, SourceScopeInput};
 use crate::temporal_state::{self, TemporalAssertionInput, TemporalStateError};
 use crate::{
@@ -56,7 +54,6 @@ use crate::{
 };
 use axum::{
     Json, Router,
-    body::Bytes,
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -336,22 +333,9 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         )
         .route("/v1/workspaces/{workspace}/leads", post(propose_leads))
         .route("/v1/workspaces/{workspace}/sources", get(list_sources))
-        .route("/v1/workspaces/{workspace}/sources/pdf-preview", post(preview_pdf))
-        .route(
-            "/v1/workspaces/{workspace}/sources/{document}/pdf-preview",
-            get(preview_stored_pdf),
-        )
         .route(
             "/v1/workspaces/{workspace}/sources/{document}/speakers",
             get(list_source_speakers),
-        )
-        .route(
-            "/v1/workspaces/{workspace}/sources/{document}/original",
-            get(download_source_original),
-        )
-        .route(
-            "/v1/workspaces/{workspace}/sources/{document}",
-            post(ingest),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}",
@@ -388,10 +372,6 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/purpose/{event}",
             post(record_purpose),
-        )
-        .route(
-            "/v1/workspaces/{workspace}/situations/{situation}/sources/{document}",
-            post(add_situation_source),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/contributions/{contribution}",
@@ -675,32 +655,6 @@ impl From<RepositoryError> for ApiError {
                 Self(StatusCode::UNPROCESSABLE_ENTITY, "untraceable evidence")
             }
             _ => Self(StatusCode::INTERNAL_SERVER_ERROR, "graph unavailable"),
-        }
-    }
-}
-impl From<ImportError> for ApiError {
-    fn from(e: ImportError) -> Self {
-        match e {
-            ImportError::Parse(error) => {
-                let message = match error {
-                    ParseError::InvalidSize => "source must be non-empty and at most 4 MiB",
-                    ParseError::NotUtf8 => "source must be UTF-8 text",
-                    ParseError::Unsupported(reason) => reason,
-                    ParseError::Empty => "source contains no attributable fragments",
-                    ParseError::Limit => "source exceeds the fragment count or size limit",
-                };
-                Self(StatusCode::BAD_REQUEST, message)
-            }
-            ImportError::Locator => Self(StatusCode::BAD_REQUEST, "invalid source locator"),
-            ImportError::OperationalEventInvalid => {
-                Self(StatusCode::BAD_REQUEST, "invalid operational event identity")
-            }
-            ImportError::DocumentConflict => Self(StatusCode::CONFLICT, "source document conflict"),
-            ImportError::OperationalEventConflict => {
-                Self(StatusCode::CONFLICT, "operational event identity conflict")
-            }
-            ImportError::WorkspaceInvisible => Self(StatusCode::NOT_FOUND, "workspace unavailable"),
-            _ => Self(StatusCode::INTERNAL_SERVER_ERROR, "source unavailable"),
         }
     }
 }
@@ -1140,40 +1094,6 @@ async fn list_sources(
     ))
 }
 
-async fn download_source_original(
-    State(state): State<AppState>,
-    Path((workspace, document)): Path<(Uuid, Uuid)>,
-    headers: HeaderMap,
-) -> Result<Response, ApiError> {
-    guard(&state, &headers, workspace, Capability::Read).await?;
-    let (format, original) = source_catalog::source_original(&state.pool, workspace, document)
-        .await
-        .map_err(|_| {
-            ApiError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "source download unavailable",
-            )
-        })?
-        .ok_or(ApiError(
-            StatusCode::NOT_FOUND,
-            "source original unavailable",
-        ))?;
-    let (extension, content_type) = match format.as_str() {
-        "EML" => ("eml", "message/rfc822"),
-        "PDF" => ("pdf", "application/pdf"),
-        _ => ("txt", "text/plain; charset=utf-8"),
-    };
-    let filename = format!("attachment; filename=\"niccolo-source-{document}.{extension}\"");
-    let mut response = Bytes::from(original).into_response();
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-    response
-        .headers_mut()
-        .insert(header::CONTENT_DISPOSITION, filename.parse().unwrap());
-    Ok(response)
-}
-
 async fn list_source_speakers(
     State(state): State<AppState>,
     Path((workspace, document)): Path<(Uuid, Uuid)>,
@@ -1205,145 +1125,6 @@ async fn list_source_speakers(
             "speaker_labels_are_verified_identities": false,
         }),
         StatusCode::OK,
-    ))
-}
-
-fn source_locator(headers: &HeaderMap) -> Result<std::borrow::Cow<'_, str>, ApiError> {
-    use base64::{Engine, engine::general_purpose::STANDARD};
-    use std::borrow::Cow;
-
-    let invalid = || ApiError(StatusCode::BAD_REQUEST, "invalid source locator header");
-    match (headers.get("x-source-locator"), headers.get("x-source-locator-utf8")) {
-        (Some(locator), None) => locator.to_str().map(Cow::Borrowed).map_err(|_| invalid()),
-        (None, Some(encoded)) => {
-            let encoded = encoded.as_bytes();
-            // Base64 for a locator of at most 1024 decoded bytes.
-            if encoded.len() > 1368 {
-                return Err(invalid());
-            }
-            let bytes = STANDARD.decode(encoded).map_err(|_| invalid())?;
-            String::from_utf8(bytes).map(Cow::Owned).map_err(|_| invalid())
-        }
-        (None, None) => Err(ApiError(StatusCode::BAD_REQUEST, "missing source locator")),
-        (Some(_), Some(_)) => Err(invalid()),
-    }
-}
-
-async fn preview_pdf(
-    State(state): State<AppState>,
-    Path(workspace): Path<Uuid>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Response, ApiError> {
-    guard(&state, &headers, workspace, Capability::Write).await?;
-    if headers.get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()) != Some("application/pdf") {
-        return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected application/pdf"));
-    }
-    pdf_preview_response(&body, 1).await
-}
-
-#[derive(serde::Deserialize)]
-struct PdfPreviewQuery {
-    first_page: Option<usize>,
-}
-
-async fn preview_stored_pdf(
-    State(state): State<AppState>,
-    Path((workspace, document)): Path<(Uuid, Uuid)>,
-    headers: HeaderMap,
-    Query(query): Query<PdfPreviewQuery>,
-) -> Result<Response, ApiError> {
-    guard(&state, &headers, workspace, Capability::Write).await?;
-    let first = query.first_page.unwrap_or(1);
-    if !(1..=crate::pdf_preview::MAX_START_PAGE).contains(&first) {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "first_page must be between 1 and 999999"));
-    }
-    let (format, original) = source_catalog::source_original(&state.pool, workspace, document)
-        .await
-        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "source preview unavailable"))?
-        .ok_or(ApiError(StatusCode::NOT_FOUND, "source original unavailable"))?;
-    if format != "PDF" {
-        return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "source is not a PDF"));
-    }
-    pdf_preview_response(&original, first).await
-}
-
-async fn pdf_preview_response(bytes: &[u8], first: usize) -> Result<Response, ApiError> {
-    use crate::pdf_preview::PreviewError;
-    let preview = crate::pdf_preview::extract(bytes, first).await.map_err(|error| match error {
-        PreviewError::Invalid => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "PDF could not be read"),
-        PreviewError::Unavailable => ApiError(StatusCode::SERVICE_UNAVAILABLE, "PDF preview requires pdftotext"),
-        PreviewError::Busy => ApiError(StatusCode::TOO_MANY_REQUESTS, "PDF preview is busy"),
-        PreviewError::Timeout => ApiError(StatusCode::REQUEST_TIMEOUT, "PDF preview exceeded the time limit"),
-        PreviewError::TooLarge => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "PDF text exceeds the preview limit"),
-    })?;
-    Ok(no_store(json!(preview), StatusCode::OK))
-}
-
-async fn ingest(
-    State(state): State<AppState>,
-    Path((workspace, document)): Path<(Uuid, Uuid)>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Response, ApiError> {
-    guard(&state, &headers, workspace, Capability::Write).await?;
-    let format = match headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-    {
-        Some("message/rfc822") => SourceFormat::Eml,
-        Some("text/plain") => SourceFormat::WhatsappExport,
-        Some("application/pdf") => SourceFormat::Pdf,
-        _ => {
-            return Err(ApiError(
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "expected message/rfc822, text/plain, or application/pdf",
-            ));
-        }
-    };
-    let locator = source_locator(&headers)?;
-    let operational_event_id = headers
-        .get("x-operational-event-id")
-        .map(|v| v.to_str())
-        .transpose()
-        .map_err(|_| {
-            ApiError(
-                StatusCode::BAD_REQUEST,
-                "invalid operational event id header",
-            )
-        })?;
-    let result = postgres_ingest::ingest_source_with_operational_id(
-        &state.pool,
-        workspace,
-        document,
-        format,
-        &locator,
-        &body,
-        operational_event_id,
-    )
-    .await?;
-    let warning = result
-        .operational_duplicate
-        .then_some("duplicate operational delivery suppressed; deduplicate retries upstream");
-    Ok(no_store(
-        json!({
-            "workspace_id":workspace,
-            "document_id":result.document_id,
-            "sha256":result.sha256,
-            "fragment_ids":result.fragment_ids,
-            "replayed":result.replayed,
-            "revision":result.graph_revision,
-            "operational_event_id":result.operational_event_id,
-            "operational_duplicate":result.operational_duplicate,
-            "delivery_count":result.delivery_count,
-            "integration_warning":warning,
-            "upstream_deduplication_preferred":true
-        }),
-        if result.replayed {
-            StatusCode::OK
-        } else {
-            StatusCode::CREATED
-        },
     ))
 }
 
@@ -2662,26 +2443,6 @@ async fn set_situation_focus(
     let mut value = situation_json(&result.snapshot);
     value["replayed"] = json!(result.replayed);
     Ok(no_store(value, StatusCode::OK))
-}
-
-async fn add_situation_source(
-    State(state): State<AppState>,
-    Path((workspace, situation, document)): Path<(Uuid, Uuid, Uuid)>,
-    headers: HeaderMap,
-) -> Result<Response, ApiError> {
-    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
-    let result =
-        situation_store::add_source(&state.pool, workspace, actor, situation, document).await?;
-    let mut value = situation_json(&result.snapshot);
-    value["replayed"] = json!(result.replayed);
-    Ok(no_store(
-        value,
-        if result.replayed {
-            StatusCode::OK
-        } else {
-            StatusCode::CREATED
-        },
-    ))
 }
 
 #[derive(Deserialize)]
