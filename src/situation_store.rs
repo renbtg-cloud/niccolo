@@ -954,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_changes_for_actor_kind_text_source_or_document() {
+    fn fingerprint_changes_for_context_source_or_artifact_material() {
         let doc = Uuid::from_u128(1);
         let id = Uuid::from_u128(2);
         let actor = Uuid::from_u128(3);
@@ -966,12 +966,53 @@ mod tests {
             "SITUATION".to_owned(),
             None,
         )];
-        let f = fingerprint("focus", &[doc], &base);
+        let f = fingerprint("focus", &[doc], &base, &[], &[], &[], &[]);
         assert_eq!(f.len(), 64);
         let mut changed = base.clone();
         changed[0].2 = "HYPOTHETICAL".to_owned();
-        assert_ne!(f, fingerprint("focus", &[doc], &changed));
-        assert_ne!(f, fingerprint("other focus", &[doc], &base));
-        assert_ne!(f, fingerprint("focus", &[doc, Uuid::from_u128(4)], &base));
+        assert_ne!(
+            f,
+            fingerprint("focus", &[doc], &changed, &[], &[], &[], &[])
+        );
+        assert_ne!(
+            f,
+            fingerprint("other focus", &[doc], &base, &[], &[], &[], &[])
+        );
+        assert_ne!(
+            f,
+            fingerprint(
+                "focus",
+                &[doc, Uuid::from_u128(4)],
+                &base,
+                &[],
+                &[],
+                &[],
+                &[]
+            )
+        );
+        assert_ne!(
+            f,
+            fingerprint(
+                "focus",
+                &[doc],
+                &base,
+                &[Uuid::from_u128(5)],
+                &[],
+                &[],
+                &[]
+            )
+        );
+        assert_ne!(
+            f,
+            fingerprint(
+                "focus",
+                &[doc],
+                &base,
+                &[],
+                &[(Uuid::from_u128(5), Uuid::from_u128(6), Uuid::from_u128(7))],
+                &[(Uuid::from_u128(5), Uuid::from_u128(8))],
+                &[Uuid::from_u128(9)]
+            )
+        );
     }
 }

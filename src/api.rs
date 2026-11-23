@@ -4486,7 +4486,7 @@ mod tests {
             ),
             (
                 "POST",
-                "/v1/workspaces/00000000-0000-0000-0000-000000000001/sources/00000000-0000-0000-0000-000000000002",
+                "/v1/workspaces/00000000-0000-0000-0000-000000000001/situations/00000000-0000-0000-0000-000000000002",
                 too_big,
                 StatusCode::PAYLOAD_TOO_LARGE,
             ),
@@ -4498,6 +4498,7 @@ mod tests {
                     axum::http::Request::builder()
                         .method(method)
                         .uri(path)
+                        .header(header::CONTENT_TYPE, "application/json")
                         .body(Body::from(body))
                         .unwrap(),
                 )
