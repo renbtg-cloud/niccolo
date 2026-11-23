@@ -2,7 +2,7 @@
 
 **A thinking companion for complex human situations.**
 
-Niccolò helps people examine situations where the evidence is fragmented, accounts disagree, intentions are uncertain, and a premature answer would be less useful than a better question. It brings conversations, documents, contextual contributions, competing interpretations, and possible next actions into one inspectable line of inquiry.
+Niccolò helps people examine situations where the evidence is fragmented, accounts disagree, intentions are uncertain, and a premature answer would be less useful than a better question. The restricted MVP brings human-supplied context, external-artifact references, attributed representations, competing interpretations, and possible next actions into one inspectable line of inquiry.
 
 Its purpose is to **strengthen human judgment, not replace it**. The person defines what matters, contributes context at any moment, challenges the system's interpretations, and retains authority over consequential decisions and actions.
 
@@ -14,12 +14,12 @@ A **Situation** is the working space for a human question or project. A Situatio
 
 | Capability | How it serves the person |
 | --- | --- |
-| **Bring sources together** | Organize email, WhatsApp exports, documents, and additional source types as they become supported. Preserve what each record says and where it came from. |
+| **Reference external artifacts** | Record that an email, export, document, image, audio file, video, or physical object exists elsewhere without uploading, opening, or parsing it. Preserve declared identity, location, scope, attribution, and limitations. |
 | **Separate evidence from interpretation** | Distinguish a source quotation, a person's reported belief, an inference, a hypothetical scenario, and a question worth investigating. |
 | **Reason across relationships** | Compare claims, people, events, timelines, and potentially conflicting accounts without automatically declaring one of them true. |
 | **Discover useful questions** | Propose a small number of promising investigative leads and explain what missing information could change the analysis. |
 | **Consider alternatives** | Surface credible competing explanations, assumptions, gaps, consequences, and reasons to revise a conclusion. |
-| **Work with changing context** | Let the human correct identities, retract a premise, add a source, challenge a hypothesis, or change priorities; keep the analysis history intelligible. |
+| **Work with changing context** | Let the human correct an attribution, retract a premise, add an artifact reference or representation, challenge a hypothesis, or change priorities; keep the analysis history intelligible. |
 | **Plan without commandeering** | Organize bounded investigation steps, note dependencies and stop conditions, and pause at decisions requiring the human. |
 | **Remember the reasoning trail** | Preserve provenance, frozen input revisions, feedback, and the differences between earlier and later analyses. |
 
@@ -27,7 +27,7 @@ These are **product capabilities and directions**, not a promise that every inte
 
 ## A typical Situation
 
-Imagine two people describing the same event differently in private email and a group conversation. The user can bring both records into a Situation, add a personal recollection, and ask: *What can I reasonably conclude, what remains ambiguous, and what should I ask next?*
+Imagine two people describing the same event differently in private email and a group conversation. In the restricted MVP, the user can reference both external records, explicitly supply the relevant descriptions or transcriptions with attribution and scope, add a personal recollection, and ask: *What can I reasonably conclude, what remains ambiguous, and what should I ask next?*
 
 Niccolò should show which statements have documentary support, distinguish a copied report from an independent observation, identify apparent tensions without inventing motives, and propose a few targeted ways to clarify the picture. A user can reject an interpretation as wrong, say that the evidence is insufficient, or say they do not know; those responses are not treated as interchangeable.
 
@@ -44,7 +44,7 @@ For a detailed example of Niccolò reasoning about humans under conflicting ince
 The intended experience is organized around a Situation, rather than a single isolated prompt:
 
 1. **Start with an intention.** Describe the situation, a concern, or a decision to explore.
-2. **Add context and records.** Supply source files and explain identities or circumstances that the records cannot establish on their own.
+2. **Add explicit material.** Reference artifacts where they already live and supply attributed descriptions, transcriptions, assumptions, recollections, or investigative preferences. The MVP accepts no file upload and invokes no parser.
 3. **Explore.** Review attributed claims, disagreements, alternative explanations, open questions, and the system's proposed next investigative steps.
 4. **Steer.** Correct, reject, question, prioritize, and add context whenever useful. A human correction creates a traceable revision rather than silently overwriting the record.
 5. **Decide what happens next.** Choose whether to pursue a lead, request more information, revisit an answer, or stop. Review and approval are not automatic permission to execute external actions.
@@ -62,7 +62,7 @@ The local web interface is intentionally functional and visually restrained. Som
                                     |
               Situation, analysis and operation services
                       /             |              \
-          provenance and       bounded agentic       model integration
+          artifact and         bounded agentic       model integration
           reasoning models      step controller        (evolving)
                       \             |              /
                          PostgreSQL / SQLx
@@ -78,7 +78,7 @@ The local web interface is intentionally functional and visually restrained. Som
 - **Frontend:** React, React Router, TanStack Query, Zustand, React Hook Form, and Zod.
 - **Model layer:** provider/model interaction and evaluation are independent concerns; the core must not assume that a generated answer is evidence or that a model may authorize action.
 
-Technical details and architectural contracts: [MVP composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) (**normative MVP scope; not a claim of implemented behavior**), [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
+Technical details and architectural contracts: [Parser-free external artifacts and parallel observation](docs/architecture/NICCOLO_MVP_EXTERNAL_ARTIFACTS_AND_PARALLEL_OBSERVATION_CONTRACT.md) (**normative restricted-MVP scope**), [MVP composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) (historical context where it conflicts), [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
 
 ## First-time setup on one PC
 
@@ -233,6 +233,8 @@ cargo test --offline --all-targets --features pg-integration
 
 Integration suites require the configured disposable PostgreSQL database, schema, and appropriate roles. The repository's `scripts/run-v*-validation.sh` scripts reproduce focused historical checkpoints. `scripts/run-v030-validation.sh`, for example, requires the three PostgreSQL URLs listed above. A successful older checkpoint is **not** a substitute for testing all subsequently changed modules and migrations.
 
+The normal `niccolo-api` build is parser-free. The `pg-integration` feature also enables `legacy-source-import` only so historical integration fixtures can still validate old data paths while they are retired; neither feature is part of the restricted MVP runtime. The historical `niccolo-source-demo` binary cannot be built without that explicit compatibility feature.
+
 ## Building on Niccolò
 
 The backend is organized by responsibility rather than by one undifferentiated reasoning prompt:
@@ -241,7 +243,8 @@ The backend is organized by responsibility rather than by one undifferentiated r
 | --- | --- |
 | HTTP endpoints and entrypoint | `src/api.rs`, `src/api_main.rs` |
 | Situation revisions and storage | `src/situation.rs`, `src/situation_store.rs` |
-| Source parsing, ingestion, and provenance | `src/source_import.rs`, `src/postgres_ingest.rs`, `src/provenance_dag.rs` |
+| Parser-free artifact references and representations | `src/artifacts.rs`, `src/reasoning_packet.rs` |
+| Historical import compatibility (not MVP runtime) | `src/source_import.rs`, `src/postgres_ingest.rs` |
 | Analysis, claims, and review | `src/analysis_*.rs`, `src/review_*.rs` |
 | Human feedback, decisions, and authorization | `src/human_*.rs`, `src/action_authorization.rs` |
 | Durable operations and agentic orchestration | `src/bff_*.rs`, `src/agentic_*.rs` |
@@ -259,9 +262,9 @@ The two categories below are intentionally explicit. **A planned capability belo
 
 ### Established engineering foundations in this repository
 
-- Provenance-aware source and evidence representation, including multi-parent derivations and withdrawal-sensitive traversal.
-- Import and attribution primitives for bounded plain-text email and WhatsApp exports; source revision and fragment tracking.
-- Retained PDF originals, bounded page-text preview with `pdftotext`, and attributed human reports that reference selected pages.
+- Provenance-aware artifact, representation, source, and evidence models, including multi-parent derivations and withdrawal-sensitive traversal.
+- Parser-free external-artifact identities, declared storage references, attributed human representations, qualified relationships, immutable Situation revisions, and frozen reasoning packets.
+- Runtime and browser boundaries that accept no file upload, expose no PDF preview, retain no new artifact bytes, dereference no locator, and invoke no parser in the restricted MVP.
 - Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
@@ -273,12 +276,12 @@ These foundations are not equivalent to a complete consumer onboarding, producti
 ### Product direction and planned capabilities
 
 - **Human-centered discovery:** proactive but bounded exploration of a Situation, including two or three promising investigative leads with reasons and evidence gaps.
-- **Broader, reliable source coverage:** richer email and messaging ingestion, original media retention, future modalities, and cross-source identity reconciliation under human control.
+- **Post-MVP artifact interpretation:** only after the parser-free MVP is stable and epistemologically precise, experiment first with raw text (deterministic NLP, LLM, or a measured hybrid), then evaluate email, messaging, PDF, image, audio, and video adapters as parallel, attributable observation layers.
 - **Contextual interpretation:** consider motivations, perceptions, misunderstandings, and social dynamics as *competing hypotheses*, never asserted diagnoses or facts about people.
 - **Goal-directed reasoning:** select what to investigate next according to the person's purpose, budget, stop conditions, missing evidence, and available tools.
 - **Human-guided iteration:** learn from distinct kinds of feedback, preserve provenance and disagreement, and perform selective reanalysis when new information actually changes the question.
 - **Model integration and empirical evolution:** evaluate candidate reasoning strategies against reproducible tests, compare model costs and quality, and improve the product without quietly delegating essential authority to a third party.
-- **Usable end-to-end experience:** source upload, identity review, inspectable reasoning, informed decisions, and controlled next actions through the product interface.
+- **Usable end-to-end experience:** explicit artifact references, attributed representations, inspectable reasoning, informed decisions, and controlled next actions through the product interface.
 - **Cohort and operational readiness:** robust authorization, privacy, retention/deletion, observability, deployment, and adversarial validation appropriate to real-world use.
 
 The direction is not a roadmap guarantee or a claim that all these integrations are already active. Engineering checkpoint records and detailed test limitations belong in their respective technical documents, not interleaved with the product introduction.
