@@ -592,6 +592,41 @@ pub struct ConclusionReasoningDiagnostic {
     pub conclusion_reassessment: ReassessmentAttentionSummary,
 }
 
+/// One authored grounding route reached from a human-authored hypothesis or
+/// assumption.  Reachability is structural: it says that the source
+/// participates, directly or through another authored conclusion, in this
+/// route.  It does not say that the source alone establishes the conclusion.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthoredObjectImpactRoute {
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+    pub conclusion_object_id: Uuid,
+    pub effect: GroundingEffect,
+    pub adequacy: GroundingAdequacy,
+    pub depth: u16,
+    pub reachable_ground_object_ids: Vec<Uuid>,
+    pub non_context_member_count: usize,
+    pub source_is_direct_ground: bool,
+}
+
+/// Deterministic impact projection for structure explicitly authored by the
+/// investigator.  Niccolo does not generate the hypothesis or counterfactual,
+/// promote an assumption into fact, compose directional effects, or infer
+/// that a reachable conclusion is true.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthoredObjectImpactAnalysis {
+    pub source_object_id: Uuid,
+    pub source_kind: ExpertNodeKind,
+    pub route_impacts: Vec<AuthoredObjectImpactRoute>,
+    pub reached_conclusion_object_ids: Vec<Uuid>,
+    pub contradicted_object_ids: Vec<Uuid>,
+    pub tested_by_question_ids: Vec<Uuid>,
+    pub structural_routes_only: bool,
+    pub establishes_truth: bool,
+    pub directional_effects_are_aggregated: bool,
+    pub treats_assumption_as_fact: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InquiryLink {
     pub relation_id: Uuid,
@@ -696,6 +731,7 @@ pub struct WorkbenchSnapshot {
     pub reassessment_impacts: Vec<ReassessmentImpact>,
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
+    pub authored_object_impacts: Vec<AuthoredObjectImpactAnalysis>,
     pub question_inquiries: Vec<QuestionInquiryView>,
     pub question_decisions: Vec<inquiry_decision::InquiryDecision>,
     pub question_decision_basis_changes: Vec<inquiry_decision_review::DecisionBasisChange>,
@@ -2119,6 +2155,164 @@ fn reasoning_diagnostics(
     diagnostics
 }
 
+/// Follow only explicitly authored, non-contextual grounding dependencies.
+///
+/// The fixed point records the shortest structural depth at which an object is
+/// reachable.  Route directions remain attached to their individual routes;
+/// SUPPORTS followed by WEAKENS is deliberately not collapsed into a derived
+/// sign or score.  Joint grounding also remains visible through the member
+/// count, so a what-if assumption is never presented as sufficient merely
+/// because it participates in a route.
+fn authored_object_impacts(
+    nodes: &[ExpertNode],
+    relations: &[ExpertRelation],
+    arguments: &[ExpertArgument],
+    grounding_sets: &[GroundingSetView],
+) -> Vec<AuthoredObjectImpactAnalysis> {
+    let conclusions = arguments
+        .iter()
+        .map(|argument| (argument.argument_id, argument.conclusion_object_id))
+        .collect::<BTreeMap<_, _>>();
+    let sources = nodes.iter().filter(|node| {
+        matches!(
+            node.kind,
+            ExpertNodeKind::Hypothesis | ExpertNodeKind::Assumption
+        )
+    });
+    let mut analyses = Vec::new();
+
+    for source in sources {
+        let mut reachable_depth = BTreeMap::from([(source.object_id, 0_u16)]);
+        // A shortest-depth fixed point over object -> argument conclusion edges.
+        // At most one new minimum per object is needed; the extra pass confirms
+        // stability in graphs containing cycles.
+        for _ in 0..=nodes.len() {
+            let mut changed = false;
+            for set in grounding_sets {
+                let Some(conclusion) = conclusions.get(&set.argument_id).copied() else {
+                    continue;
+                };
+                let Some(minimum_ground_depth) = set
+                    .members
+                    .iter()
+                    .filter(|member| member.role != GroundingMemberRole::Context)
+                    .filter_map(|member| member.ground_object_id)
+                    .filter_map(|ground| reachable_depth.get(&ground).copied())
+                    .min()
+                else {
+                    continue;
+                };
+                let candidate = minimum_ground_depth.saturating_add(1);
+                if reachable_depth
+                    .get(&conclusion)
+                    .is_none_or(|current| candidate < *current)
+                {
+                    reachable_depth.insert(conclusion, candidate);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        let mut route_impacts = Vec::new();
+        for set in grounding_sets {
+            let Some(conclusion_object_id) = conclusions.get(&set.argument_id).copied() else {
+                continue;
+            };
+            let mut reachable_ground_object_ids = set
+                .members
+                .iter()
+                .filter(|member| member.role != GroundingMemberRole::Context)
+                .filter_map(|member| member.ground_object_id)
+                .filter(|ground| reachable_depth.contains_key(ground))
+                .collect::<Vec<_>>();
+            reachable_ground_object_ids.sort();
+            reachable_ground_object_ids.dedup();
+            let Some(minimum_ground_depth) = reachable_ground_object_ids
+                .iter()
+                .filter_map(|ground| reachable_depth.get(ground).copied())
+                .min()
+            else {
+                continue;
+            };
+            route_impacts.push(AuthoredObjectImpactRoute {
+                argument_id: set.argument_id,
+                grounding_set_id: set.grounding_set_id,
+                conclusion_object_id,
+                effect: set.effect,
+                adequacy: set.adequacy,
+                depth: minimum_ground_depth.saturating_add(1),
+                source_is_direct_ground: reachable_ground_object_ids.contains(&source.object_id),
+                reachable_ground_object_ids,
+                non_context_member_count: set
+                    .members
+                    .iter()
+                    .filter(|member| member.role != GroundingMemberRole::Context)
+                    .count(),
+            });
+        }
+        route_impacts.sort_by_key(|impact| {
+            (
+                impact.depth,
+                impact.conclusion_object_id,
+                impact.argument_id,
+                impact.grounding_set_id,
+            )
+        });
+
+        let mut contradicted_object_ids = relations
+            .iter()
+            .filter(|relation| relation.kind == RelationKind::Contradicts)
+            .filter_map(|relation| {
+                if relation.left_object_id == source.object_id {
+                    Some(relation.right_object_id)
+                } else if relation.right_object_id == source.object_id {
+                    Some(relation.left_object_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        contradicted_object_ids.sort();
+        contradicted_object_ids.dedup();
+
+        let mut tested_by_question_ids = relations
+            .iter()
+            .filter(|relation| {
+                relation.kind == RelationKind::TestsHypothesis
+                    && relation.right_object_id == source.object_id
+            })
+            .map(|relation| relation.left_object_id)
+            .collect::<Vec<_>>();
+        tested_by_question_ids.sort();
+        tested_by_question_ids.dedup();
+
+        let mut reached_conclusion_object_ids = route_impacts
+            .iter()
+            .map(|impact| impact.conclusion_object_id)
+            .collect::<Vec<_>>();
+        reached_conclusion_object_ids.sort();
+        reached_conclusion_object_ids.dedup();
+
+        analyses.push(AuthoredObjectImpactAnalysis {
+            source_object_id: source.object_id,
+            source_kind: source.kind,
+            route_impacts,
+            reached_conclusion_object_ids,
+            contradicted_object_ids,
+            tested_by_question_ids,
+            structural_routes_only: true,
+            establishes_truth: false,
+            directional_effects_are_aggregated: false,
+            treats_assumption_as_fact: false,
+        });
+    }
+    analyses.sort_by_key(|analysis| analysis.source_object_id);
+    analyses
+}
+
 async fn direct_evidence_lineage(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
@@ -2587,6 +2781,8 @@ pub async fn snapshot(
     .await?;
     tx.commit().await?;
     let question_inquiries = question_inquiries(&nodes, &relations, &assessments);
+    let authored_object_impacts =
+        authored_object_impacts(&nodes, &relations, &arguments, &grounding_sets);
     Ok(WorkbenchSnapshot {
         situation_id: situation,
         nodes,
@@ -2598,6 +2794,7 @@ pub async fn snapshot(
         reassessment_impacts,
         grounding_cycles,
         reasoning_diagnostics,
+        authored_object_impacts,
         question_inquiries,
         question_decisions,
         question_decision_basis_changes,
@@ -2643,6 +2840,7 @@ mod tests {
             reassessment_impacts: vec![],
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],
+            authored_object_impacts: vec![],
             question_inquiries: vec![],
             question_decisions: vec![],
             question_decision_basis_changes: vec![],
@@ -3064,5 +3262,216 @@ mod tests {
         assert!(serialized.get("score").is_none());
         assert!(serialized.get("confidence").is_none());
         assert!(serialized.get("truth").is_none());
+    }
+
+    #[test]
+    fn human_authored_assumptions_and_hypotheses_expose_structural_impacts() {
+        let assumption = Uuid::from_u128(401);
+        let other_ground = Uuid::from_u128(402);
+        let hypothesis = Uuid::from_u128(403);
+        let finding = Uuid::from_u128(404);
+        let question = Uuid::from_u128(405);
+        let node = |object_id, kind| ExpertNode {
+            object_id,
+            kind,
+            situation_id: Uuid::nil(),
+            text: format!("object {object_id}"),
+            rationale: "human-authored".into(),
+            created_by: Uuid::nil(),
+            replayed: false,
+        };
+        let nodes = vec![
+            node(assumption, ExpertNodeKind::Assumption),
+            node(other_ground, ExpertNodeKind::Proposition),
+            node(hypothesis, ExpertNodeKind::Hypothesis),
+            node(finding, ExpertNodeKind::Finding),
+            node(question, ExpertNodeKind::Question),
+        ];
+        let first_argument = Uuid::from_u128(411);
+        let second_argument = Uuid::from_u128(412);
+        let argument = |argument_id, conclusion_object_id| ExpertArgument {
+            argument_id,
+            situation_id: Uuid::nil(),
+            conclusion_object_id,
+            mode: ArgumentMode::Abductive,
+            rationale: "authored argument".into(),
+            created_by: Uuid::nil(),
+            replayed: false,
+        };
+        let member = |member_id, ground_object_id| GroundingMemberView {
+            member_id,
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(ground_object_id),
+            evidence_id: None,
+            rationale: "explicit member".into(),
+            recorded_by: Uuid::nil(),
+        };
+        let sets = vec![
+            GroundingSetView {
+                argument_id: first_argument,
+                grounding_set_id: Uuid::from_u128(421),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "joint route".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![
+                    member(Uuid::from_u128(431), assumption),
+                    member(Uuid::from_u128(432), other_ground),
+                ],
+                replayed: false,
+            },
+            GroundingSetView {
+                argument_id: second_argument,
+                grounding_set_id: Uuid::from_u128(422),
+                effect: GroundingEffect::Challenges,
+                adequacy: GroundingAdequacy::Sufficient,
+                rationale: "downstream challenge".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(433), hypothesis)],
+                replayed: false,
+            },
+        ];
+        let relation = |relation_id, kind: RelationKind, left, right| ExpertRelation {
+            relation_id,
+            situation_id: Uuid::nil(),
+            family: kind.family(),
+            kind,
+            left_object_id: left,
+            right_object_id: right,
+            rationale: "human-authored relation".into(),
+            recorded_by: Uuid::nil(),
+            replayed: false,
+        };
+        let analyses = authored_object_impacts(
+            &nodes,
+            &[
+                relation(
+                    Uuid::from_u128(441),
+                    RelationKind::Contradicts,
+                    assumption,
+                    other_ground,
+                ),
+                relation(
+                    Uuid::from_u128(442),
+                    RelationKind::TestsHypothesis,
+                    question,
+                    hypothesis,
+                ),
+            ],
+            &[
+                argument(first_argument, hypothesis),
+                argument(second_argument, finding),
+            ],
+            &sets,
+        );
+
+        let assumption_analysis = analyses
+            .iter()
+            .find(|analysis| analysis.source_object_id == assumption)
+            .unwrap();
+        assert_eq!(assumption_analysis.route_impacts.len(), 2);
+        assert_eq!(assumption_analysis.route_impacts[0].depth, 1);
+        assert_eq!(assumption_analysis.route_impacts[0].non_context_member_count, 2);
+        assert!(assumption_analysis.route_impacts[0].source_is_direct_ground);
+        assert_eq!(assumption_analysis.route_impacts[1].depth, 2);
+        assert_eq!(
+            assumption_analysis.route_impacts[1].effect,
+            GroundingEffect::Challenges
+        );
+        assert_eq!(
+            assumption_analysis.reached_conclusion_object_ids,
+            vec![hypothesis, finding]
+        );
+        assert_eq!(assumption_analysis.contradicted_object_ids, vec![other_ground]);
+        assert!(!assumption_analysis.establishes_truth);
+        assert!(!assumption_analysis.directional_effects_are_aggregated);
+        assert!(!assumption_analysis.treats_assumption_as_fact);
+
+        let hypothesis_analysis = analyses
+            .iter()
+            .find(|analysis| analysis.source_object_id == hypothesis)
+            .unwrap();
+        assert_eq!(hypothesis_analysis.route_impacts.len(), 1);
+        assert_eq!(hypothesis_analysis.tested_by_question_ids, vec![question]);
+    }
+
+    #[test]
+    fn authored_impact_projection_terminates_on_reasoning_cycles() {
+        let assumption = Uuid::from_u128(501);
+        let hypothesis = Uuid::from_u128(502);
+        let nodes = vec![
+            ExpertNode {
+                object_id: assumption,
+                kind: ExpertNodeKind::Assumption,
+                situation_id: Uuid::nil(),
+                text: "Assume the sighting occurred".into(),
+                rationale: "counterfactual".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+            ExpertNode {
+                object_id: hypothesis,
+                kind: ExpertNodeKind::Hypothesis,
+                situation_id: Uuid::nil(),
+                text: "The suspect was present".into(),
+                rationale: "human hypothesis".into(),
+                created_by: Uuid::nil(),
+                replayed: false,
+            },
+        ];
+        let make_argument = |argument_id, conclusion_object_id| ExpertArgument {
+            argument_id,
+            situation_id: Uuid::nil(),
+            conclusion_object_id,
+            mode: ArgumentMode::Abductive,
+            rationale: "cycle".into(),
+            created_by: Uuid::nil(),
+            replayed: false,
+        };
+        let make_set = |argument_id, grounding_set_id, member_id, ground_object_id| {
+            GroundingSetView {
+                argument_id,
+                grounding_set_id,
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Partial,
+                rationale: "cycle route".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![GroundingMemberView {
+                    member_id,
+                    role: GroundingMemberRole::Premise,
+                    ground_object_id: Some(ground_object_id),
+                    evidence_id: None,
+                    rationale: "cycle member".into(),
+                    recorded_by: Uuid::nil(),
+                }],
+                replayed: false,
+            }
+        };
+        let arguments = vec![
+            make_argument(Uuid::from_u128(511), hypothesis),
+            make_argument(Uuid::from_u128(512), assumption),
+        ];
+        let sets = vec![
+            make_set(
+                Uuid::from_u128(511),
+                Uuid::from_u128(521),
+                Uuid::from_u128(531),
+                assumption,
+            ),
+            make_set(
+                Uuid::from_u128(512),
+                Uuid::from_u128(522),
+                Uuid::from_u128(532),
+                hypothesis,
+            ),
+        ];
+        let analyses = authored_object_impacts(&nodes, &[], &arguments, &sets);
+        let impact = analyses
+            .iter()
+            .find(|analysis| analysis.source_object_id == assumption)
+            .unwrap();
+        assert_eq!(impact.route_impacts.len(), 2);
+        assert_eq!(impact.route_impacts[0].depth, 1);
+        assert_eq!(impact.route_impacts[1].depth, 2);
     }
 }
