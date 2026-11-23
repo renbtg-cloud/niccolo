@@ -937,6 +937,24 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
     let id = Uuid::new_v4();
+    let invalid = sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_source_requests \
+         (workspace_id,situation_id,analysis_id,request_id,request_text,source_kind,rationale,proposed_by_principal_id) \
+         VALUES($1,$2,$3,$4,$5,'message','must remain one paragraph',$6)",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(Uuid::new_v4())
+    .bind("first line\nsecond line")
+    .bind(s.principal)
+    .execute(&admin)
+    .await
+    .unwrap_err();
+    assert_eq!(
+        invalid.as_database_error().and_then(|error| error.code()).as_deref(),
+        Some("23514")
+    );
     let proposal = SourceRequestInput {
         request_id: id,
         text: "obtain original contract".into(),
