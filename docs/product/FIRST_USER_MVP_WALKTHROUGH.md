@@ -131,12 +131,15 @@ Review should make it possible to inspect, as available for that analysis:
 - competing interpretations;
 - unresolved clarifications;
 - useful next leads;
+- attributed source-material requests and their decision history;
 - whether the Situation changed after the frozen input;
 - a portable analysis export.
 
 The answer is provisional reasoning over recorded input, not a declaration of truth. Open **Read the human context in this analysis** to revisit the exact reports, assumptions, and preferences in that analysis. Each entry shows whether it was recorded as used.
 
 Under **Worth looking at next**, check the reason beside each available lead. For a clarification lead, choose **Answer this question** and submit your answer directly. To pursue another kind of lead later, choose **Draft as an investigative preference**, edit it in the Situation, and select **Add context** to save it. Use the link to the Situation to add a record or human context. To revisit an earlier answer, choose it from **Analysis history**. A newly launched analysis also appears in that history. Use **Older analyses** to browse earlier entries. In **Clarifications**, use **More questions** when the review has additional questions. Use **More answers** on a question to browse its recorded responses. An answer you save appears as human context in the Situation. While a saved answer or its correction remains active, the question drops out of the current list of suggested leads. If you retract the last active answer, it can return as a lead. The original question and answer history remain available in Clarifications.
+
+Under **Requests for more source material**, accept, defer or decline a proposal and explain why. A settled request can be reopened later. Every decision remains attributed and visible in sequence. Acceptance records human intent only: it does not fetch a message, file or link, and it does not turn missing material into evidence. If you choose to obtain something, perform that external action yourself and add the resulting record through the Situation.
 
 ## What to record during a human usability test
 
@@ -150,8 +153,9 @@ Do not teach the tester the architecture first. Record where they hesitate or as
 6. Did they understand when the first answer was ready?
 7. Did they naturally open Review?
 8. Could they tell evidence, inference, uncertainty, and human authority apart?
-9. Did any technical vocabulary become necessary to complete the basic path?
-10. At what point, if any, did they stop seeing value?
+9. Did they understand that accepting a source request records a decision but fetches nothing?
+10. Did any technical vocabulary become necessary to complete the basic path?
+11. At what point, if any, did they stop seeing value?
 
 A failure here is product evidence. Do not repair the user's behavior by explaining the system
 unless the test itself has already ended.
