@@ -4872,6 +4872,10 @@ async fn record_source_request_event(
             ApiError(StatusCode::CONFLICT, "source request event replay conflict")
         }
         HandoffError::Invisible => ApiError(StatusCode::NOT_FOUND, "source request unavailable"),
+        HandoffError::StateConflict => ApiError(
+            StatusCode::CONFLICT,
+            "source request decision conflicts with its current state",
+        ),
         _ => ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
             "source request event unavailable",

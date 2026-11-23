@@ -420,6 +420,26 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
         assert_eq!(result["accepted_means_fetched"], false);
         assert_eq!(result["system_fetched_external_material"], false);
     }
+    let invalid_transition = format!(
+        "{}/source-requests/{request_id}/events/{}",
+        analysis(&f, s, a),
+        Uuid::new_v4()
+    );
+    let (status, conflict) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            invalid_transition,
+            &f.writer,
+            Some(json!({"kind":"ACCEPTED","note":"Cannot accept while deferred."})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{conflict}");
+    assert_eq!(
+        conflict["error"],
+        "source request decision conflicts with its current state"
+    );
     let (status, listed) = call(f.router.clone(), req("GET", list_path, &f.reader, None)).await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     assert_eq!(listed["source_requests"][0]["state"], "DEFERRED");

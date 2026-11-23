@@ -19,6 +19,8 @@ pub enum HandoffError {
     Conflict,
     #[error("handoff object is not visible")]
     Invisible,
+    #[error("handoff event is not valid from the current state")]
+    StateConflict,
 }
 async fn scoped(
     pool: &PgPool,
@@ -120,6 +122,13 @@ pub async fn append_source_request_event(
         return Err(HandoffError::Invalid);
     }
     let mut tx = scoped(pool, scope.workspace, false).await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!(
+            "source-request:{}:{}:{}:{}",
+            scope.workspace, scope.situation, scope.analysis, request
+        ))
+        .execute(&mut *tx)
+        .await?;
     let visible: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM niccolo.situation_analysis_source_requests \
          WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND request_id=$4)",
@@ -133,10 +142,50 @@ pub async fn append_source_request_event(
     if !visible {
         return Err(HandoffError::Invisible);
     }
-    let inserted = sqlx::query(
+    let stored: Option<(String, String, Uuid)> = sqlx::query_as(
+        "SELECT event_kind,note,recorded_by_principal_id \
+         FROM niccolo.situation_analysis_source_request_events \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
+           AND request_id=$4 AND event_id=$5",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(request)
+    .bind(e.event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(stored) = stored {
+        if stored != (e.kind.clone(), e.note.clone(), e.recorded_by) {
+            return Err(HandoffError::Conflict);
+        }
+        tx.commit().await?;
+        return Ok(true);
+    }
+    let current: Option<String> = sqlx::query_scalar(
+        "SELECT event_kind FROM niccolo.situation_analysis_source_request_events \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND request_id=$4 \
+         ORDER BY created_at DESC,event_id DESC LIMIT 1",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .bind(request)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let current = current.as_deref().unwrap_or("PROPOSED");
+    let valid_transition = match current {
+        "PROPOSED" | "REOPENED" => matches!(e.kind.as_str(), "ACCEPTED" | "DECLINED" | "DEFERRED"),
+        "ACCEPTED" | "DECLINED" | "DEFERRED" => e.kind == "REOPENED",
+        _ => false,
+    };
+    if !valid_transition {
+        return Err(HandoffError::StateConflict);
+    }
+    sqlx::query(
         "INSERT INTO niccolo.situation_analysis_source_request_events \
          (workspace_id,situation_id,analysis_id,request_id,event_id,event_kind,note,recorded_by_principal_id) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING",
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
     )
     .bind(scope.workspace)
     .bind(scope.situation)
@@ -147,29 +196,9 @@ pub async fn append_source_request_event(
     .bind(&e.note)
     .bind(e.recorded_by)
     .execute(&mut *tx)
-    .await?
-    .rows_affected()
-        == 1;
-    if !inserted {
-        let stored: Option<(String, String, Uuid)> = sqlx::query_as(
-            "SELECT event_kind,note,recorded_by_principal_id \
-             FROM niccolo.situation_analysis_source_request_events \
-             WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
-               AND request_id=$4 AND event_id=$5",
-        )
-        .bind(scope.workspace)
-        .bind(scope.situation)
-        .bind(scope.analysis)
-        .bind(request)
-        .bind(e.event_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if stored != Some((e.kind.clone(), e.note.clone(), e.recorded_by)) {
-            return Err(HandoffError::Conflict);
-        }
-    }
+    .await?;
     tx.commit().await?;
-    Ok(!inserted)
+    Ok(false)
 }
 pub async fn source_requests(
     pool: &PgPool,
