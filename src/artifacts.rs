@@ -121,6 +121,45 @@ type StoredReference = (
     Uuid,
 );
 type StoredAccessEvent = (String, String, Option<String>, Uuid);
+type StoredRepresentation = (
+    Uuid,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Uuid,
+);
+type StoredRelationship = (Uuid, Uuid, String, Option<String>, Uuid);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RepresentationInput {
+    pub representation_id: Uuid,
+    pub representation_type: String,
+    pub producer_type: String,
+    pub producer_label: Option<String>,
+    pub production_method: Option<String>,
+    pub scope_locator: String,
+    pub content: String,
+    pub completeness_status: String,
+    pub epistemic_qualification: Option<String>,
+    pub limitations: Option<String>,
+    pub recorded_by: Uuid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactRelationshipInput {
+    pub relationship_id: Uuid,
+    pub subject_artifact_id: Uuid,
+    pub object_artifact_id: Uuid,
+    pub relationship_type: String,
+    pub qualification: Option<String>,
+    pub recorded_by: Uuid,
+}
 
 fn valid_artifact(input: &ArtifactInput) -> bool {
     one_line(&input.artifact_type, 128)
@@ -186,6 +225,43 @@ fn valid_storage_reference(input: &StorageReferenceInput) -> bool {
                 | "UNVERIFIED"
         )
         && valid_optional(input.access_note.as_deref(), 4096, false)
+}
+
+fn valid_text(value: &str, max: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= max && !value.contains('\0')
+}
+
+fn valid_representation(input: &RepresentationInput) -> bool {
+    one_line(&input.representation_type, 128)
+        && matches!(
+            input.producer_type.as_str(),
+            "USER" | "THIRD_PARTY_HUMAN" | "EXTERNAL_SYSTEM" | "UNKNOWN"
+        )
+        && valid_optional(input.producer_label.as_deref(), 512, true)
+        && valid_optional(input.production_method.as_deref(), 1024, true)
+        && one_line(&input.scope_locator, 2048)
+        && valid_text(&input.content, 65536)
+        && matches!(
+            input.completeness_status.as_str(),
+            "COMPLETE" | "PARTIAL" | "UNKNOWN"
+        )
+        && input
+            .epistemic_qualification
+            .as_deref()
+            .is_none_or(|value| valid_text(value, 4096))
+        && input
+            .limitations
+            .as_deref()
+            .is_none_or(|value| valid_text(value, 4096))
+}
+
+fn valid_relationship(input: &ArtifactRelationshipInput) -> bool {
+    input.subject_artifact_id != input.object_artifact_id
+        && one_line(&input.relationship_type, 128)
+        && input
+            .qualification
+            .as_deref()
+            .is_none_or(|value| valid_text(value, 4096))
 }
 
 /// Record an external artifact identity and attach it to a Situation atomically.
@@ -426,6 +502,140 @@ pub async fn record_storage_reference(
     Ok(!inserted && !event_inserted)
 }
 
+/// Persist text explicitly supplied as an attributed representation of an
+/// attached artifact. This operation does not derive the text from the artifact.
+/// Returns true for an exact idempotent replay.
+pub async fn record_representation(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    artifact: Uuid,
+    input: &RepresentationInput,
+) -> Result<bool, ArtifactError> {
+    if !valid_representation(input) {
+        return Err(ArtifactError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.situation_artifact_representations
+         (workspace_id,situation_id,artifact_id,representation_id,representation_type,
+          producer_type,producer_label,production_method,scope_locator,content,
+          completeness_status,epistemic_qualification,limitations,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT(workspace_id,situation_id,representation_id) DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(artifact)
+    .bind(input.representation_id)
+    .bind(&input.representation_type)
+    .bind(&input.producer_type)
+    .bind(&input.producer_label)
+    .bind(&input.production_method)
+    .bind(&input.scope_locator)
+    .bind(&input.content)
+    .bind(&input.completeness_status)
+    .bind(&input.epistemic_qualification)
+    .bind(&input.limitations)
+    .bind(input.recorded_by)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if !inserted {
+        let stored: Option<StoredRepresentation> = sqlx::query_as(
+            "SELECT artifact_id,representation_type,producer_type,producer_label,
+                    production_method,scope_locator,content,completeness_status,
+                    epistemic_qualification,limitations,recorded_by_principal_id
+             FROM niccolo.situation_artifact_representations
+             WHERE workspace_id=$1 AND situation_id=$2 AND representation_id=$3",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(input.representation_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if stored
+            != Some((
+                artifact,
+                input.representation_type.clone(),
+                input.producer_type.clone(),
+                input.producer_label.clone(),
+                input.production_method.clone(),
+                input.scope_locator.clone(),
+                input.content.clone(),
+                input.completeness_status.clone(),
+                input.epistemic_qualification.clone(),
+                input.limitations.clone(),
+                input.recorded_by,
+            ))
+        {
+            return Err(ArtifactError::Conflict);
+        }
+    }
+    tx.commit().await?;
+    Ok(!inserted)
+}
+
+/// Record a qualified relationship asserted between two artifacts already
+/// attached to the same Situation. Returns true for an exact replay.
+pub async fn record_relationship(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    input: &ArtifactRelationshipInput,
+) -> Result<bool, ArtifactError> {
+    if !valid_relationship(input) {
+        return Err(ArtifactError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.situation_artifact_relationships
+         (workspace_id,situation_id,relationship_id,subject_artifact_id,
+          object_artifact_id,relationship_type,qualification,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT(workspace_id,situation_id,relationship_id) DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(input.relationship_id)
+    .bind(input.subject_artifact_id)
+    .bind(input.object_artifact_id)
+    .bind(&input.relationship_type)
+    .bind(&input.qualification)
+    .bind(input.recorded_by)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if !inserted {
+        let stored: Option<StoredRelationship> = sqlx::query_as(
+            "SELECT subject_artifact_id,object_artifact_id,relationship_type,
+                    qualification,recorded_by_principal_id
+             FROM niccolo.situation_artifact_relationships
+             WHERE workspace_id=$1 AND situation_id=$2 AND relationship_id=$3",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(input.relationship_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if stored
+            != Some((
+                input.subject_artifact_id,
+                input.object_artifact_id,
+                input.relationship_type.clone(),
+                input.qualification.clone(),
+                input.recorded_by,
+            ))
+        {
+            return Err(ArtifactError::Conflict);
+        }
+    }
+    tx.commit().await?;
+    Ok(!inserted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,5 +682,26 @@ mod tests {
         let mut signed = base.clone();
         signed.locator = "https://example.invalid/x?X-Amz-Signature=secret".into();
         assert!(!valid_storage_reference(&signed));
+    }
+
+    #[test]
+    fn human_representation_preserves_multiline_text_and_attribution() {
+        let input = RepresentationInput {
+            representation_id: Uuid::nil(),
+            representation_type: "HUMAN_TRANSCRIPTION".into(),
+            producer_type: "USER".into(),
+            producer_label: Some("Renato".into()),
+            production_method: Some("typed while viewing the external artifact".into()),
+            scope_locator: "pages 7-9".into(),
+            content: "First line\nSecond line".into(),
+            completeness_status: "PARTIAL".into(),
+            epistemic_qualification: Some("not independently verified".into()),
+            limitations: Some("figures omitted".into()),
+            recorded_by: Uuid::nil(),
+        };
+        assert!(valid_representation(&input));
+        let mut invalid = input.clone();
+        invalid.scope_locator = "page 7\npage 8".into();
+        assert!(!valid_representation(&invalid));
     }
 }
