@@ -3,17 +3,17 @@ import { coverageSignals, recordedChanges, proactiveLeads, reanalysisPrompt } fr
 
 describe('review presentation', () => {
   it('presents recorded coverage without converting counts into completeness', () => {
-    expect(coverageSignals({ examined_fragment_count: 3, catalogued_fragment_count: 10, used_context_count: 2, input_context_count: 4 })).toEqual([
+    expect(coverageSignals({ sources: { examined_fragments: 3, catalogued_fragments: 10 }, human_context: { recorded_as_used: 2, present_in_input: 4 } })).toEqual([
       { label: 'Source fragments examined', used: 3, total: 10 },
       { label: 'Human context used', used: 2, total: 4 },
     ]);
   });
 
   it('shows only explicit post-analysis Situation changes', () => {
-    expect(recordedChanges({ input_is_current: false, focus_changed: true, added_source_count: 2, removed_source_count: 0, added_context_count: 1, removed_context_count: 1 })).toEqual([
+    expect(recordedChanges({ input_is_current: false, delta: { focus_changed: true, sources_added: 2, sources_removed: 0, context_added: 1, context_removed: 1 } })).toEqual([
       'Focus changed', '2 source(s) added', '1 context contribution(s) added', '1 context contribution(s) removed',
     ]);
-    expect(recordedChanges({ input_is_current: true, focus_changed: true, added_source_count: 9 })).toEqual([]);
+    expect(recordedChanges({ input_is_current: true, delta: { focus_changed: true, sources_added: 9 } })).toEqual([]);
   });
 
   it('preserves backend boundaries for proactive leads and reanalysis', () => {

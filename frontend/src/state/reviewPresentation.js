@@ -1,19 +1,21 @@
 export function coverageSignals(review) {
   if (!review) return [];
   return [
-    { label: 'Source fragments examined', used: review.examined_fragment_count ?? 0, total: review.catalogued_fragment_count ?? 0 },
-    { label: 'Human context used', used: review.used_context_count ?? 0, total: review.input_context_count ?? 0 },
+    { label: 'Source fragments examined', used: review.sources?.examined_fragments ?? 0, total: review.sources?.catalogued_fragments ?? 0 },
+    { label: 'Human context used', used: review.human_context?.recorded_as_used ?? 0, total: review.human_context?.present_in_input ?? 0 },
   ];
 }
 
 export function recordedChanges(review) {
   if (!review || review.input_is_current) return [];
+  const { delta } = review;
+  if (!delta) return [];
   const items = [];
-  if (review.focus_changed) items.push('Focus changed');
-  if (review.added_source_count) items.push(`${review.added_source_count} source(s) added`);
-  if (review.removed_source_count) items.push(`${review.removed_source_count} source(s) removed`);
-  if (review.added_context_count) items.push(`${review.added_context_count} context contribution(s) added`);
-  if (review.removed_context_count) items.push(`${review.removed_context_count} context contribution(s) removed`);
+  if (delta.focus_changed) items.push('Focus changed');
+  if (delta.sources_added) items.push(`${delta.sources_added} source(s) added`);
+  if (delta.sources_removed) items.push(`${delta.sources_removed} source(s) removed`);
+  if (delta.context_added) items.push(`${delta.context_added} context contribution(s) added`);
+  if (delta.context_removed) items.push(`${delta.context_removed} context contribution(s) removed`);
   return items;
 }
 
