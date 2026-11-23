@@ -9,7 +9,10 @@ use crate::analysis_delta::{self, AnalysisDeltaError};
 use crate::analysis_output::{self, AnalysisOutputError};
 use crate::analysis_review::{self, AnalysisReviewError};
 use crate::analysis_snapshot::{self, AnalysisSnapshotError};
-use crate::artifacts::{self, ArtifactError, ArtifactInput};
+use crate::artifacts::{
+    self, ArtifactError, ArtifactInput, ArtifactRelationshipInput, RepresentationInput,
+    StorageReferenceInput,
+};
 use crate::authz::{self, AuthError, Capability};
 use crate::bff_intent::{self, IntentError, IntentRequest};
 use crate::bff_operations::{self, BffOperationError, NewOperation, OperationScope};
@@ -363,6 +366,18 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_situation_artifact),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/artifacts/{artifact}/storage-references/{reference}",
+            post(record_artifact_storage_reference),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/artifacts/{artifact}/representations/{representation}",
+            post(record_artifact_representation),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/artifact-relationships/{relationship}",
+            post(record_artifact_relationship),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/focus",
             post(set_situation_focus),
         )
@@ -694,6 +709,7 @@ impl From<ArtifactError> for ApiError {
         match error {
             ArtifactError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid artifact metadata"),
             ArtifactError::Conflict => Self(StatusCode::CONFLICT, "artifact identity conflict"),
+            ArtifactError::Invisible => Self(StatusCode::NOT_FOUND, "artifact unavailable"),
             ArtifactError::Privileged | ArtifactError::Database(_) => {
                 Self(StatusCode::INTERNAL_SERVER_ERROR, "artifact registry unavailable")
             }
@@ -893,6 +909,43 @@ struct ArtifactRequest {
     declared_sha256: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageReferenceRequest {
+    access_event_id: Uuid,
+    storage_type: String,
+    locator: String,
+    provider: Option<String>,
+    environment_label: Option<String>,
+    resolver_profile: Option<String>,
+    notes: Option<String>,
+    access_status: String,
+    access_note: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RepresentationRequest {
+    representation_type: String,
+    producer_type: String,
+    producer_label: Option<String>,
+    production_method: Option<String>,
+    scope_locator: String,
+    content: String,
+    completeness_status: String,
+    epistemic_qualification: Option<String>,
+    limitations: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArtifactRelationshipRequest {
+    subject_artifact_id: Uuid,
+    object_artifact_id: Uuid,
+    relationship_type: String,
+    qualification: Option<String>,
+}
+
 async fn record_situation_artifact(
     State(state): State<AppState>,
     Path((workspace, situation, artifact)): Path<(Uuid, Uuid, Uuid)>,
@@ -946,6 +999,114 @@ async fn list_situation_artifacts(
             "locators_dereferenced":false
         }),
         StatusCode::OK,
+    ))
+}
+
+async fn record_artifact_storage_reference(
+    State(state): State<AppState>,
+    Path((workspace, situation, artifact, reference)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<StorageReferenceRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let replayed = artifacts::record_storage_reference(
+        &state.pool,
+        workspace,
+        situation,
+        artifact,
+        &StorageReferenceInput {
+            storage_reference_id: reference,
+            access_event_id: request.access_event_id,
+            storage_type: request.storage_type,
+            locator: request.locator,
+            provider: request.provider,
+            environment_label: request.environment_label,
+            resolver_profile: request.resolver_profile,
+            notes: request.notes,
+            access_status: request.access_status,
+            access_note: request.access_note,
+            recorded_by: recorder,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "storage_reference_id":reference,
+            "replayed":replayed,
+            "locator_was_dereferenced":false,
+            "access_status_is_human_declared":true
+        }),
+        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+async fn record_artifact_representation(
+    State(state): State<AppState>,
+    Path((workspace, situation, artifact, representation)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<RepresentationRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let replayed = artifacts::record_representation(
+        &state.pool,
+        workspace,
+        situation,
+        artifact,
+        &RepresentationInput {
+            representation_id: representation,
+            representation_type: request.representation_type,
+            producer_type: request.producer_type,
+            producer_label: request.producer_label,
+            production_method: request.production_method,
+            scope_locator: request.scope_locator,
+            content: request.content,
+            completeness_status: request.completeness_status,
+            epistemic_qualification: request.epistemic_qualification,
+            limitations: request.limitations,
+            recorded_by: recorder,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "representation_id":representation,
+            "replayed":replayed,
+            "content_was_explicitly_supplied":true,
+            "artifact_was_parsed":false,
+            "representation_establishes_truth":false
+        }),
+        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+async fn record_artifact_relationship(
+    State(state): State<AppState>,
+    Path((workspace, situation, relationship)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<ArtifactRelationshipRequest>,
+) -> Result<Response, ApiError> {
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let replayed = artifacts::record_relationship(
+        &state.pool,
+        workspace,
+        situation,
+        &ArtifactRelationshipInput {
+            relationship_id: relationship,
+            subject_artifact_id: request.subject_artifact_id,
+            object_artifact_id: request.object_artifact_id,
+            relationship_type: request.relationship_type,
+            qualification: request.qualification,
+            recorded_by: recorder,
+        },
+    )
+    .await?;
+    Ok(no_store(
+        json!({
+            "relationship_id":relationship,
+            "replayed":replayed,
+            "relationship_is_verified":false
+        }),
+        if replayed { StatusCode::OK } else { StatusCode::CREATED },
     ))
 }
 

@@ -121,6 +121,7 @@ async fn external_artifacts_remain_useful_without_bytes_or_parser_output() {
     artifacts::record_storage_reference(
         &app,
         seed.workspace,
+        seed.situation,
         video,
         &StorageReferenceInput {
             storage_reference_id: Uuid::new_v4(),

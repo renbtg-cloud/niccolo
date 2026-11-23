@@ -17,6 +17,8 @@ pub enum ArtifactError {
     Invalid,
     #[error("artifact replay conflicts with the stored record")]
     Conflict,
+    #[error("artifact is not attached to this Situation")]
+    Invisible,
 }
 
 async fn scoped(
@@ -402,6 +404,7 @@ pub async fn list_for_situation(
 pub async fn record_storage_reference(
     pool: &PgPool,
     workspace: Uuid,
+    situation: Uuid,
     artifact: Uuid,
     input: &StorageReferenceInput,
 ) -> Result<bool, ArtifactError> {
@@ -409,6 +412,18 @@ pub async fn record_storage_reference(
         return Err(ArtifactError::Invalid);
     }
     let mut tx = scoped(pool, workspace, false).await?;
+    let attached: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM niccolo.situation_artifacts
+         WHERE workspace_id=$1 AND situation_id=$2 AND artifact_id=$3)",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(artifact)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !attached {
+        return Err(ArtifactError::Invisible);
+    }
     let inserted = sqlx::query(
         "INSERT INTO niccolo.artifact_storage_references
          (workspace_id,artifact_id,storage_reference_id,storage_type,locator,
