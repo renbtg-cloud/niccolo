@@ -4,6 +4,7 @@ use crate::analysis_structure::AnalysisScope;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -70,12 +71,23 @@ pub struct SourceRequestEvent {
     pub recorded_by: Uuid,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceRequestEventView {
+    pub event_id: Uuid,
+    pub kind: String,
+    pub note: String,
+    pub recorded_by: Uuid,
+    pub recorded_at: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceRequestView {
     pub request_id: Uuid,
     pub text: String,
     pub source_kind: String,
     pub rationale: String,
+    pub proposed_by: Uuid,
+    pub proposed_at: String,
     pub state: String,
+    pub events: Vec<SourceRequestEventView>,
     pub accepted_means_fetched: bool,
 }
 pub async fn propose_source_request(
@@ -164,20 +176,59 @@ pub async fn source_requests(
     scope: AnalysisScope,
 ) -> Result<Vec<SourceRequestView>, HandoffError> {
     let mut tx = scoped(pool, scope.workspace, true).await?;
-    let rows:Vec<(Uuid,String,String,String,Option<String>)>=sqlx::query_as("SELECT r.request_id,r.request_text,r.source_kind,r.rationale,(SELECT e.event_kind FROM niccolo.situation_analysis_source_request_events e WHERE e.workspace_id=r.workspace_id AND e.situation_id=r.situation_id AND e.analysis_id=r.analysis_id AND e.request_id=r.request_id ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) FROM niccolo.situation_analysis_source_requests r WHERE r.workspace_id=$1 AND r.situation_id=$2 AND r.analysis_id=$3 ORDER BY r.request_id").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_all(&mut *tx).await?;
+    let rows: Vec<(Uuid, String, String, String, Uuid, String)> = sqlx::query_as(
+        "SELECT request_id,request_text,source_kind,rationale,proposed_by_principal_id,created_at::text \
+         FROM niccolo.situation_analysis_source_requests \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
+         ORDER BY created_at,request_id",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .fetch_all(&mut *tx)
+    .await?;
+    let event_rows: Vec<(Uuid, Uuid, String, String, Uuid, String)> = sqlx::query_as(
+        "SELECT request_id,event_id,event_kind,note,recorded_by_principal_id,created_at::text \
+         FROM niccolo.situation_analysis_source_request_events \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 \
+         ORDER BY created_at,event_id",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
+    let mut events = BTreeMap::<Uuid, Vec<SourceRequestEventView>>::new();
+    for (request_id, event_id, kind, note, recorded_by, recorded_at) in event_rows {
+        events.entry(request_id).or_default().push(SourceRequestEventView {
+            event_id,
+            kind,
+            note,
+            recorded_by,
+            recorded_at,
+        });
+    }
     Ok(rows
         .into_iter()
-        .map(
-            |(request_id, text, source_kind, rationale, state)| SourceRequestView {
+        .map(|(request_id, text, source_kind, rationale, proposed_by, proposed_at)| {
+            let events = events.remove(&request_id).unwrap_or_default();
+            let state = events
+                .last()
+                .map(|event| event.kind.clone())
+                .unwrap_or_else(|| "PROPOSED".into());
+            SourceRequestView {
                 request_id,
                 text,
                 source_kind,
                 rationale,
-                state: state.unwrap_or_else(|| "PROPOSED".into()),
+                proposed_by,
+                proposed_at,
+                state,
+                events,
                 accepted_means_fetched: false,
-            },
-        )
+            }
+        })
         .collect())
 }
 

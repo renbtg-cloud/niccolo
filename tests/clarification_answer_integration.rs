@@ -423,6 +423,11 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
     let (status, listed) = call(f.router.clone(), req("GET", list_path, &f.reader, None)).await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     assert_eq!(listed["source_requests"][0]["state"], "DEFERRED");
+    assert_eq!(listed["source_requests"][0]["events"][0]["event_id"], event_id.to_string());
+    assert_eq!(listed["source_requests"][0]["events"][0]["kind"], "DEFERRED");
+    assert_eq!(listed["source_requests"][0]["events"][0]["note"], "I will revisit this tomorrow.");
+    assert!(listed["source_requests"][0]["events"][0]["recorded_by"].is_string());
+    assert!(listed["source_requests"][0]["events"][0]["recorded_at"].is_string());
     assert_eq!(listed["source_requests"][0]["accepted_means_fetched"], false);
     let (status, conflict) = call(
         f.router.clone(),
