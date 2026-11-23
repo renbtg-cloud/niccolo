@@ -22,6 +22,7 @@ pub mod epistemic_identity;
 pub mod epistemic_workbench;
 
 pub mod actors;
+#[cfg(feature = "legacy-source-import")]
 pub mod postgres_ingest;
 pub mod postgres_repository;
 pub mod provenance_dag;
@@ -30,6 +31,7 @@ pub mod situation;
 pub mod situation_store;
 pub mod purpose_history;
 pub mod source_catalog;
+#[cfg(feature = "legacy-source-import")]
 pub mod source_import;
 
 pub mod source_scope;

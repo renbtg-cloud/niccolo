@@ -42,11 +42,13 @@ rustls = { version = "=0.23.46", default-features = false, features = ["ring", "
 webpki-roots = "=1.0.11"
 
 [features]
-pg-integration = []
+legacy-source-import = []
+pg-integration = ["legacy-source-import"]
 
 [[bin]]
 name = "niccolo-source-demo"
 path = "src/source_demo.rs"
+required-features = ["legacy-source-import"]
 
 [[bin]]
 name = "niccolo-api"
