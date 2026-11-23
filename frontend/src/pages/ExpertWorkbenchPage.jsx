@@ -39,6 +39,35 @@ function useWorkbenchMutation(workbenchQuery, fn) {
   });
 }
 
+function AuthoredImpactPanel({snapshot}) {
+  const impacts=snapshot.authored_object_impacts??[];
+  if(!impacts.length)return null;
+  const object=id=>snapshot.nodes.find(node=>node.object_id===id);
+  const label=id=>{const node=object(id);return node?`${node.kind}: ${node.text}`:id;};
+  return <details open className="authored-impact-analysis">
+    <summary>Human-authored hypotheses and what-if impacts</summary>
+    <p>Niccolò follows only the hypotheses, assumptions, relations and grounding routes explicitly authored in this Situation. It does not invent a hypothesis, promote a what-if assumption into fact, or combine successive route directions into a score or verdict.</p>
+    <ul>{impacts.map(impact=>{
+      const source=object(impact.source_object_id);
+      return <li key={impact.source_object_id}>
+        <strong>{impact.source_kind==='ASSUMPTION'?'WHAT-IF ASSUMPTION':'HYPOTHESIS'}:</strong> {source?.text??impact.source_object_id}
+        <p>{source?.rationale}</p>
+        {impact.route_impacts.length===0?<p>No authored non-contextual grounding route currently depends on this object.</p>:<>
+          <p>{impact.route_impacts.length} reachable authored route(s) touching {impact.reached_conclusion_object_ids.length} conclusion(s). Reachability means participation, not sufficiency.</p>
+          <ul>{impact.route_impacts.map(route=><li key={`${route.argument_id}:${route.grounding_set_id}`}>
+            <strong>{route.effect}/{route.adequacy}</strong> → {label(route.conclusion_object_id)}
+            <br/><small>{route.source_is_direct_ground?'Direct ground':'Downstream dependency'} · depth {route.depth} · {route.non_context_member_count} non-context joint ground(s). Route directions remain separate.</small>
+            {route.reachable_ground_object_ids.length>0&&<details><summary>Reachable grounds on this route</summary><ul>{route.reachable_ground_object_ids.map(id=><li key={id}>{label(id)}</li>)}</ul></details>}
+          </li>)}</ul>
+        </>}
+        {impact.contradicted_object_ids.length>0&&<p><strong>Explicitly authored contradiction(s):</strong> {impact.contradicted_object_ids.map(label).join(' · ')}</p>}
+        {impact.source_kind==='HYPOTHESIS'&&(impact.tested_by_question_ids.length>0?<p><strong>Questions explicitly testing it:</strong> {impact.tested_by_question_ids.map(label).join(' · ')}</p>:<p>No investigative question is explicitly linked as testing this hypothesis.</p>)}
+      </li>;
+    })}</ul>
+    <small>This is deterministic structural analysis. It establishes neither truth nor confidence and does not treat a hypothetical observation as an observation that occurred.</small>
+  </details>;
+}
+
 export function ExpertWorkbenchPage() {
   const client = useClient();
   const workbench = useQuery({
@@ -46,7 +75,7 @@ export function ExpertWorkbenchPage() {
     enabled: !!client,
     queryFn: async ({ signal }) => (await client.expertWorkbench(signal)).value,
   });
-  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] };
+  const data = workbench.data ?? { nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [], authored_object_impacts: [] };
   const actors = useQuery({queryKey:['epistemic-response-actors',client?.config.workspace],enabled:!!client,queryFn:async ({ signal }) => (await client.actors(signal)).value.actors});
   const [responseDraft, setResponseDraft] = useState({question:'',text:'',speaker:'',evidence:'',rationale:''});
   const pendingResponse = useRef(null);
@@ -288,6 +317,7 @@ export function ExpertWorkbenchPage() {
     </div>
 
     <article><h3>Current structured model</h3>
+      <AuthoredImpactPanel snapshot={data}/>
       {(data.interpretation_dependencies ?? []).length>0 && <details open><summary>Interpretation reliance — selective reassessment</summary><p>Meaning revision or changed confirmation context prompts attention only for explicitly relying routes and their potential downstream routes. It never rewrites a conclusion. Retaining the directly relying route does not review downstream routes.</p><ul>{data.interpretation_dependencies.map(view=><li key={view.dependency.dependency_id}><strong>{routeLabel(view.dependency.input)}</strong><p>{view.dependency.input.rationale}</p><small>Pinned revision {view.dependency.input.revision_id} · confirmation {view.dependency.input.confirmation_event_id ?? 'none recorded'} · recorded by {view.dependency.recorded_by}</small><p>{view.interpretation_revised?(view.requires_review?'Interpretation revised; reassessment required.':'Interpretation revised; directly relying route retained.'):view.meaning_confirmation_changed?(view.requires_review?'Meaning confirmation changed; reassessment required.':'Meaning confirmation changed; directly relying route retained.'):'No change to pinned meaning or confirmation context.'}</p>{(view.interpretation_revised||view.meaning_confirmation_changed)&&<><p>Current revision {view.current_revision_id} · confirmation {view.current_confirmation_event_id ?? 'none recorded'}</p><InterpretationRelianceReview key={`${view.dependency.dependency_id}:${view.current_revision_id}:${view.current_confirmation_event_id}`} view={view} route={view.dependency.input} reviewView={view} client={client} onChanged={()=>workbench.refetch()}/></>}{view.downstream_reviews?.length>0&&<details open><summary>Potential downstream routes ({view.downstream_reviews.length})</summary><ul>{view.downstream_reviews.map(item=><li key={`${item.route.argument_id}:${item.route.grounding_set_id}:${view.current_revision_id}:${view.current_confirmation_event_id}`}><strong>{routeLabel(item.route)}</strong><InterpretationRelianceReview view={view} route={item.route} reviewView={item} client={client} onChanged={()=>workbench.refetch()}/></li>)}</ul></details>}</li>)}</ul></details>}
       {(data.question_responses ?? []).length > 0 && <details open><summary>Utterance understanding — revisable meaning, not truth</summary>{[...new Map(data.question_responses.map(r => [r.utterance.utterance_id,r.utterance])).values()].map(utterance => <ResponseInterpretationPanel key={`${client.config.workspace}:${client.config.situation}:${utterance.utterance_id}`} utterance={utterance} view={(data.response_interpretations ?? []).find(v => v.utterance_id === utterance.utterance_id)} client={client} onChanged={() => workbench.refetch()}/>)}</details>}
       {data.nodes.some(n => n.kind === 'INFORMATION_GAP') && <details open><summary>Information gaps — attributed resolution judgments</summary><p>A response or a question link does not resolve an information gap. Missing judgments are not findings.</p><ul>{data.nodes.filter(n => n.kind === 'INFORMATION_GAP').map(gap => {

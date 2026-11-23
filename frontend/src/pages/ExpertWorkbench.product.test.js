@@ -15,6 +15,15 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('renders deterministic impacts from hypotheses and what-if assumptions authored by the investigator', () => {
+    expect(page).toContain('Human-authored hypotheses and what-if impacts');
+    expect(page).toContain("impact.source_kind==='ASSUMPTION'?'WHAT-IF ASSUMPTION':'HYPOTHESIS'");
+    expect(page).toContain('No authored non-contextual grounding route currently depends on this object.');
+    expect(page).toContain('Reachability means participation, not sufficiency.');
+    expect(page).toContain("route.source_is_direct_ground?'Direct ground':'Downstream dependency'");
+    expect(page).toContain('It does not invent a hypothesis, promote a what-if assumption into fact');
+    expect(page).toContain('does not treat a hypothetical observation as an observation that occurred');
+  });
   it('presents objection attention as contextual judgments, not a veto or automatic closure', () => {
     expect(page).toContain('objectionAttentionGroups(assessmentHistory)');
     expect(page).toContain('Deferring review does not suppress dissent, remove the objection, close an inquiry or grant a veto.');
