@@ -194,6 +194,27 @@ async fn persisted_human_authored_what_if_exposes_only_explicit_structural_impac
     )
     .await
     .unwrap();
+    let parallel_set = Uuid::new_v4();
+    epistemic_workbench::create_grounding_set(
+        &f.service,
+        f.workspace,
+        sit,
+        f.principal,
+        first_argument,
+        parallel_set,
+        GroundingEffect::Supports,
+        GroundingAdequacy::Sufficient,
+        "An explicitly separate route can prompt the same scrutiny",
+        &[NewGroundingMember {
+            member_id: Uuid::new_v4(),
+            role: GroundingMemberRole::Premise,
+            ground_object_id: Some(alternative),
+            evidence_id: None,
+            rationale: "Independent route untouched by the what-if".into(),
+        }],
+    )
+    .await
+    .unwrap();
 
     let second_argument = Uuid::new_v4();
     let second_set = Uuid::new_v4();
@@ -293,6 +314,7 @@ async fn persisted_human_authored_what_if_exposes_only_explicit_structural_impac
     assert_eq!(direct.non_context_member_count, 2);
     assert!(direct.source_is_direct_ground);
     assert_eq!(direct.effect, GroundingEffect::Supports);
+    assert_eq!(direct.unreached_parallel_route_count, 1);
 
     let indirect = what_if_impact
         .route_impacts
@@ -303,6 +325,7 @@ async fn persisted_human_authored_what_if_exposes_only_explicit_structural_impac
     assert!(!indirect.source_is_direct_ground);
     assert_eq!(indirect.effect, GroundingEffect::Challenges);
     assert_eq!(indirect.reachable_ground_object_ids, vec![intermediate]);
+    assert_eq!(indirect.unreached_parallel_route_count, 0);
 
     let hypothesis_impact = snapshot
         .authored_object_impacts
@@ -367,6 +390,15 @@ async fn persisted_human_authored_what_if_exposes_only_explicit_structural_impac
         .unwrap();
     assert_eq!(http_impact["source_kind"], "ASSUMPTION");
     assert_eq!(http_impact["route_impacts"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        http_impact["route_impacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|route| route["grounding_set_id"] == serde_json::json!(first_set))
+            .unwrap()["unreached_parallel_route_count"],
+        1
+    );
     assert_eq!(http_impact["structural_routes_only"], true);
     assert_eq!(http_impact["establishes_truth"], false);
     assert_eq!(http_impact["directional_effects_are_aggregated"], false);
