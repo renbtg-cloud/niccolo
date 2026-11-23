@@ -90,6 +90,8 @@ describe('buyer-facing primary surfaces', () => {
     expect(sourceRequests).toContain('does not fetch messages, files or links');
     expect(sourceRequests).toContain('The external action remains yours.');
     expect(sourceRequests).toContain('pending.current?.signature !== signature');
+    expect(sourceRequests).toContain('Attributed decision history');
+    expect(sourceRequests).toContain('event.recorded_by');
   });
 
   it('makes sources and human identity catalogs navigable past the first page', () => {

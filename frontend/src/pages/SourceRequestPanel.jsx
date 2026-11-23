@@ -39,7 +39,8 @@ function SourceRequestDecisionCard({ request, client, analysis, generation, onCh
   return <li>
     <strong>{request.text}</strong>
     <p>{request.rationale}</p>
-    <small>{request.source_kind} · current state: {request.state.toLowerCase()}</small>
+    <small>{request.source_kind} · current state: {request.state.toLowerCase()} · proposed by <code>{request.proposed_by}</code> at {request.proposed_at}</small>
+    {request.events.length > 0 && <details><summary>Attributed decision history ({request.events.length})</summary><ul>{request.events.map(event => <li key={event.event_id}><strong>{event.kind.toLowerCase()}</strong> — {event.note}<div><small>Recorded by <code>{event.recorded_by}</code> at {event.recorded_at}</small></div></li>)}</ul></details>}
     <form onSubmit={event => { event.preventDefault(); decision.mutate(); }}>
       <fieldset disabled={decision.isPending}>
         <legend>Record your decision</legend>
