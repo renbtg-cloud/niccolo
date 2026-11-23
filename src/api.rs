@@ -3782,12 +3782,14 @@ async fn record_expert_response_interpretation(
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
     let view = epistemic_workbench::inquiry_response::record_interpretation(
         &state.pool,
-        workspace,
-        situation,
         actor,
-        utterance,
-        interpretation,
-        revision,
+        epistemic_workbench::inquiry_response::InterpretationTarget {
+            workspace,
+            situation,
+            utterance,
+            interpretation,
+            revision,
+        },
         input,
     )
     .await?;
@@ -3817,12 +3819,14 @@ async fn confirm_expert_response_interpretation(
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
     let view = epistemic_workbench::inquiry_response::confirm_interpretation(
         &state.pool,
-        workspace,
-        situation,
         actor,
-        utterance,
-        interpretation,
-        revision,
+        epistemic_workbench::inquiry_response::InterpretationTarget {
+            workspace,
+            situation,
+            utterance,
+            interpretation,
+            revision,
+        },
         event,
         input,
     )

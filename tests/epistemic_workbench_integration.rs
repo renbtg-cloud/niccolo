@@ -1738,12 +1738,14 @@ async fn pinned_interpretation_changes_require_only_explicit_route_and_downstrea
     };
     record_interpretation(
         &f.service,
-        f.workspace,
-        sit,
         f.principal,
-        utterance,
-        interpretation,
-        revision,
+        InterpretationTarget {
+            workspace: f.workspace,
+            situation: sit,
+            utterance,
+            interpretation,
+            revision,
+        },
         meaning.clone(),
     )
     .await
@@ -1836,12 +1838,14 @@ async fn pinned_interpretation_changes_require_only_explicit_route_and_downstrea
     let event = Uuid::new_v4();
     confirm_interpretation(
         &f.service,
-        f.workspace,
-        sit,
         f.principal,
-        utterance,
-        interpretation,
-        revision,
+        InterpretationTarget {
+            workspace: f.workspace,
+            situation: sit,
+            utterance,
+            interpretation,
+            revision,
+        },
         event,
         ConfirmationInput {
             state: MeaningConfirmation::Confirmed,
@@ -1982,12 +1986,14 @@ async fn pinned_interpretation_changes_require_only_explicit_route_and_downstrea
     let second = Uuid::new_v4();
     record_interpretation(
         &f.service,
-        f.workspace,
-        sit,
         f.principal,
-        utterance,
-        interpretation,
-        second,
+        InterpretationTarget {
+            workspace: f.workspace,
+            situation: sit,
+            utterance,
+            interpretation,
+            revision: second,
+        },
         InterpretationInput {
             expected_current_revision_id: Some(revision),
             interpretation_text: "The actor claims not to know the approver's identity.".into(),
@@ -2081,12 +2087,14 @@ async fn response_meaning_confirmation_is_revision_specific_and_never_truth() {
     assert!(matches!(
         record_interpretation(
             &f.service,
-            f.workspace,
-            other,
             f.principal,
-            utterance,
-            interpretation,
-            first,
+            InterpretationTarget {
+                workspace: f.workspace,
+                situation: other,
+                utterance,
+                interpretation,
+                revision: first,
+            },
             draft.clone()
         )
         .await,
@@ -2095,12 +2103,14 @@ async fn response_meaning_confirmation_is_revision_specific_and_never_truth() {
     let add = |revision, input| {
         record_interpretation(
             &f.service,
-            f.workspace,
-            sit,
             f.principal,
-            utterance,
-            interpretation,
-            revision,
+            InterpretationTarget {
+                workspace: f.workspace,
+                situation: sit,
+                utterance,
+                interpretation,
+                revision,
+            },
             input,
         )
     };
@@ -2116,12 +2126,14 @@ async fn response_meaning_confirmation_is_revision_specific_and_never_truth() {
     let confirm = |revision, event, input| {
         confirm_interpretation(
             &f.service,
-            f.workspace,
-            sit,
             f.principal,
-            utterance,
-            interpretation,
-            revision,
+            InterpretationTarget {
+                workspace: f.workspace,
+                situation: sit,
+                utterance,
+                interpretation,
+                revision,
+            },
             event,
             input,
         )

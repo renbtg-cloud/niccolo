@@ -58,6 +58,15 @@ pub struct ConfirmationInput {
     pub note: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InterpretationTarget {
+    pub workspace: Uuid,
+    pub situation: Uuid,
+    pub utterance: Uuid,
+    pub interpretation: Uuid,
+    pub revision: Uuid,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InterpretationRevisionRecord {
     pub revision_id: Uuid,
@@ -187,14 +196,17 @@ async fn response_target(
 
 pub async fn record_interpretation(
     pool: &PgPool,
-    workspace: Uuid,
-    situation: Uuid,
     actor: Uuid,
-    utterance: Uuid,
-    interpretation: Uuid,
-    revision: Uuid,
+    target: InterpretationTarget,
     input: InterpretationInput,
 ) -> Result<InterpretationView, WorkbenchError> {
+    let InterpretationTarget {
+        workspace,
+        situation,
+        utterance,
+        interpretation,
+        revision,
+    } = target;
     if interpretation.is_nil() || revision.is_nil() {
         return Err(WorkbenchError::Invalid);
     }
@@ -240,15 +252,18 @@ pub async fn record_interpretation(
 
 pub async fn confirm_interpretation(
     pool: &PgPool,
-    workspace: Uuid,
-    situation: Uuid,
     actor: Uuid,
-    utterance: Uuid,
-    interpretation: Uuid,
-    revision: Uuid,
+    target: InterpretationTarget,
     event: Uuid,
     input: ConfirmationInput,
 ) -> Result<InterpretationView, WorkbenchError> {
+    let InterpretationTarget {
+        workspace,
+        situation,
+        utterance,
+        interpretation,
+        revision,
+    } = target;
     if event.is_nil() {
         return Err(WorkbenchError::Invalid);
     }
