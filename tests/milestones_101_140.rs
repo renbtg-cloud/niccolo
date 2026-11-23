@@ -950,12 +950,13 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
     )
     .await
     .unwrap();
-    human_handoff::append_source_request_event(
+    let event_id = Uuid::new_v4();
+    let replayed = human_handoff::append_source_request_event(
         &app,
         scope(s),
         id,
         &SourceRequestEvent {
-            event_id: Uuid::new_v4(),
+            event_id,
             kind: "ACCEPTED".into(),
             note: "human approves request".into(),
             recorded_by: s.principal,
@@ -963,6 +964,36 @@ async fn v161_v165_source_request_acceptance_never_fetches_automatically() {
     )
     .await
     .unwrap();
+    assert!(!replayed);
+    let replayed = human_handoff::append_source_request_event(
+        &app,
+        scope(s),
+        id,
+        &SourceRequestEvent {
+            event_id,
+            kind: "ACCEPTED".into(),
+            note: "human approves request".into(),
+            recorded_by: s.principal,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(replayed);
+    assert!(matches!(
+        human_handoff::append_source_request_event(
+            &app,
+            scope(s),
+            id,
+            &SourceRequestEvent {
+                event_id,
+                kind: "DECLINED".into(),
+                note: "changed replay".into(),
+                recorded_by: s.principal,
+            },
+        )
+        .await,
+        Err(human_handoff::HandoffError::Conflict)
+    ));
     let r = human_handoff::source_requests(&app, scope(s))
         .await
         .unwrap();
