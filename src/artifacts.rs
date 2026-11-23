@@ -96,6 +96,32 @@ pub struct ArtifactView {
     pub artifact_was_inspected: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageReferenceInput {
+    pub storage_reference_id: Uuid,
+    pub access_event_id: Uuid,
+    pub storage_type: String,
+    pub locator: String,
+    pub provider: Option<String>,
+    pub environment_label: Option<String>,
+    pub resolver_profile: Option<String>,
+    pub notes: Option<String>,
+    pub access_status: String,
+    pub access_note: Option<String>,
+    pub recorded_by: Uuid,
+}
+
+type StoredReference = (
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Uuid,
+);
+type StoredAccessEvent = (String, String, Option<String>, Uuid);
+
 fn valid_artifact(input: &ArtifactInput) -> bool {
     one_line(&input.artifact_type, 128)
         && one_line(&input.label, 1024)
@@ -110,6 +136,56 @@ fn valid_artifact(input: &ArtifactInput) -> bool {
                     .bytes()
                     .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         })
+}
+
+fn valid_optional(value: Option<&str>, max: usize, one_line_only: bool) -> bool {
+    value.is_none_or(|value| {
+        !value.trim().is_empty()
+            && value.len() <= max
+            && (!one_line_only || !value.chars().any(char::is_control))
+    })
+}
+
+fn contains_durable_credential(locator: &str) -> bool {
+    let lower = locator.to_ascii_lowercase();
+    let Some(query) = lower.split_once('?').map(|(_, query)| query) else {
+        return false;
+    };
+    query.split('&').any(|parameter| {
+        let key = parameter.split_once('=').map_or(parameter, |(key, _)| key);
+        matches!(
+            key,
+            "x-amz-signature"
+                | "x-amz-credential"
+                | "x-goog-signature"
+                | "signature"
+                | "sig"
+                | "token"
+                | "access_token"
+                | "credential"
+        )
+    })
+}
+
+fn valid_storage_reference(input: &StorageReferenceInput) -> bool {
+    one_line(&input.storage_type, 64)
+        && one_line(&input.locator, 4096)
+        && !contains_durable_credential(&input.locator)
+        && valid_optional(input.provider.as_deref(), 256, true)
+        && valid_optional(input.environment_label.as_deref(), 256, true)
+        && valid_optional(input.resolver_profile.as_deref(), 256, true)
+        && valid_optional(input.notes.as_deref(), 4096, false)
+        && matches!(
+            input.access_status.as_str(),
+            "UNKNOWN"
+                | "NONE"
+                | "AVAILABLE"
+                | "TEMPORARILY_UNAVAILABLE"
+                | "ACCESS_DENIED"
+                | "NOT_FOUND"
+                | "UNVERIFIED"
+        )
+        && valid_optional(input.access_note.as_deref(), 4096, false)
 }
 
 /// Record an external artifact identity and attach it to a Situation atomically.
@@ -244,6 +320,112 @@ pub async fn list_for_situation(
         .collect())
 }
 
+/// Add a location declaration and its initial human-declared access state.
+/// Locators are persisted as protected metadata and are never dereferenced.
+/// Returns true for an exact idempotent replay.
+pub async fn record_storage_reference(
+    pool: &PgPool,
+    workspace: Uuid,
+    artifact: Uuid,
+    input: &StorageReferenceInput,
+) -> Result<bool, ArtifactError> {
+    if !valid_storage_reference(input) {
+        return Err(ArtifactError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.artifact_storage_references
+         (workspace_id,artifact_id,storage_reference_id,storage_type,locator,
+          provider,environment_label,resolver_profile,notes,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT(workspace_id,artifact_id,storage_reference_id) DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(artifact)
+    .bind(input.storage_reference_id)
+    .bind(&input.storage_type)
+    .bind(&input.locator)
+    .bind(&input.provider)
+    .bind(&input.environment_label)
+    .bind(&input.resolver_profile)
+    .bind(&input.notes)
+    .bind(input.recorded_by)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if !inserted {
+        let stored: Option<StoredReference> = sqlx::query_as(
+            "SELECT storage_type,locator,provider,environment_label,resolver_profile,notes,
+                    recorded_by_principal_id
+             FROM niccolo.artifact_storage_references
+             WHERE workspace_id=$1 AND artifact_id=$2 AND storage_reference_id=$3",
+        )
+        .bind(workspace)
+        .bind(artifact)
+        .bind(input.storage_reference_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if stored
+            != Some((
+                input.storage_type.clone(),
+                input.locator.clone(),
+                input.provider.clone(),
+                input.environment_label.clone(),
+                input.resolver_profile.clone(),
+                input.notes.clone(),
+                input.recorded_by,
+            ))
+        {
+            return Err(ArtifactError::Conflict);
+        }
+    }
+    let event_inserted = sqlx::query(
+        "INSERT INTO niccolo.artifact_storage_access_events
+         (workspace_id,artifact_id,storage_reference_id,access_event_id,access_status,
+          status_basis,note,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,'HUMAN_DECLARATION',$6,$7)
+         ON CONFLICT(workspace_id,artifact_id,storage_reference_id,access_event_id) DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(artifact)
+    .bind(input.storage_reference_id)
+    .bind(input.access_event_id)
+    .bind(&input.access_status)
+    .bind(&input.access_note)
+    .bind(input.recorded_by)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if !event_inserted {
+        let stored: Option<StoredAccessEvent> = sqlx::query_as(
+            "SELECT access_status,status_basis,note,recorded_by_principal_id
+             FROM niccolo.artifact_storage_access_events
+             WHERE workspace_id=$1 AND artifact_id=$2 AND storage_reference_id=$3
+               AND access_event_id=$4",
+        )
+        .bind(workspace)
+        .bind(artifact)
+        .bind(input.storage_reference_id)
+        .bind(input.access_event_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if stored
+            != Some((
+                input.access_status.clone(),
+                "HUMAN_DECLARATION".into(),
+                input.access_note.clone(),
+                input.recorded_by,
+            ))
+        {
+            return Err(ArtifactError::Conflict);
+        }
+    }
+    tx.commit().await?;
+    Ok(!inserted && !event_inserted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,5 +451,26 @@ mod tests {
         invalid = sample();
         invalid.declared_sha256 = Some("A".repeat(64));
         assert!(!valid_artifact(&invalid));
+    }
+
+    #[test]
+    fn durable_credentials_are_not_artifact_metadata() {
+        let base = StorageReferenceInput {
+            storage_reference_id: Uuid::nil(),
+            access_event_id: Uuid::nil(),
+            storage_type: "S3".into(),
+            locator: "s3://client/case/video.mp4".into(),
+            provider: Some("AWS".into()),
+            environment_label: Some("client legal".into()),
+            resolver_profile: Some("client-legal-s3-readonly".into()),
+            notes: None,
+            access_status: "NONE".into(),
+            access_note: Some("Niccolò has no credentials".into()),
+            recorded_by: Uuid::nil(),
+        };
+        assert!(valid_storage_reference(&base));
+        let mut signed = base.clone();
+        signed.locator = "https://example.invalid/x?X-Amz-Signature=secret".into();
+        assert!(!valid_storage_reference(&signed));
     }
 }
