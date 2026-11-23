@@ -6,13 +6,21 @@ describe('source-request decisions', () => {
     expect(sourceRequestActions('PROPOSED')).toEqual(['ACCEPTED', 'DEFERRED', 'DECLINED']);
     expect(sourceRequestActions('REOPENED')).toEqual(['ACCEPTED', 'DEFERRED', 'DECLINED']);
     expect(sourceRequestActions('DEFERRED')).toEqual(['REOPENED']);
-    expect(sourceRequestActions('ACCEPTED')).toEqual(['REOPENED']);
+    expect(sourceRequestActions('ACCEPTED')).toEqual(['COMPLETED', 'REOPENED']);
+    expect(sourceRequestActions('COMPLETED')).toEqual(['REOPENED']);
   });
 
   it('normalizes an attributed decision note without implying retrieval', () => {
     expect(sourceRequestEventRequest('DEFERRED', '  I will revisit this tomorrow.  ')).toEqual({
       kind: 'DEFERRED',
       note: 'I will revisit this tomorrow.',
+    });
+  });
+
+  it('records completion as a human decision rather than an evidence claim', () => {
+    expect(sourceRequestEventRequest('COMPLETED', 'External acquisition finished.')).toEqual({
+      kind: 'COMPLETED',
+      note: 'External acquisition finished.',
     });
   });
 

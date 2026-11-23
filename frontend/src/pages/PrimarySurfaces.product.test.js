@@ -94,6 +94,8 @@ describe('buyer-facing primary surfaces', () => {
     expect(sourceRequests).toContain('event.recorded_by');
     expect(sourceRequests).toContain('Decision #{event.event_no}');
     expect(sourceRequests).toContain('error.status === 409');
+    expect(sourceRequests).toContain('Mark acquisition complete');
+    expect(sourceRequests).toContain('does not prove that material exists');
   });
 
   it('makes sources and human identity catalogs navigable past the first page', () => {

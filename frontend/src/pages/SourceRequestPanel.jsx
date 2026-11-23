@@ -9,6 +9,7 @@ const labels = {
   DEFERRED: 'Defer request',
   DECLINED: 'Decline request',
   REOPENED: 'Reopen request',
+  COMPLETED: 'Mark acquisition complete',
 };
 
 function SourceRequestDecisionCard({ request, client, analysis, generation, onChanged }) {
@@ -68,6 +69,6 @@ export function SourceRequestPanel({ client, analysis, generation, onChanged }) 
       : requests.error ? <div><p role="alert">Source requests unavailable: {requests.error.message}</p><button type="button" disabled={requests.isFetching} onClick={() => void requests.refetch()}>Retry source requests</button></div>
       : requests.data.source_requests.length ? <ul>{requests.data.source_requests.map(request => <SourceRequestDecisionCard key={`${request.request_id}:${request.state}`} request={request} client={client} analysis={analysis} generation={generation} onChanged={onChanged}/>)}</ul>
       : <p>No source request is recorded for this analysis.</p>}
-    <small>The external action remains yours. A recorded acceptance never means that material was fetched or became evidence.</small>
+    <small>The external action remains yours. A recorded acceptance never means that material was fetched. Marking acquisition complete is your attributed report; it does not prove that material exists, attach it or make it evidence.</small>
   </article>;
 }

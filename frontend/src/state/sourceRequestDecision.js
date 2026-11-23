@@ -1,9 +1,10 @@
 import { utf8ByteLength } from './situationText.js';
 
-const allowedKinds = new Set(['ACCEPTED', 'DECLINED', 'DEFERRED', 'REOPENED']);
+const allowedKinds = new Set(['ACCEPTED', 'DECLINED', 'DEFERRED', 'REOPENED', 'COMPLETED']);
 
 export function sourceRequestActions(state) {
   if (state === 'PROPOSED' || state === 'REOPENED') return ['ACCEPTED', 'DEFERRED', 'DECLINED'];
+  if (state === 'ACCEPTED') return ['COMPLETED', 'REOPENED'];
   return ['REOPENED'];
 }
 
