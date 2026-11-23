@@ -8,16 +8,20 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [requestedPage, setRequestedPage] = useState('');
   const [selection, setSelection] = useState(null);
 
   useEffect(() => () => active.current?.abort(), []);
 
-  async function load(file, stored = null, firstPage = 1) {
+  async function load(file, stored = null, firstPage = 1, showPage = firstPage) {
     active.current?.abort();
     const sameOriginal = stored && stored.document_id === preview?.documentId;
     if (!sameOriginal) setPreview(null);
     setSelection(null);
-    if (!sameOriginal) setIndex(0);
+    if (!sameOriginal) {
+      setIndex(0);
+      setRequestedPage('');
+    }
     setError('');
     setBusy(false);
     if (!file && !stored) return;
@@ -34,7 +38,9 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
         : await client.previewPdf(file, request.signal);
       request.signal.throwIfAborted();
       if (!Array.isArray(value?.pages)) throw new Error('Invalid PDF preview response.');
-      setIndex(0);
+      const nextIndex = value.pages.findIndex(item => item.number === showPage);
+      if (stored && nextIndex < 0) throw new Error(`Page ${showPage} is outside this PDF.`);
+      setIndex(Math.max(0, nextIndex));
       setPreview({ ...value, title: stored?.locator ?? file.name, documentId: stored?.document_id, stored, firstPage });
     } catch (error) {
       if (!request.signal.aborted) setError(error.message);
@@ -77,6 +83,25 @@ export function PdfTextPreview({ client, documents = [], disabled, onSelect }) {
     {error && <p role="alert">{error} You can still paste a passage manually.</p>}
     {preview?.truncated && !preview.stored && <p>Showing the first 20 pages. To browse later pages here, attach the PDF to the Situation.</p>}
     {preview?.stored && <div>
+      <form onSubmit={event=>{
+        event.preventDefault();
+        const target = Number(requestedPage);
+        if (!/^[1-9][0-9]{0,5}$/.test(requestedPage)) {
+          setError('Enter a page number from 1 to 999999.');
+          return;
+        }
+        const visibleIndex = preview.pages.findIndex(item => item.number === target);
+        if (visibleIndex >= 0) {
+          setError('');
+          selectPage(visibleIndex);
+        } else {
+          const firstPage = Math.floor((target - 1) / 20) * 20 + 1;
+          void load(null, preview.stored, firstPage, target);
+        }
+      }}>
+        <label>Go to page<input inputMode="numeric" value={requestedPage} onChange={event=>setRequestedPage(event.target.value)} disabled={disabled||busy}/></label>
+        <button disabled={disabled||busy||!requestedPage}>Go</button>
+      </form>
       {preview.firstPage > 1 && <button type="button" disabled={disabled||busy} onClick={()=>void load(null, preview.stored, Math.max(1, preview.firstPage - 20))}>Previous 20 pages</button>}
       {preview.next_page && <button type="button" disabled={disabled||busy} onClick={()=>void load(null, preview.stored, preview.next_page)}>Next 20 pages</button>}
     </div>}
