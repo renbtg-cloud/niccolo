@@ -6,7 +6,7 @@ function invalid(field, message) {
   throw error;
 }
 
-export function pdfExcerptContext({ document, page, endPage = "", section = "", excerpt, preview = null }, attachedOriginal = null) {
+export function pdfExcerptContext({ document, page, endPage = "", section = "", excerpt, description = false, preview = null }, attachedOriginal = null) {
   const title = document.trim();
   if (!title) invalid('document', 'Enter the PDF title or file name.');
   if (!/^[1-9][0-9]{0,5}$/.test(page.trim())) invalid('page', 'Enter a page number from 1 to 999999.');
@@ -21,12 +21,14 @@ export function pdfExcerptContext({ document, page, endPage = "", section = "", 
   if (/\p{Cc}/u.test(title)) invalid('document', 'Use a title without control characters.');
   if (/\p{Cc}/u.test(heading)) invalid('section', 'Use a section title without control characters.');
   const selected = excerpt.trim();
-  if (!selected) invalid('excerpt', 'Paste the text you selected from the PDF.');
+  if (!selected) invalid('excerpt', description ? 'Describe the relevant material on the page.' : 'Paste the text you selected from the PDF.');
   const oneLine = selected.replace(/\s+/gu, ' ');
   const matchesPreview = preview && preview.excerpt === selected && preview.document === title
     && String(preview.page) === start && (!end || end === start);
-  const matchesOriginal = !preview?.documentId || preview.documentId === attachedOriginal?.document_id;
-  const origin = matchesPreview && matchesOriginal ? 'User-selected extracted text from PDF' : 'User transcription from PDF';
+  const matchesOriginal = (preview?.documentId ?? null) === (attachedOriginal?.document_id ?? null);
+  const origin = description ? 'User description of PDF'
+    : matchesPreview && matchesOriginal ? 'User-selected extracted text from PDF'
+    : 'User transcription from PDF';
   const original = attachedOriginal
     ? `stored original ${attachedOriginal.document_id}`
     : preview === null ? 'original unavailable to Niccolò' : 'original not retained by this preview';

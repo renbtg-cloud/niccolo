@@ -70,7 +70,8 @@ export function PdfExcerptForm({ client, documents, onPrepare, onDraftChange, di
       <label>First page in your PDF reader<input inputMode="numeric" {...field('page')} value={draft.page} onChange={event=>change('page',event.target.value)} required/></label>
       <label>Last page, if different<input inputMode="numeric" {...field('endPage')} value={draft.endPage} onChange={event=>change('endPage',event.target.value)}/></label>
       <label>Section title (optional)<input {...field('section')} value={draft.section} onChange={event=>change('section',event.target.value)}/></label>
-      <label>Selected passage<textarea {...field('excerpt')} value={draft.excerpt} onChange={event=>change('excerpt',event.target.value)} required/></label>
+      <label><input type="checkbox" checked={Boolean(draft.description)} onChange={event=>change('description',event.target.checked)}/> Describe something on the page in my own words</label>
+      <label>{draft.description ? 'Your description' : 'Selected passage'}<textarea {...field('excerpt')} value={draft.excerpt} onChange={event=>change('excerpt',event.target.value)} required/></label>
       {disabled && !saving && <p>Save or clear the current human-context draft before preparing another passage.</p>}
       {previewOutdated && <p role="status">Prepare again to update the transcription preview.</p>}
       <button type="submit" disabled={disabled}>Prepare as human context</button>

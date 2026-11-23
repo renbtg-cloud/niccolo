@@ -57,3 +57,12 @@ it('retains a deliberately referenced original for descriptions and edited passa
   expect(pdfExcerptContext(draft, original)).toContain('stored original stored-pdf');
   expect(pdfExcerptContext({...draft,preview})).not.toContain('stored original stored-pdf');
 });
+
+
+it('labels descriptions as human reports and binds extracted text to its preview original', () => {
+  const original = { document_id: 'stored-pdf' };
+  const preview = { document: draft.document.trim(), page: draft.page, excerpt: draft.excerpt.trim() };
+  expect(pdfExcerptContext({ ...draft, preview }, original)).toMatch(/^User transcription from PDF/);
+  expect(pdfExcerptContext({ ...draft, preview, description: true }, original))
+    .toMatch(/^User description of PDF.*stored original stored-pdf/);
+});
