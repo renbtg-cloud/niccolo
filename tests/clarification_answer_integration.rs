@@ -440,7 +440,11 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
         conflict["error"],
         "source request decision conflicts with its current state"
     );
-    let (status, listed) = call(f.router.clone(), req("GET", list_path, &f.reader, None)).await;
+    let (status, listed) = call(
+        f.router.clone(),
+        req("GET", list_path.clone(), &f.reader, None),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     assert_eq!(listed["source_requests"][0]["state"], "DEFERRED");
     assert_eq!(listed["source_requests"][0]["events"][0]["event_id"], event_id.to_string());
@@ -454,11 +458,55 @@ async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fet
         f.router.clone(),
         req(
             "POST",
-            path,
+            path.clone(),
             &f.writer,
             Some(json!({"kind":"DECLINED","note":"conflicting replay"})),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{conflict}");
+    for (kind, note) in [
+        ("REOPENED", "Ready to reconsider the request."),
+        ("ACCEPTED", "I will obtain the exchange myself."),
+        ("COMPLETED", "The external acquisition step is complete."),
+    ] {
+        let event_path = format!(
+            "{}/source-requests/{request_id}/events/{}",
+            analysis(&f, s, a),
+            Uuid::new_v4()
+        );
+        let (status, result) = call(
+            f.router.clone(),
+            req(
+                "POST",
+                event_path,
+                &f.writer,
+                Some(json!({"kind":kind,"note":note})),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{result}");
+        assert_eq!(result["system_fetched_external_material"], false);
+        assert_eq!(result["completion_establishes_evidence"], false);
+    }
+    let (status, listed) = call(f.router.clone(), req("GET", list_path, &f.reader, None)).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["source_requests"][0]["state"], "COMPLETED");
+    assert_eq!(listed["source_requests"][0]["events"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        listed["source_requests"][0]["completion_establishes_evidence"],
+        false
+    );
+    let dashboard_path = format!("{}/bff/dashboard", analysis(&f, s, a));
+    let (status, dashboard) = call(
+        f.router.clone(),
+        req("GET", dashboard_path, &f.reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{dashboard}");
+    assert!(!dashboard["proactive"]["leads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|lead| lead["id"] == request_id.to_string()));
 }

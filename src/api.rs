@@ -4893,6 +4893,7 @@ async fn record_source_request_event(
             "recorded_by_principal_id": actor,
             "replayed": replayed,
             "accepted_means_fetched": false,
+            "completion_establishes_evidence": false,
             "system_fetched_external_material": false
         }),
         if replayed {
