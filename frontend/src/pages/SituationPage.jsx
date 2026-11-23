@@ -1,4 +1,5 @@
 import { PdfExcerptForm } from './PdfExcerptForm.jsx';
+import { ArtifactReferencePanel } from './ArtifactReferencePanel.jsx';
 import { useRuntimeReadiness } from '../hooks/useRuntimeReadiness.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -233,6 +234,8 @@ function ConnectedSituation({client}){
       {updateFocus.isSuccess && <p role="status">Situation focus saved.</p>}
       {updateFocus.error && <p className="error" role="alert">{updateFocus.error.message}</p>}
     </details>
+
+    <ArtifactReferencePanel client={client}/>
 
     <article className="source-upload">
       <h3>Add records</h3>

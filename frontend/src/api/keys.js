@@ -1,6 +1,7 @@
 export const qk = {
   situation: (c) => ['situation', c.workspace, c.situation],
   sources: (c) => ['sources', c.workspace],
+  artifacts: (c) => ['artifacts', c.workspace, c.situation],
   sourceSpeakers: (c, document) => ['source-speakers', c.workspace, document],
   identities: (c) => ['identities', c.workspace],
   identityBindings: (c, document) => ['identity-bindings', c.workspace, document],
@@ -19,6 +20,7 @@ export function invalidateSituationReview(queryClient, config) {
   const scope = [config.workspace, config.situation];
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: qk.situation(config) }),
+    queryClient.invalidateQueries({ queryKey: qk.artifacts(config) }),
     queryClient.invalidateQueries({ queryKey: ['analysis', ...scope] }),
     queryClient.invalidateQueries({ queryKey: ['dashboard', ...scope] }),
     queryClient.invalidateQueries({ queryKey: qk.analysisHistory(config) }),
