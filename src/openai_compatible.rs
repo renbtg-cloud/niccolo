@@ -463,7 +463,8 @@ mod tests {
         let server = thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
             socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-            socket.read(&mut [0; 8192]).unwrap();
+            let mut request_bytes = [0; 8192];
+            assert!(socket.read(&mut request_bytes).unwrap() > 0);
             let body = vec![b'x'; (MAX_HTTP_RESPONSE_BYTES + 128) as usize];
             write!(
                 socket,
@@ -485,7 +486,8 @@ mod tests {
         let server = thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
             socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-            socket.read(&mut [0; 8192]).unwrap();
+            let mut request_bytes = [0; 8192];
+            assert!(socket.read(&mut request_bytes).unwrap() > 0);
             let body = "private evidence echoed by upstream";
             write!(
                 socket,
