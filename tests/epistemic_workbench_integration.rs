@@ -314,6 +314,63 @@ async fn persisted_human_authored_what_if_exposes_only_explicit_structural_impac
         .authored_object_impacts
         .iter()
         .any(|impact| impact.source_object_id == alternative));
+
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode, header},
+    };
+    use tower::ServiceExt;
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let reader = authz::provision_token(
+        &admin,
+        Uuid::new_v4(),
+        f.workspace,
+        true,
+        false,
+        1,
+    )
+    .await
+    .unwrap();
+    let secure = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let response = niccolo_evidence::api::router(secure)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/workspaces/{}/situations/{}/epistemic/workbench",
+                    f.workspace, sit
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {reader}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let json: serde_json::Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let http_impact = json["authored_object_impacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|impact| impact["source_object_id"] == serde_json::json!(what_if))
+        .unwrap();
+    assert_eq!(http_impact["source_kind"], "ASSUMPTION");
+    assert_eq!(http_impact["route_impacts"].as_array().unwrap().len(), 2);
+    assert_eq!(http_impact["structural_routes_only"], true);
+    assert_eq!(http_impact["establishes_truth"], false);
+    assert_eq!(http_impact["directional_effects_are_aggregated"], false);
+    assert_eq!(http_impact["treats_assumption_as_fact"], false);
 }
 
 #[tokio::test]
