@@ -607,6 +607,10 @@ pub struct AuthoredObjectImpactRoute {
     pub reachable_ground_object_ids: Vec<Uuid>,
     pub non_context_member_count: usize,
     pub source_is_direct_ground: bool,
+    /// Other authored grounding routes to this same conclusion that are not
+    /// structurally reached from the source. Their presence prevents an
+    /// impacted route from being mistaken for the conclusion's only basis.
+    pub unreached_parallel_route_count: usize,
 }
 
 /// Deterministic impact projection for structure explicitly authored by the
@@ -2251,7 +2255,22 @@ fn authored_object_impacts(
                     .iter()
                     .filter(|member| member.role != GroundingMemberRole::Context)
                     .count(),
+                unreached_parallel_route_count: 0,
             });
+        }
+        let reached_routes = route_impacts
+            .iter()
+            .map(|impact| (impact.argument_id, impact.grounding_set_id))
+            .collect::<BTreeSet<_>>();
+        for impact in &mut route_impacts {
+            impact.unreached_parallel_route_count = grounding_sets
+                .iter()
+                .filter(|set| {
+                    conclusions.get(&set.argument_id).copied()
+                        == Some(impact.conclusion_object_id)
+                        && !reached_routes.contains(&(set.argument_id, set.grounding_set_id))
+                })
+                .count();
         }
         route_impacts.sort_by_key(|impact| {
             (
@@ -3330,6 +3349,16 @@ mod tests {
                 members: vec![member(Uuid::from_u128(433), hypothesis)],
                 replayed: false,
             },
+            GroundingSetView {
+                argument_id: first_argument,
+                grounding_set_id: Uuid::from_u128(423),
+                effect: GroundingEffect::Supports,
+                adequacy: GroundingAdequacy::Sufficient,
+                rationale: "parallel route untouched by the what-if".into(),
+                recorded_by: Uuid::nil(),
+                members: vec![member(Uuid::from_u128(434), other_ground)],
+                replayed: false,
+            },
         ];
         let relation = |relation_id, kind: RelationKind, left, right| ExpertRelation {
             relation_id,
@@ -3373,7 +3402,15 @@ mod tests {
         assert_eq!(assumption_analysis.route_impacts[0].depth, 1);
         assert_eq!(assumption_analysis.route_impacts[0].non_context_member_count, 2);
         assert!(assumption_analysis.route_impacts[0].source_is_direct_ground);
+        assert_eq!(
+            assumption_analysis.route_impacts[0].unreached_parallel_route_count,
+            1
+        );
         assert_eq!(assumption_analysis.route_impacts[1].depth, 2);
+        assert_eq!(
+            assumption_analysis.route_impacts[1].unreached_parallel_route_count,
+            0
+        );
         assert_eq!(
             assumption_analysis.route_impacts[1].effect,
             GroundingEffect::Challenges
