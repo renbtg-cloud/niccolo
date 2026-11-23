@@ -2304,8 +2304,11 @@ async fn get_situation(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let snapshot = situation_store::get_snapshot(&state.pool, workspace, situation, None).await?;
-    Ok(no_store(situation_json(&snapshot), StatusCode::OK))
+    let (snapshot, pdfs) =
+        situation_store::current_with_attached_pdfs(&state.pool, workspace, situation).await?;
+    let mut value = situation_json(&snapshot);
+    value["attached_pdfs"] = json!(pdfs);
+    Ok(no_store(value, StatusCode::OK))
 }
 
 #[derive(Deserialize)]

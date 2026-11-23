@@ -766,6 +766,26 @@ async fn pdf_original_replays_and_downloads_exactly_without_evidence_fragments()
         assert_eq!(status, expected, "{body}");
         assert_eq!(body["fragment_ids"], json!([]));
     }
+    let situation = Uuid::new_v4();
+    let (status, _) = create(&f, situation, &f.writer, "Investigate a passage").await;
+    assert_eq!(status, StatusCode::CREATED);
+    let situation_url = situation_path(f.workspace, situation);
+    for (source, expected) in [
+        (f.document, json!([])),
+        (document, json!([{"document_id": document, "locator": "original.pdf"}])),
+    ] {
+        let (status, _) = call(
+            f.router.clone(),
+            request("POST", format!("{situation_url}/sources/{source}"), Some(&f.writer), None),
+        ).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let (status, snapshot) = call(
+            f.router.clone(),
+            request("GET", situation_url.clone(), Some(&f.reader), None),
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(snapshot["attached_pdfs"], expected);
+    }
     let preview_path = format!("{path}/pdf-preview");
     let (status, _) = call(
         f.router.clone(),

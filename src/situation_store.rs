@@ -722,6 +722,39 @@ pub async fn get_snapshot(
     Ok(snapshot)
 }
 
+#[derive(serde::Serialize)]
+pub struct AttachedPdf {
+    document_id: Uuid,
+    locator: String,
+}
+
+pub async fn current_with_attached_pdfs(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+) -> Result<(SituationSnapshot, Vec<AttachedPdf>), SituationStoreError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let snapshot = current_snapshot_in_tx(&mut tx, workspace, situation).await?;
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT d.document_id,d.locator FROM niccolo.situation_revision_sources r
+         JOIN niccolo.source_documents d USING(workspace_id,document_id)
+         JOIN niccolo.source_payloads p USING(workspace_id,document_id)
+         WHERE r.workspace_id=$1 AND r.situation_id=$2 AND r.revision=$3 AND d.format='PDF'
+         ORDER BY d.locator,d.document_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(snapshot.revision)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let pdfs = rows
+        .into_iter()
+        .map(|(document_id, locator)| AttachedPdf { document_id, locator })
+        .collect();
+    Ok((snapshot, pdfs))
+}
+
 pub async fn list_revisions(
     pool: &PgPool,
     workspace: Uuid,
