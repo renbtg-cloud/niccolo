@@ -5,8 +5,6 @@ import { useClarificationAnswers } from '../hooks/useClarifications.js';
 export function ClarificationCard({ question, draft, onChange, onSubmit, saving }) {
   const [pages,setPages]=useState([null]);
   const history=useClarificationAnswers(question.question_id,pages.at(-1));
-  const errorId=useId();
-  const validationError=situationTextError(draft);
   const answers=history.data?.answers??[];
   return <div className="clarification">
     <strong>{question.text}</strong>
@@ -23,10 +21,18 @@ export function ClarificationCard({ question, draft, onChange, onSubmit, saving 
     )}</ul>}
     {pages.length>1 && <button type="button" disabled={history.isFetching} onClick={()=>setPages(current=>current.slice(0,-1))}>Previous answers</button>}
     {history.data?.next_after && <button type="button" disabled={history.isFetching} onClick={()=>setPages(current=>[...current,history.data.next_after])}>More answers</button>}
-    <form aria-busy={saving} onSubmit={event=>{event.preventDefault();if(!saving && draft.trim() && !validationError)onSubmit(draft.trim());}}>
-      <label>Your answer<textarea aria-label={`Clarification answer ${question.question_id}`} value={draft} aria-invalid={Boolean(validationError)} aria-describedby={validationError?errorId:undefined} onChange={event=>onChange(event.target.value)} placeholder="Answer in your own words; this becomes attributed context."/></label>
+    <ClarificationAnswerForm questionId={question.question_id} draft={draft}
+      onChange={onChange} onSubmit={onSubmit} saving={saving}/>
+  </div>;
+}
+
+
+export function ClarificationAnswerForm({ questionId, draft, onChange, onSubmit, saving }) {
+  const errorId=useId();
+  const validationError=situationTextError(draft);
+  return <form aria-busy={saving} onSubmit={event=>{event.preventDefault();if(!saving && draft.trim() && !validationError)onSubmit(draft.trim());}}>
+      <label>Your answer<textarea aria-label={`Clarification answer ${questionId}`} value={draft} aria-invalid={Boolean(validationError)} aria-describedby={validationError?errorId:undefined} onChange={event=>onChange(event.target.value)} placeholder="Answer in your own words; this becomes attributed context."/></label>
       {validationError&&<p id={errorId} role="alert">{validationError}</p>}
       <button type="submit" disabled={saving||!draft.trim()||Boolean(validationError)}>{saving?'Saving…':'Add answer as context'}</button>
-    </form>
-  </div>;
+    </form>;
 }
