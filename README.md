@@ -233,7 +233,7 @@ cargo test --offline --all-targets --features pg-integration
 
 Integration suites require the configured disposable PostgreSQL database, schema, and appropriate roles. The repository's `scripts/run-v*-validation.sh` scripts reproduce focused historical checkpoints. `scripts/run-v030-validation.sh`, for example, requires the three PostgreSQL URLs listed above. A successful older checkpoint is **not** a substitute for testing all subsequently changed modules and migrations.
 
-The normal `niccolo-api` build is parser-free. The `pg-integration` feature also enables `legacy-source-import` only so historical integration fixtures can still validate old data paths while they are retired; neither feature is part of the restricted MVP runtime. The historical `niccolo-source-demo` binary cannot be built without that explicit compatibility feature.
+The normal `niccolo-api` build and the current `pg-integration` acceptance tests are parser-free. Historical import code requires the independent `legacy-source-import` feature; `legacy-pg-integration` combines it with PostgreSQL fixtures only for deliberately selected compatibility tests while those paths are retired. None of these test features is part of the restricted MVP runtime. The historical `niccolo-source-demo` binary cannot be built without explicit compatibility activation.
 
 For the current restricted-MVP acceptance boundary, run `bash scripts/run-parser-free-mvp-validation.sh`. It checks the default API build, unit tests, PostgreSQL artifact contracts, retired byte routes, browser regressions, and the production bundle as one explicit gate.
 
