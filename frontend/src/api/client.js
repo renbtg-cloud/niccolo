@@ -6,6 +6,7 @@ export function identitiesPath(c) { return `/v1/workspaces/${c.workspace}/identi
 export function operationPath(c, id) { return `${situationPath(c)}/bff/operations/${id}`; }
 export function intentPath(c, id) { return `${situationPath(c)}/bff/intents/${id}`; }
 export function analysisPath(c, id) { return `${situationPath(c)}/analysis-snapshots/${id}`; }
+export function artifactsPath(c) { return `${situationPath(c)}/artifacts`; }
 export class NiccoloClient {
   constructor(config, fetchImpl = fetch) { this.config = config; this.fetch = fetchImpl; }
   async request(method, path, { body, etag, signal } = {}) {
@@ -62,6 +63,11 @@ export class NiccoloClient {
   situation(signal) { return this.request('GET', situationPath(this.config), { signal }); }
   createSituation(focus) { return this.request('POST', situationPath(this.config), { body: { focus } }); }
   setFocus(focus) { return this.request('POST', `${situationPath(this.config)}/focus`, { body: { focus } }); }
+  artifacts(signal) { return this.request('GET', artifactsPath(this.config), { signal }); }
+  recordArtifact(artifactId, body) { return this.request('POST', `${artifactsPath(this.config)}/${artifactId}`, { body }); }
+  recordArtifactStorage(artifactId, referenceId, body) { return this.request('POST', `${artifactsPath(this.config)}/${artifactId}/storage-references/${referenceId}`, { body }); }
+  recordArtifactRepresentation(artifactId, representationId, body) { return this.request('POST', `${artifactsPath(this.config)}/${artifactId}/representations/${representationId}`, { body }); }
+  recordArtifactRelationship(relationshipId, body) { return this.request('POST', `${situationPath(this.config)}/artifact-relationships/${relationshipId}`, { body }); }
   sources(after = null, limit = 100, signal) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${sourcesPath(this.config)}${q}`, { signal }); }
   sourceSpeakers(documentId, signal) { return this.request('GET', `${sourcesPath(this.config)}/${documentId}/speakers`, { signal }); }
   identities(after = null, limit = 100, signal) { const q = after ? `?after=${after}&limit=${limit}` : `?limit=${limit}`; return this.request('GET', `${identitiesPath(this.config)}${q}`, { signal }); }
