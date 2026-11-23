@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { qk } from '../api/keys.js';
 import { artifactRequest, relationshipRequest, representationRequest, storageReferenceRequest } from '../state/artifacts.js';
 
@@ -84,7 +84,7 @@ function RelationshipForm({client,artifacts,onSaved}){
   </form>;
 }
 
-export function ArtifactReferencePanel({client}){
+export function ArtifactReferencePanel({client,onSummary}){
   const qc=useQueryClient();
   const [draft,setDraft]=useState(blankArtifact);
   const [error,setError]=useState(null);
@@ -100,6 +100,7 @@ export function ArtifactReferencePanel({client}){
     onSuccess:async()=>{pending.current=null;setDraft(blankArtifact);setError(null);await refresh();},
   });
   const view=query.data??{artifacts:[],storage_references:[],representations:[],relationships:[]};
+  useEffect(()=>onSummary?.({artifactCount:view.artifacts.length,representationCount:view.representations.length,relationshipCount:view.relationships.length}),[onSummary,view.artifacts.length,view.representations.length,view.relationships.length]);
   return <article className="artifact-references">
     <h3>External artifacts</h3>
     <p>Register an artifact without uploading it. Niccolò stores its identity, declared location and what people explicitly report about it. It does not open or parse the artifact.</p>

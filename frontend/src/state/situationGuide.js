@@ -1,12 +1,16 @@
-export function situationGuide(snapshot) {
+export function situationGuide(snapshot, artifactSummary = {}) {
   const focus = snapshot?.focus?.trim?.() ?? '';
-  const sourceCount = snapshot?.source_document_ids?.length ?? 0;
   const contextCount = snapshot?.contributions?.length ?? 0;
+  const artifactCount = artifactSummary.artifactCount ?? 0;
+  const representationCount = artifactSummary.representationCount ?? 0;
+  const relationshipCount = artifactSummary.relationshipCount ?? 0;
   return {
     focusSet: Boolean(focus),
-    sourceCount,
+    artifactCount,
+    representationCount,
+    relationshipCount,
     contextCount,
-    hasGroundingMaterial: sourceCount + contextCount > 0,
+    hasGroundingMaterial: artifactCount + representationCount + contextCount > 0,
     analysisBlocked: false,
   };
 }

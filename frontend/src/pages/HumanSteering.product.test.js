@@ -8,7 +8,7 @@ const artifacts=readFileSync(new URL('./ArtifactReferencePanel.jsx',import.meta.
 
 describe('human steering surfaces',()=>{
   it('keeps human attribution explicit but non-gating',()=>{
-    expect(situation).toContain('<ArtifactReferencePanel client={client}/>');
+    expect(situation).toContain('<ArtifactReferencePanel client={client} onSummary={setArtifactSummary}/>');
     expect(artifacts).toContain('Who produced it');
     expect(artifacts).toContain('Production method');
     expect(artifacts).toContain('Scope within artifact');

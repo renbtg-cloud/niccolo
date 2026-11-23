@@ -57,7 +57,10 @@ describe('buyer-facing primary surfaces', () => {
   });
 
   it('accepts only explicit parser-free material on the Situation surface', () => {
-    expect(situation).toContain('<ArtifactReferencePanel client={client}/>');
+    expect(situation).toContain('<ArtifactReferencePanel client={client} onSummary={setArtifactSummary}/>');
+    expect(situation).toContain('{guide.artifactCount}');
+    expect(situation).toContain('{guide.representationCount}');
+    expect(situation).toContain('{guide.relationshipCount}');
     expect(artifacts).toContain('Register an artifact without uploading it.');
     expect(artifacts).toContain('It does not open or parse the artifact.');
     expect(situation).not.toContain('type="file"');

@@ -58,6 +58,7 @@ function ConnectedSituation({client}){
   const [contextKind,setContextKind]=useState(initialLead ? 'investigative_preference' : 'user_reported');
   const contextEditor=useRef(null);
   const [contextText,setContextText]=useState(initialLead);
+  const [artifactSummary,setArtifactSummary]=useState({artifactCount:0,representationCount:0,relationshipCount:0});
   const contextErrorId=useId();
   const contextError=situationTextError(contextText);
 
@@ -131,7 +132,7 @@ function ConnectedSituation({client}){
   </section>;
 
   const snapshot = situation.data;
-  const guide = situationGuide(snapshot);
+  const guide = situationGuide(snapshot,artifactSummary);
 
   return <section>
     <h2>Situation</h2>
@@ -153,7 +154,7 @@ function ConnectedSituation({client}){
       {updateFocus.error && <p className="error" role="alert">{updateFocus.error.message}</p>}
     </details>
 
-    <ArtifactReferencePanel client={client}/>
+    <ArtifactReferencePanel client={client} onSummary={setArtifactSummary}/>
 
     <article className="human-context">
       <h3>Human context</h3>
@@ -172,7 +173,7 @@ function ConnectedSituation({client}){
       {retractContext.error&&<p className="error" role="alert">{retractContext.error.message}</p>}
     </article>
 
-    <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add external artifact references, attributed representations, or human context when they would improve the reasoning.</p>}<small>This is a preparation summary, not a completeness score and not a gate. Artifact references are shown in their dedicated section above.</small></article>
+    <article className="situation-guide"><h3>What Niccolò has to work with</h3><ul><li><strong>{guide.focusSet?'Focus set':'Focus missing'}</strong></li><li><strong>{guide.artifactCount}</strong> external artifact reference(s)</li><li><strong>{guide.representationCount}</strong> attributed representation(s)</li><li><strong>{guide.relationshipCount}</strong> qualified artifact relationship(s)</li><li><strong>{guide.contextCount}</strong> active human-context contribution(s)</li></ul>{!guide.hasGroundingMaterial&&<p>You can run a first pass from the focus alone. Add external artifact references, attributed representations, or human context when they would improve the reasoning.</p>}<small>This is a preparation summary, not a completeness score and not a gate. Artifact references are shown in their dedicated section above.</small></article>
     <article className="next-action"><h3>Ready to reason?</h3>
       {readiness.isPending
         ? <p>Checking reasoning readiness…</p>
