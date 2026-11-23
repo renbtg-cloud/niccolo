@@ -566,9 +566,10 @@ pub(super) async fn dependency_views(
     sets: &[GroundingSetView],
     applicability: &[RouteApplicabilityAssessment],
 ) -> Result<Vec<AssessmentDependencyView>, WorkbenchError> {
+    type DownstreamReviewRow = (Uuid, Uuid, Uuid, Uuid, Uuid, String, String, Uuid);
     let rows: Vec<(Uuid,Uuid,Uuid,Uuid,String,Uuid)> = sqlx::query_as("SELECT dependency_id,argument_id,grounding_set_id,assessment_event_id,rationale,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependencies WHERE workspace_id=$1 AND situation_id=$2 ORDER BY created_at,dependency_id").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
     let review_rows: Vec<(Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT review_event_id,dependency_id,reviewed_assessment_event_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_dependency_reviews WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
-    let downstream_rows: Vec<(Uuid,Uuid,Uuid,Uuid,Uuid,String,String,Uuid)> = sqlx::query_as("SELECT review_event_id,dependency_id,reviewed_assessment_event_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_downstream_reviews WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
+    let downstream_rows: Vec<DownstreamReviewRow> = sqlx::query_as("SELECT review_event_id,dependency_id,reviewed_assessment_event_id,argument_id,grounding_set_id,disposition,note,recorded_by_principal_id FROM niccolo.epistemic_assessment_downstream_reviews WHERE workspace_id=$1 AND situation_id=$2 ORDER BY event_no").bind(workspace).bind(situation).fetch_all(&mut **tx).await?;
     let mut downstream_history =
         BTreeMap::<(Uuid, GroundingRouteRef), Vec<DownstreamReview>>::new();
     for (

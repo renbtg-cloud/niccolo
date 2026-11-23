@@ -345,10 +345,10 @@ async fn check_scope(
     if !situation_visible(tx, workspace, situation).await? {
         return Err(WorkbenchError::Invisible);
     }
-    if let Some(id) = evidence {
-        if !evidence_visible(tx, workspace, situation, id).await? {
-            return Err(WorkbenchError::Invisible);
-        }
+    if let Some(id) = evidence
+        && !evidence_visible(tx, workspace, situation, id).await?
+    {
+        return Err(WorkbenchError::Invisible);
     }
     Ok(())
 }

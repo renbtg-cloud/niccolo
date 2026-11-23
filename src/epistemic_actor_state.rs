@@ -507,10 +507,10 @@ pub async fn record(
             return Err(WorkbenchError::Invisible);
         }
     }
-    if let Some(basis) = input.basis_evidence_id {
-        if !evidence_visible(&mut tx, workspace, situation, basis).await? {
-            return Err(WorkbenchError::Invisible);
-        }
+    if let Some(basis) = input.basis_evidence_id
+        && !evidence_visible(&mut tx, workspace, situation, basis).await?
+    {
+        return Err(WorkbenchError::Invisible);
     }
     if let Some(prior_id) = input.revises_event_id {
         let prior = list(&mut tx, workspace, situation, Some(prior_id))

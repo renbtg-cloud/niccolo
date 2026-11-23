@@ -372,10 +372,10 @@ pub async fn record(
             return Err(WorkbenchError::Invisible);
         }
     }
-    if let Some(id) = input.source_evidence_id {
-        if !evidence_visible(&mut tx, workspace, situation, id).await? {
-            return Err(WorkbenchError::Invisible);
-        }
+    if let Some(id) = input.source_evidence_id
+        && !evidence_visible(&mut tx, workspace, situation, id).await?
+    {
+        return Err(WorkbenchError::Invisible);
     }
     if let Some(id) = input.source_contribution_id {
         let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM niccolo.situation_contributions WHERE workspace_id=$1 AND situation_id=$2 AND contribution_id=$3 AND kind='USER_REPORTED')").bind(workspace).bind(situation).bind(id).fetch_one(&mut *tx).await?;
