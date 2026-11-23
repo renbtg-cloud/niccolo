@@ -562,6 +562,40 @@ async fn v451_v500_investigation_queue_is_bounded_ranked_and_never_executes_exte
 }
 
 #[tokio::test]
+async fn review_respects_a_deferred_source_request_until_reopened() {
+    use niccolo_evidence::human_handoff::{self, SourceRequestEvent, SourceRequestInput};
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = AnalysisScope {
+        workspace: s.workspace,
+        situation: s.situation,
+        analysis: s.analysis,
+    };
+    let request_id = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        human_handoff::propose_source_request(&app, scope, &SourceRequestInput {
+            request_id,
+            text: "Look for the original exchange".into(),
+            source_kind: "message".into(),
+            rationale: "It may establish the order of events".into(),
+            proposed_by: s.principal,
+        }).await.unwrap();
+        for (state, shown) in [("DEFERRED", false), ("REOPENED", true)] {
+            human_handoff::append_source_request_event(&app, scope, request_id, &SourceRequestEvent {
+                event_id: Uuid::new_v4(),
+                kind: state.into(),
+                note: "User decision".into(),
+                recorded_by: s.principal,
+            }).await.unwrap();
+            let dashboard = niccolo_evidence::bff_dashboard::get(&app, scope, None).await.unwrap();
+            assert_eq!(dashboard.proactive.leads.iter().any(|lead| lead.id == request_id), shown);
+            let packet = reasoning_packet::build(&app, scope).await.unwrap();
+            assert!(packet.proactive_leads.leads.iter().any(|lead| lead.id == request_id));
+        }
+    }).await;
+}
+
+#[tokio::test]
 async fn v501_v550_material_change_recommends_but_never_secretly_starts_reanalysis() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;

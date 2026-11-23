@@ -60,6 +60,8 @@ pub async fn queue(
     queue_with_questions(pool, scope, branch_budget, false).await
 }
 
+/// The Review dashboard reflects active answers and the user’s current deferrals.
+/// Reasoning packets retain the existing investigation view.
 pub(crate) async fn live_queue(
     pool: &PgPool,
     scope: AnalysisScope,
@@ -72,7 +74,7 @@ async fn queue_with_questions(
     pool: &PgPool,
     scope: AnalysisScope,
     branch_budget: usize,
-    unanswered_only: bool,
+    live: bool,
 ) -> Result<InvestigationQueue, InvestigationError> {
     if !(1..=32).contains(&branch_budget) {
         return Err(InvestigationError::Invalid);
@@ -84,7 +86,7 @@ async fn queue_with_questions(
     let requests = human_handoff::source_requests(pool, scope)
         .await
         .map_err(dep)?;
-    let questions = if unanswered_only {
+    let questions = if live {
         clarification::unanswered(pool, scope).await.map_err(dep)?
     } else {
         clarification::list(pool, scope.workspace, scope.situation, scope.analysis, None, 100)
@@ -141,7 +143,11 @@ async fn queue_with_questions(
             system_may_execute_external_action: false,
         });
     }
-    for r in requests.into_iter().filter(|r| r.state != "DECLINED") {
+    for r in requests.into_iter().filter(|r| match r.state.as_str() {
+        "DECLINED" => false,
+        "DEFERRED" => !live,
+        _ => true,
+    }) {
         items.push(InvestigationCandidate {
             id: r.request_id,
             kind: "SOURCE_REQUEST".into(),
