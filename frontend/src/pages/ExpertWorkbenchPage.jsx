@@ -39,6 +39,29 @@ function useWorkbenchMutation(workbenchQuery, fn) {
   });
 }
 
+const nodeKindLabels={
+  PROPOSITION:'Proposition',
+  HYPOTHESIS:'Hypothesis',
+  ASSUMPTION:'What-if assumption',
+  INFORMATION_GAP:'Information gap',
+  QUESTION:'Investigative question',
+  FINDING:'Finding',
+};
+
+function nodeAuthoringGuidance(kind) {
+  if(kind==='HYPOTHESIS')return 'You formulate the possibility to investigate. Niccolò will trace only the relations and grounding routes that humans explicitly author; it will not invent a missing hypothesis.';
+  if(kind==='ASSUMPTION')return 'State a temporary “what if…” premise. It remains an assumption, never an observation or fact, while Niccolò exposes its explicitly authored downstream impact.';
+  if(kind==='QUESTION')return 'Write the question the investigation should test. A question is not an assertion and does not by itself resolve an information gap.';
+  return 'Select the semantic role deliberately. Niccolò does not infer it from unstructured investigator text in the restricted MVP.';
+}
+
+function nodeTextLabel(kind) {
+  if(kind==='HYPOTHESIS')return 'Hypothesis to investigate (not a fact)';
+  if(kind==='ASSUMPTION')return 'What-if premise (not an observation)';
+  if(kind==='QUESTION')return 'Investigative question (not an assertion)';
+  return 'Structured statement';
+}
+
 function AuthoredImpactPanel({snapshot}) {
   const impacts=snapshot.authored_object_impacts??[];
   if(!impacts.length)return null;
@@ -189,9 +212,10 @@ export function ExpertWorkbenchPage() {
         <button disabled={busy}>Record response occurrence</button>
       </form>}
       <form onSubmit={submit(() => createNode.mutate(nodeRequest(node.kind, node.text, node.rationale)))}>
-        <h3>Add abstraction</h3>
-        <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x}>{x}</option>)}</select></label>
-        <label>{node.kind === 'QUESTION' ? 'Investigative question (not an assertion)' : 'Structured statement'}<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
+        <h3>Author an epistemic object</h3>
+        <p>{nodeAuthoringGuidance(node.kind)}</p>
+        <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x} value={x}>{nodeKindLabels[x]}</option>)}</select></label>
+        <label>{nodeTextLabel(node.kind)}<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
         <label>Why this abstraction is appropriate<textarea value={node.rationale} maxLength={4096} onChange={(e) => setNode({ ...node, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create object</button>
       </form>

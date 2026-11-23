@@ -15,6 +15,14 @@ const config = {
 const response = { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ nodes: [], evidence: [], evidence_truncated: false, relations: [], arguments: [], grounding_sets: [], reassessment_impacts: [], grounding_cycles: [], reasoning_diagnostics: [] }) };
 
 describe('expert epistemic Workbench — structured MVP authoring', () => {
+  it('makes the investigator the explicit author of hypotheses and what-if premises', () => {
+    expect(page).toContain('Author an epistemic object');
+    expect(page).toContain("ASSUMPTION:'What-if assumption'");
+    expect(page).toContain('You formulate the possibility to investigate.');
+    expect(page).toContain('it will not invent a missing hypothesis');
+    expect(page).toContain('What-if premise (not an observation)');
+    expect(page).toContain('It remains an assumption, never an observation or fact');
+  });
   it('renders deterministic impacts from hypotheses and what-if assumptions authored by the investigator', () => {
     expect(page).toContain('Human-authored hypotheses and what-if impacts');
     expect(page).toContain("impact.source_kind==='ASSUMPTION'?'WHAT-IF ASSUMPTION':'HYPOTHESIS'");
