@@ -347,3 +347,77 @@ async fn live_lead_returns_only_after_the_current_answer_is_retracted() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(lead_count().await, 1);
 }
+
+#[tokio::test]
+async fn source_request_decisions_are_write_authorized_idempotent_and_do_not_fetch() {
+    let f = setup().await;
+    let (s, a, q, request_id, event_id) = (
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    );
+    seed(&f, s, a, q).await;
+    let principal: Uuid = sqlx::query_scalar(
+        "SELECT created_by_principal_id FROM niccolo.situations \
+         WHERE workspace_id=$1 AND situation_id=$2",
+    )
+    .bind(f.workspace)
+    .bind(s)
+    .fetch_one(&f.admin)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.situation_analysis_source_requests \
+         (workspace_id,situation_id,analysis_id,request_id,request_text,source_kind,rationale,proposed_by_principal_id) \
+         VALUES($1,$2,$3,$4,'Obtain the original exchange','message','Resolve the timeline',$5)",
+    )
+    .bind(f.workspace)
+    .bind(s)
+    .bind(a)
+    .bind(request_id)
+    .bind(principal)
+    .execute(&f.admin)
+    .await
+    .unwrap();
+    let path = format!(
+        "{}/source-requests/{request_id}/events/{event_id}",
+        analysis(&f, s, a)
+    );
+    let body = json!({"kind":"DEFERRED","note":"I will revisit this tomorrow."});
+    assert_eq!(
+        call(
+            f.router.clone(),
+            req("POST", path.clone(), &f.reader, Some(body.clone()))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    for (expected, replayed) in [
+        (StatusCode::CREATED, false),
+        (StatusCode::OK, true),
+    ] {
+        let (status, result) = call(
+            f.router.clone(),
+            req("POST", path.clone(), &f.writer, Some(body.clone())),
+        )
+        .await;
+        assert_eq!(status, expected, "{result}");
+        assert_eq!(result["replayed"], replayed);
+        assert_eq!(result["accepted_means_fetched"], false);
+        assert_eq!(result["system_fetched_external_material"], false);
+    }
+    let (status, conflict) = call(
+        f.router.clone(),
+        req(
+            "POST",
+            path,
+            &f.writer,
+            Some(json!({"kind":"DECLINED","note":"conflicting replay"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{conflict}");
+}

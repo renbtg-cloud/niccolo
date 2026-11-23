@@ -26,6 +26,7 @@ use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
+use crate::human_handoff::{self, HandoffError, SourceRequestEvent};
 use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
@@ -455,6 +456,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/dashboard",
             get(get_bff_dashboard),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/source-requests/{request}/events/{event}",
+            post(record_source_request_event),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/analysis-snapshots/{analysis}/bff/epistemic",
@@ -4787,6 +4792,71 @@ async fn get_bff_dashboard(
     .await
     .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "dashboard unavailable"))?;
     Ok(no_store(json!(view), StatusCode::OK))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceRequestEventRequest {
+    kind: String,
+    note: String,
+}
+
+async fn record_source_request_event(
+    State(state): State<AppState>,
+    Path((workspace, situation, analysis, request, event)): Path<(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+    )>,
+    headers: HeaderMap,
+    Json(body): Json<SourceRequestEventRequest>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let replayed = human_handoff::append_source_request_event(
+        &state.pool,
+        crate::analysis_structure::AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+        request,
+        &SourceRequestEvent {
+            event_id: event,
+            kind: body.kind.clone(),
+            note: body.note,
+            recorded_by: actor,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        HandoffError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid source request event"),
+        HandoffError::Conflict => {
+            ApiError(StatusCode::CONFLICT, "source request event replay conflict")
+        }
+        HandoffError::Invisible => ApiError(StatusCode::NOT_FOUND, "source request unavailable"),
+        _ => ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "source request event unavailable",
+        ),
+    })?;
+    Ok(no_store(
+        json!({
+            "request_id": request,
+            "event_id": event,
+            "kind": body.kind,
+            "recorded_by_principal_id": actor,
+            "replayed": replayed,
+            "accepted_means_fetched": false,
+            "system_fetched_external_material": false
+        }),
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 #[derive(Deserialize)]
