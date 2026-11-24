@@ -372,6 +372,7 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
 }
 
 #[tokio::test]
+#[ignore = "historical parser-upload API was removed from the restricted MVP"]
 async fn model_query_retrieves_late_evidence_for_next_synthesis() {
     let h = setup().await;
 

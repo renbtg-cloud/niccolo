@@ -347,6 +347,7 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
 }
 
 #[tokio::test]
+#[ignore = "historical parser-upload API was removed from the restricted MVP"]
 async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
     let h = setup_with_mode(true).await;
     let situation_path = format!("/v1/workspaces/{}/situations/{}", h.workspace, h.situation);
@@ -432,6 +433,7 @@ async fn malformed_model_artifact_marks_synthesis_step_failed_not_started() {
 }
 
 #[tokio::test]
+#[ignore = "historical parser-upload API was removed from the restricted MVP"]
 async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer() {
     let h = setup().await;
 
