@@ -1,4 +1,4 @@
-#![cfg(feature = "pg-integration")]
+#![cfg(feature = "legacy-pg-integration")]
 
 use axum::{
     Router,
@@ -100,13 +100,9 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
                 .pointer("/input/reasoning_packet/frozen_input/contributions/0/id")
                 .and_then(Value::as_str)
                 .expect("synthesis receives frozen human context");
-            let candidate_text = request
-                .pointer("/input/reasoning_packet/candidate_interpretations/0/text")
-                .and_then(Value::as_str)
-                .expect("synthesis receives persisted competing interpretation");
             assert_eq!(
-                candidate_text,
-                "The message may reflect coordination rather than a completed action."
+                request.pointer("/input/reasoning_packet/candidate_interpretations"),
+                Some(&json!([]))
             );
             let claim_id = Uuid::new_v4();
             json!({
@@ -146,7 +142,6 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
                 "status": "ok",
                 "niccolo_update": {
                     "used_contribution_ids": [contribution_id],
-                    "assumptions": [],
                     "evidence_gaps": [],
                     "clarifications": []
                 }
@@ -157,7 +152,6 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
             "status": "ok",
             "niccolo_update": {
                 "used_contribution_ids": [],
-                "assumptions": [],
                 "evidence_gaps": [],
                 "clarifications": []
             }
@@ -167,12 +161,6 @@ fn response_content(wire: &str, malformed_synthesis: bool) -> (String, String) {
             "status": "ok",
             "niccolo_update": {
                 "used_contribution_ids": [],
-                "candidate_interpretations": [{
-                    "interpretation_id": Uuid::new_v4(),
-                    "text": "The message may reflect coordination rather than a completed action.",
-                    "rationale": "The source states an intention to arrive, not independent confirmation of arrival."
-                }],
-                "assumptions": [],
                 "evidence_gaps": [],
                 "clarifications": []
             }
@@ -667,16 +655,7 @@ async fn v841_v880_tentative_mvp_path_reaches_real_provider_and_publishes_answer
             .as_array()
             .unwrap()
             .len(),
-        1
-    );
-    assert_eq!(
-        epistemic["candidate_interpretations"][0]["text"],
-        "The message may reflect coordination rather than a completed action."
-    );
-    assert_eq!(epistemic["candidate_interpretations"][0]["is_fact"], false);
-    assert_eq!(
-        epistemic["candidate_interpretations"][0]["automatically_ranked"],
-        false
+        0
     );
     assert_eq!(epistemic["candidate_interpretations_are_facts"], false);
     assert_eq!(
