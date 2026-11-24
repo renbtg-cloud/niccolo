@@ -87,6 +87,7 @@ async fn op(app: &PgPool, s: Seed) -> OperationScope {
 
 struct HypothesisInventingModel {
     hypothesis_id: Uuid,
+    inject_during_synthesis: bool,
 }
 
 impl model_adapter::ReasoningModel for HypothesisInventingModel {
@@ -99,7 +100,7 @@ impl model_adapter::ReasoningModel for HypothesisInventingModel {
     fn invoke<'a>(&'a self, request: &'a ModelRequest) -> model_adapter::ModelFuture<'a> {
         Box::pin(async move {
             let value = match request.purpose.as_str() {
-                "CHECK_ALTERNATIVES" => json!({
+                "CHECK_ALTERNATIVES" if !self.inject_during_synthesis => json!({
                     "purpose":request.purpose,
                     "status":"ok",
                     "niccolo_update":{"candidate_interpretations":[{
@@ -108,10 +109,25 @@ impl model_adapter::ReasoningModel for HypothesisInventingModel {
                         "rationale":"Plausibility does not grant authorship."
                     }]}
                 }),
-                "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" => json!({
+                "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "CHECK_ALTERNATIVES" | "PROPOSE_CLARIFICATION" => json!({
                     "purpose":request.purpose,
                     "status":"ok",
                     "niccolo_update":{}
+                }),
+                "SYNTHESIZE" if self.inject_during_synthesis => json!({
+                    "purpose":request.purpose,
+                    "status":"ok",
+                    "niccolo_artifact":{
+                        "answer_text":"Provisional.",
+                        "coverage_note":"Boundary test.",
+                        "claims":[{
+                            "claim_id":self.hypothesis_id,
+                            "ordinal":1,
+                            "kind":"POSSIBILITY",
+                            "text":"The model smuggled a new possibility into synthesis.",
+                            "qualification":"Not human-authored."
+                        }]
+                    }
                 }),
                 "SYNTHESIZE" => json!({
                     "purpose":request.purpose,
@@ -255,7 +271,10 @@ async fn restricted_runtime_rejects_model_invented_hypothesis_before_persistence
             &app,
             scope,
             s.principal,
-            &HypothesisInventingModel { hypothesis_id },
+            &HypothesisInventingModel {
+                hypothesis_id,
+                inject_during_synthesis: false,
+            },
         )
         .await
         .unwrap_err();
@@ -298,6 +317,66 @@ async fn restricted_runtime_rejects_model_invented_hypothesis_before_persistence
     .await
     .unwrap();
     assert_eq!(proposal_count, 0);
+}
+
+#[tokio::test]
+async fn restricted_runtime_rejects_synthesis_possibility_before_persistence() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    let hypothesis_id = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        let error = agentic_runtime::run_until_boundary(
+            &app,
+            scope,
+            s.principal,
+            &HypothesisInventingModel {
+                hypothesis_id,
+                inject_during_synthesis: true,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            agentic_runtime::RuntimeError::Artifact(
+                niccolo_evidence::model_artifacts::ArtifactError::HumanAuthorshipRequired
+            )
+        ));
+        let view = agentic_controller::view(&app, scope).await.unwrap();
+        assert_eq!(
+            view.steps
+                .iter()
+                .find(|step| step.kind == "SYNTHESIZE")
+                .unwrap()
+                .state,
+            "FAILED"
+        );
+    })
+    .await;
+    let output_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_outputs \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(output_count, 0);
+    let claim_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_claims \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND claim_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(hypothesis_id)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(claim_count, 0);
 }
 
 #[tokio::test]
