@@ -85,6 +85,58 @@ async fn op(app: &PgPool, s: Seed) -> OperationScope {
     scope
 }
 
+struct HypothesisInventingModel {
+    hypothesis_id: Uuid,
+}
+
+impl model_adapter::ReasoningModel for HypothesisInventingModel {
+    fn provider(&self) -> &str {
+        "boundary-test"
+    }
+    fn model(&self) -> &str {
+        "hypothesis-inventor"
+    }
+    fn invoke<'a>(&'a self, request: &'a ModelRequest) -> model_adapter::ModelFuture<'a> {
+        Box::pin(async move {
+            let value = match request.purpose.as_str() {
+                "CHECK_ALTERNATIVES" => json!({
+                    "purpose":request.purpose,
+                    "status":"ok",
+                    "niccolo_update":{"candidate_interpretations":[{
+                        "interpretation_id":self.hypothesis_id,
+                        "text":"The model invented this explanation.",
+                        "rationale":"Plausibility does not grant authorship."
+                    }]}
+                }),
+                "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" => json!({
+                    "purpose":request.purpose,
+                    "status":"ok",
+                    "niccolo_update":{}
+                }),
+                "SYNTHESIZE" => json!({
+                    "purpose":request.purpose,
+                    "status":"ok",
+                    "niccolo_artifact":{"answer_text":"Provisional.","coverage_note":"Boundary test.","claims":[]}
+                }),
+                "CHALLENGE_SYNTHESIS" => json!({
+                    "purpose":request.purpose,
+                    "status":"ok",
+                    "niccolo_challenge":{"challenges":[]}
+                }),
+                _ => json!({"purpose":request.purpose,"status":"ok"}),
+            };
+            Ok(model_adapter::ModelResponse {
+                value,
+                prompt_tokens: Some(1),
+                completion_tokens: Some(1),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
 #[tokio::test]
 async fn v251_v260_bounded_pull_wait_returns_on_version_change_or_timeout() {
     let (admin, app) = pools().await;
@@ -190,6 +242,62 @@ async fn v291_v300_runtime_runs_until_terminal_or_explicit_human_boundary() {
         }
     })
     .await;
+}
+
+#[tokio::test]
+async fn restricted_runtime_rejects_model_invented_hypothesis_before_persistence() {
+    let (admin, app) = pools().await;
+    let s = seed(&admin).await;
+    let scope = op(&app, s).await;
+    let hypothesis_id = Uuid::new_v4();
+    authz::with_auth_digest("test-digest".into(), async {
+        let error = agentic_runtime::run_until_boundary(
+            &app,
+            scope,
+            s.principal,
+            &HypothesisInventingModel { hypothesis_id },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            agentic_runtime::RuntimeError::Update(
+                niccolo_evidence::reasoning_updates::UpdateError::HumanAuthorshipRequired
+            )
+        ));
+        let view = agentic_controller::view(&app, scope).await.unwrap();
+        let rejected = view
+            .steps
+            .iter()
+            .find(|step| step.kind == "CHECK_ALTERNATIVES")
+            .unwrap();
+        assert_eq!(rejected.state, "FAILED");
+    })
+    .await;
+    let canonical_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_candidate_interpretations \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND interpretation_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(hypothesis_id)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(canonical_count, 0);
+    let proposal_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_reasoning_proposal_items \
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3 AND item_id=$4",
+    )
+    .bind(s.workspace)
+    .bind(s.situation)
+    .bind(s.analysis)
+    .bind(hypothesis_id)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(proposal_count, 0);
 }
 
 #[tokio::test]
