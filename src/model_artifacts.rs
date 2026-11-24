@@ -12,6 +12,8 @@ pub enum ArtifactError {
     Database(#[from] sqlx::Error),
     #[error("invalid synthesis artifact")]
     Invalid,
+    #[error("restricted MVP hypotheses and assumptions must be authored by a human")]
+    HumanAuthorshipRequired,
     #[error("artifact replay conflicts with stored analysis")]
     Conflict,
     #[error("serialization failed: {0}")]
@@ -208,6 +210,23 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     Ok(())
 }
+
+/// Reject synthesis fields that would let a model author hypotheses, what-if
+/// assumptions, or candidate possibilities in the restricted MVP.
+///
+/// Historical artifact structures remain readable for compatibility. The
+/// active model runtime calls this stricter boundary before any persistence.
+pub fn validate_restricted_mvp_authorship(
+    artifact: &SynthesisArtifact,
+) -> Result<(), ArtifactError> {
+    if !artifact.assumptions.is_empty()
+        || !artifact.alternatives.is_empty()
+        || artifact.claims.iter().any(|claim| claim.kind == "POSSIBILITY")
+    {
+        return Err(ArtifactError::HumanAuthorshipRequired);
+    }
+    Ok(())
+}
 async fn scoped(pool: &PgPool, w: Uuid) -> Result<Transaction<'_, Postgres>, ArtifactError> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
@@ -389,4 +408,65 @@ pub async fn apply(
         replayed: !inserted,
         recorded_output_is_truth: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_artifact() -> SynthesisArtifact {
+        SynthesisArtifact {
+            answer_text: "Provisional analysis".into(),
+            coverage_note: "No parser used".into(),
+            claims: vec![],
+            source_links: vec![],
+            context_links: vec![],
+            assumptions: vec![],
+            alternatives: vec![],
+            evidence_gaps: vec![],
+            clarifications: vec![],
+        }
+    }
+
+    #[test]
+    fn restricted_synthesis_cannot_smuggle_model_hypotheses_or_assumptions() {
+        let claim_id = Uuid::new_v4();
+        let mut assumption = base_artifact();
+        assumption.assumptions.push(ArtifactAssumption {
+            assumption_id: Uuid::new_v4(),
+            claim_id: None,
+            statement: "What if the person was present?".into(),
+            basis_note: "Invented by the model".into(),
+        });
+        let mut alternative = base_artifact();
+        alternative.alternatives.push(ArtifactAlternative {
+            alternative_id: Uuid::new_v4(),
+            claim_id,
+            text: "Another invented explanation".into(),
+            rationale: "Model-generated".into(),
+        });
+        let mut possibility = base_artifact();
+        possibility.claims.push(ArtifactClaim {
+            claim_id,
+            ordinal: 1,
+            kind: "POSSIBILITY".into(),
+            text: "An invented possibility".into(),
+            qualification: Some("Still not human-authored".into()),
+        });
+        for artifact in [assumption, alternative, possibility] {
+            assert!(matches!(
+                validate_restricted_mvp_authorship(&artifact),
+                Err(ArtifactError::HumanAuthorshipRequired)
+            ));
+        }
+        let mut inference = base_artifact();
+        inference.claims.push(ArtifactClaim {
+            claim_id,
+            ordinal: 1,
+            kind: "INFERENCE".into(),
+            text: "This follows from the explicitly authored structure".into(),
+            qualification: Some("Analysis, not a new hypothesis".into()),
+        });
+        validate_restricted_mvp_authorship(&inference).unwrap();
+    }
 }

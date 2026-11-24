@@ -228,6 +228,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                     if step.kind == "SYNTHESIZE" {
                         let artifact = model_artifacts::parse(response)?
                             .ok_or(model_artifacts::ArtifactError::Invalid)?;
+                        model_artifacts::validate_restricted_mvp_authorship(&artifact)?;
                         model_artifacts::apply(
                             pool,
                             crate::analysis_structure::AnalysisScope {
