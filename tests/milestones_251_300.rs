@@ -122,6 +122,25 @@ async fn v261_v275_policy_is_state_derived_and_preserves_human_ownership() {
             .unwrap();
         assert!(steps.iter().any(|x| x.kind == "CHECK_ASSUMPTIONS"));
         assert!(steps.iter().any(|x| x.kind == "CHECK_ALTERNATIVES"));
+        let assumptions = steps
+            .iter()
+            .find(|x| x.kind == "CHECK_ASSUMPTIONS")
+            .unwrap();
+        assert!(assumptions.label.contains("authored by the human"));
+        let alternatives = steps
+            .iter()
+            .find(|x| x.kind == "CHECK_ALTERNATIVES")
+            .unwrap();
+        assert!(alternatives.label.contains("human-authored"));
+        assert!(!alternatives.label.contains("Generate"));
+        assert!(
+            steps
+                .iter()
+                .find(|x| x.kind == "CHALLENGE_SYNTHESIS")
+                .unwrap()
+                .label
+                .contains("without inventing hypotheses")
+        );
         assert!(
             steps
                 .iter()

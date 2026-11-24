@@ -126,7 +126,8 @@ pub async fn plan_for_intent(
             step_id: assumptions,
             ordinal: 4,
             kind: "CHECK_ASSUMPTIONS".into(),
-            label: "Enumerate and challenge material assumptions".into(),
+            label: "Inspect and challenge material assumptions explicitly authored by the human"
+                .into(),
             requires_human: false,
             depends_on: vec![stop],
         },
@@ -135,7 +136,7 @@ pub async fn plan_for_intent(
             ordinal: 5,
             kind: "CHECK_ALTERNATIVES".into(),
             label: format!(
-                "Generate credible competing interpretations; {} unresolved conflict set(s)",
+                "Trace human-authored competing hypotheses and what-if impacts; {} unresolved conflict set(s)",
                 sig.conflict_sets
             ),
             requires_human: false,
@@ -153,10 +154,10 @@ pub async fn plan_for_intent(
     }
     let synthesis_label = match intent {
         Some(HumanIntent::AboutToActOrSay) => {
-            "Synthesize decision support before the human acts: consequences, uncertainty, alternatives, and explicit non-execution"
+            "Synthesize decision support before the human acts: consequences, uncertainty, human-authored alternatives, and explicit non-execution"
         }
         Some(HumanIntent::Understand) => {
-            "Synthesize provisional understanding with evidence/inference separation and competing interpretations"
+            "Synthesize provisional understanding with evidence/inference separation and impacts of human-authored hypotheses"
         }
         Some(HumanIntent::FigureOutWhatMatters) => {
             "Synthesize what appears material, why it matters, uncertainty, and attention-worthy unresolved questions"
@@ -171,7 +172,7 @@ pub async fn plan_for_intent(
         requires_human: false,
         depends_on: synth_deps,
     });
-    steps.push(StepInput{step_id:challenge,ordinal:steps.len() as i32+1,kind:"CHALLENGE_SYNTHESIS".into(),label:"Adversarially challenge the synthesis: seek counterevidence, assumption risk, competing explanations and coverage gaps".into(),requires_human:false,depends_on:vec![synth]});
+    steps.push(StepInput{step_id:challenge,ordinal:steps.len() as i32+1,kind:"CHALLENGE_SYNTHESIS".into(),label:"Adversarially challenge the synthesis: seek counterevidence, grounding weaknesses, contradictions and coverage gaps without inventing hypotheses".into(),requires_human:false,depends_on:vec![synth]});
     let needs_human = matches!(intent, Some(HumanIntent::AboutToActOrSay))
         || clarification_pressure > 0
         || sig.triggered_stop_conditions > 0
