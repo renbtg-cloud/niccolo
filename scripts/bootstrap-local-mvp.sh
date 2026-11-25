@@ -9,6 +9,11 @@ cd "$ROOT"
 
 : "${NICCOLO_PG_ADMIN_URL:?Set an admin URL for a new dedicated PostgreSQL database}"
 : "${NICCOLO_PG_SECURE_PASSWORD:?Set the dedicated non-admin runtime password}"
+: "${NICCOLO_API_PORT:=38080}"
+if [[ ! "$NICCOLO_API_PORT" =~ ^[1-9][0-9]{0,4}$ ]] || ((NICCOLO_API_PORT > 65535)); then
+  echo 'NICCOLO_API_PORT must be an integer from 1 to 65535.' >&2
+  exit 2
+fi
 for program in psql node; do
   command -v "$program" >/dev/null || {
     printf 'Missing executable: %s\n' "$program" >&2
@@ -71,10 +76,10 @@ u.password = process.env.NICCOLO_PG_SECURE_PASSWORD;
 process.stdout.write(u.toString());
 ')"
 printf 'export NICCOLO_PG_SECURE_URL=%q\n' "$runtime_url" > .niccolo-local/local.env
-printf 'export NICCOLO_API_PORT=38080\n' >> .niccolo-local/local.env
+printf 'export NICCOLO_API_PORT=%s\n' "$NICCOLO_API_PORT" >> .niccolo-local/local.env
 SITUATION_UUID="$(node -p "require('node:crypto').randomUUID()")"
 printf 'WORKSPACE_UUID=%s\nSITUATION_UUID=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/identifiers.txt
-printf 'http://127.0.0.1:38080/?workspace=%s&situation=%s\n' "$workspace" "$SITUATION_UUID" > .niccolo-local/prepared-url.txt
+printf 'http://127.0.0.1:%s/?workspace=%s&situation=%s\n' "$NICCOLO_API_PORT" "$workspace" "$SITUATION_UUID" > .niccolo-local/prepared-url.txt
 provision_bin="./target/release/niccolo-provision${ext}"
 token="$("$provision_bin" mint "$workspace" "$principal" write 30)"
 printf '%s\n' "$token" > .niccolo-local/token.txt

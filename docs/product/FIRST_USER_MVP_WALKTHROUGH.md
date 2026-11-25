@@ -124,12 +124,33 @@ the graph it cites. **Suggest questions and what-ifs** proposes investigative le
 why each matters. Open a proposal in the manual object form if you want to edit and record it.
 Use the Workbench and case records to verify claims and source qualifications.
 
+### Pilot exercise with a fictional witness
+
+1. Under **External artifacts**, register a reference to a fictional interview and describe a
+   short interval. Say that an uncorroborated witness reported hearing the victim ask for a ride.
+2. In **Workbench**, record that attributed statement as a proposition and link it to the exact
+   description. Record **Did the victim get in the car?** as an investigative question. With a
+   configured model, try drafting these objects from your own note and review the draft.
+3. Add **The victim may have been looking for transportation** as a hypothesis. Create an
+   abductive argument for it and add the attributed statement as a premise in a partial support
+   set. The premise supports a possible explanation. The question about the actual ride stays open.
+4. Add a correction from the same fictional witness. This time they recall hearing someone ask
+   for a ride but could not identify the speaker. Record the new described interval or correction
+   as a separate description, then create a replacement proposition with that provenance. In the
+   graph, connect the replacement to the prior proposition with **Genealogy → Supersedes**.
+5. Open **Selective reassessment impacts** and inspect the support route that used the prior
+   proposition. Open both objects' provenance to see the exact basis before and after. With a
+   model configured, describe the revised selection in prose and check that it preserves the
+   uncertainty about the speaker and the open question about the ride.
+
 ## 6. Check readiness before Analyze
 
 The bottom of the Situation screen shows whether the local service has a reasoning model.
 
-If no model is configured, stop here, configure it, and restart Niccolò. Do not debug the
-Situation or artifact references: the problem is runtime configuration.
+To run **Analyze**, configure a model and restart Niccolò if needed. The manual witness exercise
+above is available without a model. Use the Workbench's selection controls for model requests
+about a specific portion of the graph. Analyze starts from a frozen Situation revision with its
+recorded representations and human context.
 
 If the model is configured, choose:
 
@@ -189,6 +210,7 @@ Do not teach the tester the architecture first. Record where they hesitate or as
 9. Did they understand that accepting a source request records a decision but fetches nothing?
 10. Did any technical vocabulary become necessary to complete the basic path?
 11. At what point, if any, did they stop seeing value?
+12. After the witness correction, could they see which support route needed review and inspect both versions of its provenance?
 
 A failure here is product evidence. Do not repair the user's behavior by explaining the system
 unless the test itself has already ended.

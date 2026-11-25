@@ -8,17 +8,21 @@ cd "$ROOT"
 : "${NICCOLO_PG_SECURE_PASSWORD:?disposable service password required}"
 command -v curl >/dev/null
 command -v node >/dev/null
-# Refuse to test against an unrelated server already bound to the MVP port.
-# Otherwise a stale healthy process could make the smoke test pass falsely.
-node -e '
+# Give the disposable runtime its own port so it can coexist with other local runs.
+NICCOLO_API_PORT="$(node -e '
 const net = require("node:net");
 const server = net.createServer();
 server.once("error", error => {
-  console.error("MVP smoke port 38080 unavailable:", error.code);
+  console.error("Could not reserve an MVP smoke port:", error.code);
   process.exit(1);
 });
-server.listen(38080, "127.0.0.1", () => server.close());
-'
+server.listen(0, "127.0.0.1", () => {
+  console.log(server.address().port);
+  server.close();
+});
+')"
+export NICCOLO_API_PORT
+base_url="http://127.0.0.1:${NICCOLO_API_PORT}"
 if [[ -e .niccolo-local/local.env ]]; then
   echo 'Refusing to run fresh bootstrap smoke over existing local credentials' >&2
   exit 1
@@ -35,6 +39,7 @@ source .niccolo-local/local.env
 source .niccolo-local/identifiers.txt
 prepared_output="$(bash scripts/start-local-mvp.sh --print-only)"
 grep -Fq "workspace=${WORKSPACE_UUID}&situation=${SITUATION_UUID}" <<< "$prepared_output"
+grep -Fq "$base_url/?workspace=" <<< "$prepared_output"
 grep -Fq "Bearer token: .niccolo-local/token.txt" <<< "$prepared_output"
 ! grep -Fq "$(cat .niccolo-local/token.txt)" <<< "$prepared_output"
 if NICCOLO_LLM_BASE_URL='https://provider.example/v1' NICCOLO_LLM_MODEL='example-model' NICCOLO_LLM_API_KEY='' \
@@ -75,7 +80,7 @@ SQL
 trap cleanup EXIT
 started=0
 for _ in $(seq 1 40); do
-  if curl --max-time 2 --silent --fail http://127.0.0.1:38080/healthz >/dev/null; then
+  if curl --max-time 2 --silent --fail "$base_url/healthz" >/dev/null; then
     started=1
     break
   fi
@@ -91,13 +96,13 @@ if [[ "$started" != 1 ]]; then
   tail -n 30 .niccolo-local/ci-server.log >&2
   exit 1
 fi
-curl --max-time 5 --silent --show-error --fail http://127.0.0.1:38080/ >/dev/null
+curl --max-time 5 --silent --show-error --fail "$base_url/" >/dev/null
 for asset in app.js app.css; do
-  curl --max-time 5 --silent --show-error --fail "http://127.0.0.1:38080/assets/$asset" \
+  curl --max-time 5 --silent --show-error --fail "$base_url/assets/$asset" \
     -o ".niccolo-local/served-$asset"
   cmp "frontend/dist/assets/$asset" ".niccolo-local/served-$asset"
 done
-path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/situations/${SITUATION_UUID}"
+path="$base_url/v1/workspaces/${WORKSPACE_UUID}/situations/${SITUATION_UUID}"
 curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" \
   -H 'Content-Type: application/json' \
@@ -119,7 +124,7 @@ malformed="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_
   exit 1
 }
 other_workspace="$(node -p "require('node:crypto').randomUUID()")"
-other_path="http://127.0.0.1:38080/v1/workspaces/${other_workspace}/situations/${SITUATION_UUID}"
+other_path="$base_url/v1/workspaces/${other_workspace}/situations/${SITUATION_UUID}"
 denied="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' \
   -H "Authorization: Bearer ${token}" "$other_path")"
 [[ "$denied" == 403 ]] || {
@@ -165,7 +170,8 @@ async function verifyPilot() {
     access_status: 'NONE',
   });
   assert.equal(storage.locator_was_dereferenced, false);
-  const description = await request(artifactPath + '/representations/' + randomUUID(), {
+  const representationId = randomUUID();
+  const originalDescription = {
     representation_type: 'HUMAN_DESCRIPTION',
     producer_type: 'USER',
     producer_label: 'Investigator',
@@ -175,7 +181,8 @@ async function verifyPilot() {
     completeness_status: 'PARTIAL',
     epistemic_qualification: 'Uncorroborated testimony',
     limitations: 'The witness did not report seeing the victim leave.',
-  });
+  };
+  const description = await request(artifactPath + '/representations/' + representationId, originalDescription);
   assert.equal(description.content_was_explicitly_supplied, true);
   assert.equal(description.artifact_was_parsed, false);
   assert.equal(description.representation_establishes_truth, false);
@@ -193,6 +200,9 @@ async function verifyPilot() {
     text: 'An uncorroborated witness reported hearing the victim ask for a ride.',
     rationale: 'Human description of an external recording.',
   });
+  await request('/epistemic/objects/' + premise + '/artifact-provenance/' + representationId, {
+    rationale: 'This is the description of what the witness reported hearing.',
+  });
   await request('/epistemic/objects/' + question, {
     kind: 'QUESTION',
     text: 'Did the victim get in the car?',
@@ -209,7 +219,73 @@ async function verifyPilot() {
   assert.deepEqual(new Set(snapshot.nodes.map(node => node.object_id)), new Set([premise, question]));
   assert.equal(snapshot.relations[0].relation_id, relation);
   assert.equal(snapshot.relations[0].right_object_id, question);
-  console.log('PASS: external artifact metadata, human description, and manual investigative graph without a model');
+  assert.equal(snapshot.artifact_provenance[0].object_id, premise);
+  assert.equal(snapshot.artifact_provenance[0].representation_id, representationId);
+  assert.equal(snapshot.artifact_provenance[0].scope_locator, '00:00:13');
+  assert.equal(snapshot.artifact_provenance[0].qualification, 'Uncorroborated testimony');
+  console.log('PASS: manual investigative graph, exact artifact provenance, and no model required');
+
+  const hypothesis = randomUUID();
+  const argument = randomUUID();
+  const route = randomUUID();
+  const argumentPath = '/epistemic/arguments/' + argument;
+  await request('/epistemic/objects/' + hypothesis, {
+    kind: 'HYPOTHESIS',
+    text: 'The victim may have been looking for transportation.',
+    rationale: 'A possible explanation if the witness identified the speaker correctly.',
+  });
+  await request(argumentPath, {
+    conclusion_object_id: hypothesis,
+    mode: 'ABDUCTIVE',
+    rationale: 'The reported request may explain what the victim intended to do.',
+  });
+  await request(argumentPath + '/grounding/' + route, {
+    effect: 'SUPPORTS',
+    adequacy: 'PARTIAL',
+    rationale: 'The original statement about the possible ride request.',
+    members: [{
+      member_id: randomUUID(),
+      role: 'PREMISE',
+      ground_object_id: premise,
+      rationale: 'The original testimony attributed the request to the victim.',
+    }],
+  });
+
+  const correctionId = randomUUID();
+  await request(artifactPath + '/representations/' + correctionId, {
+    ...originalDescription,
+    scope_locator: 'Follow-up witness statement',
+    content: 'The witness heard someone ask for a ride and could not identify the speaker.',
+  });
+  const correction = randomUUID();
+  await request('/epistemic/objects/' + correction, {
+    kind: 'PROPOSITION',
+    text: 'The witness reports a ride request and cannot identify the speaker.',
+    rationale: 'A correction to the witness’s original attributed statement.',
+  });
+  await request('/epistemic/objects/' + correction + '/artifact-provenance/' + correctionId, {
+    rationale: 'The witness explicitly withdrew the identification.',
+  });
+  const correctionLink = randomUUID();
+  await request('/epistemic/relations/' + correctionLink, {
+    family: 'GENEALOGY',
+    kind: 'SUPERSEDES',
+    left_object_id: correction,
+    right_object_id: premise,
+    rationale: 'Replace the prior attribution with the witness’s corrected description.',
+  });
+  const revised = await request(workbenchPath);
+  assert.equal(revised.reassessment_impacts.length, 1);
+  const [impact] = revised.reassessment_impacts;
+  assert.equal(impact.trigger_relation_id, correctionLink);
+  assert.equal(impact.conclusion_object_id, hypothesis);
+  assert.equal(impact.grounding_set_id, route);
+  assert.equal(revised.grounding_sets[0].members[0].ground_object_id, premise);
+  assert.deepEqual(
+    new Set(revised.artifact_provenance.map((source) => source.representation_id)),
+    new Set([representationId, correctionId]),
+  );
+  console.log('PASS: correcting a witness description flags the affected support route and preserves both sources');
 }
 
 verifyPilot().catch(error => {
