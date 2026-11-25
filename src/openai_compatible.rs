@@ -105,7 +105,6 @@ impl OpenAiCompatibleConfig {
             || self.provider.trim().is_empty()
             || self.provider.len() > 128
             || self.curl_bin.trim().is_empty()
-            || !(1..=25).contains(&self.max_time_secs)
         {
             return Err(ProviderConfigError::Invalid);
         }
@@ -351,6 +350,19 @@ mod tests {
         assert!(c.validate().is_ok());
         assert!(c.native_model().is_ok());
         c.base_url = "https://example.com/v1".into();
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn configured_transport_accepts_slow_models_within_its_deadline() {
+        let mut c = config("https://provider.invalid/v1".into());
+        c.max_time_secs = 90;
+        assert!(c.validate().is_ok());
+        c.max_time_secs = 120;
+        assert!(c.validate().is_ok());
+        c.max_time_secs = 121;
+        assert!(c.validate().is_err());
+        c.max_time_secs = 0;
         assert!(c.validate().is_err());
     }
 

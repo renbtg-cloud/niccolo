@@ -114,7 +114,9 @@ as sensitive even on Windows filesystems where `chmod` may not enforce ACLs.
 For a local OpenAI-compatible model runtime, configure
 `NICCOLO_LLM_BASE_URL` (for example `http://127.0.0.1:11434/v1`) and
 `NICCOLO_LLM_MODEL` before starting the API. Keyless HTTP is permitted only
-on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`.
+on loopback; remote HTTPS providers require `NICCOLO_LLM_API_KEY`. For slower models,
+set `NICCOLO_LLM_MAX_TIME_SECS` before starting. Its default is 25 seconds, with a
+configurable range of 1 to 120 seconds. Explicit analysis operation budgets still apply.
 Use the provider base URL through its version path, for example `/v1`.
 Supply credentials through `NICCOLO_LLM_API_KEY` and keep query parameters
 and fragments out of the base URL. Some local models require

@@ -3643,12 +3643,12 @@ async fn invoke_workbench_model(
     }
     tokio::time::timeout(std::time::Duration::from_secs(120), state.model.invoke(request))
         .await
-        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "draft generation timed out"))?
+        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "model request timed out"))?
         .map_err(|error| match error {
             crate::model_adapter::ModelError::Timeout => {
-                ApiError(StatusCode::GATEWAY_TIMEOUT, "draft generation timed out")
+                ApiError(StatusCode::GATEWAY_TIMEOUT, "model request timed out")
             }
-            _ => ApiError(StatusCode::BAD_GATEWAY, "model could not generate a draft"),
+            _ => ApiError(StatusCode::BAD_GATEWAY, "model request failed"),
         })
 }
 
