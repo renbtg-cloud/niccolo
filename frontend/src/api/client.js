@@ -92,6 +92,7 @@ export class NiccoloClient {
   reviewInterpretationDependency(dependencyId,eventId,body) { return this.request('POST', `${situationPath(this.config)}/epistemic/interpretation-dependencies/${dependencyId}/reviews/${eventId}`, {body}); }
   searchExpertEvidence(query, limit = 20) { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench/evidence/search?q=${encodeURIComponent(query)}&limit=${limit}`); }
   createExpertNode(objectId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/objects/${objectId}`, { body }); }
+  linkExpertArtifactProvenance(objectId, representationId, rationale) { return this.request('POST', `${situationPath(this.config)}/epistemic/objects/${objectId}/artifact-provenance/${representationId}`, { body: { rationale } }); }
   createExpertRelation(relationId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/relations/${relationId}`, { body }); }
   createExpertArgument(argumentId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}`, { body }); }
   createExpertGrounding(argumentId, groundingId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/arguments/${argumentId}/grounding/${groundingId}`, { body }); }

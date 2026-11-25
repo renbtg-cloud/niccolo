@@ -13,6 +13,7 @@ import { InterventionPanel } from './InterventionPanel.jsx';
 import { DraftProvenance, InvestigatorInputDraftPanel } from './InvestigatorInputDraftPanel.jsx';
 import { WorkbenchProsePanel } from './WorkbenchProsePanel.jsx';
 import { WorkbenchGraph } from './WorkbenchGraph.jsx';
+import { WorkbenchArtifactSources } from './WorkbenchArtifactSources.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -220,6 +221,13 @@ export function ExpertWorkbenchPage() {
         relationType.current?.focus();
       }}
     />
+    {data.nodes.length > 0 && <WorkbenchArtifactSources
+      key={`${client.config.workspace}:${client.config.situation}`}
+      client={client}
+      nodes={data.nodes}
+      links={data.artifact_provenance ?? []}
+      onLinked={() => workbench.refetch()}
+    />}
     {data.investigator_free_text_compiler_enabled && data.nodes.length > 0 && <WorkbenchProsePanel
       key={`${client.config.workspace}:${client.config.situation}`}
       client={client}
@@ -422,8 +430,12 @@ export function ExpertWorkbenchPage() {
       <p>{data.nodes.length} objects · {data.evidence.length} visible evidence fragments · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
       <ul>{data.nodes.map((n) => {
         const source = data.draft_sources?.find((draft) => draft.object_ids.includes(n.object_id));
+        const artifactSources = data.artifact_provenance?.filter((link) => link.object_id === n.object_id) ?? [];
         return <li key={n.object_id} id={`workbench-object-${n.object_id}`}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small>
           {source && <DraftProvenance client={client} source={source}/>}
+          {artifactSources.length > 0 && <ul>{artifactSources.map((link) => <li key={link.representation_id}>
+            <a href={`#source-${link.object_id}-${link.representation_id}`}>{link.artifact_label} · {link.scope_locator}</a>
+          </li>)}</ul>}
         </li>;
       })}</ul>
       {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => {

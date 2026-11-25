@@ -111,6 +111,11 @@ a connection, choose the starting object and select **Start a relation here**. F
 and select **Connect to focused object**. This opens the relation form with both endpoints selected.
 Choose the appropriate relation and give your rationale before recording it.
 
+Open **Link external artifact provenance** to connect a graph object to a specific description or
+transcription recorded in the Situation. State why the supplied material is relevant. The link
+preserves the particular artifact, scope, qualification, supplied words, and who recorded the
+link. Refer back to it when reviewing the object's support.
+
 Open **Describe or investigate selected objects** in the Workbench and choose the objects to send
 to the configured model. **Describe selection** returns editable, downloadable prose with links to
 the graph it cites. **Suggest questions and what-ifs** proposes investigative leads and explains

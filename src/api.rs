@@ -330,6 +330,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(create_expert_epistemic_node),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/objects/{object}/artifact-provenance/{representation}",
+            post(link_expert_artifact_provenance),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/relations/{relation}",
             post(create_expert_epistemic_relation),
         )
@@ -3804,6 +3808,26 @@ async fn create_expert_epistemic_relation(
         StatusCode::CREATED
     };
     Ok(no_store(json!({"relation":relation}), status))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArtifactProvenanceRequest {
+    rationale: String,
+}
+
+async fn link_expert_artifact_provenance(
+    State(state): State<AppState>,
+    Path((workspace, situation, object, representation)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<ArtifactProvenanceRequest>,
+) -> Result<Response, ApiError> {
+    let author = guard(&state, &headers, workspace, Capability::Write).await?;
+    let inserted = epistemic_workbench::link_artifact_provenance(
+        &state.pool, workspace, situation, author, object, representation, &input.rationale,
+    ).await?;
+    let status = if inserted { StatusCode::CREATED } else { StatusCode::OK };
+    Ok(no_store(json!({"replayed":!inserted}), status))
 }
 
 async fn create_expert_epistemic_argument(

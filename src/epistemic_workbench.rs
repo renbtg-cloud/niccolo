@@ -78,6 +78,18 @@ pub struct ExpertNode {
     pub replayed: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactProvenance {
+    pub object_id: Uuid,
+    pub artifact_id: Uuid,
+    pub representation_id: Uuid,
+    pub artifact_label: String,
+    pub scope_locator: String,
+    pub qualification: Option<String>,
+    pub rationale: String,
+    pub recorded_by: Uuid,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RelationFamily {
@@ -762,6 +774,8 @@ pub struct WorkbenchSnapshot {
     pub assessments: Vec<assessment::AssessmentEvent>,
     pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
     pub draft_sources: Vec<WorkbenchDraftSource>,
+    #[serde(default)]
+    pub artifact_provenance: Vec<ArtifactProvenance>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
@@ -937,6 +951,62 @@ async fn object_available_in_situation(
         _ => false,
     };
     Ok(available.then_some(kind))
+}
+
+pub async fn link_artifact_provenance(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    object: Uuid,
+    representation: Uuid,
+    rationale: &str,
+) -> Result<bool, WorkbenchError> {
+    let rationale = rationale.trim();
+    if !valid_text(rationale, 4096) {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    match object_available_in_situation(&mut tx, workspace, situation, object).await? {
+        None => return Err(WorkbenchError::Invisible),
+        Some(kind) if kind == "ARGUMENT" => return Err(WorkbenchError::Invalid),
+        Some(_) => (),
+    }
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.workbench_artifact_provenance
+            (workspace_id,situation_id,object_id,representation_id,rationale,recorded_by)
+         SELECT $1,$2,$3,$4,$5,$6 FROM niccolo.situation_artifact_representations
+         WHERE workspace_id=$1 AND situation_id=$2 AND representation_id=$4
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(object)
+    .bind(representation)
+    .bind(rationale)
+    .bind(actor)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected() == 1;
+    if !inserted {
+        let prior: Option<(String, Uuid)> = sqlx::query_as(
+            "SELECT rationale,recorded_by FROM niccolo.workbench_artifact_provenance
+             WHERE workspace_id=$1 AND situation_id=$2 AND object_id=$3 AND representation_id=$4",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(object)
+        .bind(representation)
+        .fetch_optional(&mut *tx)
+        .await?;
+        match prior {
+            None => return Err(WorkbenchError::Invisible),
+            Some((note, by)) if note != rationale || by != actor => return Err(WorkbenchError::Conflict),
+            Some(_) => (),
+        }
+    }
+    tx.commit().await?;
+    Ok(inserted)
 }
 
 #[expect(
@@ -2871,6 +2941,31 @@ pub async fn snapshot(
         relation_ids,
     })
     .collect();
+    let artifact_provenance = sqlx::query_as(
+        "SELECT p.object_id,r.artifact_id,p.representation_id,a.label,r.scope_locator,
+                r.epistemic_qualification,p.rationale,p.recorded_by
+         FROM niccolo.workbench_artifact_provenance p
+         JOIN niccolo.situation_artifact_representations r USING(workspace_id,situation_id,representation_id)
+         JOIN niccolo.artifacts a ON a.workspace_id=r.workspace_id AND a.artifact_id=r.artifact_id
+         WHERE p.workspace_id=$1 AND p.situation_id=$2
+         ORDER BY p.recorded_at,p.object_id,p.representation_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .map(|(object_id, artifact_id, representation_id, artifact_label, scope_locator, qualification, rationale, recorded_by)| ArtifactProvenance {
+        object_id,
+        artifact_id,
+        representation_id,
+        artifact_label,
+        scope_locator,
+        qualification,
+        rationale,
+        recorded_by,
+    })
+    .collect();
     tx.commit().await?;
     let question_inquiries = question_inquiries(&nodes, &relations, &assessments);
     let authored_object_impacts =
@@ -2904,6 +2999,7 @@ pub async fn snapshot(
         assessments,
         assessment_dependencies,
         draft_sources,
+        artifact_provenance,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -2951,6 +3047,7 @@ mod tests {
             assessments: vec![],
             assessment_dependencies: vec![],
             draft_sources: vec![],
+            artifact_provenance: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();

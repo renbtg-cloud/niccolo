@@ -198,6 +198,49 @@ async fn http_flow_records_human_material_without_accepting_or_reading_artifact_
     assert_eq!(represented["artifact_was_parsed"], false);
     assert_eq!(represented["representation_establishes_truth"], false);
 
+    let epistemic = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic",
+        setup.workspace, setup.situation,
+    );
+    let object = Uuid::new_v4();
+    let object_path = format!("{epistemic}/objects/{object}");
+    let (status, _) = invoke(
+        setup.router.clone(),
+        request("POST", &object_path, &setup.token, Some(json!({
+            "kind":"PROPOSITION", "text":"A description suggests that João left the room.",
+            "rationale":"Record the attributed statement."
+        }))),
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let link = format!("{object_path}/artifact-provenance/{representation}");
+    let rationale = "Scope contains the described departure.";
+    for (uri, note, expected) in [
+        (link.clone(), rationale, StatusCode::CREATED),
+        (link.clone(), rationale, StatusCode::OK),
+        (link, "A different attribution rationale", StatusCode::CONFLICT),
+        (format!("{object_path}/artifact-provenance/{}", Uuid::new_v4()), rationale, StatusCode::NOT_FOUND),
+    ] {
+        let (status, _) = invoke(
+            setup.router.clone(),
+            request("POST", &uri, &setup.token, Some(json!({"rationale":note}))),
+        ).await;
+        assert_eq!(status, expected);
+    }
+    let (status, workbench) = invoke(
+        setup.router.clone(),
+        request("GET", &format!("{epistemic}/workbench"), &setup.token, None),
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let provenance = workbench["artifact_provenance"].as_array().unwrap();
+    assert_eq!(provenance.len(), 1);
+    assert_eq!(provenance[0]["object_id"], object.to_string());
+    assert_eq!(provenance[0]["artifact_id"], video.to_string());
+    assert_eq!(provenance[0]["representation_id"], representation.to_string());
+    assert_eq!(provenance[0]["scope_locator"], "00:13:20-00:13:45");
+    assert_eq!(provenance[0]["qualification"], "human report");
+    assert_eq!(provenance[0]["rationale"], rationale);
+
     let relationship = Uuid::new_v4();
     let (status, related) = invoke(
         setup.router.clone(),
