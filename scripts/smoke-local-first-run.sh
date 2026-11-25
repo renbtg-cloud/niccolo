@@ -121,99 +121,97 @@ denied="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_cod
   echo "Expected 403 across workspaces, got $denied" >&2
   exit 1
 }
-# Import a WhatsApp export through the same API used by React. Verify byte-exact
-# retention, two attributed fragments, safe replay, and Situation attachment.
-source_file=".niccolo-local/ci-whatsapp.txt"
-printf '[08/11/2026, 09:00] Ana: Vou chegar ao meio-dia.\n[08/11/2026, 09:01] Beto: Combinado.\n' > "$source_file"
-document_id="$(node -p "require('node:crypto').randomUUID()")"
-source_path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${document_id}"
-source_result="$(curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-whatsapp.txt' \
-  --data-binary @"$source_file" "$source_path")"
-printf '%s' "$source_result" | node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(j.replayed!==false||j.fragment_ids?.length!==2)process.exit(1);
-});'
-replay="$(curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-whatsapp.txt' \
-  --data-binary @"$source_file" "$source_path")"
-printf '%s' "$replay" | node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(j.replayed!==true||j.fragment_ids?.length!==2)process.exit(1);
-});'
-speakers="$(curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" "${source_path}/speakers")"
-printf '%s' "$speakers" | node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(j.speaker_labels_are_verified_identities!==false ||
-    !j.speakers?.some(x=>x.speaker_label==="Ana") ||
-    !j.speakers?.some(x=>x.speaker_label==="Beto"))process.exit(1);
-});'
-curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  "${source_path}/original" -o ".niccolo-local/ci-original.txt"
-cmp "$source_file" ".niccolo-local/ci-original.txt"
-catalog="$(curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources")"
-DOCUMENT_ID="$document_id" node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- const d=j.documents?.find(x=>x.document_id===process.env.DOCUMENT_ID);
- if(!d||!d.original_bytes_available||d.fragment_count!==2)process.exit(1);
-});' <<< "$catalog"
-attach="$(curl --max-time 10 --silent --show-error --fail \
-  -X POST -H "Authorization: Bearer ${token}" \
-  "${path}/sources/${document_id}")"
-DOCUMENT_ID="$document_id" node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(!j.source_document_ids?.includes(process.env.DOCUMENT_ID))process.exit(1);
-});' <<< "$attach"
-denied_source="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' \
-  -H "Authorization: Bearer ${token}" \
-  "http://127.0.0.1:38080/v1/workspaces/${other_workspace}/sources/${document_id}/original")"
-[[ "$denied_source" == 403 ]] || {
-  echo "Expected 403 for cross-workspace source download, got $denied_source" >&2
-  exit 1
-}
-echo 'PASS: source upload/replay/attribution/original bytes/attachment'
+# Exercise the supported surface with the freshly provisioned credentials.
+MVP_SITUATION_URL="$path" MVP_TOKEN="$token" node <<'JS'
+const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
+const base = process.env.MVP_SITUATION_URL;
 
-# A second source format must coexist with the chat in one Situation.
-eml_file=".niccolo-local/ci-mail.eml"
-printf 'From: Ana <ana@example.test>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nO encontro está confirmado.\r\n' > "$eml_file"
-email_id="$(node -p "require('node:crypto').randomUUID()")"
-email_path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${email_id}"
-email_result="$(curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  -H 'Content-Type: message/rfc822' -H 'X-Source-Locator: ci-mail.eml' \
-  --data-binary @"$eml_file" "$email_path")"
-printf '%s' "$email_result" | node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(j.replayed!==false||j.fragment_ids?.length!==1)process.exit(1);
-});'
-curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  "${email_path}/original" -o ".niccolo-local/ci-original.eml"
-cmp "$eml_file" ".niccolo-local/ci-original.eml"
-curl --max-time 10 --silent --show-error --fail -X POST \
-  -H "Authorization: Bearer ${token}" \
-  "${path}/sources/${email_id}" >/dev/null
-sources_attached="$(curl --max-time 10 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" "$path")"
-WHATSAPP_ID="$document_id" EMAIL_ID="$email_id" node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(!j.source_document_ids?.includes(process.env.WHATSAPP_ID) ||
-    !j.source_document_ids?.includes(process.env.EMAIL_ID))process.exit(1);
-});' <<< "$sources_attached"
-echo 'PASS: two source formats attached to one Situation'
+async function request(path, body, expected = body === undefined ? 200 : 201, contentType = 'application/json') {
+  const response = await fetch(base + path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {
+      Authorization: 'Bearer ' + process.env.MVP_TOKEN,
+      'Content-Type': contentType,
+    },
+    body: body === undefined ? undefined : contentType === 'application/json' ? JSON.stringify(body) : body,
+    signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(response.status, expected, path);
+  return response.headers.get('content-type')?.includes('application/json') ? response.json() : null;
+}
+
+async function verifyPilot() {
+  const artifactId = randomUUID();
+  const artifactPath = '/artifacts/' + artifactId;
+  const artifact = await request(artifactPath, {
+    artifact_type: 'VIDEO',
+    label: 'external-witness-video.mp4',
+    declared_mime_type: 'video/mp4',
+    declared_byte_length: 18000000000,
+  });
+  assert.equal(artifact.source_bytes_stored, false);
+  assert.equal(artifact.parsers_invoked, false);
+  assert.equal(artifact.artifact_was_inspected, false);
+  const storage = await request(artifactPath + '/storage-references/' + randomUUID(), {
+    access_event_id: randomUUID(),
+    storage_type: 'S3',
+    locator: 's3://witness-recordings/external-witness-video.mp4',
+    access_status: 'NONE',
+  });
+  assert.equal(storage.locator_was_dereferenced, false);
+  const description = await request(artifactPath + '/representations/' + randomUUID(), {
+    representation_type: 'HUMAN_DESCRIPTION',
+    producer_type: 'USER',
+    producer_label: 'Investigator',
+    production_method: 'Reviewed externally',
+    scope_locator: '00:00:13',
+    content: 'The witness reports hearing the victim ask for a ride.',
+    completeness_status: 'PARTIAL',
+    epistemic_qualification: 'Uncorroborated testimony',
+    limitations: 'The witness did not report seeing the victim leave.',
+  });
+  assert.equal(description.content_was_explicitly_supplied, true);
+  assert.equal(description.artifact_was_parsed, false);
+  assert.equal(description.representation_establishes_truth, false);
+
+  const workbenchPath = '/epistemic/workbench';
+  const empty = await request(workbenchPath);
+  assert.equal(empty.investigator_free_text_compiler_enabled, false);
+  await request(workbenchPath + '/input-draft', { text: 'The witness reports hearing a request.' }, 503);
+
+  const premise = randomUUID();
+  const question = randomUUID();
+  const relation = randomUUID();
+  await request('/epistemic/objects/' + premise, {
+    kind: 'PROPOSITION',
+    text: 'An uncorroborated witness reported hearing the victim ask for a ride.',
+    rationale: 'Human description of an external recording.',
+  });
+  await request('/epistemic/objects/' + question, {
+    kind: 'QUESTION',
+    text: 'Did the victim get in the car?',
+    rationale: 'Distinguish the request from the trip.',
+  });
+  await request('/epistemic/relations/' + relation, {
+    family: 'CONTEXTUAL',
+    kind: 'RELEVANT_TO',
+    left_object_id: premise,
+    right_object_id: question,
+    rationale: 'The request motivates checking whether the trip occurred.',
+  });
+  const snapshot = await request(workbenchPath);
+  assert.deepEqual(new Set(snapshot.nodes.map(node => node.object_id)), new Set([premise, question]));
+  assert.equal(snapshot.relations[0].relation_id, relation);
+  assert.equal(snapshot.relations[0].right_object_id, question);
+  console.log('PASS: external artifact metadata, human description, and manual investigative graph without a model');
+}
+
+verifyPilot().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
+JS
 
 # Human context has distinct provenance from source evidence and must be
 # correctable/retractable without rewriting previous Situation revisions.
@@ -269,7 +267,7 @@ retracted="$(curl --max-time 10 --silent --show-error --fail -X POST \
 printf '%s' "$retracted" | node -e '
 let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
  const j=JSON.parse(s);
- if(j.contributions?.length!==0||j.source_document_ids?.length!==2)
+ if(j.contributions?.length!==0||j.source_document_ids?.length!==0)
     process.exit(1);
 });'
 echo 'PASS: context provenance, idempotent replay, correction, frozen history, retraction'
@@ -306,50 +304,6 @@ psql -X -q -v ON_ERROR_STOP=1 -v dbname="$role_probe_db" "$NICCOLO_PG_ADMIN_URL"
 SELECT format('DROP DATABASE %I', :'dbname') \gexec
 SQL
 echo 'PASS: preflight refuses reuse of cluster-global service role'
-
-# The MVP advertises up to 4 MiB per source. Verify real HTTP ingestion
-# accepts more than the default Axum 2 MiB body cap, without skipping
-# fragment-bound checks or byte-exact original retention.
-large_file=".niccolo-local/ci-large-chat.txt"
-node -e '
-const message="x".repeat(32000);
-for(let i=0;i<66;i++)
-  process.stdout.write("[08/11/2026, 10:00] Speaker"+i+": "+message+"\n");
-' > "$large_file"
-large_size="$(wc -c < "$large_file")"
-[[ "$large_size" -gt 2097152 && "$large_size" -lt 4194304 ]] || {
-  echo "Unexpected bounded large source size: $large_size" >&2
-  exit 1
-}
-large_id="$(node -p "require('node:crypto').randomUUID()")"
-large_path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${large_id}"
-large_result="$(curl --max-time 30 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-large-chat.txt' \
-  --data-binary @"$large_file" "$large_path")"
-printf '%s' "$large_result" | node -e '
-let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{
- const j=JSON.parse(s);
- if(j.replayed!==false||j.fragment_ids?.length!==66)process.exit(1);
-});'
-curl --max-time 30 --silent --show-error --fail \
-  -H "Authorization: Bearer ${token}" \
-  "${large_path}/original" -o ".niccolo-local/ci-large-original.txt"
-cmp "$large_file" ".niccolo-local/ci-large-original.txt"
-oversize_file=".niccolo-local/ci-oversized-chat.txt"
-node -e 'process.stdout.write("x".repeat(4*1024*1024+1))' > "$oversize_file"
-oversize_id="$(node -p "require('node:crypto').randomUUID()")"
-oversize_status="$(curl --max-time 30 --silent --show-error \
-  --output /dev/null --write-out '%{http_code}' \
-  -H "Authorization: Bearer ${token}" \
-  -H 'Content-Type: text/plain' -H 'X-Source-Locator: ci-oversized-chat.txt' \
-  --data-binary @"$oversize_file" \
-  "http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/sources/${oversize_id}")"
-[[ "$oversize_status" == 413 ]] || {
-  echo "Expected HTTP 413 for a source above 4 MiB, got $oversize_status" >&2
-  exit 1
-}
-echo 'PASS: HTTP source limit accepts 2–4 MiB, rejects >4 MiB, retains exact bytes'
 
 # Reject migrations over an unrelated application's tables, even when
 # there is no Niccolo schema yet.
