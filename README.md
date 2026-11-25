@@ -106,6 +106,10 @@ cluster**, not just a database. Use a dedicated cluster for an independent
 installation rather than letting bootstrap silently modify another
 installation's service credentials.
 
+The local API listens on loopback port `38080` by default. Set `NICCOLO_API_PORT`
+before bootstrap to select a different port. Bootstrap records it in the local
+configuration and uses it in the prepared browser URL.
+
 It writes private files under the ignored `.niccolo-local/` folder:
 `local.env` (restricted service DB URL), `identifiers.txt` (workspace and
 Situation identifiers), and `token.txt` (bearer token). Treat the folder
