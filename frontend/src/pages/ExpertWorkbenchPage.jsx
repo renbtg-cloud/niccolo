@@ -12,6 +12,7 @@ import { ActionDecisionPanel } from './ActionDecisionPanel.jsx';
 import { InterventionPanel } from './InterventionPanel.jsx';
 import { DraftProvenance, InvestigatorInputDraftPanel } from './InvestigatorInputDraftPanel.jsx';
 import { WorkbenchProsePanel } from './WorkbenchProsePanel.jsx';
+import { WorkbenchGraph } from './WorkbenchGraph.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -112,6 +113,7 @@ export function ExpertWorkbenchPage() {
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const nodeText = useRef(null);
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
+  const relationType = useRef(null);
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
@@ -184,6 +186,12 @@ export function ExpertWorkbenchPage() {
     setError('');
     try { action(); } catch (e) { setError(e.message); }
   };
+  function changeRelationType(family, kind) {
+    const left = data.nodes.find(n => n.object_id === relation.left);
+    const right = data.nodes.find(n => n.object_id === relation.right);
+    const compatible = left && right && relationEndpointAllowed(family, kind, left.kind, right.kind);
+    setRelation({ ...relation, family, kind, left: compatible ? left.object_id : '', right: compatible ? right.object_id : '' });
+  }
 
   if (!client) return <section><h2>Epistemic Workbench</h2><p>Connect a Situation first.</p></section>;
 
@@ -203,6 +211,15 @@ export function ExpertWorkbenchPage() {
       enabled={data.investigator_free_text_compiler_enabled}
       onAdopted={() => workbench.refetch()}
     />}
+    <WorkbenchGraph
+      key={`${client.config.workspace}:${client.config.situation}`}
+      nodes={data.nodes}
+      relations={data.relations}
+      onConnect={(left, right) => {
+        setRelation({ family: 'CONTEXTUAL', kind: 'RELEVANT_TO', left, right, rationale: '' });
+        relationType.current?.focus();
+      }}
+    />
     {data.investigator_free_text_compiler_enabled && data.nodes.length > 0 && <WorkbenchProsePanel
       key={`${client.config.workspace}:${client.config.situation}`}
       client={client}
@@ -239,8 +256,8 @@ export function ExpertWorkbenchPage() {
 
       <form onSubmit={submit(() => createRelation.mutate(relationRequest(relation.family, relation.kind, relation.left, relation.right, relation.rationale)))}>
         <h3>Add typed relation</h3>
-        <label>Family<select value={relation.family} onChange={(e) => setRelation({ ...relation, family: e.target.value, kind: relationKinds[e.target.value][0], left:'', right:'' })}>{Object.keys(relationKinds).map((x) => <option key={x}>{x}</option>)}</select></label>
-        <label>Relation<select value={relation.kind} onChange={(e) => setRelation({ ...relation, kind: e.target.value, left:'', right:'' })}>{relationKinds[relation.family].map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>Family<select value={relation.family} onChange={(e) => changeRelationType(e.target.value, relationKinds[e.target.value][0])}>{Object.keys(relationKinds).map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>Relation<select ref={relationType} value={relation.kind} onChange={(e) => changeRelationType(relation.family, e.target.value)}>{relationKinds[relation.family].map((x) => <option key={x}>{x}</option>)}</select></label>
         <small className="relation-semantics">{relationSemantics[relation.kind].description}</small>
         <label>{relationSemantics[relation.kind].left}<select value={relation.left} onChange={(e) => setRelation({ ...relation, left: e.target.value })}><option value="">Choose…</option>{data.nodes.filter(n => relationEndpointAllowed(relation.family, relation.kind, n.kind, data.nodes.find(o => o.object_id === relation.right)?.kind)).map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>
         <label>{relationSemantics[relation.kind].right}<select value={relation.right} onChange={(e) => setRelation({ ...relation, right: e.target.value })}><option value="">Choose…</option>{data.nodes.filter(n => relationEndpointAllowed(relation.family, relation.kind, n.kind, data.nodes.find(o => o.object_id === relation.left)?.kind, 'right')).map((n) => <option key={n.object_id} value={n.object_id}>{n.kind}: {n.text}</option>)}</select></label>

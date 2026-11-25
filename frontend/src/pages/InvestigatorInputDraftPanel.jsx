@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { relationEndpointAllowed, relationKinds } from '../state/expertWorkbench.js';
+import { DraftGraphPreview } from './WorkbenchGraph.jsx';
 
 const draftKinds = {
   PROPOSITION: 'Statement',
@@ -83,6 +84,7 @@ export function InvestigatorInputDraftPanel({ client, enabled, onAdopted }) {
       <h4>Proposed structure for review</h4>
       <p>Suggested by {suggestion.provider} / {suggestion.model}. Edit or remove any item before recording.</p>
       <blockquote>{suggestion.input_text}</blockquote>
+      <DraftGraphPreview graph={reviewed}/>
       {!reviewed.objects.length && <p>No objects to record in this draft.</p>}
       <fieldset disabled={pending} className="human-context">
         <legend>Objects and connections</legend>
