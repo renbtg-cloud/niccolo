@@ -1,7 +1,7 @@
 //! Expert-authored epistemic workbench for the structured MVP.
 //!
-//! MVP users explicitly create epistemic abstractions and relationships. This module does
-//! not parse investigator free text into abstractions; that compiler is a post-MVP layer.
+//! Investigator-approved abstractions and relationships live here. Model-assisted
+//! interpretation runs separately and produces a draft for the investigator.
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{BTreeMap, BTreeSet};
@@ -55,7 +55,7 @@ pub enum ExpertNodeKind {
     Finding,
 }
 impl ExpertNodeKind {
-    fn db_value(self) -> &'static str {
+    pub(crate) fn db_value(self) -> &'static str {
         match self {
             Self::Proposition => "PROPOSITION",
             Self::Hypothesis => "HYPOTHESIS",
@@ -150,7 +150,7 @@ impl RelationKind {
             Self::Attenuates => "ATTENUATES",
         }
     }
-    fn family(self) -> RelationFamily {
+    pub(crate) fn family(self) -> RelationFamily {
         match self {
             Self::EquivalentTo
             | Self::MoreSpecificThan
@@ -182,7 +182,7 @@ impl RelationKind {
             Self::EquivalentTo | Self::Contradicts | Self::PartialOverlap
         )
     }
-    fn accepts_endpoints(self, left: &str, right: &str) -> bool {
+    pub(crate) fn accepts_endpoints(self, left: &str, right: &str) -> bool {
         match self {
             Self::AddressesGap => left == "QUESTION" && right == "INFORMATION_GAP",
             Self::TestsHypothesis => left == "QUESTION" && right == "HYPOTHESIS",
@@ -2847,7 +2847,7 @@ mod tests {
     }
 
     #[test]
-    fn mvp_free_text_compiler_is_not_part_of_the_workbench_contract() {
+    fn store_snapshot_does_not_claim_a_model_is_configured() {
         let value = serde_json::to_value(WorkbenchSnapshot {
             situation_id: Uuid::nil(),
             nodes: vec![],

@@ -57,6 +57,87 @@ async fn situation(f: &Fixture, focus: &str) -> Uuid {
     situation
 }
 
+#[tokio::test]
+async fn investigator_text_drafts_expose_model_provenance_without_writing_the_case() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode, header},
+    };
+    use niccolo_evidence::model_adapter::{ModelFuture, ModelRequest, ModelResponse, ReasoningModel};
+    use serde_json::{Value, json};
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use tower::ServiceExt;
+
+    const INPUT: &str = "Parece que a vítima pediu carona.";
+    struct DraftModel(AtomicUsize);
+    impl ReasoningModel for DraftModel {
+        fn provider(&self) -> &str { "router" }
+        fn model(&self) -> &str { "configured-model" }
+        fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
+            Box::pin(async move {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(request.input, json!({"investigator_text":INPUT}));
+                Ok(ModelResponse {
+                    value: json!({
+                        "objects":[{"kind":"PROPOSITION","text":INPUT,"source_excerpt":INPUT}],
+                        "relations":[]
+                    }),
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    effective_provider: Some("draft-provider".into()),
+                    effective_model: Some("draft-model".into()),
+                    fallback_used: false,
+                })
+            })
+        }
+    }
+
+    let f = fixture().await;
+    let sit = situation(&f, "Do not send this private focus to the model").await;
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let token = |principal, can_write| {
+        authz::provision_token(&admin, principal, f.workspace, true, can_write, 1)
+    };
+    let reader = token(Uuid::new_v4(), false).await.unwrap();
+    let writer = token(Uuid::new_v4(), true).await.unwrap();
+    let secure = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let model = Arc::new(DraftModel(AtomicUsize::new(0)));
+    let router = niccolo_evidence::api::router_with_model(secure, model.clone());
+    let request = |token: &str, target| {
+        Request::builder()
+            .method("POST")
+            .uri(format!(
+                "/v1/workspaces/{}/situations/{target}/epistemic/workbench/input-draft",
+                f.workspace
+            ))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(json!({"text":INPUT}).to_string()))
+            .unwrap()
+    };
+    let forbidden = router.clone().oneshot(request(&reader, sit)).await.unwrap();
+    assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+    let absent = router.clone().oneshot(request(&writer, Uuid::new_v4())).await.unwrap();
+    assert_eq!(absent.status(), StatusCode::NOT_FOUND);
+    assert_eq!(model.0.load(Ordering::SeqCst), 0);
+
+    let response = router.oneshot(request(&writer, sit)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let data: Value = serde_json::from_slice(&to_bytes(response.into_body(), 65_536).await.unwrap()).unwrap();
+    assert_eq!(data["provider"], "draft-provider");
+    assert_eq!(data["model"], "draft-model");
+    assert_eq!(data["input_text"], INPUT);
+    assert_eq!(data["draft"]["objects"][0]["source_excerpt"], INPUT);
+    assert_eq!(model.0.load(Ordering::SeqCst), 1);
+    assert!(epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap().nodes.is_empty());
+}
+
 async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) -> Uuid {
     let id = Uuid::new_v4();
     epistemic_workbench::create_node(
