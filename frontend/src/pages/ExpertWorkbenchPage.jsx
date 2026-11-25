@@ -193,6 +193,10 @@ export function ExpertWorkbenchPage() {
     const compatible = left && right && relationEndpointAllowed(family, kind, left.kind, right.kind);
     setRelation({ ...relation, family, kind, left: compatible ? left.object_id : '', right: compatible ? right.object_id : '' });
   }
+  function editSuggestedObject(candidate) {
+    setNode(candidate);
+    nodeText.current?.focus();
+  }
 
   if (!client) return <section><h2>Epistemic Workbench</h2><p>Connect a Situation first.</p></section>;
 
@@ -211,6 +215,7 @@ export function ExpertWorkbenchPage() {
       client={client}
       enabled={data.investigator_free_text_compiler_enabled}
       onAdopted={() => workbench.refetch()}
+      onEditCandidate={editSuggestedObject}
     />}
     <WorkbenchGraph
       key={`${client.config.workspace}:${client.config.situation}`}
@@ -232,10 +237,7 @@ export function ExpertWorkbenchPage() {
       key={`${client.config.workspace}:${client.config.situation}`}
       client={client}
       nodes={data.nodes}
-      onEditCandidate={candidate => {
-        setNode(candidate);
-        nodeText.current?.focus();
-      }}
+      onEditCandidate={editSuggestedObject}
     />}
 
     <div className="expert-workbench-grid">

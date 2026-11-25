@@ -105,6 +105,8 @@ connections, model identity and input excerpts. Edit or remove items and choose
 **Record reviewed structure** to record what you approved as a single operation. Open the draft
 provenance from a recorded object or connection to compare the input and model's proposal with
 what the investigator accepted. The manual forms work when no model is configured.
+The review panel has a one-draft option to request questions and what-ifs after recording. It
+starts unchecked and sends only that draft's newly recorded objects and their connections.
 
 In **Investigative graph**, choose an object to see its incoming and outgoing connections. To add
 a connection, choose the starting object and select **Start a relation here**. Focus the destination

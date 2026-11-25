@@ -13,6 +13,24 @@ function CitedBasis({ keys, basis }) {
   })}</ul>;
 }
 
+export function InvestigationSuggestions({ result, onEditCandidate }) {
+  return <>
+    <h4>Investigation suggestions</h4>
+    <p>Suggested by {result.provider} / {result.model}. Review each item before recording it.</p>
+    {!result.suggestions.length && <p>The model found no suggestions in this selection.</p>}
+    <ol>{result.suggestions.map((item, index) => <li key={index}>
+      <strong>{item.kind === 'QUESTION' ? 'Question' : 'What-if'}:</strong> {item.text}
+      <p>{item.why_it_matters}</p>
+      <CitedBasis keys={item.references} basis={result.basis}/>
+      <button type="button" onClick={() => onEditCandidate({
+        kind: item.kind === 'QUESTION' ? 'QUESTION' : 'ASSUMPTION',
+        text: item.text,
+        rationale: `Suggested by ${result.provider} / ${result.model}. ${item.why_it_matters}`,
+      })}>Edit before recording</button>
+    </li>)}</ol>
+  </>;
+}
+
 export function WorkbenchProsePanel({ client, nodes, onEditCandidate }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [language, setLanguage] = useState('');
@@ -77,20 +95,6 @@ export function WorkbenchProsePanel({ client, nodes, onEditCandidate }) {
     </>}
     {suggest.isPending && <p role="status">Waiting for investigation suggestions…</p>}
     {suggest.error && <p role="alert" className="error">{suggest.error.message}</p>}
-    {suggest.data && <>
-      <h4>Investigation suggestions</h4>
-      <p>Suggested by {suggest.data.provider} / {suggest.data.model}. Review each item before recording it.</p>
-      {!suggest.data.suggestions.length && <p>The model found no suggestions in this selection.</p>}
-      <ol>{suggest.data.suggestions.map((item, index) => <li key={index}>
-        <strong>{item.kind === 'QUESTION' ? 'Question' : 'What-if'}:</strong> {item.text}
-        <p>{item.why_it_matters}</p>
-        <CitedBasis keys={item.references} basis={suggest.data.basis}/>
-        <button type="button" onClick={() => onEditCandidate({
-          kind: item.kind === 'QUESTION' ? 'QUESTION' : 'ASSUMPTION',
-          text: item.text,
-          rationale: `Suggested by ${suggest.data.provider} / ${suggest.data.model}. ${item.why_it_matters}`,
-        })}>Edit before recording</button>
-      </li>)}</ol>
-    </>}
+    {suggest.data && <InvestigationSuggestions result={suggest.data} onEditCandidate={onEditCandidate}/>}
   </details>;
 }

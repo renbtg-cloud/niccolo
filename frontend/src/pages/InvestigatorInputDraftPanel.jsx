@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { relationEndpointAllowed, relationKinds } from '../state/expertWorkbench.js';
 import { DraftGraphPreview } from './WorkbenchGraph.jsx';
+import { InvestigationSuggestions } from './WorkbenchProsePanel.jsx';
 
 const draftKinds = {
   PROPOSITION: 'Statement',
@@ -33,11 +34,15 @@ function validDraftRelation(relation, objects) {
     && relation.explanation.trim() && encoder.encode(relation.explanation).length <= 1024;
 }
 
-export function InvestigatorInputDraftPanel({ client, enabled, onAdopted }) {
+export function InvestigatorInputDraftPanel({ client, enabled, onAdopted, onEditCandidate }) {
   const [text, setText] = useState('');
   const [suggestion, setSuggestion] = useState(null);
   const [reviewed, setReviewed] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [requestSuggestions, setRequestSuggestions] = useState(false);
+  const suggest = useMutation({
+    mutationFn: async (ids) => (await client.suggestExpertInvestigation(ids, null)).value,
+  });
   const generate = useMutation({
     mutationFn: async (input) => (await client.draftExpertInput(input)).value,
     onSuccess: (result) => {
@@ -47,15 +52,17 @@ export function InvestigatorInputDraftPanel({ client, enabled, onAdopted }) {
   });
   const adopt = useMutation({
     mutationFn: ({ id, graph }) => client.adoptExpertInputDraft(id, graph),
-    onSuccess: async () => {
+    onSuccess: async ({ value }, submitted) => {
       setSuggestion(null);
       setText('');
       setSaved(true);
+      setRequestSuggestions(false);
+      if (submitted.suggest) suggest.mutate(value.object_ids);
       await onAdopted();
     },
   });
   const canDraft = text.trim() && encoder.encode(text).length <= inputLimit;
-  const pending = generate.isPending || adopt.isPending;
+  const pending = generate.isPending || adopt.isPending || suggest.isPending;
   const canAdopt = reviewed?.objects.length > 0
     && reviewed.objects.every((object) => object.text.trim() && encoder.encode(object.text).length <= 2048)
     && reviewed.relations.every((relation) => validDraftRelation(relation, reviewed.objects));
@@ -64,7 +71,9 @@ export function InvestigatorInputDraftPanel({ client, enabled, onAdopted }) {
     if (!canDraft || pending) return;
     setSuggestion(null);
     setSaved(false);
+    setRequestSuggestions(false);
     adopt.reset();
+    suggest.reset();
     generate.mutate(text);
   }
   const update = (items, index, patch) => setReviewed((graph) => ({
@@ -80,6 +89,12 @@ export function InvestigatorInputDraftPanel({ client, enabled, onAdopted }) {
     {generate.isPending && <p role="status">Waiting for the model's draft…</p>}
     {generate.error && <p role="alert" className="error">{generate.error.message}</p>}
     {saved && <p role="status">Reviewed structure recorded in the Workbench.</p>}
+    {suggest.isPending && <p role="status">Waiting for suggestions about the recorded objects…</p>}
+    {suggest.error && <div>
+      <p role="alert" className="error">Suggestions failed: {suggest.error.message}</p>
+      <button type="button" onClick={() => suggest.mutate(suggest.variables)}>Retry suggestions</button>
+    </div>}
+    {suggest.data && <InvestigationSuggestions result={suggest.data} onEditCandidate={onEditCandidate}/>}
     {suggestion && reviewed && <>
       <h4>Proposed structure for review</h4>
       <p>Suggested by {suggestion.provider} / {suggestion.model}. Edit or remove any item before recording.</p>
@@ -113,7 +128,10 @@ export function InvestigatorInputDraftPanel({ client, enabled, onAdopted }) {
           {!validDraftRelation(relation, reviewed.objects) && <small>Choose two compatible objects and explain their connection.</small>}
           <button type="button" onClick={() => setReviewed((graph) => ({ ...graph, relations: graph.relations.filter((_, position) => position !== index) }))}>Remove connection</button>
         </div>)}
-        <button type="button" disabled={!canAdopt || pending} onClick={() => adopt.mutate({ id: suggestion.draft_id, graph: reviewed })}>Record reviewed structure</button>
+        <label><input type="checkbox" checked={requestSuggestions} onChange={(event) => setRequestSuggestions(event.target.checked)}/>
+          After recording this draft, request questions and what-ifs about its objects
+        </label>
+        <button type="button" disabled={!canAdopt || pending} onClick={() => adopt.mutate({ id: suggestion.draft_id, graph: reviewed, suggest: requestSuggestions })}>Record reviewed structure</button>
         <button type="button" onClick={() => { adopt.reset(); setSuggestion(null); }}>Close without recording</button>
       </fieldset>
       {adopt.error && <p role="alert" className="error">{adopt.error.message}</p>}
