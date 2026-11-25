@@ -10,6 +10,7 @@ import { ActorEpistemicActPanel } from './ActorEpistemicActPanel.jsx';
 import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
 import { ActionDecisionPanel } from './ActionDecisionPanel.jsx';
 import { InterventionPanel } from './InterventionPanel.jsx';
+import { InvestigatorInputDraftPanel } from './InvestigatorInputDraftPanel.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -52,7 +53,7 @@ function nodeAuthoringGuidance(kind) {
   if(kind==='HYPOTHESIS')return 'You formulate the possibility to investigate. Niccolò will trace only the relations and grounding routes that humans explicitly author; it will not invent a missing hypothesis.';
   if(kind==='ASSUMPTION')return 'State a temporary “what if…” premise. It remains an assumption, never an observation or fact, while Niccolò exposes its explicitly authored downstream impact.';
   if(kind==='QUESTION')return 'Write the question the investigation should test. A question is not an assertion and does not by itself resolve an information gap.';
-  return 'Select the semantic role deliberately. Niccolò does not infer it from unstructured investigator text in the restricted MVP.';
+  return 'Choose the semantic role that represents what you mean to record.';
 }
 
 function nodeTextLabel(kind) {
@@ -109,6 +110,7 @@ export function ExpertWorkbenchPage() {
   const [dependencyReviews, setDependencyReviews] = useState({});
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
+  const nodeText = useRef(null);
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
@@ -186,8 +188,7 @@ export function ExpertWorkbenchPage() {
 
   return <section className="expert-workbench">
     <h2>Epistemic Workbench</h2>
-    <p>This MVP assumes a trained investigator who explicitly authors epistemic abstractions. Niccolò validates and reasons over the structure; it does not translate investigator free text into ontology.</p>
-    <p className="epistemic-boundary"><strong>Post-MVP:</strong> optional free-text interpretation may propose this structure later. It is not enabled here.</p>
+    <p>Author structured objects and relationships directly, or ask a configured model to propose a draft from your text.</p>
     {workbench.isPending && <p role="status">Loading structured model…</p>}
     {workbench.error && <div>
       <p className="error" role="alert">Workbench unavailable: {workbench.error.message}</p>
@@ -195,6 +196,15 @@ export function ExpertWorkbenchPage() {
     </div>}
     {error && <p className="error" role="alert">{error}</p>}
     {mutationError && <p className="error" role="alert">Write failed: {mutationError.message}</p>}
+    {workbench.data && <InvestigatorInputDraftPanel
+      key={`${client.config.workspace}:${client.config.situation}`}
+      client={client}
+      enabled={data.investigator_free_text_compiler_enabled}
+      onUseObject={candidate => {
+        setNode(candidate);
+        nodeText.current?.focus();
+      }}
+    />}
 
     <div className="expert-workbench-grid">
       {data.nodes.some(n => n.kind === 'QUESTION') && <form onSubmit={submit(() => {
@@ -215,7 +225,7 @@ export function ExpertWorkbenchPage() {
         <h3>Author an epistemic object</h3>
         <p>{nodeAuthoringGuidance(node.kind)}</p>
         <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x} value={x}>{nodeKindLabels[x]}</option>)}</select></label>
-        <label>{nodeTextLabel(node.kind)}<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
+        <label>{nodeTextLabel(node.kind)}<textarea ref={nodeText} value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
         <label>Why this abstraction is appropriate<textarea value={node.rationale} maxLength={4096} onChange={(e) => setNode({ ...node, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create object</button>
       </form>

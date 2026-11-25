@@ -78,7 +78,7 @@ The local web interface is intentionally functional and visually restrained. Som
 - **Frontend:** React, React Router, TanStack Query, Zustand, React Hook Form, and Zod.
 - **Model layer:** provider/model interaction and evaluation are independent concerns; the core must not assume that a generated answer is evidence or that a model may authorize action.
 
-Technical details and architectural contracts: [Parser-free external artifacts and parallel observation](docs/architecture/NICCOLO_MVP_EXTERNAL_ARTIFACTS_AND_PARALLEL_OBSERVATION_CONTRACT.md) (**normative restricted-MVP scope**), [MVP composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) (historical context where it conflicts), [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
+Technical details and architectural contracts: [Investigator-assisted MVP](docs/architecture/INVESTIGATOR_ASSISTED_MVP.md), [parser-free external artifacts and parallel observation](docs/architecture/NICCOLO_MVP_EXTERNAL_ARTIFACTS_AND_PARALLEL_OBSERVATION_CONTRACT.md), [MVP composite evidence and human-guided circumstances](docs/architecture/MVP_COMPOSITE_EVIDENCE_AND_HUMAN_GUIDED_CONTEXT.md) (historical context where it conflicts), [MVP_ARCHITECTURE_V250.md](dev-flow/checkpoints/MVP_ARCHITECTURE_V250.md), [COMPETITIVE_EVALUATION.md](docs/product/COMPETITIVE_EVALUATION.md), and the focused engineering documents in the repository.
 
 ## First-time setup on one PC
 
@@ -270,6 +270,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - Persistent Situations, human contributions, corrections, retractions, and immutable analysis-input snapshots.
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Deterministic Workbench impact analysis for explicitly human-authored hypotheses and what-if assumptions: explicit grounding routes, downstream conclusions, contradictions, and testing questions remain inspectable without becoming truth claims or aggregate scores.
+- Optional model draft in the Workbench for a note supplied by the investigator. The draft shows the model, excerpts from the note, candidate objects and connections. The investigator can load an object into the manual form, edit it, and choose whether to record it.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
 - Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.
 - A first-party React interface and associated client-state/test infrastructure.
@@ -279,7 +280,7 @@ These foundations are not equivalent to a complete consumer onboarding, producti
 ### Product direction and planned capabilities
 
 - **Human-centered discovery:** proactive but bounded exploration of a Situation, including two or three promising investigative leads with reasons and evidence gaps.
-- **Post-MVP artifact interpretation:** only after the parser-free MVP is stable and epistemologically precise, experiment first with raw text (deterministic NLP, LLM, or a measured hybrid), then evaluate email, messaging, PDF, image, audio, and video adapters as parallel, attributable observation layers.
+- **Post-MVP artifact interpretation:** evaluate text files, email, messaging, PDFs, images, audio, and video as external artifact observation layers after the MVP. Drafting from a note supplied directly by the investigator is within MVP scope.
 - **Contextual interpretation:** let investigators represent possible motivations, perceptions, misunderstandings, and social dynamics as explicitly human-authored competing hypotheses, never asserted diagnoses or facts about people.
 - **Goal-directed reasoning:** select what to investigate next according to the person's purpose, budget, stop conditions, missing evidence, and available tools.
 - **Human-guided iteration:** learn from distinct kinds of feedback, preserve provenance and disagreement, and perform selective reanalysis when new information actually changes the question.

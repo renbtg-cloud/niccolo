@@ -74,8 +74,8 @@ This creates the Situation. It does not create a verdict.
 
 A first pass can run from the focus alone, but it is usually more useful to add explicit material.
 
-The restricted MVP accepts **no file upload and invokes no parser**. It does not read raw text,
-email, WhatsApp exports, PDFs, images, audio, or video. Keep every original wherever you already
+The restricted MVP accepts **no file upload and invokes no artifact parser**. It does not read text
+files, email, WhatsApp exports, PDFs, images, audio, or video. Keep every original wherever you already
 store it; Niccolò does not become its storage owner.
 
 Under **External artifacts**, create a reference with:
@@ -98,6 +98,12 @@ original.
 
 For something remembered, hypothetical, or an investigative preference, use **Human context**.
 Keep this separate from an artifact representation so the provenance boundary stays visible.
+
+To structure an investigator note, open **Workbench → Draft from investigator text**. The draft
+request sends only the note to the configured model. The response shows candidate objects,
+connections, model identity and input excerpts. Select **Edit in the object form** to review and
+record an individual object. Author relationships separately in the Workbench. The manual forms
+work when no model is configured.
 
 ## 6. Check readiness before Analyze
 

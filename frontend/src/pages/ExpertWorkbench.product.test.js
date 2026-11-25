@@ -147,12 +147,23 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(page).toContain('Even satisfied conditions do not establish truth or validity.');
     expect(page).toContain('No applicability condition recorded; applicability is not certified.');
   });
-  it('is a primary MVP surface and says free-text interpretation is post-MVP', () => {
+  it('keeps manual authoring and offers configured draft assistance in the MVP', () => {
     expect(app).toContain('<NavLink to="/workbench">Workbench</NavLink>');
     expect(app).toContain('<Route path="/workbench" element={<ExpertWorkbenchPage/>}/>');
-    expect(page).toContain('explicitly authors epistemic abstractions');
-    expect(page).toContain('does not translate investigator free text into ontology');
-    expect(page).toContain('<strong>Post-MVP:</strong> optional free-text interpretation');
+    expect(page).toContain('Author structured objects and relationships directly');
+    expect(page).toContain('enabled={data.investigator_free_text_compiler_enabled}');
+    expect(page).toContain('setNode(candidate);');
+  });
+
+  it('sends only the submitted note on a distinct model draft request', async () => {
+    const calls = [];
+    const client = new NiccoloClient(config, async (url, options) => { calls.push({url, options}); return response; });
+    const text = 'Parece que a vítima pediu carona.';
+    await client.draftExpertInput(text);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/\/epistemic\/workbench\/input-draft$/);
+    expect(calls[0].options.method).toBe('POST');
+    expect(JSON.parse(calls[0].options.body)).toEqual({text});
   });
 
   it('uses explicit write endpoints for objects, relations, arguments and grounding', async () => {

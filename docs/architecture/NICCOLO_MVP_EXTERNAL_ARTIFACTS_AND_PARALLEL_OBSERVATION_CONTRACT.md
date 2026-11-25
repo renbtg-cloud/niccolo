@@ -1053,7 +1053,7 @@ The MVP does not need to provide:
 - universal document parser;
 - credentials manager for arbitrary external stores;
 - automatic fetching from every recorded locator;
-- raw-text parsing;
+- automatic parsing of raw-text artifacts;
 - email parsing;
 - WhatsApp or chat-export parsing;
 - automatic speaker extraction;
@@ -1148,7 +1148,9 @@ The goal is a modality-neutral epistemic substrate on which future artifact obse
 
 The parser-free MVP must become stable, functional, and epistemologically precise before artifact-input experiments begin.
 
-Only after that boundary is met may a post-MVP program consider artifact inspection. Raw text is the first candidate modality. Deterministic NLP, an attributed LLM observer, and hybrid approaches must be evaluated as competing implementations rather than assumed capabilities. Email, WhatsApp exports, PDF, image, audio, and video follow only through later explicit decisions.
+Only after that boundary is met may a post-MVP program consider artifact inspection. Raw text files are the first candidate modality. Deterministic NLP, an attributed LLM observer, and hybrid approaches must be evaluated as competing implementations rather than assumed capabilities. Email, WhatsApp exports, PDF, image, audio, and video follow only through later explicit decisions.
+
+Language-model drafting from an investigator's directly submitted note is in scope for the [investigator-assisted MVP](INVESTIGATOR_ASSISTED_MVP.md). The input remains an investigator statement, with the model's interpretation kept separate from the source artifact.
 
 Future observers must produce attributed, scoped, revisable representations or observations. They never become privileged truth paths and their future possibility does not authorize parser infrastructure in the MVP.
 
