@@ -58,7 +58,7 @@ NICCOLO_LLM_BASE_URL='http://127.0.0.1:11434/v1' NICCOLO_LLM_MODEL='local-model'
 grep -Fq 'Reasoning model: configured (local-model)' .niccolo-local/loopback-model.log
 token="$(cat .niccolo-local/token.txt)"
 [[ "$token" == ncl_* ]]
-./target/release/niccolo-api > .niccolo-local/ci-server.log 2>&1 &
+bash scripts/start-local-mvp.sh > .niccolo-local/ci-server.log 2>&1 &
 pid=$!
 cleanup(){
   kill "$pid" 2>/dev/null || true
@@ -92,6 +92,11 @@ if [[ "$started" != 1 ]]; then
   exit 1
 fi
 curl --max-time 5 --silent --show-error --fail http://127.0.0.1:38080/ >/dev/null
+for asset in app.js app.css; do
+  curl --max-time 5 --silent --show-error --fail "http://127.0.0.1:38080/assets/$asset" \
+    -o ".niccolo-local/served-$asset"
+  cmp "frontend/dist/assets/$asset" ".niccolo-local/served-$asset"
+done
 path="http://127.0.0.1:38080/v1/workspaces/${WORKSPACE_UUID}/situations/${SITUATION_UUID}"
 curl --max-time 10 --silent --show-error --fail \
   -H "Authorization: Bearer ${token}" \
