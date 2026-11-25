@@ -101,9 +101,10 @@ Keep this separate from an artifact representation so the provenance boundary st
 
 To structure an investigator note, open **Workbench → Draft from investigator text**. The draft
 request sends only the note to the configured model. The response shows candidate objects,
-connections, model identity and input excerpts. Select **Edit in the object form** to review and
-record an individual object. Author relationships separately in the Workbench. The manual forms
-work when no model is configured.
+connections, model identity and input excerpts. Edit or remove items and choose
+**Record reviewed structure** to record what you approved as a single operation. Open the draft
+provenance from a recorded object or connection to compare the input and model's proposal with
+what the investigator accepted. The manual forms work when no model is configured.
 
 ## 6. Check readiness before Analyze
 

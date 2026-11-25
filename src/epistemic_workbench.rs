@@ -724,6 +724,15 @@ fn question_inquiries(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkbenchDraftSource {
+    pub draft_id: Uuid,
+    pub provider: String,
+    pub model: String,
+    pub object_ids: Vec<Uuid>,
+    pub relation_ids: Vec<Uuid>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkbenchSnapshot {
     pub situation_id: Uuid,
     pub nodes: Vec<ExpertNode>,
@@ -752,6 +761,7 @@ pub struct WorkbenchSnapshot {
     pub interpretation_dependencies: Vec<interpretation_dependency::InterpretationDependencyView>,
     pub assessments: Vec<assessment::AssessmentEvent>,
     pub assessment_dependencies: Vec<assessment::AssessmentDependencyView>,
+    pub draft_sources: Vec<WorkbenchDraftSource>,
     pub investigator_free_text_compiler_enabled: bool,
 }
 
@@ -769,7 +779,7 @@ type GroundingMemberSnapshotRow = (
     Uuid,
 );
 
-async fn scoped(
+pub(crate) async fn scoped(
     pool: &PgPool,
     workspace: Uuid,
     read_only: bool,
@@ -943,17 +953,38 @@ pub async fn create_node(
     text: &str,
     rationale: &str,
 ) -> Result<ExpertNode, WorkbenchError> {
+    let mut tx = scoped(pool, workspace, false).await?;
+    let node = create_node_in_tx(
+        &mut tx, workspace, situation, actor, object_id, kind, text, rationale,
+    ).await?;
+    tx.commit().await?;
+    Ok(node)
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "node identity, scope, semantics and authorship are independent inputs"
+)]
+pub(crate) async fn create_node_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    object_id: Uuid,
+    kind: ExpertNodeKind,
+    text: &str,
+    rationale: &str,
+) -> Result<ExpertNode, WorkbenchError> {
     if !valid_text(text, 8192) || !valid_text(rationale, 4096) {
         return Err(WorkbenchError::Invalid);
     }
     let text = text.trim();
     let rationale = rationale.trim();
-    let mut tx = scoped(pool, workspace, false).await?;
-    if !situation_visible(&mut tx, workspace, situation).await? {
+    if !situation_visible(tx, workspace, situation).await? {
         return Err(WorkbenchError::Invisible);
     }
     let object_inserted =
-        ensure_object(&mut tx, workspace, object_id, kind.db_value(), actor).await?;
+        ensure_object(tx, workspace, object_id, kind.db_value(), actor).await?;
     let mut request_replayed = !object_inserted;
     if kind == ExpertNodeKind::Proposition {
         sqlx::query(
@@ -963,14 +994,14 @@ pub async fn create_node(
         .bind(workspace)
         .bind(object_id)
         .bind(text)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         let stored_text: Option<String> = sqlx::query_scalar(
             "SELECT statement_text FROM niccolo.epistemic_propositions WHERE workspace_id=$1 AND proposition_id=$2",
         )
         .bind(workspace)
         .bind(object_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if stored_text.as_deref() != Some(text) {
             return Err(WorkbenchError::Conflict);
@@ -985,7 +1016,7 @@ pub async fn create_node(
         .bind(object_id)
         .bind(rationale)
         .bind(actor)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?
         .rows_affected()
             == 1;
@@ -997,7 +1028,7 @@ pub async fn create_node(
         .bind(workspace)
         .bind(situation)
         .bind(object_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if membership != Some((rationale.to_owned(), actor)) {
             return Err(WorkbenchError::Conflict);
@@ -1027,7 +1058,7 @@ pub async fn create_node(
             .bind(situation)
             .bind(text)
             .bind(rationale)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         let query = match kind {
             ExpertNodeKind::Proposition => unreachable!(),
@@ -1050,13 +1081,12 @@ pub async fn create_node(
         let stored: Option<(Uuid, String, String)> = sqlx::query_as(query)
             .bind(workspace)
             .bind(object_id)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut **tx)
             .await?;
         if stored != Some((situation, text.to_owned(), rationale.to_owned())) {
             return Err(WorkbenchError::Conflict);
         }
     }
-    tx.commit().await?;
     Ok(ExpertNode {
         object_id,
         kind,
@@ -1080,6 +1110,31 @@ pub async fn create_relation(
     relation_id: Uuid,
     family: RelationFamily,
     kind: RelationKind,
+    left_object_id: Uuid,
+    right_object_id: Uuid,
+    rationale: &str,
+) -> Result<ExpertRelation, WorkbenchError> {
+    let mut tx = scoped(pool, workspace, false).await?;
+    let relation = create_relation_in_tx(
+        &mut tx, workspace, situation, actor, relation_id, family, kind,
+        left_object_id, right_object_id, rationale,
+    ).await?;
+    tx.commit().await?;
+    Ok(relation)
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "relation identity, endpoints, semantics and authorship are independent inputs"
+)]
+pub(crate) async fn create_relation_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    actor: Uuid,
+    relation_id: Uuid,
+    family: RelationFamily,
+    kind: RelationKind,
     mut left_object_id: Uuid,
     mut right_object_id: Uuid,
     rationale: &str,
@@ -1092,11 +1147,10 @@ pub async fn create_relation(
         std::mem::swap(&mut left_object_id, &mut right_object_id);
     }
     let rationale = rationale.trim();
-    let mut tx = scoped(pool, workspace, false).await?;
-    let left_kind = object_available_in_situation(&mut tx, workspace, situation, left_object_id)
+    let left_kind = object_available_in_situation(tx, workspace, situation, left_object_id)
         .await?
         .ok_or(WorkbenchError::Invisible)?;
-    let right_kind = object_available_in_situation(&mut tx, workspace, situation, right_object_id)
+    let right_kind = object_available_in_situation(tx, workspace, situation, right_object_id)
         .await?
         .ok_or(WorkbenchError::Invisible)?;
     if !kind.accepts_endpoints(&left_kind, &right_kind) {
@@ -1116,7 +1170,7 @@ pub async fn create_relation(
     .bind(right_object_id)
     .bind(rationale)
     .bind(actor)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?
     .rows_affected()
         == 1;
@@ -1126,7 +1180,7 @@ pub async fn create_relation(
     )
     .bind(workspace)
     .bind(relation_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?;
     if stored
         != Some((
@@ -1141,7 +1195,6 @@ pub async fn create_relation(
     {
         return Err(WorkbenchError::Conflict);
     }
-    tx.commit().await?;
     Ok(ExpertRelation {
         relation_id,
         situation_id: situation,
@@ -2798,6 +2851,26 @@ pub async fn snapshot(
         &mut reasoning_diagnostics,
     )
     .await?;
+    let draft_sources = sqlx::query_as(
+        "SELECT a.draft_id,d.provider,d.model,a.object_ids,a.relation_ids
+         FROM niccolo.investigator_input_draft_adoptions a
+         JOIN niccolo.investigator_input_drafts d USING(workspace_id,situation_id,draft_id)
+         WHERE a.workspace_id=$1 AND a.situation_id=$2
+         ORDER BY a.created_at,a.draft_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .map(|(draft_id, provider, model, object_ids, relation_ids)| WorkbenchDraftSource {
+        draft_id,
+        provider,
+        model,
+        object_ids,
+        relation_ids,
+    })
+    .collect();
     tx.commit().await?;
     let question_inquiries = question_inquiries(&nodes, &relations, &assessments);
     let authored_object_impacts =
@@ -2830,6 +2903,7 @@ pub async fn snapshot(
         interpretation_dependencies,
         assessments,
         assessment_dependencies,
+        draft_sources,
         investigator_free_text_compiler_enabled: false,
     })
 }
@@ -2876,6 +2950,7 @@ mod tests {
             interpretation_dependencies: vec![],
             assessments: vec![],
             assessment_dependencies: vec![],
+            draft_sources: vec![],
             investigator_free_text_compiler_enabled: false,
         })
         .unwrap();

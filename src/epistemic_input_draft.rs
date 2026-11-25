@@ -1,24 +1,26 @@
 //! Reviewable proposals derived from a single investigator input.
 use crate::{
-    epistemic_workbench::{ExpertNodeKind, RelationFamily, RelationKind},
+    epistemic_workbench::{self, ExpertNodeKind, RelationFamily, RelationKind, WorkbenchError},
     model_adapter::ModelRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sqlx::{PgPool, types::Json};
+use uuid::Uuid;
 
 const MAX_OBJECTS: usize = 12;
 const MAX_RELATIONS: usize = 20;
 pub(crate) const MAX_INPUT_BYTES: usize = 4096;
 pub(crate) const PURPOSE: &str = "DRAFT_INVESTIGATOR_INPUT";
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct InputDraft {
     pub objects: Vec<DraftObject>,
     pub relations: Vec<DraftRelation>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DraftObject {
     pub kind: ExpertNodeKind,
@@ -26,7 +28,7 @@ pub(crate) struct DraftObject {
     pub source_excerpt: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DraftRelation {
     pub kind: RelationKind,
@@ -60,8 +62,12 @@ pub(crate) fn request(text: &str) -> Option<ModelRequest> {
 
 pub(crate) fn validate(text: &str, value: Value) -> Option<InputDraft> {
     let draft: InputDraft = serde_json::from_value(value).ok()?;
+    validate_graph(text, &draft).then_some(draft)
+}
+
+fn validate_graph(text: &str, draft: &InputDraft) -> bool {
     if draft.objects.len() > MAX_OBJECTS || draft.relations.len() > MAX_RELATIONS {
-        return None;
+        return false;
     }
     for item in &draft.objects {
         if item.kind == ExpertNodeKind::Finding
@@ -69,12 +75,16 @@ pub(crate) fn validate(text: &str, value: Value) -> Option<InputDraft> {
             || !valid(&item.source_excerpt, MAX_INPUT_BYTES)
             || !text.contains(&item.source_excerpt)
         {
-            return None;
+            return false;
         }
     }
     for relation in &draft.relations {
-        let from = draft.objects.get(relation.from)?;
-        let to = draft.objects.get(relation.to)?;
+        let (Some(from), Some(to)) = (
+            draft.objects.get(relation.from),
+            draft.objects.get(relation.to),
+        ) else {
+            return false;
+        };
         if relation.from == relation.to
             || !matches!(
                 relation.kind.family(),
@@ -85,10 +95,219 @@ pub(crate) fn validate(text: &str, value: Value) -> Option<InputDraft> {
                 .accepts_endpoints(from.kind.db_value(), to.kind.db_value())
             || !valid(&relation.explanation, 1024)
         {
-            return None;
+            return false;
         }
     }
-    Some(draft)
+    true
+}
+
+#[derive(Serialize)]
+pub(crate) struct DraftRecord {
+    pub draft_id: Uuid,
+    pub situation_revision: i64,
+    pub requested_by: Uuid,
+    pub input_text: String,
+    pub provider: String,
+    pub model: String,
+    pub draft: InputDraft,
+    pub adoption: Option<DraftReview>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct DraftReview {
+    pub adopted_by: Uuid,
+    pub reviewed_graph: InputDraft,
+    pub object_ids: Vec<Uuid>,
+    pub relation_ids: Vec<Uuid>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct Adoption {
+    pub object_ids: Vec<Uuid>,
+    pub relation_ids: Vec<Uuid>,
+    pub replayed: bool,
+}
+
+pub(crate) async fn record(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    record: &DraftRecord,
+) -> Result<(), WorkbenchError> {
+    let mut tx = epistemic_workbench::scoped(pool, workspace, false).await?;
+    sqlx::query(
+        "INSERT INTO niccolo.investigator_input_drafts
+         (workspace_id,situation_id,draft_id,situation_revision,requested_by,input_text,provider,model,proposal)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(record.draft_id)
+    .bind(record.situation_revision)
+    .bind(record.requested_by)
+    .bind(&record.input_text)
+    .bind(&record.provider)
+    .bind(&record.model)
+    .bind(Json(&record.draft))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub(crate) async fn read(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    id: Uuid,
+    investigator: Uuid,
+) -> Result<DraftRecord, WorkbenchError> {
+    let mut tx = epistemic_workbench::scoped(pool, workspace, true).await?;
+    let (situation_revision, requested_by, input_text, provider, model, Json(draft)) =
+        sqlx::query_as(
+            "SELECT d.situation_revision,d.requested_by,d.input_text,d.provider,d.model,d.proposal
+             FROM niccolo.investigator_input_drafts d
+             WHERE d.workspace_id=$1 AND d.situation_id=$2 AND d.draft_id=$3 AND
+               (d.requested_by=$4 OR EXISTS (
+                 SELECT 1 FROM niccolo.investigator_input_draft_adoptions a
+                 WHERE a.workspace_id=d.workspace_id AND a.situation_id=d.situation_id AND a.draft_id=d.draft_id
+               ))",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(id)
+        .bind(investigator)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(WorkbenchError::Invisible)?;
+    let review = sqlx::query_as(
+        "SELECT adopted_by,reviewed_graph,object_ids,relation_ids FROM niccolo.investigator_input_draft_adoptions
+         WHERE workspace_id=$1 AND situation_id=$2 AND draft_id=$3",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let adoption = review.map(
+        |(adopted_by, Json(reviewed_graph), object_ids, relation_ids)| DraftReview {
+            adopted_by,
+            reviewed_graph,
+            object_ids,
+            relation_ids,
+        },
+    );
+    tx.commit().await?;
+    Ok(DraftRecord {
+        draft_id: id,
+        situation_revision,
+        requested_by,
+        input_text,
+        provider,
+        model,
+        draft,
+        adoption,
+    })
+}
+
+pub(crate) async fn adopt(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    draft_id: Uuid,
+    investigator: Uuid,
+    reviewed: InputDraft,
+) -> Result<Adoption, WorkbenchError> {
+    let mut tx = epistemic_workbench::scoped(pool, workspace, false).await?;
+    let input_text: String = sqlx::query_scalar(
+        "SELECT input_text FROM niccolo.investigator_input_drafts
+         WHERE workspace_id=$1 AND situation_id=$2 AND draft_id=$3 AND requested_by=$4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(draft_id)
+    .bind(investigator)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(WorkbenchError::Invisible)?;
+    if reviewed.objects.is_empty() || !validate_graph(&input_text, &reviewed) {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut receipt = Adoption {
+        object_ids: reviewed.objects.iter().map(|_| Uuid::new_v4()).collect(),
+        relation_ids: reviewed.relations.iter().map(|_| Uuid::new_v4()).collect(),
+        replayed: false,
+    };
+    let inserted = sqlx::query(
+        "INSERT INTO niccolo.investigator_input_draft_adoptions
+         (workspace_id,situation_id,draft_id,adopted_by,reviewed_graph,object_ids,relation_ids)
+         VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(draft_id)
+    .bind(investigator)
+    .bind(Json(&reviewed))
+    .bind(&receipt.object_ids)
+    .bind(&receipt.relation_ids)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if inserted {
+        let rationale = format!("Reviewed investigator input draft {draft_id}");
+        for (object, id) in reviewed.objects.iter().zip(&receipt.object_ids) {
+            epistemic_workbench::create_node_in_tx(
+                &mut tx,
+                workspace,
+                situation,
+                investigator,
+                *id,
+                object.kind,
+                &object.text,
+                &rationale,
+            )
+            .await?;
+        }
+        for (relation, id) in reviewed.relations.iter().zip(&receipt.relation_ids) {
+            epistemic_workbench::create_relation_in_tx(
+                &mut tx,
+                workspace,
+                situation,
+                investigator,
+                *id,
+                relation.kind.family(),
+                relation.kind,
+                receipt.object_ids[relation.from],
+                receipt.object_ids[relation.to],
+                &format!("{}: {}", rationale, relation.explanation),
+            )
+            .await?;
+        }
+    } else {
+        let (Json(previous), object_ids, relation_ids): (Json<InputDraft>, Vec<Uuid>, Vec<Uuid>) =
+            sqlx::query_as(
+                "SELECT reviewed_graph,object_ids,relation_ids FROM niccolo.investigator_input_draft_adoptions
+                 WHERE workspace_id=$1 AND situation_id=$2 AND draft_id=$3 AND adopted_by=$4",
+            )
+            .bind(workspace)
+            .bind(situation)
+            .bind(draft_id)
+            .bind(investigator)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(WorkbenchError::Conflict)?;
+        if previous != reviewed {
+            return Err(WorkbenchError::Conflict);
+        }
+        receipt = Adoption {
+            object_ids,
+            relation_ids,
+            replayed: true,
+        };
+    }
+    tx.commit().await?;
+    Ok(receipt)
 }
 
 #[cfg(test)]

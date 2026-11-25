@@ -10,7 +10,7 @@ import { ActorEpistemicActPanel } from './ActorEpistemicActPanel.jsx';
 import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
 import { ActionDecisionPanel } from './ActionDecisionPanel.jsx';
 import { InterventionPanel } from './InterventionPanel.jsx';
-import { InvestigatorInputDraftPanel } from './InvestigatorInputDraftPanel.jsx';
+import { DraftProvenance, InvestigatorInputDraftPanel } from './InvestigatorInputDraftPanel.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -110,7 +110,6 @@ export function ExpertWorkbenchPage() {
   const [dependencyReviews, setDependencyReviews] = useState({});
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
-  const nodeText = useRef(null);
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
   const [selectedGroundIds, setSelectedGroundIds] = useState([]);
@@ -200,10 +199,7 @@ export function ExpertWorkbenchPage() {
       key={`${client.config.workspace}:${client.config.situation}`}
       client={client}
       enabled={data.investigator_free_text_compiler_enabled}
-      onUseObject={candidate => {
-        setNode(candidate);
-        nodeText.current?.focus();
-      }}
+      onAdopted={() => workbench.refetch()}
     />}
 
     <div className="expert-workbench-grid">
@@ -225,7 +221,7 @@ export function ExpertWorkbenchPage() {
         <h3>Author an epistemic object</h3>
         <p>{nodeAuthoringGuidance(node.kind)}</p>
         <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x} value={x}>{nodeKindLabels[x]}</option>)}</select></label>
-        <label>{nodeTextLabel(node.kind)}<textarea ref={nodeText} value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
+        <label>{nodeTextLabel(node.kind)}<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
         <label>Why this abstraction is appropriate<textarea value={node.rationale} maxLength={4096} onChange={(e) => setNode({ ...node, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create object</button>
       </form>
@@ -396,8 +392,22 @@ export function ExpertWorkbenchPage() {
       {attentionGroups.length > 0 && <details open><summary>Objection attention — attributed judgments, no automatic veto</summary><p>Only explicitly triaged targets appear here. Missing judgments are not negative findings. Competing priorities remain visible without a computed ranking, closure or automatic action.</p><ul>{attentionGroups.map(group => <li key={group.key}><strong>{assessmentLabel(group.target)}</strong><p>{group.historicalCount} revised judgment(s), preserved in the full assessment history.</p><ul>{group.current.map(a => <li key={a.event_id}><strong>{a.input.dimension}: {a.input.result}</strong> · confidence {a.input.confidence}<p>Criterion: {a.input.criterion} · Context: {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.event_id}</small></li>)}</ul></li>)}</ul></details>}
       {assessmentHistory.length > 0 && <details open><summary>Attributed multidimensional assessments — no universal score</summary><p>Separate judgments and disagreements remain visible. A revision preserves its predecessor.</p><ul>{assessmentHistory.map(a => <li key={a.event_id}><strong>{a.input.dimension}: {a.input.result}</strong> · confidence {a.input.confidence} · {supersededAssessments.has(a.event_id) ? 'revised' : 'current in its own revision chain'}<p>{assessmentLabel(a.input.target)}</p><p>Criterion: {a.input.criterion} · Context: {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.recorded_at}{a.input.revises_event_id ? ` · revises ${a.input.revises_event_id}` : ''}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}{!supersededAssessments.has(a.event_id) && <button type="button" disabled={busy} onClick={() => setAssessment({...a.input, target: assessmentKey(a.input.target), revises_event_id: a.event_id})}>Revise own judgment</button>}</li>)}</ul></details>}
       <p>{data.nodes.length} objects · {data.evidence.length} visible evidence fragments · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
-      <ul>{data.nodes.map((n) => <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small></li>)}</ul>
-      {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => <li key={r.relation_id}>{r.family}/{r.kind}: {r.left_object_id} → {r.right_object_id}</li>)}</ul></details>}
+      <ul>{data.nodes.map((n) => {
+        const source = data.draft_sources?.find((draft) => draft.object_ids.includes(n.object_id));
+        return <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small>
+          {source && <DraftProvenance client={client} source={source}/>}
+        </li>;
+      })}</ul>
+      {data.relations.length > 0 && <details><summary>Relations</summary><ul>{data.relations.map((r) => {
+        const source = data.draft_sources?.find((draft) => draft.relation_ids.includes(r.relation_id));
+        return <li key={r.relation_id}>
+          {data.nodes.find((node) => node.object_id === r.left_object_id)?.text ?? r.left_object_id}
+          {' → '}{r.kind.toLowerCase().replaceAll('_', ' ')}{' → '}
+          {data.nodes.find((node) => node.object_id === r.right_object_id)?.text ?? r.right_object_id}
+          <br/><small>{r.rationale}</small>
+          {source && <DraftProvenance client={client} source={source}/>}
+        </li>;
+      })}</ul></details>}
       {data.grounding_sets.length > 0 && <details><summary>Grounding</summary><ul>{data.grounding_sets.map((g) => <li key={`${g.argument_id}:${g.grounding_set_id}`}>{g.effect}/{g.adequacy}: {g.members.length} joint member(s)</li>)}</ul></details>}
       {data.reassessment_impacts.length > 0 && <details open><summary>Selective reassessment impacts</summary><ul>{data.reassessment_impacts.map((impact) => {
         const key = `${impact.trigger_relation_id}:${impact.argument_id}:${impact.grounding_set_id ?? 'conclusion'}`;

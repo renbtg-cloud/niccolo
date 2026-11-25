@@ -138,6 +138,108 @@ async fn investigator_text_drafts_expose_model_provenance_without_writing_the_ca
     assert!(epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap().nodes.is_empty());
 }
 
+#[tokio::test]
+async fn investigator_adopts_an_edited_draft_with_stable_ids_and_full_provenance() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode, header},
+        response::Response,
+    };
+    use niccolo_evidence::model_adapter::{ModelFuture, ModelRequest, ModelResponse, ReasoningModel};
+    use serde_json::{Value, json};
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    const INPUT: &str = "Parece que a vítima pediu carona. Ela entrou no carro?";
+    fn graph(first: &str) -> Value {
+        json!({
+            "objects":[
+                {"kind":"PROPOSITION","text":first,"source_excerpt":"Parece que a vítima pediu carona."},
+                {"kind":"QUESTION","text":"Ela entrou no carro?","source_excerpt":"Ela entrou no carro?"}
+            ],
+            "relations":[{"kind":"PRESUPPOSES","from":1,"to":0,"explanation":"A pergunta se refere à possível viagem."}]
+        })
+    }
+    struct DraftModel;
+    impl ReasoningModel for DraftModel {
+        fn provider(&self) -> &str { "test-provider" }
+        fn model(&self) -> &str { "test-model" }
+        fn invoke<'a>(&'a self, _: &'a ModelRequest) -> ModelFuture<'a> {
+            Box::pin(async {
+                Ok(ModelResponse {
+                    value: graph("Parece que a vítima pediu carona."),
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    effective_provider: None,
+                    effective_model: None,
+                    fallback_used: false,
+                })
+            })
+        }
+    }
+    async fn body(response: Response) -> Value {
+        serde_json::from_slice(&to_bytes(response.into_body(), 65_536).await.unwrap()).unwrap()
+    }
+    let f = fixture().await;
+    let sit = situation(&f, "Test adoption of a working graph").await;
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let writer = authz::provision_token(&admin, f.principal, f.workspace, true, true, 1).await.unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), f.workspace, true, false, 1).await.unwrap();
+    let secure = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_SECURE_URL").unwrap())
+        .await
+        .unwrap();
+    let router = niccolo_evidence::api::router_with_model(secure, Arc::new(DraftModel));
+    let base = format!("/v1/workspaces/{}/situations/{sit}/epistemic/workbench/input-draft", f.workspace);
+    let call = |token: &str, path: &str, data: Option<Value>| {
+        let mut request = Request::builder().uri(path)
+            .header(header::AUTHORIZATION, format!("Bearer {token}"));
+        if data.is_some() {
+            request = request.method("POST").header(header::CONTENT_TYPE, "application/json");
+        }
+        router.clone().oneshot(request.body(data.map_or_else(Body::empty, |value| Body::from(value.to_string()))).unwrap())
+    };
+    let proposal = call(&writer, &base, Some(json!({"text":INPUT}))).await.unwrap();
+    assert_eq!(proposal.status(), StatusCode::OK);
+    let original = body(proposal).await;
+    let path = format!("{base}/{}", original["draft_id"].as_str().unwrap());
+    assert_eq!(call(&reader, &path, None).await.unwrap().status(), StatusCode::NOT_FOUND);
+    let edited = graph("Um testemunho ainda não corroborado relata um pedido de carona.");
+    let mut invalid = edited.clone();
+    invalid["relations"][0]["to"] = json!(99);
+    assert_eq!(call(&writer, &path, Some(invalid)).await.unwrap().status(), StatusCode::BAD_REQUEST);
+    assert!(epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap().nodes.is_empty());
+    let (first, second) = tokio::join!(
+        call(&writer, &path, Some(edited.clone())),
+        call(&writer, &path, Some(edited.clone())),
+    );
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert!(matches!((first.status(), second.status()), (StatusCode::CREATED, StatusCode::OK) | (StatusCode::OK, StatusCode::CREATED)));
+    let first = body(first).await;
+    let second = body(second).await;
+    assert_eq!(first["object_ids"], second["object_ids"]);
+    assert_eq!(first["relation_ids"], second["relation_ids"]);
+    assert_eq!(call(&writer, &path, Some(graph("Outra leitura."))).await.unwrap().status(), StatusCode::CONFLICT);
+
+    let audit = call(&reader, &path, None).await.unwrap();
+    assert_eq!(audit.status(), StatusCode::OK);
+    let audit = body(audit).await;
+    assert_eq!(audit["draft"], original["draft"]);
+    assert_eq!(audit["adoption"]["reviewed_graph"], edited);
+    assert_eq!(audit["adoption"]["adopted_by"], f.principal.to_string());
+    let snapshot = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(snapshot.nodes.len(), 2);
+    assert_eq!(snapshot.relations.len(), 1);
+    assert_eq!(snapshot.draft_sources.len(), 1);
+    assert_eq!(snapshot.draft_sources[0].model, "test-model");
+    assert_eq!(snapshot.draft_sources[0].relation_ids.len(), 1);
+    assert!(snapshot.nodes.iter().any(|node| node.text == edited["objects"][0]["text"]));
+}
+
 async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) -> Uuid {
     let id = Uuid::new_v4();
     epistemic_workbench::create_node(

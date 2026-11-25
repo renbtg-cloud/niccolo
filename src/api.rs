@@ -284,6 +284,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(propose_expert_input_draft),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/input-draft/{draft}",
+            get(get_expert_input_draft).post(adopt_expert_input_draft),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/evidence/search",
             get(search_expert_workbench_evidence),
         )
@@ -3619,17 +3623,43 @@ async fn propose_expert_input_draft(
         })?;
     let draft = epistemic_input_draft::validate(&input.text, response.value)
         .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned an invalid draft"))?;
-    Ok(no_store(
-        json!({
-            "draft":draft,
-            "input_text":input.text,
-            "requested_by":investigator,
-            "situation_revision":snapshot.revision,
-            "provider":response.effective_provider.as_deref().unwrap_or_else(|| model.provider()),
-            "model":response.effective_model.as_deref().unwrap_or_else(|| model.model()),
-        }),
-        StatusCode::OK,
-    ))
+    let record = epistemic_input_draft::DraftRecord {
+        draft_id: Uuid::new_v4(),
+        situation_revision: snapshot.revision,
+        requested_by: investigator,
+        input_text: input.text,
+        provider: response.effective_provider.unwrap_or_else(|| model.provider().to_owned()),
+        model: response.effective_model.unwrap_or_else(|| model.model().to_owned()),
+        draft,
+        adoption: None,
+    };
+    epistemic_input_draft::record(&state.pool, workspace, situation, &record).await?;
+    Ok(no_store(json!(record), StatusCode::OK))
+}
+
+async fn get_expert_input_draft(
+    State(state): State<AppState>,
+    Path((workspace, situation, draft)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let investigator = guard(&state, &headers, workspace, Capability::Read).await?;
+    let record = epistemic_input_draft::read(&state.pool, workspace, situation, draft, investigator)
+        .await?;
+    Ok(no_store(json!(record), StatusCode::OK))
+}
+
+async fn adopt_expert_input_draft(
+    State(state): State<AppState>,
+    Path((workspace, situation, draft)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(reviewed): Json<epistemic_input_draft::InputDraft>,
+) -> Result<Response, ApiError> {
+    let investigator = guard(&state, &headers, workspace, Capability::Write).await?;
+    let adoption =
+        epistemic_input_draft::adopt(&state.pool, workspace, situation, draft, investigator, reviewed)
+            .await?;
+    let status = if adoption.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    Ok(no_store(json!(adoption), status))
 }
 
 async fn search_expert_workbench_evidence(

@@ -152,7 +152,7 @@ describe('expert epistemic Workbench — structured MVP authoring', () => {
     expect(app).toContain('<Route path="/workbench" element={<ExpertWorkbenchPage/>}/>');
     expect(page).toContain('Author structured objects and relationships directly');
     expect(page).toContain('enabled={data.investigator_free_text_compiler_enabled}');
-    expect(page).toContain('setNode(candidate);');
+    expect(page).toContain('onAdopted={() => workbench.refetch()}');
   });
 
   it('sends only the submitted note on a distinct model draft request', async () => {
