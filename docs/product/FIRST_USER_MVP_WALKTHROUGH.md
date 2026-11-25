@@ -106,6 +106,11 @@ connections, model identity and input excerpts. Edit or remove items and choose
 provenance from a recorded object or connection to compare the input and model's proposal with
 what the investigator accepted. The manual forms work when no model is configured.
 
+To review the selected graph in plain language, open **Describe selected objects in prose** in
+the Workbench. Choose the objects to send to the configured model. The result links to the
+objects or connections it cites. Edit the text and download it if useful. The description covers
+the selected graph; use the Workbench and case records to verify claims and source qualifications.
+
 ## 6. Check readiness before Analyze
 
 The bottom of the Situation screen shows whether the local service has a reasoning model.

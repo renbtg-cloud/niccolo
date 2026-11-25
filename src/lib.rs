@@ -21,6 +21,7 @@ pub mod identity;
 pub mod epistemic_identity;
 mod epistemic_input_draft;
 pub mod epistemic_workbench;
+mod epistemic_workbench_prose;
 
 pub mod actors;
 #[cfg(feature = "legacy-source-import")]

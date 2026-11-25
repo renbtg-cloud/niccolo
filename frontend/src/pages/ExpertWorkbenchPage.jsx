@@ -11,6 +11,7 @@ import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
 import { ActionDecisionPanel } from './ActionDecisionPanel.jsx';
 import { InterventionPanel } from './InterventionPanel.jsx';
 import { DraftProvenance, InvestigatorInputDraftPanel } from './InvestigatorInputDraftPanel.jsx';
+import { WorkbenchProsePanel } from './WorkbenchProsePanel.jsx';
 import {
   argumentModes,
   argumentRequest,
@@ -200,6 +201,11 @@ export function ExpertWorkbenchPage() {
       client={client}
       enabled={data.investigator_free_text_compiler_enabled}
       onAdopted={() => workbench.refetch()}
+    />}
+    {data.investigator_free_text_compiler_enabled && data.nodes.length > 0 && <WorkbenchProsePanel
+      key={`${client.config.workspace}:${client.config.situation}`}
+      client={client}
+      nodes={data.nodes}
     />}
 
     <div className="expert-workbench-grid">
@@ -394,7 +400,7 @@ export function ExpertWorkbenchPage() {
       <p>{data.nodes.length} objects · {data.evidence.length} visible evidence fragments · {data.relations.length} typed relations · {data.arguments.length} arguments · {data.grounding_sets.length} grounding sets</p>
       <ul>{data.nodes.map((n) => {
         const source = data.draft_sources?.find((draft) => draft.object_ids.includes(n.object_id));
-        return <li key={n.object_id}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small>
+        return <li key={n.object_id} id={`workbench-object-${n.object_id}`}><strong>{n.kind}</strong> — {n.text}<br/><small>{n.rationale}</small>
           {source && <DraftProvenance client={client} source={source}/>}
         </li>;
       })}</ul>

@@ -28,6 +28,7 @@ use crate::epistemic_input_draft;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::epistemic_workbench::{self, WorkbenchError};
+use crate::epistemic_workbench_prose;
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
 use crate::human_feedback::{self, FeedbackError, HumanResponse};
@@ -36,7 +37,7 @@ use crate::hypotheses::{self, HypothesisError};
 use crate::hypothesis_portfolio::{self, HypothesisPortfolioError};
 use crate::identity::{self, IdentityAction, IdentityError};
 use crate::integrity_scope::{self, IntegrityAssessmentInput, IntegrityScopeError};
-use crate::model_adapter::{ReasoningModel, UnavailableModel};
+use crate::model_adapter::{ModelRequest, ModelResponse, ReasoningModel, UnavailableModel};
 use crate::observation_retrieval::{self, ObservationSearchError};
 use crate::operation_budget::{self, BudgetError};
 use crate::postgres_repository::{self, RepositoryError};
@@ -286,6 +287,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/input-draft/{draft}",
             get(get_expert_input_draft).post(adopt_expert_input_draft),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/prose",
+            post(describe_expert_workbench_selection),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/evidence/search",
@@ -3605,22 +3610,7 @@ async fn propose_expert_input_draft(
     let request = epistemic_input_draft::request(&input.text)
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid investigator text"))?;
     let snapshot = situation_store::get_snapshot(&state.pool, workspace, situation, None).await?;
-    if state.model.provider() == "unconfigured" {
-        return Err(ApiError(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "reasoning model not configured",
-        ));
-    }
-    let model = state.model.as_ref();
-    let response = tokio::time::timeout(std::time::Duration::from_secs(120), model.invoke(&request))
-        .await
-        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "draft generation timed out"))?
-        .map_err(|error| match error {
-            crate::model_adapter::ModelError::Timeout => {
-                ApiError(StatusCode::GATEWAY_TIMEOUT, "draft generation timed out")
-            }
-            _ => ApiError(StatusCode::BAD_GATEWAY, "model could not generate a draft"),
-        })?;
+    let response = invoke_workbench_model(&state, &request).await?;
     let draft = epistemic_input_draft::validate(&input.text, response.value)
         .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned an invalid draft"))?;
     let record = epistemic_input_draft::DraftRecord {
@@ -3628,13 +3618,55 @@ async fn propose_expert_input_draft(
         situation_revision: snapshot.revision,
         requested_by: investigator,
         input_text: input.text,
-        provider: response.effective_provider.unwrap_or_else(|| model.provider().to_owned()),
-        model: response.effective_model.unwrap_or_else(|| model.model().to_owned()),
+        provider: response.effective_provider.unwrap_or_else(|| state.model.provider().to_owned()),
+        model: response.effective_model.unwrap_or_else(|| state.model.model().to_owned()),
         draft,
         adoption: None,
     };
     epistemic_input_draft::record(&state.pool, workspace, situation, &record).await?;
     Ok(no_store(json!(record), StatusCode::OK))
+}
+
+async fn invoke_workbench_model(
+    state: &AppState,
+    request: &ModelRequest,
+) -> Result<ModelResponse, ApiError> {
+    if state.model.provider() == "unconfigured" {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "reasoning model not configured",
+        ));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(120), state.model.invoke(request))
+        .await
+        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "draft generation timed out"))?
+        .map_err(|error| match error {
+            crate::model_adapter::ModelError::Timeout => {
+                ApiError(StatusCode::GATEWAY_TIMEOUT, "draft generation timed out")
+            }
+            _ => ApiError(StatusCode::BAD_GATEWAY, "model could not generate a draft"),
+        })
+}
+
+async fn describe_expert_workbench_selection(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(selection): Json<epistemic_workbench_prose::ProseSelection>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Write).await?;
+    let snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
+    let (request, references) = epistemic_workbench_prose::prepare(&snapshot, &selection)
+        .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid or oversized Workbench selection"))?;
+    let response = invoke_workbench_model(&state, &request).await?;
+    let prose = epistemic_workbench_prose::validate(response.value, &references)
+        .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned an invalid description"))?;
+    Ok(no_store(json!({
+        "prose":prose,
+        "basis":references,
+        "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
+        "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),
+    }), StatusCode::OK))
 }
 
 async fn get_expert_input_draft(

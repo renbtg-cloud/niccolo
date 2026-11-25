@@ -271,6 +271,7 @@ The two categories below are intentionally explicit. **A planned capability belo
 - Claims, support relationships, alternative interpretations, uncertainties, review/feedback records, and reanalysis lineage.
 - Deterministic Workbench impact analysis for explicitly human-authored hypotheses and what-if assumptions: explicit grounding routes, downstream conclusions, contradictions, and testing questions remain inspectable without becoming truth claims or aggregate scores.
 - Optional model draft in the Workbench for a note supplied by the investigator. The investigator can edit objects and connections and explicitly record the reviewed structure. The recorded objects and connections link back to the input, the model proposal and the investigator's revision.
+- The Workbench can ask a model to describe selected objects and their relationships in prose. The result links each model-written paragraph to the selected graph material and can be edited and downloaded as text.
 - Workspace-scoped PostgreSQL persistence, documented bearer authorization boundaries, local HTTP endpoints, and integration tests.
 - Durable BFF operations with multiple observation styles; structured, budgeted agentic-controller primitives.
 - A first-party React interface and associated client-state/test infrastructure.

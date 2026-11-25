@@ -164,10 +164,19 @@ async fn investigator_adopts_an_edited_draft_with_stable_ids_and_full_provenance
     impl ReasoningModel for DraftModel {
         fn provider(&self) -> &str { "test-provider" }
         fn model(&self) -> &str { "test-model" }
-        fn invoke<'a>(&'a self, _: &'a ModelRequest) -> ModelFuture<'a> {
-            Box::pin(async {
+        fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
+            Box::pin(async move {
+                let value = if request.purpose == "DESCRIBE_INVESTIGATOR_GRAPH" {
+                    let scope = request.input["graph_selection"].as_array().unwrap();
+                    assert_eq!(scope.len(), 1);
+                    assert_eq!(scope[0]["statement"], "Um testemunho ainda não corroborado relata um pedido de carona.");
+                    let key = if request.input["language"] == "xx" { "outside-scope" } else { "O1" };
+                    json!({"paragraphs":[{"text":"Um testemunho não corroborado relata o pedido.", "references":[key]}]})
+                } else {
+                    graph("Parece que a vítima pediu carona.")
+                };
                 Ok(ModelResponse {
-                    value: graph("Parece que a vítima pediu carona."),
+                    value,
                     prompt_tokens: None,
                     completion_tokens: None,
                     effective_provider: None,
@@ -238,6 +247,17 @@ async fn investigator_adopts_an_edited_draft_with_stable_ids_and_full_provenance
     assert_eq!(snapshot.draft_sources[0].model, "test-model");
     assert_eq!(snapshot.draft_sources[0].relation_ids.len(), 1);
     assert!(snapshot.nodes.iter().any(|node| node.text == edited["objects"][0]["text"]));
+
+    let prose_path = format!("/v1/workspaces/{}/situations/{sit}/epistemic/workbench/prose", f.workspace);
+    let describe = |language| Some(json!({"object_ids":[first["object_ids"][0]], "language":language}));
+    assert_eq!(call(&reader, &prose_path, describe("pt-BR")).await.unwrap().status(), StatusCode::FORBIDDEN);
+    let prose = call(&writer, &prose_path, describe("pt-BR")).await.unwrap();
+    assert_eq!(prose.status(), StatusCode::OK);
+    let prose = body(prose).await;
+    assert_eq!(prose["model"], "test-model");
+    assert_eq!(prose["basis"][0]["object_ids"][0], first["object_ids"][0]);
+    assert_eq!(prose["prose"]["paragraphs"][0]["references"][0], "O1");
+    assert_eq!(call(&writer, &prose_path, describe("xx")).await.unwrap().status(), StatusCode::BAD_GATEWAY);
 }
 
 async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) -> Uuid {
