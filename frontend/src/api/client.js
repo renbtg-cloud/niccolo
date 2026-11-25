@@ -73,6 +73,7 @@ export class NiccoloClient {
   adoptExpertInputDraft(draftId, reviewed) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/input-draft/${draftId}`, { body: reviewed }); }
   expertInputDraft(draftId) { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench/input-draft/${draftId}`); }
   describeExpertSelection(objectIds, language) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/prose`, { body: { object_ids: objectIds, language } }); }
+  suggestExpertInvestigation(objectIds, language) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/investigation-suggestions`, { body: { object_ids: objectIds, language } }); }
   recordInquiryDecision(decisionId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/question-decisions/${decisionId}`, {body}); }
   recordDecisionBasisReview(decisionId, eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/question-decisions/${decisionId}/reviews/${eventId}`, {body}); }
   recordActionRecommendation(recommendationId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/action-recommendations/${recommendationId}`, {body}); }

@@ -293,6 +293,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(describe_expert_workbench_selection),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/investigation-suggestions",
+            post(suggest_expert_workbench_investigation),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/evidence/search",
             get(search_expert_workbench_evidence),
         )
@@ -3656,13 +3660,38 @@ async fn describe_expert_workbench_selection(
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Write).await?;
     let snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
-    let (request, references) = epistemic_workbench_prose::prepare(&snapshot, &selection)
+    let (request, references) = epistemic_workbench_prose::prepare(
+        &snapshot, &selection, epistemic_workbench_prose::GraphModelTask::Describe,
+    )
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid or oversized Workbench selection"))?;
     let response = invoke_workbench_model(&state, &request).await?;
     let prose = epistemic_workbench_prose::validate(response.value, &references)
         .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned an invalid description"))?;
     Ok(no_store(json!({
         "prose":prose,
+        "basis":references,
+        "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
+        "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),
+    }), StatusCode::OK))
+}
+
+async fn suggest_expert_workbench_investigation(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(selection): Json<epistemic_workbench_prose::ProseSelection>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Write).await?;
+    let snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
+    let (request, references) = epistemic_workbench_prose::prepare(
+        &snapshot, &selection, epistemic_workbench_prose::GraphModelTask::SuggestInvestigation,
+    )
+    .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid or oversized Workbench selection"))?;
+    let response = invoke_workbench_model(&state, &request).await?;
+    let result = epistemic_workbench_prose::validate_suggestions(response.value, &references)
+        .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned invalid suggestions"))?;
+    Ok(no_store(json!({
+        "suggestions":result.suggestions,
         "basis":references,
         "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
         "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),

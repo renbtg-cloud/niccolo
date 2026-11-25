@@ -166,7 +166,15 @@ async fn investigator_adopts_an_edited_draft_with_stable_ids_and_full_provenance
         fn model(&self) -> &str { "test-model" }
         fn invoke<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
             Box::pin(async move {
-                let value = if request.purpose == "DESCRIBE_INVESTIGATOR_GRAPH" {
+                let value = if request.purpose == "SUGGEST_INVESTIGATION_FROM_GRAPH" {
+                    let scope = request.input["graph_selection"].as_array().unwrap();
+                    assert_eq!(scope.len(), 1);
+                    assert_eq!(scope[0]["statement"], "Um testemunho ainda não corroborado relata um pedido de carona.");
+                    json!({"suggestions":[
+                        {"kind":"QUESTION","text":"A testemunha viu a vítima entrar no carro?","why_it_matters":"Distingue o pedido da viagem.","references":["O1"]},
+                        {"kind":"WHAT_IF","text":"E se a testemunha ouviu o pedido sem ver a viagem?","why_it_matters":"Testa a dependência do relato sobre a viagem.","references":["O1"]}
+                    ]})
+                } else if request.purpose == "DESCRIBE_INVESTIGATOR_GRAPH" {
                     let scope = request.input["graph_selection"].as_array().unwrap();
                     assert_eq!(scope.len(), 1);
                     assert_eq!(scope[0]["statement"], "Um testemunho ainda não corroborado relata um pedido de carona.");
@@ -258,6 +266,16 @@ async fn investigator_adopts_an_edited_draft_with_stable_ids_and_full_provenance
     assert_eq!(prose["basis"][0]["object_ids"][0], first["object_ids"][0]);
     assert_eq!(prose["prose"]["paragraphs"][0]["references"][0], "O1");
     assert_eq!(call(&writer, &prose_path, describe("xx")).await.unwrap().status(), StatusCode::BAD_GATEWAY);
+
+    let suggest_path = format!("/v1/workspaces/{}/situations/{sit}/epistemic/workbench/investigation-suggestions", f.workspace);
+    let suggestions = call(&writer, &suggest_path, describe("pt-BR")).await.unwrap();
+    assert_eq!(suggestions.status(), StatusCode::OK);
+    let suggestions = body(suggestions).await;
+    assert_eq!(suggestions["suggestions"][0]["kind"], "QUESTION");
+    assert_eq!(suggestions["suggestions"][1]["kind"], "WHAT_IF");
+    assert_eq!(suggestions["basis"][0]["object_ids"][0], first["object_ids"][0]);
+    let after_suggestions = epistemic_workbench::snapshot(&f.service, f.workspace, sit).await.unwrap();
+    assert_eq!(after_suggestions.nodes, snapshot.nodes);
 }
 
 async fn node(f: &Fixture, situation: Uuid, kind: ExpertNodeKind, text: &str) -> Uuid {

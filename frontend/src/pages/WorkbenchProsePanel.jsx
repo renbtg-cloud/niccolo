@@ -3,7 +3,17 @@ import { useMutation } from '@tanstack/react-query';
 
 const maxObjects = 16;
 
-export function WorkbenchProsePanel({ client, nodes }) {
+function CitedBasis({ keys, basis }) {
+  return <ul>{keys.map((key, position) => {
+    const reference = basis.find((item) => item.key === key);
+    return <li key={position}>
+      {reference.description}{' '}
+      {reference.object_ids.map((id, i) => <a key={id} href={`#workbench-object-${id}`}>Open object{i ? ` ${i + 1}` : ''}{' '}</a>)}
+    </li>;
+  })}</ul>;
+}
+
+export function WorkbenchProsePanel({ client, nodes, onEditCandidate }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [language, setLanguage] = useState('');
   const [text, setText] = useState('');
@@ -11,6 +21,10 @@ export function WorkbenchProsePanel({ client, nodes }) {
     mutationFn: async ({ ids, language }) => (await client.describeExpertSelection(ids, language || null)).value,
     onSuccess: (result) => setText(result.prose.paragraphs.map((paragraph) => paragraph.text).join('\n\n')),
   });
+  const suggest = useMutation({
+    mutationFn: async ({ ids, language }) => (await client.suggestExpertInvestigation(ids, language || null)).value,
+  });
+  const busy = describe.isPending || suggest.isPending;
   const ids = nodes.filter((node) => selectedIds.includes(node.object_id)).map((node) => node.object_id);
   const original = describe.data?.prose.paragraphs.map((paragraph) => paragraph.text).join('\n\n');
   function download() {
@@ -22,14 +36,14 @@ export function WorkbenchProsePanel({ client, nodes }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return <details className="review-panel">
-    <summary>Describe selected objects in prose</summary>
+    <summary>Describe or investigate selected objects</summary>
     <p>Select up to {maxObjects} objects. The configured model receives their text and the recorded relationships between them.</p>
     <form className="human-context" onSubmit={(event) => {
       event.preventDefault();
-      if (!ids.length || ids.length > maxObjects || describe.isPending) return;
+      if (!ids.length || ids.length > maxObjects || busy) return;
       describe.mutate({ ids, language });
     }}>
-      <fieldset disabled={describe.isPending}>
+      <fieldset disabled={busy}>
         <legend>Objects to describe</legend>
         {nodes.map((node) => <label key={node.object_id}>
           <input type="checkbox" checked={ids.includes(node.object_id)}
@@ -44,7 +58,8 @@ export function WorkbenchProsePanel({ client, nodes }) {
         <option value="en">English</option>
         <option value="es">Español</option>
       </select></label>
-      <button type="submit" disabled={!ids.length || describe.isPending}>Describe selection</button>
+      <button type="submit" disabled={!ids.length || busy}>Describe selection</button>
+      <button type="button" disabled={!ids.length || busy} onClick={() => suggest.mutate({ ids, language })}>Suggest questions and what-ifs</button>
     </form>
     {describe.isPending && <p role="status">Waiting for description…</p>}
     {describe.error && <p role="alert" className="error">{describe.error.message}</p>}
@@ -56,15 +71,26 @@ export function WorkbenchProsePanel({ client, nodes }) {
         <summary>{text === original ? 'Basis cited by the draft' : 'Basis cited by the original draft, before edits'}</summary>
         {describe.data.prose.paragraphs.map((paragraph, index) => <div key={index}>
           <p>{paragraph.text}</p>
-          <ul>{paragraph.references.map((key, position) => {
-            const reference = describe.data.basis.find((item) => item.key === key);
-            return <li key={position}>
-              {reference.description}{' '}
-              {reference.object_ids.map((id, i) => <a key={id} href={`#workbench-object-${id}`}>Open object{i ? ` ${i + 1}` : ''}{' '}</a>)}
-            </li>;
-          })}</ul>
+          <CitedBasis keys={paragraph.references} basis={describe.data.basis}/>
         </div>)}
       </details>
+    </>}
+    {suggest.isPending && <p role="status">Waiting for investigation suggestions…</p>}
+    {suggest.error && <p role="alert" className="error">{suggest.error.message}</p>}
+    {suggest.data && <>
+      <h4>Investigation suggestions</h4>
+      <p>Suggested by {suggest.data.provider} / {suggest.data.model}. Review each item before recording it.</p>
+      {!suggest.data.suggestions.length && <p>The model found no suggestions in this selection.</p>}
+      <ol>{suggest.data.suggestions.map((item, index) => <li key={index}>
+        <strong>{item.kind === 'QUESTION' ? 'Question' : 'What-if'}:</strong> {item.text}
+        <p>{item.why_it_matters}</p>
+        <CitedBasis keys={item.references} basis={suggest.data.basis}/>
+        <button type="button" onClick={() => onEditCandidate({
+          kind: item.kind === 'QUESTION' ? 'QUESTION' : 'ASSUMPTION',
+          text: item.text,
+          rationale: `Suggested by ${suggest.data.provider} / ${suggest.data.model}. ${item.why_it_matters}`,
+        })}>Edit before recording</button>
+      </li>)}</ol>
     </>}
   </details>;
 }

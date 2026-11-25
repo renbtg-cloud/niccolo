@@ -110,6 +110,7 @@ export function ExpertWorkbenchPage() {
   const [meaningDependency, setMeaningDependency] = useState({route:'',revision:'',rationale:''});
   const [dependencyReviews, setDependencyReviews] = useState({});
   const [node, setNode] = useState({ kind: 'HYPOTHESIS', text: '', rationale: '' });
+  const nodeText = useRef(null);
   const [relation, setRelation] = useState({ family: 'SEMANTIC', kind: 'CONTRADICTS', left: '', right: '', rationale: '' });
   const [argument, setArgument] = useState({ conclusion: '', mode: 'ABDUCTIVE', rationale: '' });
   const [grounding, setGrounding] = useState({ argument: '', effect: 'SUPPORTS', adequacy: 'PARTIAL', rationale: '' });
@@ -206,6 +207,10 @@ export function ExpertWorkbenchPage() {
       key={`${client.config.workspace}:${client.config.situation}`}
       client={client}
       nodes={data.nodes}
+      onEditCandidate={candidate => {
+        setNode(candidate);
+        nodeText.current?.focus();
+      }}
     />}
 
     <div className="expert-workbench-grid">
@@ -227,7 +232,7 @@ export function ExpertWorkbenchPage() {
         <h3>Author an epistemic object</h3>
         <p>{nodeAuthoringGuidance(node.kind)}</p>
         <label>Kind<select value={node.kind} onChange={(e) => setNode({ ...node, kind: e.target.value })}>{nodeKinds.map((x) => <option key={x} value={x}>{nodeKindLabels[x]}</option>)}</select></label>
-        <label>{nodeTextLabel(node.kind)}<textarea value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
+        <label>{nodeTextLabel(node.kind)}<textarea ref={nodeText} value={node.text} maxLength={8192} onChange={(e) => setNode({ ...node, text: e.target.value })} /></label>
         <label>Why this abstraction is appropriate<textarea value={node.rationale} maxLength={4096} onChange={(e) => setNode({ ...node, rationale: e.target.value })} /></label>
         <button disabled={busy}>Create object</button>
       </form>
