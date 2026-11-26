@@ -59,23 +59,38 @@ The MVP is not ready merely because each box exists separately. A real user must
 
 ## 3. Ordered execution blocks
 
+The status below is based on the shipped paths at the end of milestone 1.616.
+Checked items indicate a bounded implementation with a corresponding code or
+test path. Each block still has its own exit evidence. The first priority is
+to exercise the existing paths together in the canonical case and the local
+pilot (H and I), then fix the gaps that prevent that journey.
+
 ### Block A — close the parser-free boundary
+
+The default runtime and first-user guide use external references and attributed
+representations. The [parser-free validation gate](../../scripts/run-parser-free-mvp-validation.sh)
+exercises the Rust, HTTP, PostgreSQL and frontend boundaries. The walkthrough
+already includes an attributed witness correction as a smaller pilot exercise.
 
 - [ ] Finish the in-progress Situation UI transition to external artifact references and attributed representations.
 - [ ] Remove obsolete source-upload, parser, catalog, PDF-preview, and identity-review assumptions from primary frontend tests.
-- [ ] Ensure the default shipped MVP API does not expose artifact parsing or PDF text-extraction workflows. Preserve historical schema compatibility without presenting legacy parser behavior as MVP capability.
+- [x] Ensure the default shipped MVP API does not expose artifact parsing or PDF text-extraction workflows. Preserve historical schema compatibility without presenting legacy parser behavior as MVP capability.
 - [ ] Remove or isolate unused browser client methods and UI modules that imply supported parsing.
 - [ ] Ensure frozen reasoning input uses explicit artifact representations and preserves their attribution, scope, limitations, and non-truth semantics.
-- [ ] Rewrite the public README and first-user walkthrough so they contain no instructions to upload or parse WhatsApp, email, PDF, image, video, or audio artifacts.
+- [x] Rewrite the public README and first-user walkthrough so they contain no instructions to upload or parse WhatsApp, email, PDF, image, video, or audio artifacts.
 - [ ] Validate frontend tests/build, Rust formatting/lints/tests, PostgreSQL migrations/integration tests, and the local bootstrap path.
 
 **Exit evidence:** a first user can reference an inaccessible external artifact, describe or transcribe relevant material, analyze it, and later see exactly which attributed representation entered reasoning. No default MVP surface offers parsing.
 
 ### Block B — reconcile normative documentation with current owner decisions
 
+The [investigator-assisted MVP contract](../../docs/architecture/INVESTIGATOR_ASSISTED_MVP.md)
+records the manual and model-assisted entry paths, the endpoint boundary and
+the default opt-in policy. Review older planning material for conflicting guidance.
+
 - [ ] Update architecture and product documents that still declare investigator prose interpretation post-MVP.
-- [ ] Record the optional-local-or-remote LLM boundary and the initial OpenAI-compatible endpoint contract.
-- [ ] Record that manual graph authoring and LLM-assisted proposals are two entry paths into the same epistemic model.
+- [x] Record the optional-local-or-remote LLM boundary and the initial OpenAI-compatible endpoint contract.
+- [x] Record that manual graph authoring and LLM-assisted proposals are two entry paths into the same epistemic model.
 - [ ] Record proposal provenance requirements: provider, model, invocation, source text/input revision, output contract version, timestamps, and human disposition history.
 - [ ] Record opt-in automation scopes: per action, per Situation, or broader user configuration; default behavior remains non-automatic.
 - [ ] Move redaction assistance and artifact parsing explicitly to post-MVP scope.
@@ -85,8 +100,12 @@ The MVP is not ready merely because each box exists separately. A real user must
 
 ### Block C — prose-to-graph proposal slice
 
+The Workbench has a draft panel and an adoption operation. The
+[Workbench integration tests](../../tests/epistemic_workbench_integration.rs)
+exercise attribution, exact input excerpts and adoption of an edited draft.
+
 - [ ] Add an investigator-facing ordinary-prose input for proposing epistemic structure.
-- [ ] Preserve the exact original user text independently from every interpretation or normalized representation.
+- [x] Preserve the exact original user text independently from every interpretation or normalized representation.
 - [ ] Define a bounded structured-output contract for proposed objects, relations, grounding, unresolved references, ambiguity, and clarification needs.
 - [ ] Reuse or generalize the reasoning proposal ledger rather than creating an untracked model-output path.
 - [ ] Require each proposed object and relation to explain the source phrase/context that motivated it.
@@ -96,6 +115,10 @@ The MVP is not ready merely because each box exists separately. A real user must
 **Exit evidence:** a sentence such as “Apparently, the victim asked the aggressors for a ride shortly before the crime” produces a bounded, attributable, visibly provisional draft instead of an opaque answer or automatically accepted graph.
 
 ### Block D — human graph approval and manual authoring
+
+Draft review and manual authoring work through the Workbench. The typed graph
+exposes incoming and outgoing relations. The pilot still needs to test how
+readily an investigator can find, qualify and edit the proposed structure.
 
 - [ ] Present proposed objects and relations visually as inspectable nodes, edges, labels, qualifications, and provenance.
 - [ ] Support accept, edit, reject, and bounded bulk acceptance while recording the exact human action.
@@ -109,6 +132,10 @@ The MVP is not ready merely because each box exists separately. A real user must
 
 ### Block E — what-if dependency impact
 
+The Workbench integration suite checks that a human-authored what-if identifies
+affected support routes, preserves unrelated routes and leaves the case intact.
+Use the canonical case to check whether the browser makes those distinctions clear.
+
 - [ ] Let the investigator create a branch in which a selected claim, assumption, relation, source representation, or interpretation is treated as false, unsupported, withdrawn, or differently interpreted.
 - [ ] Keep the branch separate from canonical history unless the investigator explicitly promotes a revision.
 - [ ] Traverse explicit grounding, dependency, genealogy, and qualification structures without confusing provenance ancestry with epistemic support.
@@ -121,6 +148,11 @@ The MVP is not ready merely because each box exists separately. A real user must
 
 ### Block F — investigator questions
 
+The Workbench supports on-demand suggestions from selected objects and a
+one-draft opt-in after review. Suggestions show model attribution and can be
+opened in the manual form. The full question disposition and automation scope
+still need separate verification.
+
 - [ ] Generate a bounded number of questions on explicit request.
 - [ ] Explain which hypotheses, assumptions, gaps, or decisions each question could discriminate.
 - [ ] Preserve model provenance and distinguish generated questions from investigator-authored questions.
@@ -131,6 +163,10 @@ The MVP is not ready merely because each box exists separately. A real user must
 **Exit evidence:** generated questions are useful because their possible answers could change live reasoning, not merely because they sound investigative.
 
 ### Block G — graph-to-prose and report workflow
+
+The Workbench returns editable prose with basis links in the browser. The
+current download is plain text. Check the report against the revised case and
+verify what provenance a reader can inspect after export.
 
 - [ ] Add “describe what this graph currently expresses” as an explicit investigator action.
 - [ ] Generate fluent prose from the accepted graph, current branch, recorded uncertainty, competing accounts, and provenance.
@@ -154,6 +190,11 @@ The MVP is not ready merely because each box exists separately. A real user must
 **Exit evidence:** the canonical case can be replayed from clean setup and demonstrates the full primary acceptance journey with deterministic assertions around provenance, human decisions, revisions, and downstream impact.
 
 ### Block I — executable local pilot
+
+The [first-user walkthrough](../../docs/product/FIRST_USER_MVP_WALKTHROUGH.md)
+documents bootstrap, private model configuration and a short witness exercise.
+Record the result of a full browser session on the canonical case separately
+from the bootstrap and regression results.
 
 - [ ] Revalidate bootstrap on a clean machine with PostgreSQL and the documented Rust/Node requirements.
 - [ ] Run with one local or remote OpenAI-compatible endpoint using private operator configuration.
