@@ -1,10 +1,10 @@
 # Niccolò MVP next execution plan
 
-**Status:** Active execution plan.
+**Status:** Active. The first phase is API and reasoning validation.
 **Product name:** **Niccolò**. Naming alternatives are outside this plan and must not be introduced into product code, UI, documentation, commits, fixtures, or examples while this plan is active.
-**Purpose:** Turn the existing epistemological, persistence, authorization, reasoning, and artifact foundations into one coherent investigator-facing workflow that can be exercised by a real user.
+**Purpose:** Verify the reasoning and evidence-handling workflow through the existing HTTP API and internal tests before resuming browser work.
 
-This document is a TODO-like execution sequence, not a claim that the listed behavior is already implemented. Source code, migrations, executable tests, and a completed first-user workflow remain the evidence of implementation.
+Source code, migrations and executable tests establish implementation of the first phase. A completed browser workflow with an investigator is a separate acceptance milestone.
 
 For execution sequencing, this plan records the latest owner decisions and therefore supersedes older planning statements that place all interpretation of investigator prose, external model use, or model-assisted structure proposals after the MVP. Block B must reconcile those older documents rather than leaving permanent contradictory specifications.
 
@@ -25,62 +25,87 @@ The following decisions constrain all work below:
 - Consequential hypotheses, conclusions, decisions, and actions remain attributable and revisable. Human authority is not delegated to a model.
 - Niccolò remains the sole current product name throughout implementation.
 
-## 2. Primary MVP acceptance journey
+## 2. Active phase — API and reasoning only
 
-The critical path is:
+React, the browser bundle, and frontend development are deferred for the
+entire phase. Preserve the existing frontend code and tests in the repository
+as a separate, opt-in path. Omit frontend tests, browser E2E, Node/npm, and
+asset builds from default local and CI validation and from the API-only build and
+local startup path. The API-only service must start without building,
+embedding, or serving the React bundle. Document the commands for building,
+starting, stopping, and validating it from a clean checkout with Rust and
+PostgreSQL, with a configured model needed only for the live model evaluation.
 
-```text
-investigator statement or manual authoring
-        |
-        v
-proposed typed objects and relations
-        |
-        v
-inspectable graph/draft
-        |
-        v
-accept / edit / reject / add manually
-        |
-        v
-canonical, provenance-preserving investigation model
-        |
-        +--> investigator-generated what-if branch
-        |          |
-        |          v
-        |    downstream impact and surviving support
-        |
-        +--> investigative questions and information gaps
-        |
-        v
-fluent, editable, traceable prose
-```
+Use the existing HTTP API for replay and internal tests for the reasoning
+rules. Limit HTTP/BFF changes to what these paths require for correct input,
+authorization, persistence, provenance, human review, and output. Keep
+presentation-oriented BFF work with the browser phase.
 
-The MVP is not ready merely because each box exists separately. A real user must be able to complete this journey without learning the internal architecture first.
+### Acceptance journey
+
+1. Create a Situation and attribute a description to an external artifact.
+2. Author a typed graph manually, or submit prose and explicitly review the
+   proposed objects and relations before adopting them.
+3. Correct a source representation and evaluate a separate what-if. Inspect
+   downstream effects, surviving support, and earlier revisions.
+4. Request discriminating questions and traceable prose from reviewed material.
+
+Replay this journey over authenticated HTTP. The replay supplies investigator
+actions explicitly and checks the returned and persisted state. A later
+investigator session will test whether the browser makes that same journey usable.
+
+### Execution order and exit criteria
+
+1. Establish an API-only build and verification path (A and I). It must
+   run from a clean checkout without Node/npm or a browser build. The
+   default reasoning checks must run without provider credentials.
+2. Define the fictional county case with explicit expected results and turn
+   it into an executable replay (H). Exercise the existing capabilities
+   (C–G) and fix the gaps that prevent the replay. Reconcile conflicting
+   documentation as those paths are changed (B).
+3. Run two complementary checks on the case:
+   - **Deterministic motor and HTTP replay.** Start with a reviewed graph.
+     Record an attributed witness correction and confirm which specific
+     claims lose or weaken support, which routes require review, and which
+     independent support survives. Confirm that the prior state remains
+     inspectable. Evaluate a separate what-if and verify that the
+     canonical state is unchanged. Use controlled model responses where
+     needed to test the proposal and report I/O contracts reproducibly.
+   - **Live model evaluation.** Use Qwen via OpenRouter on the synthetic
+     notes. Check its proposed structure, discriminating questions and
+     revised prose against a rubric defined before the run. Record the
+     model and concrete errors, including treating a report as fact,
+     treating repeated testimony as independent corroboration, and
+     overstating a conclusion after its support weakens. Record latency
+     and available usage with the results. Compare DeepSeek later on the
+     same fixture (K).
+4. Resume browser work after the canonical replay passes from clean setup,
+   the live model evaluation meets the case rubric, and the result shows
+   what changed, what survived, and why. Use the existing interface for
+   the first investigator session and prioritize fixes from that session.
+   Revisit MCP after the corresponding application semantics are stable (J).
 
 ## 3. Ordered execution blocks
 
 The status below is based on the shipped paths at the end of milestone 1.616.
 Checked items indicate a bounded implementation with a corresponding code or
-test path. Each block still has its own exit evidence. The first priority is
-to exercise the existing paths together in the canonical case and the local
-pilot (H and I), then fix the gaps that prevent that journey.
+test path. The sequence in section 2 governs the active phase. The blocks
+below track requirements and retain distinct exit evidence.
 
 ### Block A — close the parser-free boundary
 
 The default runtime and first-user guide use external references and attributed
 representations. The [parser-free validation gate](../../scripts/run-parser-free-mvp-validation.sh)
-exercises the Rust, HTTP, PostgreSQL and frontend boundaries. The walkthrough
+currently combines backend and frontend checks. Use its backend coverage in
+the default path and separate out the browser checks. The walkthrough
 already includes an attributed witness correction as a smaller pilot exercise.
 
-- [ ] Finish the in-progress Situation UI transition to external artifact references and attributed representations.
-- [ ] Remove obsolete source-upload, parser, catalog, PDF-preview, and identity-review assumptions from primary frontend tests.
 - [x] Ensure the default shipped MVP API does not expose artifact parsing or PDF text-extraction workflows. Preserve historical schema compatibility without presenting legacy parser behavior as MVP capability.
-- [ ] Remove or isolate unused browser client methods and UI modules that imply supported parsing.
 - [ ] Ensure frozen reasoning input uses explicit artifact representations and preserves their attribution, scope, limitations, and non-truth semantics.
 - [x] Rewrite the public README and first-user walkthrough so they contain no instructions to upload or parse WhatsApp, email, PDF, image, video, or audio artifacts.
-- [ ] Validate frontend tests/build, Rust formatting/lints/tests, PostgreSQL migrations/integration tests, and the local bootstrap path.
+- [ ] Validate Rust formatting, lints and tests, PostgreSQL migrations and integration tests, and the API-only bootstrap without frontend tooling.
 
-**Exit evidence:** a first user can reference an inaccessible external artifact, describe or transcribe relevant material, analyze it, and later see exactly which attributed representation entered reasoning. No default MVP surface offers parsing.
+**Exit evidence:** an API caller can reference an inaccessible external artifact, describe or transcribe relevant material, analyze it, and later retrieve exactly which attributed representation entered reasoning. The default API has no parsing surface.
 
 ### Block B — reconcile normative documentation with current owner decisions
 
@@ -104,7 +129,7 @@ The Workbench has a draft panel and an adoption operation. The
 [Workbench integration tests](../../tests/epistemic_workbench_integration.rs)
 exercise attribution, exact input excerpts and adoption of an edited draft.
 
-- [ ] Add an investigator-facing ordinary-prose input for proposing epistemic structure.
+- [ ] Verify that an authorized API caller can submit ordinary investigator prose and obtain a provisional structure proposal.
 - [x] Preserve the exact original user text independently from every interpretation or normalized representation.
 - [ ] Define a bounded structured-output contract for proposed objects, relations, grounding, unresolved references, ambiguity, and clarification needs.
 - [ ] Reuse or generalize the reasoning proposal ledger rather than creating an untracked model-output path.
@@ -112,29 +137,27 @@ exercise attribution, exact input excerpts and adoption of an edited draft.
 - [ ] Prevent ungrounded enrichment: the proposal path must not silently invent motive, deception, knowledge, comprehension, loyalty, causation, or identity.
 - [ ] Add adversarial tests for over-interpretation, missing provenance, unsupported certainty, unknown references, duplicate proposals, and provider retries.
 
-**Exit evidence:** a sentence such as “Apparently, the victim asked the aggressors for a ride shortly before the crime” produces a bounded, attributable, visibly provisional draft instead of an opaque answer or automatically accepted graph.
+**Exit evidence:** a qualified statement such as “Apparently, the witness heard someone ask for a ride” produces a bounded, attributable draft that the API identifies as provisional.
 
 ### Block D — human graph approval and manual authoring
 
-Draft review and manual authoring work through the Workbench. The typed graph
-exposes incoming and outgoing relations. The pilot still needs to test how
-readily an investigator can find, qualify and edit the proposed structure.
+Draft review and manual authoring work through the Workbench. Validate their
+API contracts in this phase and defer visual presentation to the browser phase.
 
-- [ ] Present proposed objects and relations visually as inspectable nodes, edges, labels, qualifications, and provenance.
+- [ ] Return typed proposed objects and relations with their labels, qualifications, and provenance.
 - [ ] Support accept, edit, reject, and bounded bulk acceptance while recording the exact human action.
 - [ ] Support manual creation of the same object and relation types without requiring an LLM.
-- [ ] Make unconfirmed, accepted, revised, rejected, superseded, and retracted states visually distinguishable.
+- [ ] Make unconfirmed, accepted, revised, rejected, superseded, and retracted states distinguishable in the API or recorded history.
 - [ ] Preserve the distinction between confirming intended meaning and asserting truth.
 - [ ] Ensure bulk acceptance does not fabricate evidence that every proposal was carefully read or cognitively understood.
-- [ ] Keep advanced ontology detail progressively disclosed; internal representational complexity must not become mandatory form-filling complexity.
 
-**Exit evidence:** an expert investigator can construct and revise a useful graph manually, while another user can start from model proposals and retain full control over what enters the canonical model.
+**Exit evidence:** the replay exercises both manual authoring without a model and reviewer adoption of edited model proposals, with explicit attribution for what enters the canonical model.
 
 ### Block E — what-if dependency impact
 
 The Workbench integration suite checks that a human-authored what-if identifies
 affected support routes, preserves unrelated routes and leaves the case intact.
-Use the canonical case to check whether the browser makes those distinctions clear.
+Use the canonical case to check that the HTTP response and stored revisions preserve those distinctions.
 
 - [ ] Let the investigator create a branch in which a selected claim, assumption, relation, source representation, or interpretation is treated as false, unsupported, withdrawn, or differently interpreted.
 - [ ] Keep the branch separate from canonical history unless the investigator explicitly promotes a revision.
@@ -164,45 +187,43 @@ still need separate verification.
 
 ### Block G — graph-to-prose and report workflow
 
-The Workbench returns editable prose with basis links in the browser. The
-current download is plain text. Check the report against the revised case and
-verify what provenance a reader can inspect after export.
+The Workbench returns prose with basis references. Check those references
+against the revised case in the API response. Browser editing and export
+controls belong to the resumed browser phase.
 
 - [ ] Add “describe what this graph currently expresses” as an explicit investigator action.
 - [ ] Generate fluent prose from the accepted graph, current branch, recorded uncertainty, competing accounts, and provenance.
 - [ ] Prevent generated prose from silently adding claims absent from the graph.
 - [ ] Make consequential sentences traceable to their supporting objects and relations.
 - [ ] Preserve distinctions such as alleged/observed/inferred/hypothetical, corroborated/repeated, and unknown/unsupported/false.
-- [ ] Let the investigator edit, regenerate bounded sections, and export the result.
+- [ ] Return prose and its cited basis in a form a caller can carry forward into a revised report.
 - [ ] Preserve which graph revision and scenario branch produced each document.
 
-**Exit evidence:** an investigator can produce a useful, editable document for an attorney, law-enforcement professional, executive, client, or other intended reader without losing epistemic qualification.
+**Exit evidence:** the response contains prose suitable for an investigator to revise, with uncertainty preserved and the cited grounds still identifiable.
 
 ### Block H — canonical fictional-county investigation
 
 - [ ] Define a fictional county in a fictional state with recurring institutions and actors.
 - [ ] Create a bounded case in which an initially convincing account points toward the wrong person.
 - [ ] Include conflicting testimony, one materially deceptive account, external artifact references, uncertain identity or timing, and evidence that remains useful after the central theory changes.
-- [ ] Exercise model proposals, human correction, manual graph editing, what-if impact, generated questions, selective reanalysis, and final prose generation.
-- [ ] Use the case as onboarding material, a product demonstration, a regression fixture, and an LLM evaluation scenario.
+- [ ] Replay model proposals, human correction, manual graph authoring, what-if impact, generated questions, selective reanalysis, and final prose generation over the HTTP API.
+- [ ] Record expected results before the replay. Use the case as a regression fixture and LLM evaluation scenario now, and as onboarding material and a product demonstration when browser work resumes.
 - [ ] Ensure police, prosecution, defense, witnesses, experts, victims, suspects, and Niccolò's own prior analysis can all be challenged.
 
 **Exit evidence:** the canonical case can be replayed from clean setup and demonstrates the full primary acceptance journey with deterministic assertions around provenance, human decisions, revisions, and downstream impact.
 
-### Block I — executable local pilot
+### Block I — executable local API pilot
 
-The [first-user walkthrough](../../docs/product/FIRST_USER_MVP_WALKTHROUGH.md)
-documents bootstrap, private model configuration and a short witness exercise.
-Record the result of a full browser session on the canonical case separately
-from the bootstrap and regression results.
+The existing [first-user walkthrough](../../docs/product/FIRST_USER_MVP_WALKTHROUGH.md)
+documents the browser-based bootstrap, private model configuration and a short
+witness exercise. Document a separate API-only path for this phase.
 
-- [ ] Revalidate bootstrap on a clean machine with PostgreSQL and the documented Rust/Node requirements.
+- [ ] Establish and validate API-only bootstrap on a clean checkout with Rust and PostgreSQL. Apply migrations, provision restricted credentials, start the API and check persistence across restart.
 - [ ] Run with one local or remote OpenAI-compatible endpoint using private operator configuration.
-- [ ] Exercise the canonical case and one investigator-authored case through the browser.
-- [ ] Record hesitation, vocabulary failures, accidental overclaiming, excessive form burden, and places where architecture leaks into the primary experience.
-- [ ] Fix failures that prevent the investigator from completing the core journey before expanding surface area.
+- [ ] Run the canonical replay against the local API and record the model-free and live model results separately.
+- [ ] Fix reasoning, data-entry, API or persistence failures that prevent the replay from completing.
 
-**Exit evidence:** a new user can configure, start, use, stop, and restart Niccolò locally while preserving the investigation and its reasoning history.
+**Exit evidence:** a clean local API installation runs the replay without frontend dependencies and preserves the investigation and its reasoning history across restart.
 
 ### Block J — MCP surface after internal semantics stabilize
 
@@ -210,9 +231,9 @@ from the bootstrap and regression results.
 - [ ] Candidate tools include Situation creation, artifact-reference recording, structure proposal, graph inspection, what-if evaluation, question generation, and traceable prose generation.
 - [ ] Preserve workspace authorization, provider/model provenance, human approval boundaries, idempotency, and operation budgets.
 - [ ] Ensure MCP callers cannot bypass proposal review or convert tool output into human authorization.
-- [ ] Keep the browser workflow complete; MCP is an additional surface, not a replacement for investigator usability.
+- [ ] Apply the same application contracts to MCP and HTTP clients.
 
-**Exit evidence:** an authorized MCP client can perform the same bounded operations with the same provenance and human-control semantics as the first-party UI.
+**Exit evidence:** an authorized MCP client can perform the same bounded operations with the same provenance and human-control semantics as an authorized HTTP client.
 
 ### Block K — multi-model comparison and routing
 
@@ -224,7 +245,21 @@ from the bootstrap and regression results.
 
 **Exit evidence:** investigators can determine which model said what, compare performance over repeated work, and stop using models that do not justify their cost or attention.
 
-## 4. Work deliberately deferred while the primary journey is incomplete
+## 4. Deferred work
+
+### Browser phase
+
+Once the API and reasoning gate in section 2 passes, resume from the existing
+frontend. Run the canonical case and a second investigator-authored case in
+the browser. Observe where investigators hesitate, mistake evidence for
+interpretation, struggle to correct a graph, or miss what changed after a
+revision. Use that evidence to prioritize browser fixes and tests.
+
+Carry forward the Situation UI transition, legacy browser surface cleanup,
+visual graph and review states, progressive disclosure of ontology detail,
+and report editing, bounded regeneration, and export controls.
+
+### Other deferred work
 
 - Artifact parsing or autonomous interpretation of WhatsApp, email, PDF, image, video, or audio originals.
 - Redaction/anonymization assistance.
@@ -248,7 +283,7 @@ Each execution block may contain several milestones. For every milestone:
 6. Do not mix unrelated user changes into milestone commits.
 7. Do not treat a successful commit as a reason to stop when the next in-scope milestone is clear.
 
-## 6. MVP success definition
+## 6. MVP success definition after the browser phase
 
 The MVP succeeds when an investigator can:
 
