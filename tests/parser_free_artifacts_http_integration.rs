@@ -741,6 +741,230 @@ async fn alder_bend_queries_recognizability_by_audience_and_two_dates() {
 }
 
 #[tokio::test]
+async fn alder_bend_reviews_only_the_detail_reachable_from_prior_exposure() {
+    let mut case =
+        setup_with_focus("Could the archive photo account for a detail in Mara's account?").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        case.router = api::router(PgPoolOptions::new().connect(&url).await.unwrap());
+    }
+    let frank = Uuid::new_v4();
+    let mara = Uuid::new_v4();
+    for (actor, label) in [(frank, "Frank Vale"), (mara, "Mara Ellis")] {
+        let uri = format!("/v1/workspaces/{}/actors/{actor}", case.workspace);
+        let (status, body) = invoke(
+            case.router.clone(),
+            request(
+                "POST",
+                &uri,
+                &case.token,
+                Some(json!({"display_label":label})),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let hat = case
+        .case_node(
+            "PROPOSITION",
+            "Mara reports a red hat in the cab.",
+            "One detail of the interview.",
+        )
+        .await;
+    let truck = case
+        .case_node(
+            "PROPOSITION",
+            "Mara reports a truck passing the college.",
+            "A separate observation in the same interview.",
+        )
+        .await;
+    let interview = case
+        .case_source(
+            hat,
+            "Mara's initial testimony",
+            "Mara Ellis",
+            "I saw a truck pass the college. I remember a red hat in the cab.",
+        )
+        .await;
+    case.case_request(
+        &format!("epistemic/objects/{truck}/artifact-provenance/{interview}"),
+        Some(json!({"rationale":"The same testimony also records a distinct observation."})),
+    )
+    .await;
+    let hat_finding = case
+        .case_node(
+            "FINDING",
+            "The testimony describes a red hat in the cab.",
+            "Depends on the detail.",
+        )
+        .await;
+    let passage = case
+        .case_node(
+            "FINDING",
+            "A truck passed the college.",
+            "Depends on the truck observation.",
+        )
+        .await;
+    let identity = case
+        .case_node(
+            "HYPOTHESIS",
+            "The driver may have been Frank.",
+            "Authored investigative hypothesis.",
+        )
+        .await;
+    let hat_argument = case
+        .case_argument(hat_finding, "Assess the reported detail.")
+        .await;
+    let passage_argument = case
+        .case_argument(passage, "Assess the truck observation.")
+        .await;
+    let identity_argument = case
+        .case_argument(identity, "Consider what the hat might indicate.")
+        .await;
+    let hat_route = case
+        .case_ground(hat_argument, &[hat], "Uses the hat detail.")
+        .await;
+    let passage_route = case
+        .case_ground(passage_argument, &[truck], "Uses the truck observation.")
+        .await;
+    let identity_route = case
+        .case_ground(
+            identity_argument,
+            &[hat_finding],
+            "Relies on the reported hat finding.",
+        )
+        .await;
+
+    let photo = case
+        .case_node(
+            "PROPOSITION",
+            "The newspaper archive photo shows Frank in a red hat.",
+            "An attributed description of the candidate source.",
+        )
+        .await;
+    let picture = case
+        .case_representation(
+            photo,
+            "IMAGE",
+            "Alder Bend newspaper archive photo",
+            "Image accompanying the article",
+            "HUMAN_DESCRIPTION",
+            "Frank wears a red hat in the archive photograph.",
+        )
+        .await;
+    let workbench_before = case.case_request("epistemic/workbench", None).await;
+
+    let uri = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/detail-exposure-review",
+        case.workspace, case.situation
+    );
+    for (from, through, expected) in [
+        ("2026-11-19", "2026-11-19", "REVIEW_CANDIDATE"),
+        ("2026-11-22", "2026-11-22", "EXPOSURE_AFTER_TESTIMONY"),
+        ("2026-11-19", "2026-11-21", "ORDER_UNCERTAIN"),
+        ("2026-11-20", "2026-11-20", "ORDER_UNCERTAIN"),
+    ] {
+        let exposure_claim = case
+            .case_node(
+                "PROPOSITION",
+                &format!("Mara reports seeing the picture between {from} and {through}."),
+                "Alternative interval tested against the same interview.",
+            )
+            .await;
+        let basis = case
+            .case_source(
+                exposure_claim,
+                "Mara follow-up on photo exposure",
+                "Mara Ellis",
+                &format!("I saw the archive photo between {from} and {through}."),
+            )
+            .await;
+        let exposure_id = Uuid::new_v4();
+        case.case_request(
+            &format!("epistemic/public-prominence/{exposure_id}"),
+            Some(json!({
+                "subject_actor_id":frank, "audience_actor_id":mara, "cue":"FACE",
+                "observation":"EXPOSURE_REPORTED", "audience_scope":"Mara only",
+                "effective_from":from, "effective_through":through, "available_on":"2026-11-23",
+                "claim_object_id":exposure_claim, "representation_id":basis
+            })),
+        )
+        .await;
+        let payload = json!({
+            "witness_actor_id":mara, "testimony_detail":{"object_id":hat, "representation_id":interview},
+            "candidate_source":{"object_id":photo, "representation_id":picture},
+            "exposure_record_id":exposure_id, "testimony_from":"2026-11-20",
+            "testimony_through":"2026-11-20", "known_through":"2026-11-23"
+        });
+        let (status, body) = invoke(
+            case.router.clone(),
+            request("POST", &uri, &case.token, Some(payload.clone())),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["disposition"], expected);
+        assert_eq!(body["needs_finer_timing"], expected == "ORDER_UNCERTAIN");
+        assert_eq!(body["exposure"]["representation_id"], json!(basis));
+        assert_eq!(
+            body["candidate_source"]["representation_id"],
+            json!(picture)
+        );
+        let routes = body["affected_routes"].as_array().unwrap();
+        let needs_review = expected == "REVIEW_CANDIDATE";
+        assert_eq!(body["detail_needs_review"], needs_review);
+        if needs_review {
+            assert_eq!(routes.len(), 2);
+            for (route, conclusion) in [(hat_route, hat_finding), (identity_route, identity)] {
+                let affected = case_row(&body, "affected_routes", "grounding_set_id", route);
+                assert_eq!(affected["conclusion_object_id"], json!(conclusion));
+            }
+        } else {
+            assert!(routes.is_empty());
+        }
+
+        let mut earlier = payload.clone();
+        earlier["known_through"] = json!("2026-11-20");
+        let (status, historical) = invoke(
+            case.router.clone(),
+            request("POST", &uri, &case.token, Some(earlier)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{historical}");
+        assert_eq!(
+            historical["disposition"],
+            "EXPOSURE_NOT_AVAILABLE_AT_CUTOFF"
+        );
+        assert_eq!(historical["exposure"], Value::Null);
+        assert_eq!(historical["candidate_source"], Value::Null);
+        assert_eq!(historical["affected_routes"], json!([]));
+
+        let mut wrong_witness = payload.clone();
+        wrong_witness["witness_actor_id"] = json!(frank);
+        let (status, _) = invoke(
+            case.router.clone(),
+            request("POST", &uri, &case.token, Some(wrong_witness)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let mut unlinked_source = payload;
+        unlinked_source["candidate_source"]["representation_id"] = json!(interview);
+        let (status, _) = invoke(
+            case.router.clone(),
+            request("POST", &uri, &case.token, Some(unlinked_source)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+    let after = case.case_request("epistemic/workbench", None).await;
+    assert_eq!(
+        after["reassessment_impacts"],
+        workbench_before["reassessment_impacts"]
+    );
+    assert_eq!(after["grounding_sets"], workbench_before["grounding_sets"]);
+    let still_usable = case_row(&after, "grounding_sets", "grounding_set_id", passage_route);
+    assert_eq!(still_usable["members"][0]["ground_object_id"], json!(truck));
+}
+
+#[tokio::test]
 async fn http_flow_records_human_material_without_accepting_or_reading_artifact_bytes() {
     let setup = setup().await;
     let video = Uuid::new_v4();

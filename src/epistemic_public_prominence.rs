@@ -76,7 +76,7 @@ const RECORD_COLUMNS: &str = "
     to_char(available_on, 'YYYY-MM-DD') AS available_on,
     claim_object_id, representation_id, recorded_by";
 
-fn calendar_date(value: &str) -> bool {
+pub(super) fn calendar_date(value: &str) -> bool {
     let b = value.as_bytes();
     if b.len() != 10
         || b[4] != b'-'
@@ -134,6 +134,26 @@ fn record_from_row(row: PgRow) -> Result<Record, WorkbenchError> {
         },
         recorded_by: row.try_get("recorded_by")?,
     })
+}
+
+pub(super) async fn find_record(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    record_id: Uuid,
+) -> Result<Option<Record>, WorkbenchError> {
+    let sql = format!(
+        "SELECT {RECORD_COLUMNS} FROM niccolo.public_prominence_records
+         WHERE workspace_id=$1 AND situation_id=$2 AND record_id=$3"
+    );
+    sqlx::query(&sql)
+        .bind(workspace)
+        .bind(situation)
+        .bind(record_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .map(record_from_row)
+        .transpose()
 }
 
 async fn ensure_scope(
@@ -218,18 +238,8 @@ pub async fn record(
     .await?
     .rows_affected() == 1;
     if !written {
-        let sql = format!(
-            "SELECT {RECORD_COLUMNS} FROM niccolo.public_prominence_records
-             WHERE workspace_id=$1 AND situation_id=$2 AND record_id=$3"
-        );
-        let stored = sqlx::query(&sql)
-            .bind(workspace)
-            .bind(situation)
-            .bind(record_id)
-            .fetch_optional(&mut *tx)
+        let stored = find_record(&mut tx, workspace, situation, record_id)
             .await?
-            .map(record_from_row)
-            .transpose()?
             .ok_or(WorkbenchError::Invisible)?;
         if stored.input != input || stored.recorded_by != author {
             return Err(WorkbenchError::Conflict);

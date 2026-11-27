@@ -27,7 +27,7 @@ use crate::discovery;
 use crate::epistemic_input_draft;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
-use crate::epistemic_workbench::public_prominence;
+use crate::epistemic_workbench::{detail_exposure, public_prominence};
 use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::epistemic_workbench_prose;
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
@@ -288,6 +288,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/public-prominence/{record}",
             post(record_public_prominence),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review",
+            post(review_detail_exposure),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/input-draft",
@@ -3787,6 +3791,17 @@ async fn record_public_prominence(
         public_prominence::record(&state.pool, workspace, situation, author, record, input).await?;
     let status = if created { StatusCode::CREATED } else { StatusCode::OK };
     Ok(no_store(json!({"record_id": record, "replayed": !created}), status))
+}
+
+async fn review_detail_exposure(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<detail_exposure::Input>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let review = detail_exposure::review(&state.pool, workspace, situation, input).await?;
+    Ok(no_store(json!(review), StatusCode::OK))
 }
 
 async fn create_expert_epistemic_node(
