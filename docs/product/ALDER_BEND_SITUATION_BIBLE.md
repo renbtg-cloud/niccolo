@@ -1,6 +1,8 @@
 # Alder Bend — bíblia situacional
 
-Rascunho de desenvolvimento para Niccolò. Alder Bend, o estado de Bellmont, as instituições e os personagens abaixo são ficcionais. O texto inclui informações reservadas aos autores. Cada investigação recebe apenas o material que chega a ela na história.
+Alder Bend é um cenário ficcional criado para testar o Niccolò. A prioridade é produzir casos reproduzíveis com entradas, revelações e resultados esperados verificáveis. A leitura precisa ser clara o bastante para que falhas no dossiê possam ser distinguidas de falhas do software. O interesse literário é secundário.
+
+Alder Bend, o estado de Bellmont, suas instituições e seus personagens são ficcionais. Este documento inclui informações reservadas aos autores. Cada investigação recebe apenas o material que chega a ela na história.
 
 ## O condado
 
@@ -68,11 +70,13 @@ Ao fim da primeira parte, a travessia de Daniel tem apoio, a identidade do motor
 
 ## Material para desenvolver
 
-O dossiê pode crescer em rodadas até cerca de 30 a 40 peças. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
+Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
 
-Alunos, moradores e pessoas de passagem podem entrar conforme uma cena pedir. Um novo depoimento pode conter uma pista independente e, na frase seguinte, repetir um rumor. Por exemplo, alguém tem um bom motivo para recordar a hora de um guincho, mas se refere à terça anterior. Cada novo personagem individualizado recebe os mesmos quatro dados do elenco: idade, ocupação, atividade e situação conjugal. O vínculo deve aparecer na história quando ajuda a explicar presença, acesso, lealdade ou silêncio.
+Alunos, moradores e pessoas de passagem podem entrar quando trouxerem uma observação, uma versão derivada ou outra condição útil ao teste. Um novo depoimento pode conter uma pista independente e, na frase seguinte, repetir um rumor. Por exemplo, alguém tem um bom motivo para recordar a hora de um guincho, mas se refere à terça anterior. Cada novo personagem individualizado recebe os mesmos quatro dados do elenco: idade, ocupação, atividade e situação conjugal. O vínculo deve aparecer na história quando ajuda a explicar presença, acesso, lealdade ou silêncio.
 
-## Critério de escrita e de avaliação
+## Critérios para os testes
+
+Para cada recorte, registre antes da execução quais peças entram e em que ordem, qual revisão ou decisão o investigador realiza e o que o software deve preservar, alterar ou sinalizar. Por exemplo, retirar temporariamente o apoio de todo o depoimento de Nina deve preservar a sustentação independente da travessia de Daniel pelo relato de Jules. Voltar a considerar só a travessia deve manter o aceno fora e deixar acessível o histórico das duas decisões.
 
 Dê precisão aos detalhes que sustentam uma conclusão. Para cada peça que possa mudar a análise, fixe quem a produziu, o que ela registra, quando foi produzida e quando chegou a cada investigação. Separe a hora do acontecimento, a hora do registro e a hora em que alguém teve acesso a ele quando essa diferença importar. Se duas versões se contradisserem, preserve ambas e determine quando a contradição se torna detectável.
 
