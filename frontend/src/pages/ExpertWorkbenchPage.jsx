@@ -505,7 +505,10 @@ export function ExpertWorkbenchPage() {
         const opposes = directional.filter((route) => route.effect === 'WEAKENS' || route.effect === 'CHALLENGES').length;
         const conditions = directional.filter((route) => route.effect === 'CONDITIONS').length;
         const groundText = (ground) => ground.ground_object_id ? (data.nodes.find((node) => node.object_id === ground.ground_object_id)?.text ?? ground.ground_object_id) : (data.evidence.find((item) => item.evidence_id === ground.evidence_id)?.content ?? ground.evidence_id);
-        const artifactLabel = (id) => data.artifact_provenance?.find((link) => link.artifact_id === id)?.artifact_label ?? id;
+        const artifactLabel = (id, representationId) => {
+          const link = data.artifact_provenance?.find((item) => item.artifact_id === id && (!representationId || item.representation_id === representationId));
+          return representationId && link ? `${link.artifact_label} (${link.scope_locator})` : link?.artifact_label ?? id;
+        };
         return <li key={diagnostic.conclusion_object_id}><strong>{conclusion?.kind ?? 'CONCLUSION'}:</strong> {conclusion?.text ?? diagnostic.conclusion_object_id}<br/><small>{diagnostic.routes.length} authored route(s): {supports} support · {opposes} weaken/challenge · {conditions} condition · {diagnostic.routes.length - directional.length} context-only. Niccolò does not net opposing routes into a truth or confidence score.</small>
           {diagnostic.has_mixed_directional_grounding && <p className="epistemic-boundary">Support and opposition coexist; neither cancels the other.</p>}
           {diagnostic.contradictory_supports?.length > 0 && <details open><summary>Review candidate — contradictory grounds support the same conclusion</summary><p>Only explicitly authored contradictions and non-contextual supporting grounds are shown. This pattern may warrant examining self-sealing reasoning, but is not proof: conditional or alternative routes can be legitimate. Absence of a warning does not establish falsifiability. No conclusion or route is automatically rejected.</p><ul>{diagnostic.contradictory_supports.map(candidate=><li key={candidate.relation_id}><strong>{groundText({ground_object_id:candidate.left_object_id})}</strong><ul>{candidate.left_supporting_routes.map(route=><li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)} · {route.grounding_set_id}</li>)}</ul><strong>{groundText({ground_object_id:candidate.right_object_id})}</strong><ul>{candidate.right_supporting_routes.map(route=><li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)} · {route.grounding_set_id}</li>)}</ul><small>Authored contradiction {candidate.relation_id} — {data.relations.find(r=>r.relation_id===candidate.relation_id)?.rationale}</small></li>)}</ul></details>}
@@ -515,7 +518,7 @@ export function ExpertWorkbenchPage() {
           {diagnostic.artifact_dependence_reviews?.length > 0 && <details open>
             <summary>Review candidate — recorded source dependence</summary>
             <ul>{diagnostic.artifact_dependence_reviews.map((review) => <li key={review.relationship_id}>
-              <p><strong>{artifactLabel(review.derived_artifact_id)}</strong> was reported to draw on <strong>{artifactLabel(review.source_artifact_id)}</strong>.</p>
+              <p><strong>{artifactLabel(review.derived_artifact_id, review.derived_representation_id)}</strong> was reported to draw on <strong>{artifactLabel(review.source_artifact_id, review.source_representation_id)}</strong>.</p>
               {review.qualification && <p>{review.qualification}</p>}
               <strong>Use of derived routes</strong>
               <ul>{[...review.routes_to_review, ...(review.suspended_routes ?? [])].map((route) => {

@@ -199,6 +199,19 @@ O replay testa uma síntese que cita Claire e a câmera para o avistamento e a n
 
 O endpoint `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/artifact-dependence-review/route-use/{event}` recebe `relationship_id`, `argument_id`, `grounding_set_id`, `disposition` e `rationale`. A API verifica a permissão de escrita e a participação da rota no alerta. As escolhas são `USE` e `SUSPEND`.
 
+### Décimo replay — derivação delimitada a dois trechos
+
+Nesta variante sintética, Owen e Claire dizem ter visto o guincho 07 atrás da farmácia. A primeira passagem da nota de Owen descreve o que ele viu durante a ronda. A segunda dá o horário aproximado de 21h20, que Owen atribui a Claire. O investigador registra a derivação entre a segunda passagem da nota e o trecho correspondente do depoimento. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L2673)
+
+O Workbench sinaliza a rota de Owen para a alegação sobre o horário e mostra a passagem de Claire que serve de origem. Os relatos diretos sobre a presença do guincho continuam disponíveis. O replay verifica que a decisão associada a esse alerta só pode suspender a rota do horário. A reanálise guarda os dois trechos declarados na relação e a análise anterior continua consultável.
+
+Na interface de artefatos, cada lado da relação pode apontar para um trecho já descrito ou transcrito. A API recebe os campos opcionais `subject_representation_id` e `object_representation_id`. Cada identificador tem de pertencer ao artefato correspondente na mesma Situation. Omitir um campo dá a esse lado da relação o escopo do artefato inteiro.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_limits_derivation_to_the_passages_about_timing
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.

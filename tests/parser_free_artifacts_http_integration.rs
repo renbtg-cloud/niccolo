@@ -2670,6 +2670,318 @@ async fn cross_case_packet(case: &Setup, analysis: Uuid) -> reasoning_packet::Re
 }
 
 #[tokio::test]
+async fn alder_bend_limits_derivation_to_the_passages_about_timing() {
+    let mut case =
+        setup_with_focus("Distinguish who saw truck 07 from where the time came from.").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        case.service = PgPoolOptions::new().connect(&url).await.unwrap();
+        case.router = api::router(case.service.clone());
+    }
+    let owen = Uuid::new_v4();
+    let claire = Uuid::new_v4();
+    for (artifact, label) in [(owen, "Owen's note"), (claire, "Claire's statement")] {
+        case.case_request(
+            &format!("artifacts/{artifact}"),
+            Some(json!({
+                "artifact_type":"MANUAL_RECORD", "label":label
+            })),
+        )
+        .await;
+    }
+    let owen_presence = case
+        .case_node(
+            "PROPOSITION",
+            "Owen says he saw truck 07 behind the pharmacy.",
+            "Owen records what he saw himself that evening.",
+        )
+        .await;
+    let owen_time = case
+        .case_node(
+            "PROPOSITION",
+            "Owen's note puts the sighting at about 21:20.",
+            "The source of the time is being checked.",
+        )
+        .await;
+    let claire_presence = case
+        .case_node(
+            "PROPOSITION",
+            "Claire says she saw truck 07 behind the pharmacy.",
+            "Claire describes her view from a window.",
+        )
+        .await;
+    let claire_time = case
+        .case_node(
+            "PROPOSITION",
+            "Claire estimates seeing truck 07 there around 21:20.",
+            "Claire estimates the time of her own sighting.",
+        )
+        .await;
+    let owen_presence_rep = Uuid::new_v4();
+    let owen_time_rep = Uuid::new_v4();
+    let claire_presence_rep = Uuid::new_v4();
+    let claire_time_rep = Uuid::new_v4();
+    for (artifact, representation, object, scope, content) in [
+        (
+            owen,
+            owen_presence_rep,
+            owen_presence,
+            "First paragraph",
+            "I saw truck 07 behind the pharmacy during my rounds.",
+        ),
+        (
+            owen,
+            owen_time_rep,
+            owen_time,
+            "Second paragraph",
+            "The sighting was around 21:20.",
+        ),
+        (
+            claire,
+            claire_presence_rep,
+            claire_presence,
+            "First answer",
+            "From the window I saw truck 07 behind the pharmacy.",
+        ),
+        (
+            claire,
+            claire_time_rep,
+            claire_time,
+            "Second answer",
+            "It was around 21:20 when I saw it there.",
+        ),
+    ] {
+        case.case_request(
+            &format!("artifacts/{artifact}/representations/{representation}"),
+            Some(json!({
+                "representation_type":"HUMAN_TRANSCRIPTION", "producer_type":"USER",
+                "scope_locator":scope, "content":content, "completeness_status":"PARTIAL"
+            })),
+        )
+        .await;
+        case.case_request(
+            &format!("epistemic/objects/{object}/artifact-provenance/{representation}"),
+            Some(json!({
+                "rationale":"This passage supports the attributed proposition."
+            })),
+        )
+        .await;
+    }
+    let presence = case
+        .case_node(
+            "FINDING",
+            "Truck 07 was behind the pharmacy that evening.",
+            "Assess the reported location with the time left open.",
+        )
+        .await;
+    let timing = case
+        .case_node(
+            "FINDING",
+            "Truck 07 was behind the pharmacy around 21:20.",
+            "Assess the narrower reported time.",
+        )
+        .await;
+    let presence_argument = case
+        .case_argument(presence, "Evaluate each basis for physical presence.")
+        .await;
+    let timing_argument = case
+        .case_argument(timing, "Evaluate each basis for the reported time.")
+        .await;
+    let owen_location_route = case
+        .case_ground(
+            presence_argument,
+            &[owen_presence],
+            "Owen's own observation.",
+        )
+        .await;
+    let claire_location_route = case
+        .case_ground(
+            presence_argument,
+            &[claire_presence],
+            "Claire's own observation.",
+        )
+        .await;
+    case.case_ground(
+        presence_argument,
+        &[claire_time],
+        "The timed account also places the truck there.",
+    )
+    .await;
+    let owen_timing_route = case
+        .case_ground(
+            timing_argument,
+            &[owen_time],
+            "The time shown in Owen's note.",
+        )
+        .await;
+    let claire_timing_route = case
+        .case_ground(
+            timing_argument,
+            &[claire_time],
+            "Claire's own estimate of the time.",
+        )
+        .await;
+    case.case_ground(
+        timing_argument,
+        &[claire_presence],
+        "Presence alone gives partial support to the timed claim.",
+    )
+    .await;
+
+    let original = cross_case_freeze(&case, None).await;
+    let scope = json!({
+        "subject_artifact_id":owen, "object_artifact_id":claire,
+        "subject_representation_id":owen_time_rep, "object_representation_id":claire_time_rep,
+        "relationship_type":"CLAIMED_TO_BE_DERIVED_FROM",
+        "qualification":"Owen confirms that Claire's estimate supplied the time in the second paragraph."
+    });
+    let relationship = Uuid::new_v4();
+    let path = format!("artifact-relationships/{relationship}");
+    let base = format!(
+        "/v1/workspaces/{}/situations/{}",
+        case.workspace, case.situation
+    );
+    let uri = format!("{base}/{path}");
+    let mut wrong_artifact = scope.clone();
+    wrong_artifact["subject_representation_id"] = json!(claire_time_rep);
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &case.token, Some(wrong_artifact)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    case.case_request(&path, Some(scope.clone())).await;
+    let (status, repeated) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &case.token, Some(scope)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(repeated["replayed"], true);
+    let changed = json!({
+        "subject_artifact_id":owen, "object_artifact_id":claire,
+        "subject_representation_id":owen_presence_rep, "object_representation_id":claire_time_rep,
+        "relationship_type":"CLAIMED_TO_BE_DERIVED_FROM",
+        "qualification":"Owen confirms that Claire's estimate supplied the time in the second paragraph."
+    });
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &case.token, Some(changed)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let catalog = case.case_request("artifacts", None).await;
+    let registered = case_row(&catalog, "relationships", "relationship_id", relationship);
+    assert_eq!(
+        registered["subject_representation_id"],
+        json!(owen_time_rep)
+    );
+    assert_eq!(
+        registered["object_representation_id"],
+        json!(claire_time_rep)
+    );
+    let workbench = case.case_request("epistemic/workbench", None).await;
+    let location = case_row(
+        &workbench,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        presence,
+    );
+    assert_eq!(location["artifact_dependence_reviews"], json!([]));
+    for route in [owen_location_route, claire_location_route] {
+        case_row(
+            location,
+            "non_suspended_supporting_routes",
+            "grounding_set_id",
+            route,
+        );
+    }
+    let timed = case_row(
+        &workbench,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        timing,
+    );
+    let review = case_row(
+        timed,
+        "artifact_dependence_reviews",
+        "relationship_id",
+        relationship,
+    );
+    assert_eq!(review["derived_representation_id"], json!(owen_time_rep));
+    assert_eq!(review["source_representation_id"], json!(claire_time_rep));
+    assert_eq!(
+        review["routes_to_review"],
+        json!([{"argument_id":timing_argument, "grounding_set_id":owen_timing_route}])
+    );
+    assert_eq!(
+        review["source_routes"],
+        json!([{"argument_id":timing_argument, "grounding_set_id":claire_timing_route}])
+    );
+
+    let revised = cross_case_freeze(&case, Some(original)).await;
+    assert!(
+        cross_case_packet(&case, original)
+            .await
+            .frozen_input
+            .artifact_relationships
+            .is_empty()
+    );
+    let packet = cross_case_packet(&case, revised).await.frozen_input;
+    assert_eq!(packet.artifact_relationships.len(), 1);
+    let entry = &packet.artifact_relationships[0];
+    assert_eq!(entry.relationship_id, relationship);
+    assert_eq!(entry.subject_representation_id, Some(owen_time_rep));
+    assert_eq!(entry.object_representation_id, Some(claire_time_rep));
+    assert!(!entry.relationship_is_verified);
+
+    let decision = Uuid::new_v4();
+    let decision_path = format!("epistemic/artifact-dependence-review/route-use/{decision}");
+    let mut choice = json!({
+        "relationship_id":relationship, "argument_id":presence_argument,
+        "grounding_set_id":owen_location_route, "disposition":"SUSPEND",
+        "rationale":"Review the route tied to the copied time."
+    });
+    let decision_uri = format!("{base}/{decision_path}");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &decision_uri, &case.token, Some(choice.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    choice["argument_id"] = json!(timing_argument);
+    choice["grounding_set_id"] = json!(owen_timing_route);
+    let result = case.case_request(&decision_path, Some(choice)).await;
+    assert_eq!(result["decision"]["basis"]["result"]["review"], *review);
+    let after = case.case_request("epistemic/workbench", None).await;
+    assert_eq!(
+        case_row(
+            &after,
+            "reasoning_diagnostics",
+            "conclusion_object_id",
+            presence
+        ),
+        location
+    );
+    let after_timing = case_row(
+        &after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        timing,
+    );
+    assert_eq!(
+        case_row(
+            after_timing,
+            "routes",
+            "grounding_set_id",
+            owen_timing_route
+        )["suspended_by_decision_id"],
+        json!(decision)
+    );
+}
+
+#[tokio::test]
 async fn http_flow_records_human_material_without_accepting_or_reading_artifact_bytes() {
     let setup = setup().await;
     let video = Uuid::new_v4();

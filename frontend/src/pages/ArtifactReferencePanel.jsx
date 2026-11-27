@@ -6,7 +6,7 @@ import { artifactRequest, relationshipRequest, representationRequest, storageRef
 const blankArtifact = {artifactType:'',label:'',declaredMimeType:'',declaredByteLength:'',declaredSha256:''};
 const blankStorage = {storageType:'UNKNOWN',locator:'',provider:'',environmentLabel:'',resolverProfile:'',notes:'',accessStatus:'UNKNOWN',accessNote:''};
 const blankRepresentation = {representationType:'HUMAN_DESCRIPTION',producerType:'USER',producerLabel:'',productionMethod:'',scopeLocator:'whole artifact',content:'',completenessStatus:'PARTIAL',epistemicQualification:'',limitations:''};
-const blankRelationship = {subjectArtifactId:'',objectArtifactId:'',relationshipType:'CLAIMED_TO_BE_REPRESENTATION_OF',qualification:''};
+const blankRelationship = {subjectArtifactId:'',objectArtifactId:'',subjectRepresentationId:'',objectRepresentationId:'',relationshipType:'CLAIMED_TO_BE_REPRESENTATION_OF',qualification:''};
 
 function LocationForm({client,artifactId,onSaved}){
   const [draft,setDraft]=useState(blankStorage);
@@ -61,7 +61,15 @@ function RepresentationForm({client,artifactId,onSaved}){
   </form>;
 }
 
-function RelationshipForm({client,artifacts,onSaved}){
+function RelationshipScopeSelect({label, artifactId, representations, value, onChange}) {
+  const options = representations.filter((item) => item.artifact_id === artifactId);
+  return options.length > 0 && <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)}>
+    <option value="">Whole artifact</option>
+    {options.map((item) => <option key={item.representation_id} value={item.representation_id}>{item.scope_locator}</option>)}
+  </select></label>;
+}
+
+function RelationshipForm({client,artifacts,representations,onSaved}){
   const [draft,setDraft]=useState(blankRelationship);
   const [error,setError]=useState(null);
   const pending=useRef(null);
@@ -75,9 +83,11 @@ function RelationshipForm({client,artifacts,onSaved}){
   });
   if(artifacts.length<2)return <p>Reference at least two artifacts before declaring a relationship.</p>;
   return <form onSubmit={event=>{event.preventDefault();try{relationshipRequest(draft);setError(null);mutation.mutate();}catch(e){setError(e.message);}}}>
-    <label>Subject artifact<select value={draft.subjectArtifactId} onChange={e=>setDraft({...draft,subjectArtifactId:e.target.value})}><option value="">Choose…</option>{artifacts.map(item=><option key={item.artifact_id} value={item.artifact_id}>{item.label}</option>)}</select></label>
+    <label>Subject artifact<select value={draft.subjectArtifactId} onChange={e=>setDraft({...draft,subjectArtifactId:e.target.value,subjectRepresentationId:''})}><option value="">Choose…</option>{artifacts.map(item=><option key={item.artifact_id} value={item.artifact_id}>{item.label}</option>)}</select></label>
+    <RelationshipScopeSelect label="Subject passage" artifactId={draft.subjectArtifactId} representations={representations} value={draft.subjectRepresentationId} onChange={(id) => setDraft({...draft, subjectRepresentationId:id})}/>
     <label>Relationship<select value={draft.relationshipType} onChange={e=>setDraft({...draft,relationshipType:e.target.value})}><option>CLAIMED_TO_BE_REPRESENTATION_OF</option><option>CLAIMED_TO_BE_TRANSCRIPTION_OF</option><option>CLAIMED_TO_BE_DERIVED_FROM</option><option>CLAIMED_TO_BE_COPY_OF</option><option>RELATED_TO</option></select></label>
-    <label>Object artifact<select value={draft.objectArtifactId} onChange={e=>setDraft({...draft,objectArtifactId:e.target.value})}><option value="">Choose…</option>{artifacts.map(item=><option key={item.artifact_id} value={item.artifact_id}>{item.label}</option>)}</select></label>
+    <label>Object artifact<select value={draft.objectArtifactId} onChange={e=>setDraft({...draft,objectArtifactId:e.target.value,objectRepresentationId:''})}><option value="">Choose…</option>{artifacts.map(item=><option key={item.artifact_id} value={item.artifact_id}>{item.label}</option>)}</select></label>
+    <RelationshipScopeSelect label="Object passage" artifactId={draft.objectArtifactId} representations={representations} value={draft.objectRepresentationId} onChange={(id) => setDraft({...draft, objectRepresentationId:id})}/>
     <label>Qualification<textarea value={draft.qualification} onChange={e=>setDraft({...draft,qualification:e.target.value})} placeholder="Who makes this claim and what remains uncertain?"/></label>
     <button disabled={mutation.isPending}>{mutation.isPending?'Recording…':'Record qualified relationship'}</button>
     {error&&<p className="error" role="alert">{error}</p>}{mutation.error&&<p className="error" role="alert">{mutation.error.message}</p>}
@@ -100,6 +110,11 @@ export function ArtifactReferencePanel({client,onSummary}){
     onSuccess:async()=>{pending.current=null;setDraft(blankArtifact);setError(null);await refresh();},
   });
   const view=query.data??{artifacts:[],storage_references:[],representations:[],relationships:[]};
+  const endpointLabel = (artifactId, representationId) => {
+    const label = view.artifacts.find((artifact) => artifact.artifact_id === artifactId)?.label ?? artifactId;
+    const scope = view.representations.find((item) => item.representation_id === representationId)?.scope_locator;
+    return scope ? `${label} (${scope})` : label;
+  };
   useEffect(()=>onSummary?.({artifactCount:view.artifacts.length,representationCount:view.representations.length,relationshipCount:view.relationships.length}),[onSummary,view.artifacts.length,view.representations.length,view.relationships.length]);
   return <article className="artifact-references">
     <h3>External artifacts</h3>
@@ -126,8 +141,8 @@ export function ArtifactReferencePanel({client,onSummary}){
         <details><summary>Describe or transcribe something in this artifact</summary><RepresentationForm client={client} artifactId={artifact.artifact_id} onSaved={refresh}/></details>
       </li>;
     })}</ul>
-    <details><summary>Relate two artifacts</summary><RelationshipForm client={client} artifacts={view.artifacts} onSaved={refresh}/></details>
-    {view.relationships.length>0&&<ul>{view.relationships.map(item=><li key={item.relationship_id}><small>{view.artifacts.find(artifact=>artifact.artifact_id===item.subject_artifact_id)?.label??item.subject_artifact_id} {item.relationship_type} {view.artifacts.find(artifact=>artifact.artifact_id===item.object_artifact_id)?.label??item.object_artifact_id} · unverified declaration{item.qualification?` · ${item.qualification}`:''}</small></li>)}</ul>}
+    <details><summary>Relate two artifacts</summary><RelationshipForm client={client} artifacts={view.artifacts} representations={view.representations} onSaved={refresh}/></details>
+    {view.relationships.length>0&&<ul>{view.relationships.map(item=><li key={item.relationship_id}><small>{endpointLabel(item.subject_artifact_id, item.subject_representation_id)} {item.relationship_type} {endpointLabel(item.object_artifact_id, item.object_representation_id)} · unverified declaration{item.qualification?` · ${item.qualification}`:''}</small></li>)}</ul>}
     <small>Recorded access is a human declaration, not proof that Niccolò accessed the location. Representations remain attributable and challengeable.</small>
   </article>;
 }

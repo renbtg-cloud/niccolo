@@ -28,6 +28,14 @@ describe('parser-free artifact state', () => {
       subject_artifact_id:'transcript',object_artifact_id:'video',
       relationship_type:'CLAIMED_TO_BE_TRANSCRIPTION_OF',qualification:'Declared by Ana',
     });
+    expect(relationshipRequest({
+      subjectArtifactId:'note', objectArtifactId:'statement', subjectRepresentationId:' note-clock ',
+      objectRepresentationId:'statement-clock', relationshipType:'CLAIMED_TO_BE_DERIVED_FROM',
+    })).toMatchObject({subject_representation_id:'note-clock', object_representation_id:'statement-clock'});
+    expect(relationshipRequest({
+      subjectArtifactId:'note', objectArtifactId:'statement', subjectRepresentationId:'note-clock',
+      relationshipType:'CLAIMED_TO_BE_DERIVED_FROM',
+    })).not.toHaveProperty('object_representation_id');
     expect(() => relationshipRequest({subjectArtifactId:'same',objectArtifactId:'same',relationshipType:'COPY_OF'})).toThrow(/itself/);
   });
 });
