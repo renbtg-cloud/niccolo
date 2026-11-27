@@ -147,6 +147,26 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
   alder_bend_audits_suspension_and_restoration_of_one_support_route
 ```
 
+### Sexto replay — a correção de Claire chega a duas investigações
+
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1458) abre duas Situations no mesmo workspace. Ruth e Owen registram material com credenciais distintas. As mudanças na janela das 20h são examinadas em rodadas.
+
+| Rodada | Auditoria do contrato | Desaparecimento |
+| --- | --- | --- |
+| Entrada | Fatura de remoção na pedreira às 20h, extrato do chamado e cópia da nota inicial de Owen. | A nota inicial põe o guincho 07 atrás da farmácia às 20h. |
+| Claire corrige para cerca de 21h20 | A linha que dependia do primeiro horário atribuído a Claire precisa de revisão. A leitura provisória do extrato ainda está em aberto. | O dossiê segue com a nota inicial enquanto a correção está na auditoria. |
+| Ruth confere o campo *hora* | A linha que pressupunha chegada do guincho também precisa de revisão. O extrato registra abertura de chamado. A fatura continua documentando o que foi cobrado. A execução da remoção segue sem confirmação independente. | A definição do campo fica na auditoria. |
+| Owen registra o recebimento | O dossiê preserva Claire como fonte da correção. | A janela anterior é marcada para revisão. A janela corrigida tem por base a declaração recebida. A identidade do motorista segue em aberto. |
+
+O recebimento é registrado com `POST /v1/workspaces/{workspace}/situations/{target}/artifacts/representation-transfers/{transfer}`, usando `source_situation_id`, `source_representation_id` e `note`. A operação exige escrita no workspace e copia somente a representação selecionada, preservando o artefato, o identificador da representação, seu conteúdo e sua autoria declarada. O recebimento tem autoria própria e pode ser consultado por `GET` no mesmo caminho. Repetir o mesmo evento devolve o recebimento existente. As relações do Workbench são registradas separadamente em cada dossiê.
+
+O replay confere as bases congeladas de cada rodada. Na auditoria, é possível recuperar a versão que já contém a correção de Claire e ainda usa a leitura provisória do extrato. Na polícia, a cópia recebida aponta para a Situation de origem e o evento de recebimento em `transfer_origin`. As versões anteriores permanecem consultáveis. A autorização é por workspace.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_replays_claires_correction_across_two_investigations
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.

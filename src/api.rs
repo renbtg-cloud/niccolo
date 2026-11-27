@@ -1108,7 +1108,9 @@ async fn get_representation_transfer(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
-    let result = artifacts::representation_transfer::get(&state.pool, workspace, situation, transfer).await?;
+    let result =
+        artifacts::representation_transfer::get(&state.pool, workspace, situation, transfer)
+            .await?;
     Ok(no_store(json!(result), StatusCode::OK))
 }
 
@@ -1119,12 +1121,18 @@ async fn record_representation_transfer(
     Json(input): Json<artifacts::representation_transfer::Input>,
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
-    let (result, created) = artifacts::representation_transfer::record(
-        &state.pool, workspace, situation, transfer, actor, input,
-    ).await?;
+    let (result, created) =
+        artifacts::representation_transfer::record(
+            &state.pool, workspace, situation, transfer, actor, input,
+        )
+        .await?;
     Ok(no_store(
-        json!({"transfer":result,"replayed":!created}),
-        if created { StatusCode::CREATED } else { StatusCode::OK },
+        json!({"transfer": result, "replayed": !created}),
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
     ))
 }
 

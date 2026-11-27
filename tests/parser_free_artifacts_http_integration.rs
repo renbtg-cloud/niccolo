@@ -1455,6 +1455,479 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
 }
 
 #[tokio::test]
+async fn alder_bend_replays_claires_correction_across_two_investigations() {
+    let mut audit = setup_with_focus("Did the records establish the 20:00 quarry removal?").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        audit.router = api::router(PgPoolOptions::new().connect(&url).await.unwrap());
+    }
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let owen = Uuid::new_v4();
+    let police = Setup {
+        router: audit.router.clone(),
+        workspace: audit.workspace,
+        situation: Uuid::new_v4(),
+        token: authz::provision_token(&admin, owen, audit.workspace, true, true, 1)
+            .await
+            .unwrap(),
+        service: audit.service.clone(),
+    };
+    let police_url = format!(
+        "/v1/workspaces/{}/situations/{}",
+        police.workspace, police.situation
+    );
+    let (status, _) = invoke(police.router.clone(), request("POST", &police_url, &police.token,
+        Some(json!({"focus":"When could truck 07 have been near the missing person's last location?"})))).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let old_police = police
+        .case_node(
+            "PROPOSITION",
+            "Owen's initial note placed truck 07 at the pharmacy at 20:00.",
+            "Owen combined Claire's closing time with the reported sighting.",
+        )
+        .await;
+    let old_source = police
+        .case_source(
+            old_police,
+            "Owen's initial interview note",
+            "Claire, initial interview",
+            "Claire closed at 20:00 and saw truck 07 behind the pharmacy.",
+        )
+        .await;
+    let transfer_path = "artifacts/representation-transfers";
+    audit
+        .case_request(
+            &format!("{transfer_path}/{}", Uuid::new_v4()),
+            Some(json!({
+                "source_situation_id":police.situation, "source_representation_id":old_source,
+                "note":"Ruth received Owen's initial interview note for the audit."
+            })),
+        )
+        .await;
+    let old_audit = audit
+        .case_node(
+            "PROPOSITION",
+            "Owen's initial note placed truck 07 at the pharmacy at 20:00.",
+            "The audit uses the received note, with no new witness.",
+        )
+        .await;
+    audit
+        .case_request(
+            &format!("epistemic/objects/{old_audit}/artifact-provenance/{old_source}"),
+            Some(json!({"rationale":"The copy retains the provenance of Owen's note."})),
+        )
+        .await;
+
+    let invoice = audit
+        .case_node(
+            "PROPOSITION",
+            "The invoice declares truck 07 completed a quarry removal at 20:00.",
+            "This records the bill's statement.",
+        )
+        .await;
+    audit
+        .case_source(
+            invoice,
+            "Quarry invoice",
+            "Completed-removal line",
+            "20:00 — removal completed — quarry — unit 07.",
+        )
+        .await;
+    let call = audit
+        .case_node(
+            "PROPOSITION",
+            "The first reading of the call extract places truck 07 at the pharmacy at 20:00.",
+            "The meaning of the time column is unresolved at intake.",
+        )
+        .await;
+    audit
+        .case_source(
+            call,
+            "Pharmacy call extract",
+            "Time column",
+            "20:00 — pharmacy — unit 07.",
+        )
+        .await;
+    let mismatch = audit
+        .case_node(
+            "HYPOTHESIS",
+            "The claimed quarry removal may conflict with the 20:00 pharmacy sighting.",
+            "An authored suspicion about this invoice.",
+        )
+        .await;
+    let audit_argument = audit
+        .case_argument(mismatch, "Compare the two apparent 20:00 claims.")
+        .await;
+    let sighting_route = audit
+        .case_ground(
+            audit_argument,
+            &[old_audit, invoice],
+            "Depends on Owen's time attribution.",
+        )
+        .await;
+    let call_route = audit
+        .case_ground(
+            audit_argument,
+            &[call, invoice],
+            "Depends on the first reading of the time column.",
+        )
+        .await;
+    let billing = audit
+        .case_node(
+            "FINDING",
+            "Vale invoiced the quarry removal.",
+            "The invoice establishes what was billed.",
+        )
+        .await;
+    let billing_argument = audit
+        .case_argument(billing, "Record the invoice claim separately.")
+        .await;
+    let billed = audit
+        .case_ground(billing_argument, &[invoice], "Depends only on the invoice.")
+        .await;
+    let execution_gap = audit
+        .case_node(
+            "INFORMATION_GAP",
+            "Was the billed quarry removal actually performed?",
+            "The invoice is a declaration; no independent completion record is available.",
+        )
+        .await;
+
+    let early_window = police
+        .case_node(
+            "FINDING",
+            "The original lead placed truck 07 behind the pharmacy at 20:00.",
+            "An attributed working timeline.",
+        )
+        .await;
+    let early_argument = police
+        .case_argument(early_window, "Track the reported sighting time.")
+        .await;
+    let early_route = police
+        .case_ground(
+            early_argument,
+            &[old_police],
+            "Depends on the interview note.",
+        )
+        .await;
+    let driver = police
+        .case_node(
+            "HYPOTHESIS",
+            "Frank could have been driving truck 07.",
+            "The reported sighting has not identified the driver.",
+        )
+        .await;
+    let audit_original = cross_case_freeze(&audit, None).await;
+    let police_original = cross_case_freeze(&police, None).await;
+    let police_before = police.case_request("epistemic/workbench", None).await;
+
+    const CORRECTION: &str = "I saw truck 07 from Adam's apartment around 21:20, just after the phone call ended at 21:18. I did not see the driver.";
+    let correction_artifact = Uuid::new_v4();
+    let correction = Uuid::new_v4();
+    audit
+        .case_request(
+            &format!("artifacts/{correction_artifact}"),
+            Some(json!({
+                "artifact_type":"TRANSCRIPT_FILE","label":"Claire Mercer's corrected declaration"
+            })),
+        )
+        .await;
+    audit.case_request(&format!("artifacts/{correction_artifact}/representations/{correction}"), Some(json!({
+        "representation_type":"HUMAN_TRANSCRIPTION", "producer_type":"THIRD_PARTY_HUMAN",
+        "producer_label":"Claire Mercer", "scope_locator":"Corrected declaration", "content":CORRECTION,
+        "completeness_status":"PARTIAL", "epistemic_qualification":"Attributed sighting; time estimated"
+    }))).await;
+    let audit_corrected = audit
+        .case_node(
+            "PROPOSITION",
+            "Claire now reports the sighting at about 21:20.",
+            "The phone record anchors the estimate, and Claire reports the sighting.",
+        )
+        .await;
+    audit
+        .case_request(
+            &format!("epistemic/objects/{audit_corrected}/artifact-provenance/{correction}"),
+            Some(json!({"rationale":"This representation gives Claire's corrected timing."})),
+        )
+        .await;
+    audit.case_request(&format!("epistemic/relations/{}", Uuid::new_v4()), Some(json!({
+        "family":"GENEALOGY", "kind":"SUPERSEDES", "left_object_id":audit_corrected,
+        "right_object_id":old_audit, "rationale":"Claire corrects how the earlier note located her sighting in time."
+    }))).await;
+
+    let audit_mid = audit.case_request("epistemic/workbench", None).await;
+    let impacts = audit_mid["reassessment_impacts"].as_array().unwrap();
+    assert_eq!(impacts.len(), 1);
+    assert_eq!(impacts[0]["grounding_set_id"], json!(sighting_route));
+    let audit_after_claire = cross_case_freeze(&audit, Some(audit_original)).await;
+    assert_eq!(
+        police.case_request("epistemic/workbench", None).await,
+        police_before
+    );
+    let police_before_receipt = cross_case_freeze(&police, Some(police_original)).await;
+    assert_eq!(
+        cross_case_packet(&police, police_original)
+            .await
+            .frozen_input
+            .artifact_representations,
+        cross_case_packet(&police, police_before_receipt)
+            .await
+            .frozen_input
+            .artifact_representations
+    );
+
+    let field = audit
+        .case_node(
+            "PROPOSITION",
+            "The time column labels when the call was opened.",
+            "Ruth checked the original form definition.",
+        )
+        .await;
+    let field_source = audit
+        .case_source(
+            field,
+            "Dispatch form definition",
+            "Time field",
+            "Time = call opening time, not unit arrival or service completion.",
+        )
+        .await;
+    audit
+        .case_request(
+            &format!("epistemic/relations/{}", Uuid::new_v4()),
+            Some(json!({
+                "family":"GENEALOGY", "kind":"SUPERSEDES", "left_object_id":field,
+                "right_object_id":call, "rationale":"The original form defines the time field."
+            })),
+        )
+        .await;
+    let audit_after = audit.case_request("epistemic/workbench", None).await;
+    let impacts = audit_after["reassessment_impacts"].as_array().unwrap();
+    assert_eq!(impacts.len(), 2);
+    for route in [sighting_route, call_route] {
+        let affected = case_row(
+            &audit_after,
+            "reassessment_impacts",
+            "grounding_set_id",
+            route,
+        );
+        assert_eq!(affected["conclusion_object_id"], json!(mismatch));
+    }
+    let surviving = case_row(
+        &audit_after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        billing,
+    );
+    assert_eq!(
+        surviving["non_suspended_supporting_routes"][0]["grounding_set_id"],
+        json!(billed)
+    );
+    assert_eq!(
+        case_row(&audit_after, "nodes", "object_id", execution_gap)["kind"],
+        "INFORMATION_GAP"
+    );
+    let audit_later = cross_case_freeze(&audit, Some(audit_after_claire)).await;
+    let audit_reps = cross_case_packet(&audit, audit_later)
+        .await
+        .frozen_input
+        .artifact_representations;
+    let audit_origin = audit_reps
+        .iter()
+        .find(|r| r.representation_id == correction)
+        .unwrap();
+    assert_eq!(audit_origin.content, CORRECTION);
+    assert_eq!(
+        audit_origin.producer_label.as_deref(),
+        Some("Claire Mercer")
+    );
+    assert!(audit_origin.transfer_origin.is_none());
+    let audit_intermediate = cross_case_packet(&audit, audit_after_claire)
+        .await
+        .frozen_input
+        .artifact_representations;
+    assert!(
+        audit_intermediate
+            .iter()
+            .any(|r| r.representation_id == correction)
+    );
+    assert!(
+        audit_intermediate
+            .iter()
+            .all(|r| r.representation_id != field_source)
+    );
+    assert!(
+        cross_case_packet(&audit, audit_original)
+            .await
+            .frozen_input
+            .artifact_representations
+            .iter()
+            .all(|r| r.representation_id != correction && r.representation_id != field_source)
+    );
+
+    let handoff = Uuid::new_v4();
+    let handoff_body = json!({
+        "source_situation_id":audit.situation, "source_representation_id":correction,
+        "note":"Ruth forwarded Claire's correction. Owen recorded receipt in the disappearance case."
+    });
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), audit.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let uri = format!("{police_url}/{transfer_path}/{handoff}");
+    let (status, _) = invoke(
+        police.router.clone(),
+        request("POST", &uri, &reader, Some(handoff_body.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let handoff_result = police
+        .case_request(
+            &format!("{transfer_path}/{handoff}"),
+            Some(handoff_body.clone()),
+        )
+        .await;
+    let recorded = police
+        .case_request(&format!("{transfer_path}/{handoff}"), None)
+        .await;
+    assert_eq!(recorded, handoff_result["transfer"]);
+    assert_eq!(recorded["recorded_by"], json!(owen));
+    assert_eq!(recorded["source_situation_id"], json!(audit.situation));
+    assert_eq!(recorded["representation_id"], json!(correction));
+    assert_eq!(recorded["artifact_id"], json!(correction_artifact));
+    let (status, repeat) = invoke(
+        police.router.clone(),
+        request("POST", &uri, &police.token, Some(handoff_body.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{repeat}");
+    assert_eq!(repeat["replayed"], true);
+    let duplicate_uri = format!("{police_url}/{transfer_path}/{}", Uuid::new_v4());
+    let (status, _) = invoke(
+        police.router.clone(),
+        request("POST", &duplicate_uri, &police.token, Some(handoff_body)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let police_revised = police
+        .case_node(
+            "PROPOSITION",
+            "Claire's corrected sighting behind the pharmacy is around 21:20.",
+            "Received explicitly from the audit.",
+        )
+        .await;
+    police
+        .case_request(
+            &format!("epistemic/objects/{police_revised}/artifact-provenance/{correction}"),
+            Some(json!({"rationale":"Received representation of Claire's own correction."})),
+        )
+        .await;
+    police.case_request(&format!("epistemic/relations/{}", Uuid::new_v4()), Some(json!({
+        "family":"GENEALOGY", "kind":"SUPERSEDES", "left_object_id":police_revised,
+        "right_object_id":old_police, "rationale":"Revise the sighting window after recorded receipt."
+    }))).await;
+    let later_window = police
+        .case_node(
+            "FINDING",
+            "The corrected lead places truck 07 behind the pharmacy around 21:20.",
+            "The revised timing is approximate and attributed to Claire.",
+        )
+        .await;
+    let later_argument = police
+        .case_argument(later_window, "Record the revised sighting window.")
+        .await;
+    let later_route = police
+        .case_ground(
+            later_argument,
+            &[police_revised],
+            "Depends on the received correction.",
+        )
+        .await;
+    let police_after = police.case_request("epistemic/workbench", None).await;
+    let impacts = police_after["reassessment_impacts"].as_array().unwrap();
+    assert_eq!(impacts.len(), 1);
+    assert_eq!(impacts[0]["grounding_set_id"], json!(early_route));
+    assert_eq!(impacts[0]["conclusion_object_id"], json!(early_window));
+    let updated = case_row(
+        &police_after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        later_window,
+    );
+    assert_eq!(
+        updated["non_suspended_supporting_routes"][0]["grounding_set_id"],
+        json!(later_route)
+    );
+    assert!(
+        police_after["arguments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|argument| argument["conclusion_object_id"] != json!(driver))
+    );
+    let police_later = cross_case_freeze(&police, Some(police_before_receipt)).await;
+    let police_reps = cross_case_packet(&police, police_later)
+        .await
+        .frozen_input
+        .artifact_representations;
+    let received = police_reps
+        .iter()
+        .find(|r| r.representation_id == correction)
+        .unwrap();
+    assert_eq!(received.artifact_id, audit_origin.artifact_id);
+    assert_eq!(received.content, audit_origin.content);
+    assert_eq!(received.producer_label, audit_origin.producer_label);
+    let origin = received.transfer_origin.as_ref().unwrap();
+    assert_eq!(origin.source_situation_id, audit.situation);
+    assert_eq!(origin.transfer_id, handoff);
+    assert!(
+        police_reps
+            .iter()
+            .all(|r| r.representation_id != field_source)
+    );
+    assert!(
+        cross_case_packet(&police, police_before_receipt)
+            .await
+            .frozen_input
+            .artifact_representations
+            .iter()
+            .all(|r| r.representation_id != correction)
+    );
+}
+
+async fn cross_case_freeze(case: &Setup, parent: Option<Uuid>) -> Uuid {
+    let analysis = Uuid::new_v4();
+    case.case_request(
+        &format!("analysis-snapshots/{analysis}"),
+        Some(json!({
+            "goal":"Freeze the sources known to this investigation at this stage.",
+            "reanalysis_of":parent
+        })),
+    )
+    .await;
+    analysis
+}
+
+async fn cross_case_packet(case: &Setup, analysis: Uuid) -> reasoning_packet::ReasoningPacket {
+    let digest = authz::credential_digest(&case.token).unwrap();
+    authz::with_auth_digest(
+        digest,
+        reasoning_packet::build(
+            &case.service,
+            AnalysisScope {
+                workspace: case.workspace,
+                situation: case.situation,
+                analysis,
+            },
+        ),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
 async fn http_flow_records_human_material_without_accepting_or_reading_artifact_bytes() {
     let setup = setup().await;
     let video = Uuid::new_v4();
