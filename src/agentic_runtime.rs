@@ -369,6 +369,9 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                 "model invocation timed out"
             }
             RuntimeError::Model(_) => "model invocation failed",
+            RuntimeError::Artifact(model_artifacts::ArtifactError::WorkbenchSupportUnavailable) => {
+                "synthesis cited a route outside the frozen usable Workbench support"
+            }
             RuntimeError::Artifact(_) | RuntimeError::Update(_) | RuntimeError::Challenge(_) => {
                 "model artifact failed validation or application"
             }

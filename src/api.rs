@@ -5002,6 +5002,7 @@ async fn get_reasoning_input_summary(
             "analysis_id": analysis,
             "input_revision": packet.frozen_input.revision,
             "input_is_current": packet.frozen_input.input_is_current,
+            "workbench_support": packet.frozen_input.workbench_support,
             "source_fragment_count_total": packet.frozen_input.source_fragment_count_total,
             "source_fragment_count_included": packet.frozen_input.source_fragment_count_included,
             "source_bytes_included": packet.frozen_input.source_bytes_included,

@@ -964,6 +964,104 @@ async fn alder_bend_reviews_only_the_detail_reachable_from_prior_exposure() {
     assert_eq!(still_usable["members"][0]["ground_object_id"], json!(truck));
 }
 
+struct AlderSupportModel {
+    before: Uuid,
+    invalid: Uuid,
+    hat: (Uuid, Uuid),
+    alternate: (Uuid, Uuid),
+    truck: (Uuid, Uuid),
+    suspended_by: Uuid,
+}
+
+impl niccolo_evidence::model_adapter::ReasoningModel for AlderSupportModel {
+    fn provider(&self) -> &str {
+        "alder-bend-fixture"
+    }
+
+    fn model(&self) -> &str {
+        "support-replay"
+    }
+
+    fn invoke<'a>(
+        &'a self,
+        request: &'a niccolo_evidence::model_adapter::ModelRequest,
+    ) -> niccolo_evidence::model_adapter::ModelFuture<'a> {
+        use niccolo_evidence::model_adapter::{DeterministicModel, ModelResponse};
+        Box::pin(async move {
+            if request.purpose != "SYNTHESIZE" {
+                let fallback = DeterministicModel::new("alder-bend-fixture", "support-replay")?;
+                return fallback.invoke(request).await;
+            }
+            let analysis = &request.input["analysis_id"];
+            let initial = analysis == &json!(self.before);
+            let invalid = analysis == &json!(self.invalid);
+            let frozen = &request.input["reasoning_packet"]["frozen_input"]["workbench_support"];
+            let hat = case_row(frozen, "routes", "grounding_set_id", self.hat.1);
+            assert_eq!(
+                hat["suspended_by_decision_id"],
+                if initial {
+                    Value::Null
+                } else {
+                    json!(self.suspended_by)
+                }
+            );
+            assert_eq!(hat["grounds"].as_array().unwrap().is_empty(), !initial);
+            for route in [self.alternate, self.truck] {
+                let row = case_row(frozen, "routes", "grounding_set_id", route.1);
+                assert_eq!(row["argument_id"], json!(route.0));
+                assert_eq!(row["suspended_by_decision_id"], Value::Null);
+                assert!(!row["grounds"].as_array().unwrap().is_empty());
+            }
+            let identity_claim = Uuid::new_v4();
+            let passage_claim = Uuid::new_v4();
+            let mut links = vec![
+                json!({"claim_id":identity_claim,"argument_id":self.alternate.0,"grounding_set_id":self.alternate.1}),
+                json!({"claim_id":passage_claim,"argument_id":self.truck.0,"grounding_set_id":self.truck.1}),
+            ];
+            if initial || invalid {
+                links.push(json!({"claim_id":identity_claim,"argument_id":self.hat.0,"grounding_set_id":self.hat.1}));
+            }
+            let answer = if initial {
+                "The hat and Jules's account appear on separate support routes."
+            } else {
+                "Jules's account remains as support. The hat route is suspended."
+            };
+            Ok(ModelResponse {
+                value: json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{
+                    "answer_text":answer,"coverage_note":"Deterministic Alder Bend replay.",
+                    "claims":[
+                        {"claim_id":identity_claim,"ordinal":1,"kind":"INFERENCE","text":answer},
+                        {"claim_id":passage_claim,"ordinal":2,"kind":"OBSERVATION","text":"Mara also reported a truck passing."}
+                    ],
+                    "workbench_support_links":links
+                }}),
+                prompt_tokens: Some(8),
+                completion_tokens: Some(5),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
+}
+
+const ALDER_SUPPORT_GOAL: &str = "What supports the hypothesis that Frank drove?";
+
+async fn alder_analysis(
+    case: &Setup,
+    base: &str,
+    analysis: Uuid,
+    prior: Option<Uuid>,
+) -> (StatusCode, Uuid, Value) {
+    let operation = Uuid::new_v4();
+    let uri = format!("{base}/bff/intents/{operation}/sync");
+    let (status, reply) = invoke(case.router.clone(), request("POST", &uri, &case.token, Some(json!({
+        "analysis_id":analysis, "intent":"UNDERSTAND", "goal":ALDER_SUPPORT_GOAL,
+        "reanalysis_of":prior, "step_budget":32, "context":{}
+    })))).await;
+    (status, operation, reply)
+}
+
 #[tokio::test]
 async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
     let mut case = setup_with_focus("Which support should we use after reviewing the hat?").await;
@@ -1132,7 +1230,44 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
         .await;
     assert_eq!(kept["decision"]["basis"]["result"], preview);
 
+    let first_analysis = Uuid::new_v4();
+    let second_analysis = Uuid::new_v4();
+    let invalid_analysis = Uuid::new_v4();
     let suspend_id = Uuid::new_v4();
+    let analysis_pool = match std::env::var("NICCOLO_PG_SECURE_URL") {
+        Ok(url) => PgPoolOptions::new().connect(&url).await.unwrap(),
+        Err(_) => case.service.clone(),
+    };
+    case.router = api::router_with_model(
+        analysis_pool,
+        std::sync::Arc::new(AlderSupportModel {
+            before: first_analysis,
+            invalid: invalid_analysis,
+            hat: (identity_argument, hat_route),
+            alternate: (identity_argument, alternate_route),
+            truck: (passage_argument, passage_route),
+            suspended_by: suspend_id,
+        }),
+    );
+    let (status, _, initial) = alder_analysis(&case, &base, first_analysis, None).await;
+    assert_eq!(status, StatusCode::OK, "{initial}");
+    assert_eq!(initial["operation"]["state"], "SUCCEEDED", "{initial}");
+    let first_output = format!("analysis-snapshots/{first_analysis}/output");
+    let first_basis = format!("analysis-snapshots/{first_analysis}/bff/reasoning-input");
+    let original_output = case.case_request(&first_output, None).await;
+    let original_support = case.case_request(&first_basis, None).await["workbench_support"].clone();
+    assert_eq!(
+        original_output["workbench_support_links"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(
+        case_row(&original_support, "routes", "grounding_set_id", hat_route)["suspended_by_decision_id"],
+        Value::Null
+    );
+
     let mut suspend = payload.clone();
     suspend["disposition"] = json!("SUSPEND");
     suspend["rationale"] = json!("Suspend use of the hat until the origin is clarified.");
@@ -1195,6 +1330,77 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
         json!([kept["decision"], suspended])
     );
 
+    let freeze_uri = format!("{base}/bff/operations/{}/sync", Uuid::new_v4());
+    let (status, freeze) = invoke(
+        case.router.clone(),
+        request(
+            "POST",
+            &freeze_uri,
+            &case.token,
+            Some(json!({
+                "kind":"REANALYZE", "target_analysis_id":first_analysis,
+                "input":{"new_analysis_id":second_analysis, "goal":ALDER_SUPPORT_GOAL},
+                "step_budget":32
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{freeze}");
+    assert_eq!(freeze["state"], "SUCCEEDED", "{freeze}");
+    assert_eq!(freeze["result"]["new_analysis_id"], json!(second_analysis));
+    let (status, _, revised) =
+        alder_analysis(&case, &base, second_analysis, Some(first_analysis)).await;
+    assert_eq!(status, StatusCode::OK, "{revised}");
+    assert_eq!(revised["operation"]["state"], "SUCCEEDED", "{revised}");
+    assert_eq!(revised["analysis_replayed"], true);
+    let second_output = format!("analysis-snapshots/{second_analysis}/output");
+    let second_basis = format!("analysis-snapshots/{second_analysis}/bff/reasoning-input");
+    let revised_output = case.case_request(&second_output, None).await;
+    let links = revised_output["workbench_support_links"]
+        .as_array()
+        .unwrap();
+    assert_eq!(links.len(), 2);
+    for route in [alternate_route, passage_route] {
+        assert!(
+            links
+                .iter()
+                .any(|link| link["grounding_set_id"] == json!(route))
+        );
+    }
+    let revised_support = case.case_request(&second_basis, None).await["workbench_support"].clone();
+    assert_eq!(
+        case_row(&revised_support, "routes", "grounding_set_id", hat_route)["suspended_by_decision_id"],
+        json!(suspend_id)
+    );
+
+    let (status, invalid_operation, invalid) =
+        alder_analysis(&case, &base, invalid_analysis, Some(first_analysis)).await;
+    assert!(
+        status.is_server_error() || invalid["operation"]["state"] == "FAILED",
+        "{status}: {invalid}"
+    );
+    let failed = case
+        .case_request(&format!("bff/operations/{invalid_operation}"), None)
+        .await;
+    assert_eq!(failed["state"], "FAILED");
+    let plan = case
+        .case_request(&format!("bff/operations/{invalid_operation}/agentic"), None)
+        .await;
+    let synthesis = plan["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|step| step["kind"] == "SYNTHESIZE")
+        .unwrap();
+    assert_eq!(synthesis["state"], "FAILED");
+    let invalid_output = format!("{base}/analysis-snapshots/{invalid_analysis}/output");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("GET", &invalid_output, &case.token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
     let mut outside = suspend.clone();
     outside["grounding_set_id"] = json!(alternate_route);
     let mut changed = suspend.clone();
@@ -1234,6 +1440,18 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
     assert_eq!(history[0], kept["decision"]);
     assert_eq!(&history[1], suspended);
     assert_eq!(history[2]["event_id"], json!(restore_id));
+    assert_eq!(
+        case.case_request(&first_output, None).await,
+        original_output
+    );
+    assert_eq!(
+        case.case_request(&first_basis, None).await["workbench_support"],
+        original_support
+    );
+    assert_eq!(
+        case.case_request(&second_basis, None).await["workbench_support"],
+        revised_support
+    );
 }
 
 #[tokio::test]
