@@ -389,6 +389,16 @@ Belief and Knowledge alone are too strong and too narrow to capture the ways hum
 - MetaEpistemicState represents higher-order knowledge, belief, assumptions, attitudes or perceptions about one's own or others' epistemic states or acts. Support relations to other relations/states without fixed semantic depth; bound actual processing by user-defined purpose, relevance and budget.
 - These are subjects of investigation in the modeled reality; representing an actor's influence strategy does not grant Niccolò authority to exercise it. No universal ranking of power, influence, trust or reputation.
 
+### 17.1 Public prominence and its effects on an investigation
+
+Public prominence describes how recognizable an actor is to a specified audience during a given period. Record the audience, the aspect that is recognizable (such as name, face or public role), the time scope, and the attributed basis and uncertainty. Local notoriety can matter to a case even if the actor is unknown elsewhere. Reputation describes what an audience thinks of the actor. Trust, formal authority and the practical capacity to influence are separate judgments.
+
+Prominence can affect what observers notice or recall, what they volunteer, what others repeat, and which leads investigators pursue. These effects can arise without any action by the prominent person. Keep the reported effect separate from the explanation for it. Social rewards such as attention, perceived proximity, status or being treated as an insider, as well as the possible costs of speaking, belong to the particular speaker, audience and occasion. Record an expected reward, a received reward and a hypothesized motive separately when each matters.
+
+Several witnesses can independently infer the same familiar name from different observations. Independence of the observers establishes neither independence of their assumptions nor identification of the person. Track direct identification, attributed inference and repetition separately. A concentration of reports on one actor may reflect how reports were elicited rather than the relative merits of the underlying leads. Evaluate that possibility against available evidence and keep alternative explanations open.
+
+The [Alder Bend prominence case](../product/ALDER_BEND_SITUATION_BIBLE.md#recorte-de-teste--fama-e-seleção-de-relatos) is the first proposed check. Exercise existing attributed claims, evidence links and revisions through the API. Use the replay to identify where explicit representation is needed. Prominence by itself establishes no credibility adjustment, motive, identification or causal effect.
+
 ## 18. Pervasive Deception — foundational principle of Niccolò
 
 Deception is not a vertical, exceptional event category, or moral presumption. The model must remain open to varying levels and kinds of honesty throughout the epistemic domain. Do not assume honesty or dishonesty as a global default. Describe conduct, possible intention, motivation, context and consequences separately. Legal, institutional and moral assessments, when relevant, are attributable and distinguishable from factual descriptions.
