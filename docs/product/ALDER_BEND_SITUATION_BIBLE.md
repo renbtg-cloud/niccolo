@@ -78,6 +78,19 @@ Variante sintética do desaparecimento para isolar a notoriedade de Frank. As pe
 
 **Resultado esperado.** Na primeira revisão, Mae e Jules são duas fontes para a passagem do guincho da Vale e nenhuma para a identificação visual de Frank. A suposição de ambos pode se apoiar separadamente na mesma associação pública entre Frank e a Vale. O relato inicialmente apresentado por Leon como identificação deve permanecer no histórico com sua retratação. Na última rodada, a passagem da Pine ganha suporte identificável e a identidade dos dois motoristas continua em aberto. O pedido inicial de Owen e a explicação de Mara sustentam uma análise de como a coleta privilegiou um dos veículos. O motivo de Leon e a contribuição exata da notoriedade de Frank para a diferença de atenção permanecem hipóteses avaliáveis, com seu apoio e seus limites. A existência de dois guinchos tampouco estabelece qual deles, se algum, tem ligação com Daniel.
 
+### Resultado do primeiro replay pela API
+
+O [teste HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L210) usa as rotas autenticadas do Workbench e independe de um modelo de linguagem. O investigador fornece a separação entre observação, inferência, recompensa social alegada e motivo hipotético. A API preserva a origem das falas. Quando Leon retira a identificação, ela sinaliza para revisão somente a rota que dependia daquela fala. As rotas que sustentam a passagem dos guinchos permanecem acessíveis e sem impacto da retratação.
+
+Este replay compara a resposta antes e depois das novas peças e verifica que o relato retirado e sua correção permanecem no estado posterior. O cliente do teste guarda a resposta anterior. A recuperação de um estado histórico completo diretamente do servidor ainda precisa de uma verificação própria.
+
+O próximo teste de representação deve tentar consultar, de forma estruturada, para qual público e em qual período Frank era reconhecível e quais relatos registram efeitos disso. Neste replay, público e período estão no texto da proposição e da justificativa, e o vínculo com os palpites foi informado pelo investigador. A hipótese sobre o efeito na coleta tem apoio próprio e pode ser revisada independentemente da identificação dos motoristas.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_distinguishes_prominence_from_driver_identification
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
