@@ -965,6 +965,278 @@ async fn alder_bend_reviews_only_the_detail_reachable_from_prior_exposure() {
 }
 
 #[tokio::test]
+async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
+    let mut case = setup_with_focus("Which support should we use after reviewing the hat?").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        case.router = api::router(PgPoolOptions::new().connect(&url).await.unwrap());
+    }
+    let frank = Uuid::new_v4();
+    let mara = Uuid::new_v4();
+    for (actor, label) in [(frank, "Frank Vale"), (mara, "Mara Ellis")] {
+        let uri = format!("/v1/workspaces/{}/actors/{actor}", case.workspace);
+        let (status, body) = invoke(
+            case.router.clone(),
+            request(
+                "POST",
+                &uri,
+                &case.token,
+                Some(json!({"display_label":label})),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+
+    let hat = case
+        .case_node(
+            "PROPOSITION",
+            "Mara reports a red hat in the cab.",
+            "A detail under review.",
+        )
+        .await;
+    let truck = case
+        .case_node(
+            "PROPOSITION",
+            "Mara reports seeing a truck.",
+            "A separate detail.",
+        )
+        .await;
+    let interview = case
+        .case_source(
+            hat,
+            "Mara testimony",
+            "Mara Ellis",
+            "I saw the truck. I remember a red hat in the cab.",
+        )
+        .await;
+    case.case_request(
+        &format!("epistemic/objects/{truck}/artifact-provenance/{interview}"),
+        Some(json!({"rationale":"Separate observation from the same interview."})),
+    )
+    .await;
+    let alternate = case
+        .case_node(
+            "PROPOSITION",
+            "Jules reports seeing Frank by the driver's door.",
+            "Independently collected observation.",
+        )
+        .await;
+    case.case_source(
+        alternate,
+        "Jules testimony",
+        "Jules Navarro",
+        "Frank was standing by the driver's door.",
+    )
+    .await;
+    let hypothesis = case
+        .case_node(
+            "HYPOTHESIS",
+            "Frank may have been driving.",
+            "Investigator-authored hypothesis.",
+        )
+        .await;
+    let passage = case
+        .case_node(
+            "FINDING",
+            "A truck passed the college.",
+            "Separate physical observation.",
+        )
+        .await;
+    let identity_argument = case
+        .case_argument(hypothesis, "Compare distinct support routes.")
+        .await;
+    let passage_argument = case
+        .case_argument(passage, "Assess the truck observation.")
+        .await;
+    let hat_route = case
+        .case_ground(
+            identity_argument,
+            &[hat],
+            "The red hat is the only ground on this route.",
+        )
+        .await;
+    let alternate_route = case
+        .case_ground(identity_argument, &[alternate], "A different observation.")
+        .await;
+    let passage_route = case
+        .case_ground(passage_argument, &[truck], "Uses the truck observation.")
+        .await;
+
+    let photo = case
+        .case_node(
+            "PROPOSITION",
+            "Frank wears a red hat in the archive photo.",
+            "Attributed description of the selected source.",
+        )
+        .await;
+    let picture = case
+        .case_representation(
+            photo,
+            "IMAGE",
+            "Newspaper archive photo",
+            "Illustrating image",
+            "HUMAN_DESCRIPTION",
+            "The archive photo shows Frank wearing a red hat.",
+        )
+        .await;
+    let exposure_claim = case
+        .case_node(
+            "PROPOSITION",
+            "Mara says she saw the archive photo on November 19.",
+            "Before the interview.",
+        )
+        .await;
+    let exposure_basis = case
+        .case_source(
+            exposure_claim,
+            "Mara follow-up",
+            "Mara Ellis",
+            "I saw that photo on November 19.",
+        )
+        .await;
+    let exposure = Uuid::new_v4();
+    case.case_request(&format!("epistemic/public-prominence/{exposure}"), Some(json!({
+        "subject_actor_id":frank, "audience_actor_id":mara, "cue":"FACE",
+        "observation":"EXPOSURE_REPORTED", "audience_scope":"Mara only",
+        "effective_from":"2026-11-19", "effective_through":"2026-11-19", "available_on":"2026-11-23",
+        "claim_object_id":exposure_claim, "representation_id":exposure_basis
+    }))).await;
+    let review = json!({
+        "exposure_record_id":exposure, "witness_actor_id":mara,
+        "testimony_detail":{"object_id":hat, "representation_id":interview},
+        "candidate_source":{"object_id":photo, "representation_id":picture},
+        "testimony_from":"2026-11-20", "testimony_through":"2026-11-20", "known_through":"2026-11-23"
+    });
+    let before = case.case_request("epistemic/workbench", None).await;
+    let route_use = "epistemic/detail-exposure-review/route-use";
+    let base = format!(
+        "/v1/workspaces/{}/situations/{}",
+        case.workspace, case.situation
+    );
+    let preview_uri = format!("{base}/epistemic/detail-exposure-review");
+    let (status, preview) = invoke(
+        case.router.clone(),
+        request("POST", &preview_uri, &case.token, Some(review.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["disposition"], "REVIEW_CANDIDATE");
+    assert_eq!(preview["affected_routes"].as_array().unwrap().len(), 1);
+    let keep_id = Uuid::new_v4();
+    let payload = json!({
+        "argument_id":identity_argument, "grounding_set_id":hat_route, "disposition":"USE",
+        "rationale":"Keep the candidate route during the preliminary review.", "review":review
+    });
+    let kept = case
+        .case_request(&format!("{route_use}/{keep_id}"), Some(payload.clone()))
+        .await;
+    assert_eq!(kept["decision"]["basis"]["result"], preview);
+
+    let suspend_id = Uuid::new_v4();
+    let mut suspend = payload.clone();
+    suspend["disposition"] = json!("SUSPEND");
+    suspend["rationale"] = json!("Suspend use of the hat until the origin is clarified.");
+    let suspended = case
+        .case_request(&format!("{route_use}/{suspend_id}"), Some(suspend.clone()))
+        .await;
+    let suspended = &suspended["decision"];
+    assert_eq!(suspended["basis"]["input"], payload["review"]);
+    assert_eq!(suspended["basis"]["result"], preview);
+    assert_eq!(suspended["recorded_by"], kept["decision"]["recorded_by"]);
+    assert!(!suspended["recorded_at"].as_str().unwrap().is_empty());
+    let after = case.case_request("epistemic/workbench", None).await;
+    let prior_hypothesis = case_row(
+        &before,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        hypothesis,
+    );
+    let current_hypothesis = case_row(
+        &after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        hypothesis,
+    );
+    assert_eq!(
+        prior_hypothesis["non_suspended_supporting_routes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        current_hypothesis["non_suspended_supporting_routes"],
+        json!([
+            {"argument_id":identity_argument, "grounding_set_id":alternate_route}
+        ])
+    );
+    let suspended_route = case_row(current_hypothesis, "routes", "grounding_set_id", hat_route);
+    assert_eq!(
+        suspended_route["suspended_by_decision_id"],
+        json!(suspend_id)
+    );
+    let current_passage = case_row(
+        &after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        passage,
+    );
+    assert_eq!(
+        current_passage["non_suspended_supporting_routes"],
+        json!([
+            {"argument_id":passage_argument, "grounding_set_id":passage_route}
+        ])
+    );
+    assert_eq!(after["nodes"], before["nodes"]);
+    assert_eq!(after["grounding_sets"], before["grounding_sets"]);
+    assert_eq!(after["artifact_provenance"], before["artifact_provenance"]);
+    assert_eq!(
+        after["route_use_history"],
+        json!([kept["decision"], suspended])
+    );
+
+    let mut outside = suspend.clone();
+    outside["grounding_set_id"] = json!(alternate_route);
+    let mut changed = suspend.clone();
+    changed["rationale"] = json!("A different rationale is a different decision.");
+    for (id, input, expected) in [
+        (Uuid::new_v4(), outside, StatusCode::BAD_REQUEST),
+        (suspend_id, changed, StatusCode::CONFLICT),
+        (suspend_id, suspend, StatusCode::OK),
+    ] {
+        let uri = format!("{base}/{route_use}/{id}");
+        let (status, body) = invoke(
+            case.router.clone(),
+            request("POST", &uri, &case.token, Some(input)),
+        )
+        .await;
+        assert_eq!(status, expected, "{body}");
+    }
+
+    let restore_id = Uuid::new_v4();
+    let mut restore = payload;
+    restore["rationale"] = json!("Restore this route after accepting its limited value.");
+    case.case_request(&format!("{route_use}/{restore_id}"), Some(restore))
+        .await;
+    let restored = case.case_request("epistemic/workbench", None).await;
+    let current = case_row(
+        &restored,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        hypothesis,
+    );
+    assert_eq!(
+        current["non_suspended_supporting_routes"],
+        prior_hypothesis["non_suspended_supporting_routes"]
+    );
+    let history = restored["route_use_history"].as_array().unwrap();
+    assert_eq!(history.len(), 3);
+    assert_eq!(history[0], kept["decision"]);
+    assert_eq!(&history[1], suspended);
+    assert_eq!(history[2]["event_id"], json!(restore_id));
+}
+
+#[tokio::test]
 async fn http_flow_records_human_material_without_accepting_or_reading_artifact_bytes() {
     let setup = setup().await;
     let video = Uuid::new_v4();

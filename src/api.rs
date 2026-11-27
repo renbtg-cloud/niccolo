@@ -27,7 +27,7 @@ use crate::discovery;
 use crate::epistemic_input_draft;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
-use crate::epistemic_workbench::{detail_exposure, public_prominence};
+use crate::epistemic_workbench::{detail_exposure, public_prominence, route_use};
 use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::epistemic_workbench_prose;
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
@@ -292,6 +292,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review",
             post(review_detail_exposure),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}",
+            post(record_detail_route_use),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/input-draft",
@@ -3802,6 +3806,21 @@ async fn review_detail_exposure(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let review = detail_exposure::review(&state.pool, workspace, situation, input).await?;
     Ok(no_store(json!(review), StatusCode::OK))
+}
+
+async fn record_detail_route_use(
+    State(state): State<AppState>,
+    Path((workspace, situation, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<route_use::Input>,
+) -> Result<Response, ApiError> {
+    let author = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (decision, created) =
+        route_use::record(&state.pool, workspace, situation, event, author, input).await?;
+    Ok(no_store(
+        json!({"decision": decision, "replayed": !created}),
+        if created { StatusCode::CREATED } else { StatusCode::OK },
+    ))
 }
 
 async fn create_expert_epistemic_node(

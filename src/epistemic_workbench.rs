@@ -27,6 +27,8 @@ pub mod actor_state;
 pub mod public_prominence;
 #[path = "epistemic_detail_exposure.rs"]
 pub mod detail_exposure;
+#[path = "epistemic_route_use.rs"]
+pub mod route_use;
 #[path = "epistemic_normative_assessment.rs"]
 pub mod normative_assessment;
 #[path = "epistemic_actor_act.rs"]
@@ -470,6 +472,8 @@ pub struct AssessmentReassessmentAttention {
 pub struct ReasoningRouteDiagnostic {
     pub argument_id: Uuid,
     pub grounding_set_id: Uuid,
+    #[serde(default)]
+    pub suspended_by_decision_id: Option<Uuid>,
     pub effect: GroundingEffect,
     pub adequacy: GroundingAdequacy,
     pub member_count: usize,
@@ -603,6 +607,8 @@ pub struct ConclusionReasoningDiagnostic {
     pub information_gap_supports: Vec<InformationGapSupportDiagnostic>,
     pub direct_evidence_lineage: DirectEvidenceLineageDiagnostic,
     pub has_supporting_routes: bool,
+    #[serde(default)]
+    pub non_suspended_supporting_routes: Vec<GroundingRouteRef>,
     pub has_opposing_routes: bool,
     pub has_mixed_directional_grounding: bool,
     pub conclusion_reassessment: ReassessmentAttentionSummary,
@@ -757,6 +763,8 @@ pub struct WorkbenchSnapshot {
     pub relations: Vec<ExpertRelation>,
     pub arguments: Vec<ExpertArgument>,
     pub grounding_sets: Vec<GroundingSetView>,
+    #[serde(default)]
+    pub route_use_history: Vec<route_use::Decision>,
     pub reassessment_impacts: Vec<ReassessmentImpact>,
     pub grounding_cycles: Vec<GroundingCycleDiagnostic>,
     pub reasoning_diagnostics: Vec<ConclusionReasoningDiagnostic>,
@@ -2202,6 +2210,7 @@ fn reasoning_diagnostics(
             routes.push(ReasoningRouteDiagnostic {
                 argument_id: set.argument_id,
                 grounding_set_id: set.grounding_set_id,
+                suspended_by_decision_id: None,
                 effect: set.effect,
                 adequacy: set.adequacy,
                 member_count: set.members.len(),
@@ -2277,6 +2286,7 @@ fn reasoning_diagnostics(
             information_gap_supports,
             direct_evidence_lineage: DirectEvidenceLineageDiagnostic::default(),
             has_supporting_routes,
+            non_suspended_supporting_routes: Vec::new(),
             has_opposing_routes,
             has_mixed_directional_grounding: has_supporting_routes && has_opposing_routes,
             conclusion_reassessment,
@@ -2824,6 +2834,29 @@ pub async fn snapshot(
         &relations,
         &nodes,
     );
+    let route_use_history = route_use::history(&mut tx, workspace, situation).await?;
+    let latest_route_use = route_use_history
+        .iter()
+        .map(|decision| (decision.route, decision))
+        .collect::<BTreeMap<_, _>>();
+    for diagnostic in &mut reasoning_diagnostics {
+        for route in &mut diagnostic.routes {
+            let route_ref = GroundingRouteRef {
+                argument_id: route.argument_id,
+                grounding_set_id: route.grounding_set_id,
+            };
+            route.suspended_by_decision_id = latest_route_use
+                .get(&route_ref)
+                .filter(|event| event.disposition == route_use::Disposition::Suspend)
+                .map(|event| event.event_id);
+            if route.suspended_by_decision_id.is_none()
+                && route.non_context_member_count > 0
+                && route.effect == GroundingEffect::Supports
+            {
+                diagnostic.non_suspended_supporting_routes.push(route_ref);
+            }
+        }
+    }
     let mut conditions_by_route =
         BTreeMap::<(Uuid, Uuid), Vec<RouteApplicabilityAssessment>>::new();
     for condition in applicability {
@@ -2982,6 +3015,7 @@ pub async fn snapshot(
         relations,
         arguments,
         grounding_sets,
+        route_use_history,
         reassessment_impacts,
         grounding_cycles,
         reasoning_diagnostics,
@@ -3030,6 +3064,7 @@ mod tests {
             relations: vec![],
             arguments: vec![],
             grounding_sets: vec![],
+            route_use_history: vec![],
             reassessment_impacts: vec![],
             grounding_cycles: vec![],
             reasoning_diagnostics: vec![],

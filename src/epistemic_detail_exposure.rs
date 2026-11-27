@@ -5,17 +5,17 @@ use super::{
     scoped,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DetailSource {
     object_id: Uuid,
     representation_id: Uuid,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
     witness_actor_id: Uuid,
@@ -58,11 +58,31 @@ pub struct Review {
     affected_routes: Vec<AffectedRoute>,
 }
 
+impl Review {
+    pub(super) fn flags_route(&self, argument_id: Uuid, grounding_set_id: Uuid) -> bool {
+        self.affected_routes.iter().any(|route| {
+            route.argument_id == argument_id && route.grounding_set_id == grounding_set_id
+        })
+    }
+}
+
 pub async fn review(
     pool: &PgPool,
     workspace: Uuid,
     situation: Uuid,
     input: Input,
+) -> Result<Review, WorkbenchError> {
+    let mut tx = scoped(pool, workspace, true).await?;
+    let result = review_in(&mut tx, workspace, situation, &input).await?;
+    tx.commit().await?;
+    Ok(result)
+}
+
+pub(super) async fn review_in(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    input: &Input,
 ) -> Result<Review, WorkbenchError> {
     if !calendar_date(&input.testimony_from)
         || !calendar_date(&input.testimony_through)
@@ -73,9 +93,8 @@ pub async fn review(
     {
         return Err(WorkbenchError::Invalid);
     }
-    let mut tx = scoped(pool, workspace, true).await?;
     let exposure =
-        public_prominence::find_record(&mut tx, workspace, situation, input.exposure_record_id)
+        public_prominence::find_record(tx, workspace, situation, input.exposure_record_id)
             .await?
             .ok_or(WorkbenchError::Invisible)?;
     if exposure.input.audience_actor_id != input.witness_actor_id
@@ -95,7 +114,7 @@ pub async fn review(
     .bind(input.testimony_detail.representation_id)
     .bind(input.candidate_source.object_id)
     .bind(input.candidate_source.representation_id)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     if !linked {
         return Err(WorkbenchError::Invisible);
@@ -134,7 +153,7 @@ pub async fn review(
         .bind(workspace)
         .bind(situation)
         .bind(input.testimony_detail.object_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut **tx)
         .await?;
         rows.into_iter()
             .map(
@@ -148,14 +167,13 @@ pub async fn review(
     } else {
         Vec::new()
     };
-    tx.commit().await?;
     Ok(Review {
         witness_actor_id: input.witness_actor_id,
-        testimony_detail: input.testimony_detail,
-        testimony_from: input.testimony_from,
-        testimony_through: input.testimony_through,
-        known_through: input.known_through,
-        candidate_source: available.then_some(input.candidate_source),
+        testimony_detail: input.testimony_detail.clone(),
+        testimony_from: input.testimony_from.clone(),
+        testimony_through: input.testimony_through.clone(),
+        known_through: input.known_through.clone(),
+        candidate_source: available.then(|| input.candidate_source.clone()),
         exposure: available.then_some(exposure),
         disposition,
         needs_finer_timing,
