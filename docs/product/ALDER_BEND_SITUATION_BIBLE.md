@@ -184,12 +184,20 @@ Na primeira rodada, o investigador registra a nota de Owen como uma pista cuja o
 
 O Workbench passa a sinalizar a rota que usa somente a nota para sustentar o avistamento. O aviso aponta para a declaração de origem e para as rotas que já citam Claire. O apoio da câmera e o uso da nota para demonstrar que Owen registrou a pista continuam disponíveis. O alerta deixa o uso de todas as rotas a cargo do investigador. A base anterior segue consultável, e o pacote da reanálise inclui a nova relação declarada.
 
-O diagnóstico `artifact_dependence_reviews` compara os fundamentos explicitamente ligados aos artefatos nas rotas de apoio ativas da mesma alegação. Ele lê relações `CLAIMED_TO_BE_DERIVED_FROM` e `DERIVED_FROM`. Uma rota que já cita a origem aparece entre as rotas de referência do aviso.
+O diagnóstico `artifact_dependence_reviews` compara os fundamentos explicitamente ligados aos artefatos nas rotas de apoio da mesma alegação. Ele lê relações `CLAIMED_TO_BE_DERIVED_FROM` e `DERIVED_FROM`. Uma rota que já cita a origem aparece entre as rotas de referência do aviso. O diagnóstico discrimina as rotas derivadas em uso e as suspensas.
 
 ```bash
 cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
   alder_bend_flags_late_source_dependence_for_the_affected_route
 ```
+
+### Nono replay — decisão de uso após o alerta
+
+O investigador suspende a rota que usava a nota de Owen como apoio separado ao avistamento. O Workbench registra quem decidiu, a justificativa, a rota e o vínculo declarado que deu origem ao alerta. A interface mantém o histórico no próprio alerta e permite registrar a retomada do uso. [Replay da descoberta até a reanálise](../../tests/parser_free_artifacts_http_integration.rs#L2168)
+
+O replay testa uma síntese que cita Claire e a câmera para o avistamento e a nota de Owen para a alegação sobre o dossiê. Quando outra síntese tenta citar a rota suspensa, a operação falha e o resultado fica sem publicação. As bases anteriores preservam as rotas que estavam disponíveis quando foram congeladas. A retomada acrescenta uma decisão ao histórico.
+
+O endpoint `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/artifact-dependence-review/route-use/{event}` recebe `relationship_id`, `argument_id`, `grounding_set_id`, `disposition` e `rationale`. A API verifica a permissão de escrita e a participação da rota no alerta. As escolhas são `USE` e `SUSPEND`.
 
 ## Material para desenvolver
 

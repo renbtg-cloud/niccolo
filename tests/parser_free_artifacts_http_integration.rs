@@ -1052,11 +1052,12 @@ async fn alder_analysis(
     base: &str,
     analysis: Uuid,
     prior: Option<Uuid>,
+    goal: &str,
 ) -> (StatusCode, Uuid, Value) {
     let operation = Uuid::new_v4();
     let uri = format!("{base}/bff/intents/{operation}/sync");
     let (status, reply) = invoke(case.router.clone(), request("POST", &uri, &case.token, Some(json!({
-        "analysis_id":analysis, "intent":"UNDERSTAND", "goal":ALDER_SUPPORT_GOAL,
+        "analysis_id":analysis, "intent":"UNDERSTAND", "goal":goal,
         "reanalysis_of":prior, "step_budget":32, "context":{}
     })))).await;
     (status, operation, reply)
@@ -1249,7 +1250,7 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
             suspended_by: suspend_id,
         }),
     );
-    let (status, _, initial) = alder_analysis(&case, &base, first_analysis, None).await;
+    let (status, _, initial) = alder_analysis(&case, &base, first_analysis, None, ALDER_SUPPORT_GOAL).await;
     assert_eq!(status, StatusCode::OK, "{initial}");
     assert_eq!(initial["operation"]["state"], "SUCCEEDED", "{initial}");
     let first_output = format!("analysis-snapshots/{first_analysis}/output");
@@ -1349,7 +1350,7 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
     assert_eq!(freeze["state"], "SUCCEEDED", "{freeze}");
     assert_eq!(freeze["result"]["new_analysis_id"], json!(second_analysis));
     let (status, _, revised) =
-        alder_analysis(&case, &base, second_analysis, Some(first_analysis)).await;
+        alder_analysis(&case, &base, second_analysis, Some(first_analysis), ALDER_SUPPORT_GOAL).await;
     assert_eq!(status, StatusCode::OK, "{revised}");
     assert_eq!(revised["operation"]["state"], "SUCCEEDED", "{revised}");
     assert_eq!(revised["analysis_replayed"], true);
@@ -1374,7 +1375,7 @@ async fn alder_bend_audits_suspension_and_restoration_of_one_support_route() {
     );
 
     let (status, invalid_operation, invalid) =
-        alder_analysis(&case, &base, invalid_analysis, Some(first_analysis)).await;
+        alder_analysis(&case, &base, invalid_analysis, Some(first_analysis), ALDER_SUPPORT_GOAL).await;
     assert!(
         status.is_server_error() || invalid["operation"]["state"] == "FAILED",
         "{status}: {invalid}"
@@ -2380,6 +2381,262 @@ async fn alder_bend_flags_late_source_dependence_for_the_affected_route() {
     let frozen_relationship = &revised_basis.artifact_relationships[0];
     assert_eq!(frozen_relationship.relationship_id, relationship);
     assert!(!frozen_relationship.relationship_is_verified);
+
+    let route_use = "epistemic/artifact-dependence-review/route-use";
+    let suspension = Uuid::new_v4();
+    let body = json!({
+        "argument_id": note_argument, "grounding_set_id": owen_route,
+        "relationship_id": relationship, "disposition": "SUSPEND",
+        "rationale": "The entry repeats Claire's sighting. Keep the entry in the record."
+    });
+    let base = format!(
+        "/v1/workspaces/{}/situations/{}",
+        case.workspace, case.situation
+    );
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), case.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let uri = format!("{base}/{route_use}/{suspension}");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &reader, Some(body.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let mut camera_body = body.clone();
+    camera_body["argument_id"] = json!(witness_argument);
+    camera_body["grounding_set_id"] = json!(camera_route);
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &case.token, Some(camera_body)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let saved = case
+        .case_request(&format!("{route_use}/{suspension}"), Some(body.clone()))
+        .await;
+    let decision = &saved["decision"];
+    assert_eq!(decision["recorded_by"], owen_link["recorded_by"]);
+    assert_eq!(decision["disposition"], "SUSPEND");
+    assert_eq!(decision["rationale"], body["rationale"]);
+    assert_eq!(
+        decision["basis"]["input"]["relationship_id"],
+        json!(relationship)
+    );
+    assert_eq!(
+        decision["basis"]["result"]["conclusion_object_id"],
+        json!(sighting)
+    );
+    assert_eq!(decision["basis"]["result"]["review"], *review);
+    let (status, repeated) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &case.token, Some(body.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(repeated, json!({"decision":decision, "replayed":true}));
+
+    let suspended = case.case_request(path, None).await;
+    let suspended_sighting = case_row(
+        &suspended,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    let suspended_review = case_row(
+        suspended_sighting,
+        "artifact_dependence_reviews",
+        "relationship_id",
+        relationship,
+    );
+    assert_eq!(suspended_review["routes_to_review"], json!([]));
+    assert_eq!(
+        suspended_review["suspended_routes"],
+        review["routes_to_review"]
+    );
+    assert_eq!(suspended["route_use_history"], json!([decision]));
+    assert_eq!(suspended["grounding_sets"], after["grounding_sets"]);
+    assert_eq!(
+        suspended["artifact_provenance"],
+        after["artifact_provenance"]
+    );
+    assert_eq!(
+        case_row(
+            &suspended,
+            "reasoning_diagnostics",
+            "conclusion_object_id",
+            filing
+        ),
+        after_filing
+    );
+
+    let usable = [
+        (witness_argument, claire_route),
+        (witness_argument, camera_route),
+        (filing_argument, filing_route),
+    ];
+    let accepted = Uuid::new_v4();
+    let refused = Uuid::new_v4();
+    case.router = api::router_with_model(
+        case.service.clone(),
+        std::sync::Arc::new(DependenceSynthesis {
+            usable,
+            suspended: (note_argument, owen_route),
+            refused,
+        }),
+    );
+    let goal = "Revisit the pharmacy sighting after Owen's review.";
+    let (status, _, result) = alder_analysis(&case, &base, accepted, Some(revised), goal).await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    assert_eq!(result["operation"]["state"], "SUCCEEDED");
+    let output = case
+        .case_request(&format!("analysis-snapshots/{accepted}/output"), None)
+        .await;
+    let links = output["workbench_support_links"].as_array().unwrap();
+    assert_eq!(links.len(), usable.len());
+    for (argument, route) in usable {
+        assert!(
+            links
+                .iter()
+                .any(|link| link["argument_id"] == json!(argument)
+                    && link["grounding_set_id"] == json!(route))
+        );
+    }
+    let accepted_packet = cross_case_packet(&case, accepted).await;
+    let support = accepted_packet.frozen_input.workbench_support.unwrap();
+    let omitted = support
+        .routes
+        .iter()
+        .find(|route| route.grounding_set_id == owen_route)
+        .unwrap();
+    assert_eq!(omitted.suspended_by_decision_id, Some(suspension));
+    assert!(omitted.grounds.is_empty());
+    assert_eq!(
+        cross_case_packet(&case, earlier)
+            .await
+            .frozen_input
+            .workbench_support,
+        initial_basis.workbench_support
+    );
+    assert_eq!(
+        cross_case_packet(&case, revised)
+            .await
+            .frozen_input
+            .workbench_support,
+        revised_basis.workbench_support
+    );
+
+    let (status, operation, result) =
+        alder_analysis(&case, &base, refused, Some(revised), goal).await;
+    assert!(
+        status.is_server_error() || result["operation"]["state"] == "FAILED",
+        "{status}: {result}"
+    );
+    let step_log = case
+        .case_request(&format!("bff/operations/{operation}/agentic"), None)
+        .await;
+    let synthesis = step_log["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|step| step["kind"] == "SYNTHESIZE")
+        .unwrap();
+    assert_eq!(synthesis["state"], "FAILED");
+    let invalid_output = format!("{base}/analysis-snapshots/{refused}/output");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("GET", &invalid_output, &case.token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let restored_id = Uuid::new_v4();
+    let mut restore = body;
+    restore["disposition"] = json!("USE");
+    restore["rationale"] = json!("Revisit the note as a qualified secondary lead.");
+    let restored = case
+        .case_request(&format!("{route_use}/{restored_id}"), Some(restore))
+        .await;
+    let final_snapshot = case.case_request(path, None).await;
+    let final_sighting = case_row(
+        &final_snapshot,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    assert_eq!(
+        final_snapshot["route_use_history"],
+        json!([decision, restored["decision"]])
+    );
+    assert_eq!(final_sighting["non_suspended_supporting_routes"], *active);
+    assert_eq!(
+        final_sighting["artifact_dependence_reviews"],
+        after_sighting["artifact_dependence_reviews"]
+    );
+}
+
+struct DependenceSynthesis {
+    usable: [(Uuid, Uuid); 3],
+    suspended: (Uuid, Uuid),
+    refused: Uuid,
+}
+
+impl niccolo_evidence::model_adapter::ReasoningModel for DependenceSynthesis {
+    fn provider(&self) -> &str {
+        "alder-bend-fixture"
+    }
+    fn model(&self) -> &str {
+        "artifact-dependence-replay"
+    }
+
+    fn invoke<'a>(
+        &'a self,
+        request: &'a niccolo_evidence::model_adapter::ModelRequest,
+    ) -> niccolo_evidence::model_adapter::ModelFuture<'a> {
+        use niccolo_evidence::model_adapter::{DeterministicModel, ModelResponse};
+        Box::pin(async move {
+            if request.purpose != "SYNTHESIZE" {
+                let fallback = DeterministicModel::new(self.provider(), self.model())?;
+                return fallback.invoke(request).await;
+            }
+            let sighting = Uuid::new_v4();
+            let intake = Uuid::new_v4();
+            let [
+                (claire_arg, claire_route),
+                (camera_arg, camera_route),
+                (filing_arg, filing_route),
+            ] = self.usable;
+            let mut links = vec![
+                json!({"claim_id":sighting, "argument_id":claire_arg, "grounding_set_id":claire_route}),
+                json!({"claim_id":sighting, "argument_id":camera_arg, "grounding_set_id":camera_route}),
+                json!({"claim_id":intake, "argument_id":filing_arg, "grounding_set_id":filing_route}),
+            ];
+            if request.input["analysis_id"] == json!(self.refused) {
+                links.push(json!({"claim_id":sighting, "argument_id":self.suspended.0, "grounding_set_id":self.suspended.1}));
+            }
+            Ok(ModelResponse {
+                value: json!({"purpose":"SYNTHESIZE", "status":"ok", "niccolo_artifact":{
+                    "answer_text":"Claire and the camera description support the sighting. Owen's note records the lead.",
+                    "coverage_note":"Alder Bend source-dependence replay.",
+                    "claims":[
+                        {"claim_id":sighting, "ordinal":1, "kind":"OBSERVATION", "text":"Claire and the camera description support the sighting."},
+                        {"claim_id":intake, "ordinal":2, "kind":"OBSERVATION", "text":"Owen's note records the lead."}
+                    ],
+                    "workbench_support_links":links
+                }}),
+                prompt_tokens: Some(8),
+                completion_tokens: Some(5),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
 }
 
 async fn cross_case_freeze(case: &Setup, parent: Option<Uuid>) -> Uuid {

@@ -95,6 +95,44 @@ function AuthoredImpactPanel({snapshot}) {
   </details>;
 }
 
+function ArtifactDependenceRouteDecision({client, relationship, route, label, suspended, history, onSaved}) {
+  const [disposition, setDisposition] = useState('');
+  const [rationale, setRationale] = useState('');
+  const pending = useRef(null);
+  const mutation = useMutation({
+    mutationFn: (body) => {
+      const signature = JSON.stringify(body);
+      if (pending.current?.signature !== signature) pending.current = {signature, id: crypto.randomUUID()};
+      return client.recordArtifactDependenceRouteUse(pending.current.id, body);
+    },
+    onSuccess: async () => {
+      pending.current = null;
+      setDisposition('');
+      setRationale('');
+      await onSaved();
+    },
+  });
+  return <li>
+    <strong>{label}</strong> · {suspended ? 'Suspended' : 'In use'}
+    <form onSubmit={(event) => {
+      event.preventDefault();
+      if (mutation.isPending || !disposition || !rationale.trim()) return;
+      mutation.mutate({ ...route, relationship_id:relationship, disposition, rationale:rationale.trim() });
+    }}>
+      <label>Use of this route<select value={disposition} onChange={(event) => setDisposition(event.target.value)} required>
+        <option value="">Choose…</option><option value="USE">{suspended ? 'Restore use' : 'Keep in use'}</option><option value="SUSPEND">Suspend use</option>
+      </select></label>
+      <label>Justification<input value={rationale} onChange={(event) => setRationale(event.target.value)} maxLength={4096} required/></label>
+      <button disabled={mutation.isPending || !disposition || !rationale.trim()} type="submit">Record route decision</button>
+      {mutation.error && <p className="error" role="alert">{mutation.error.message}</p>}
+    </form>
+    {history.length > 0 && <details><summary>Route decision history</summary><ul>{history.map((decision) => <li key={decision.event_id}>
+      {decision.disposition === 'SUSPEND' ? 'Suspended' : 'Use recorded'} · {decision.rationale}<br/>
+      <small>Recorded by {decision.recorded_by} · {decision.recorded_at}</small>
+    </li>)}</ul></details>}
+  </li>;
+}
+
 export function ExpertWorkbenchPage() {
   const client = useClient();
   const workbench = useQuery({
@@ -479,8 +517,14 @@ export function ExpertWorkbenchPage() {
             <ul>{diagnostic.artifact_dependence_reviews.map((review) => <li key={review.relationship_id}>
               <p><strong>{artifactLabel(review.derived_artifact_id)}</strong> was reported to draw on <strong>{artifactLabel(review.source_artifact_id)}</strong>.</p>
               {review.qualification && <p>{review.qualification}</p>}
-              <strong>Routes to review</strong>
-              <ul>{review.routes_to_review.map((route) => <li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)}</li>)}</ul>
+              <strong>Use of derived routes</strong>
+              <ul>{[...review.routes_to_review, ...(review.suspended_routes ?? [])].map((route) => {
+                const matches = (candidate) => candidate.argument_id === route.argument_id && candidate.grounding_set_id === route.grounding_set_id;
+                return <ArtifactDependenceRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
+                  client={client} relationship={review.relationship_id} route={route} label={routeLabel(route)}
+                  suspended={review.suspended_routes?.some(matches)} onSaved={() => workbench.refetch()}
+                  history={(data.route_use_history ?? []).filter((decision) => matches(decision.route) && decision.basis?.input?.relationship_id === review.relationship_id)}/>;
+              })}</ul>
               <strong>Routes that already cite the source</strong>
               <ul>{review.source_routes.map((route) => <li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)}</li>)}</ul>
             </li>)}</ul>
