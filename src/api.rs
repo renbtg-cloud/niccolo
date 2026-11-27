@@ -298,6 +298,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_detail_route_use),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/artifact-dependence-review/route-use/{event}",
+            post(record_artifact_dependence_route_use),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/input-draft",
             post(propose_expert_input_draft),
         )
@@ -3856,6 +3860,22 @@ async fn record_detail_route_use(
     let author = guard(&state, &headers, workspace, Capability::Write).await?;
     let (decision, created) =
         route_use::record(&state.pool, workspace, situation, event, author, input).await?;
+    Ok(no_store(
+        json!({"decision": decision, "replayed": !created}),
+        if created { StatusCode::CREATED } else { StatusCode::OK },
+    ))
+}
+
+async fn record_artifact_dependence_route_use(
+    State(state): State<AppState>,
+    Path((workspace, situation, event)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<route_use::ArtifactDependenceInput>,
+) -> Result<Response, ApiError> {
+    let author = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (decision, created) =
+        route_use::record_artifact_dependence(&state.pool, workspace, situation, event, author, input)
+            .await?;
     Ok(no_store(
         json!({"decision": decision, "replayed": !created}),
         if created { StatusCode::CREATED } else { StatusCode::OK },

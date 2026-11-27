@@ -1,5 +1,7 @@
 //! Human decisions about whether to use an authored support route.
-use super::{GroundingRouteRef, WorkbenchError, detail_exposure, scoped, valid_text};
+use super::{
+    GroundingRouteRef, WorkbenchError, artifact_dependence, detail_exposure, scoped, valid_text,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -29,6 +31,28 @@ pub struct Input {
     pub disposition: Disposition,
     pub rationale: String,
     pub review: detail_exposure::Input,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactDependenceInput {
+    pub argument_id: Uuid,
+    pub grounding_set_id: Uuid,
+    pub disposition: Disposition,
+    pub rationale: String,
+    pub relationship_id: Uuid,
+}
+
+enum ReviewBasis {
+    Exposure(detail_exposure::Input),
+    ArtifactDependence(Uuid),
+}
+
+struct Choice {
+    route: GroundingRouteRef,
+    disposition: Disposition,
+    rationale: String,
+    basis: ReviewBasis,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -109,21 +133,105 @@ pub async fn record(
     author: Uuid,
     input: Input,
 ) -> Result<(Decision, bool), WorkbenchError> {
-    if event_id.is_nil() || !valid_text(&input.rationale, 4096) {
+    record_choice(
+        pool,
+        workspace,
+        situation,
+        event_id,
+        author,
+        Choice {
+            route: GroundingRouteRef {
+                argument_id: input.argument_id,
+                grounding_set_id: input.grounding_set_id,
+            },
+            disposition: input.disposition,
+            rationale: input.rationale,
+            basis: ReviewBasis::Exposure(input.review),
+        },
+    )
+    .await
+}
+
+pub async fn record_artifact_dependence(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    event_id: Uuid,
+    author: Uuid,
+    input: ArtifactDependenceInput,
+) -> Result<(Decision, bool), WorkbenchError> {
+    record_choice(
+        pool,
+        workspace,
+        situation,
+        event_id,
+        author,
+        Choice {
+            route: GroundingRouteRef {
+                argument_id: input.argument_id,
+                grounding_set_id: input.grounding_set_id,
+            },
+            disposition: input.disposition,
+            rationale: input.rationale,
+            basis: ReviewBasis::ArtifactDependence(input.relationship_id),
+        },
+    )
+    .await
+}
+
+async fn record_choice(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    event_id: Uuid,
+    author: Uuid,
+    choice: Choice,
+) -> Result<(Decision, bool), WorkbenchError> {
+    if event_id.is_nil() || !valid_text(&choice.rationale, 4096) {
         return Err(WorkbenchError::Invalid);
     }
-    let rationale = input.rationale.trim();
-    let review_input = serde_json::to_value(&input.review).map_err(|_| WorkbenchError::Invalid)?;
+    let rationale = choice.rationale.trim();
+    let review_input = match &choice.basis {
+        ReviewBasis::Exposure(input) => {
+            serde_json::to_value(input).map_err(|_| WorkbenchError::Invalid)?
+        }
+        ReviewBasis::ArtifactDependence(relationship) => json!({"relationship_id":relationship}),
+    };
     let mut tx = scoped(pool, workspace, false).await?;
     let mut stored = load(&mut tx, workspace, situation, Some(event_id))
         .await?
         .pop();
     let created = if stored.is_none() {
-        let result =
-            detail_exposure::review_in(&mut tx, workspace, situation, &input.review).await?;
-        if !result.flags_route(input.argument_id, input.grounding_set_id) {
-            return Err(WorkbenchError::Invalid);
-        }
+        let result = match &choice.basis {
+            ReviewBasis::Exposure(input) => {
+                let result =
+                    detail_exposure::review_in(&mut tx, workspace, situation, input).await?;
+                if !result.flags_route(choice.route.argument_id, choice.route.grounding_set_id) {
+                    return Err(WorkbenchError::Invalid);
+                }
+                json!(result)
+            }
+            ReviewBasis::ArtifactDependence(relationship) => {
+                let reviews = artifact_dependence::reviews_in(
+                    &mut tx,
+                    workspace,
+                    situation,
+                    Some(*relationship),
+                )
+                .await?;
+                let (conclusion, review) = reviews
+                    .into_iter()
+                    .flat_map(|(conclusion, reviews)| {
+                        reviews.into_iter().map(move |review| (conclusion, review))
+                    })
+                    .find(|(_, review)| {
+                        review.routes_to_review.contains(&choice.route)
+                            || review.suspended_routes.contains(&choice.route)
+                    })
+                    .ok_or(WorkbenchError::Invalid)?;
+                json!({"conclusion_object_id":conclusion, "review":review})
+            }
+        };
         let basis = json!({"input": review_input, "result": result}).to_string();
         let created = sqlx::query(
             "INSERT INTO niccolo.epistemic_route_use_decisions
@@ -141,9 +249,9 @@ pub async fn record(
         .bind(workspace)
         .bind(situation)
         .bind(event_id)
-        .bind(input.argument_id)
-        .bind(input.grounding_set_id)
-        .bind(input.disposition.db_value())
+        .bind(choice.route.argument_id)
+        .bind(choice.route.grounding_set_id)
+        .bind(choice.disposition.db_value())
         .bind(rationale)
         .bind(basis)
         .bind(author)
@@ -159,9 +267,8 @@ pub async fn record(
         false
     };
     let decision = stored.ok_or(WorkbenchError::Invisible)?;
-    if decision.route.argument_id != input.argument_id
-        || decision.route.grounding_set_id != input.grounding_set_id
-        || decision.disposition != input.disposition
+    if decision.route != choice.route
+        || decision.disposition != choice.disposition
         || decision.rationale != rationale
         || decision.recorded_by != author
         || decision.basis["input"] != review_input

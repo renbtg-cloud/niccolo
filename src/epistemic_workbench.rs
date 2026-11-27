@@ -27,6 +27,8 @@ pub mod actor_state;
 pub mod public_prominence;
 #[path = "epistemic_detail_exposure.rs"]
 pub mod detail_exposure;
+#[path = "epistemic_artifact_dependence.rs"]
+mod artifact_dependence;
 #[path = "epistemic_route_use.rs"]
 pub mod route_use;
 #[path = "epistemic_normative_assessment.rs"]
@@ -545,6 +547,8 @@ pub struct ArtifactDependenceReview {
     pub qualification: Option<String>,
     pub recorded_by: Uuid,
     pub routes_to_review: Vec<GroundingRouteRef>,
+    #[serde(default)]
+    pub suspended_routes: Vec<GroundingRouteRef>,
     pub source_routes: Vec<GroundingRouteRef>,
 }
 
@@ -808,7 +812,6 @@ pub struct WorkbenchSnapshot {
 type WorkbenchEvidenceRow = (Uuid, Uuid, i32, String, String, String, String, String);
 type StoredGroundingMemberRow = (String, Option<Uuid>, Option<Uuid>, String, Uuid);
 type ReassessmentReviewRow = (Uuid, Uuid, Option<Uuid>, Uuid, String, String, Uuid);
-type ArtifactDerivationRow = (Uuid, Uuid, Uuid, Option<String>, Uuid);
 type GroundingMemberSnapshotRow = (
     Uuid,
     Uuid,
@@ -2561,84 +2564,6 @@ async fn direct_evidence_lineage(
     Ok(())
 }
 
-fn flag_artifact_dependence(
-    diagnostics: &mut [ConclusionReasoningDiagnostic],
-    grounding_sets: &[GroundingSetView],
-    provenance: &[ArtifactProvenance],
-    derivations: &[ArtifactDerivationRow],
-) {
-    if derivations.is_empty() {
-        return;
-    }
-    let mut artifacts_by_object = BTreeMap::<Uuid, Vec<Uuid>>::new();
-    for link in provenance {
-        artifacts_by_object
-            .entry(link.object_id)
-            .or_default()
-            .push(link.artifact_id);
-    }
-    let artifacts_by_route = grounding_sets
-        .iter()
-        .map(|set| {
-            let route = GroundingRouteRef {
-                argument_id: set.argument_id,
-                grounding_set_id: set.grounding_set_id,
-            };
-            let artifacts = set
-                .members
-                .iter()
-                .filter(|member| member.role != GroundingMemberRole::Context)
-                .filter_map(|member| artifacts_by_object.get(&member.ground_object_id?))
-                .flatten()
-                .copied()
-                .collect::<BTreeSet<_>>();
-            (route, artifacts)
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    for diagnostic in diagnostics {
-        let mut routes_by_artifact = BTreeMap::<Uuid, BTreeSet<GroundingRouteRef>>::new();
-        for route in &diagnostic.non_suspended_supporting_routes {
-            for artifact in artifacts_by_route.get(route).into_iter().flatten() {
-                routes_by_artifact
-                    .entry(*artifact)
-                    .or_default()
-                    .insert(*route);
-            }
-        }
-        for (
-            relationship_id,
-            derived_artifact_id,
-            source_artifact_id,
-            qualification,
-            recorded_by,
-        ) in derivations
-        {
-            let (Some(derived), Some(source)) = (
-                routes_by_artifact.get(derived_artifact_id),
-                routes_by_artifact.get(source_artifact_id),
-            ) else {
-                continue;
-            };
-            // A route that already cites the source makes the shared basis explicit.
-            let routes_to_review = derived.difference(source).copied().collect::<Vec<_>>();
-            if !routes_to_review.is_empty() {
-                diagnostic
-                    .artifact_dependence_reviews
-                    .push(ArtifactDependenceReview {
-                        relationship_id: *relationship_id,
-                        derived_artifact_id: *derived_artifact_id,
-                        source_artifact_id: *source_artifact_id,
-                        qualification: qualification.clone(),
-                        recorded_by: *recorded_by,
-                        routes_to_review,
-                        source_routes: source.iter().copied().collect(),
-                    });
-            }
-        }
-    }
-}
-
 pub async fn snapshot(
     pool: &PgPool,
     workspace: Uuid,
@@ -3098,24 +3023,12 @@ pub async fn snapshot(
     })
     .collect();
     if !artifact_provenance.is_empty() {
-        let derivations = sqlx::query_as::<_, ArtifactDerivationRow>(
-            "SELECT relationship_id, subject_artifact_id, object_artifact_id, qualification,
-                    recorded_by_principal_id
-             FROM niccolo.situation_artifact_relationships
-             WHERE workspace_id=$1 AND situation_id=$2
-               AND relationship_type IN ('CLAIMED_TO_BE_DERIVED_FROM','DERIVED_FROM')
-             ORDER BY relationship_id",
-        )
-        .bind(workspace)
-        .bind(situation)
-        .fetch_all(&mut *tx)
-        .await?;
-        flag_artifact_dependence(
-            &mut reasoning_diagnostics,
-            &grounding_sets,
-            &artifact_provenance,
-            &derivations,
-        );
+        let mut reviews = artifact_dependence::reviews_in(&mut tx, workspace, situation, None).await?;
+        for diagnostic in &mut reasoning_diagnostics {
+            diagnostic.artifact_dependence_reviews = reviews
+                .remove(&diagnostic.conclusion_object_id)
+                .unwrap_or_default();
+        }
     }
     tx.commit().await?;
     let question_inquiries = question_inquiries(&nodes, &relations, &assessments);
