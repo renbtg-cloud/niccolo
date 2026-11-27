@@ -104,6 +104,26 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
   alder_bend_queries_recognizability_by_audience_and_two_dates
 ```
 
+### Terceiro replay — possível influência sobre um detalhe do depoimento
+
+Mara relata ter visto um guincho e menciona um boné vermelho. As duas alegações apontam para a mesma entrevista, mas só o detalhe do boné entra nesta checagem. O investigador indica a descrição da foto de arquivo como fonte candidata e seleciona um registro atribuído de exposição da própria Mara. O replay varia a data dessa exposição sem mudar o conteúdo do depoimento.
+
+| Sequência registrada | Resultado esperado |
+| --- | --- |
+| Foto vista no dia 19, depoimento no dia 20 | `REVIEW_CANDIDATE`. O detalhe do boné e as rotas que dependem dele aparecem para revisão, incluindo o uso indireto na hipótese sobre o motorista. |
+| Foto vista no dia 22, depoimento no dia 20 | `EXPOSURE_AFTER_TESTIMONY`. Essa exposição não pode explicar o detalhe no depoimento selecionado. |
+| Intervalos sobrepostos, inclusive os dois eventos no mesmo dia | `ORDER_UNCERTAIN`. Os intervalos disponíveis não resolvem a ordem. A resposta sinaliza a necessidade de data ou horário mais preciso. |
+| O relato da exposição só chegou ao dossiê no dia 23 e a consulta usa o dia 20 como limite | `EXPOSURE_NOT_AVAILABLE_AT_CUTOFF`. A exposição posterior no dossiê não aparece como base da leitura anterior. |
+
+O [teste HTTP](../../tests/parser_free_artifacts_http_integration.rs#L744) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review`. A entrada tem `witness_actor_id`, `exposure_record_id`, os pares `{object_id, representation_id}` em `testimony_detail` e `candidate_source`, o intervalo inclusivo `testimony_from`–`testimony_through` e o limite `known_through`. A exposição deve referir-se à própria testemunha e cada par deve estar vinculado à Situation. A precisão atual é de um dia.
+
+A checagem é somente leitura. Ela percorre as dependências explícitas de premissas no grafo atual. O avistamento do guincho permanece utilizável e as rotas do Workbench permanecem inalteradas. A assinatura temporal de uma influência é apenas uma condição para investigá-la. O limite de disponibilidade permite refazer a leitura da exposição, sem reconstruir versões históricas completas do grafo.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_reviews_only_the_detail_reachable_from_prior_exposure
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
