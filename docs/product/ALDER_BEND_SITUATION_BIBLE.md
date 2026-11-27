@@ -178,6 +178,19 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
   alder_bend_traces_apparent_corroboration_to_its_sources
 ```
 
+### Oitavo replay — dependência descoberta depois da análise
+
+Na primeira rodada, o investigador registra a nota de Owen como uma pista cuja origem está em aberto. A nota, o relato direto de Claire e a descrição da câmera têm rotas próprias para o avistamento. Depois de congelar a análise, o investigador registra que Owen confirmou ter resumido o depoimento de Claire. [Teste HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L2167)
+
+O Workbench passa a sinalizar a rota que usa somente a nota para sustentar o avistamento. O aviso aponta para a declaração de origem e para as rotas que já citam Claire. O apoio da câmera e o uso da nota para demonstrar que Owen registrou a pista continuam disponíveis. O alerta deixa o uso de todas as rotas a cargo do investigador. A base anterior segue consultável, e o pacote da reanálise inclui a nova relação declarada.
+
+O diagnóstico `artifact_dependence_reviews` compara os fundamentos explicitamente ligados aos artefatos nas rotas de apoio ativas da mesma alegação. Ele lê relações `CLAIMED_TO_BE_DERIVED_FROM` e `DERIVED_FROM`. Uma rota que já cita a origem aparece entre as rotas de referência do aviso.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_flags_late_source_dependence_for_the_affected_route
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
