@@ -102,6 +102,10 @@ pub struct FrozenArtifactRelationship {
     pub relationship_id: Uuid,
     pub subject_artifact_id: Uuid,
     pub object_artifact_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_representation_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_representation_id: Option<Uuid>,
     pub relationship_type: String,
     pub qualification: Option<String>,
     pub relationship_is_verified: bool,
@@ -240,7 +244,15 @@ type FrozenArtifactRepresentationRow = (
     Option<Uuid>,
     Option<Uuid>,
 );
-type FrozenArtifactRelationshipRow = (Uuid, Uuid, Uuid, String, Option<String>);
+type FrozenArtifactRelationshipRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    Option<Uuid>,
+    String,
+    Option<String>,
+);
 
 async fn packet_tx(
     pool: &PgPool,
@@ -490,6 +502,7 @@ async fn frozen_artifact_material(
     .map_err(dep)?;
     let relationships: Vec<FrozenArtifactRelationshipRow> = sqlx::query_as(
         "SELECT r.relationship_id,r.subject_artifact_id,r.object_artifact_id,
+                r.subject_representation_id,r.object_representation_id,
                 r.relationship_type,r.qualification
          FROM niccolo.situation_revision_artifact_relationships rr
          JOIN niccolo.situation_artifact_relationships r
@@ -560,12 +573,16 @@ async fn frozen_artifact_material(
                 relationship_id,
                 subject_artifact_id,
                 object_artifact_id,
+                subject_representation_id,
+                object_representation_id,
                 relationship_type,
                 qualification,
             )| FrozenArtifactRelationship {
                 relationship_id,
                 subject_artifact_id,
                 object_artifact_id,
+                subject_representation_id,
+                object_representation_id,
                 relationship_type,
                 qualification,
                 relationship_is_verified: false,

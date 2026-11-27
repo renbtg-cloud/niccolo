@@ -129,7 +129,17 @@ type RepresentationRow = (
     Uuid,
     String,
 );
-type RelationshipRow = (Uuid, Uuid, Uuid, String, Option<String>, Uuid, String);
+type RelationshipRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    Option<Uuid>,
+    String,
+    Option<String>,
+    Uuid,
+    String,
+);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactInput {
@@ -199,6 +209,10 @@ pub struct ArtifactRelationshipView {
     pub relationship_id: Uuid,
     pub subject_artifact_id: Uuid,
     pub object_artifact_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_representation_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_representation_id: Option<Uuid>,
     pub relationship_type: String,
     pub qualification: Option<String>,
     pub recorded_by: Uuid,
@@ -255,7 +269,7 @@ type StoredRepresentation = (
     Option<String>,
     Uuid,
 );
-type StoredRelationship = (Uuid, Uuid, String, Option<String>, Uuid);
+type StoredRelationship = (Uuid, Uuid, Option<Uuid>, Option<Uuid>, String, Option<String>, Uuid);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RepresentationInput {
@@ -280,6 +294,12 @@ pub struct ArtifactRelationshipInput {
     pub relationship_type: String,
     pub qualification: Option<String>,
     pub recorded_by: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArtifactRelationshipScope {
+    pub subject_representation_id: Option<Uuid>,
+    pub object_representation_id: Option<Uuid>,
 }
 
 fn valid_artifact(input: &ArtifactInput) -> bool {
@@ -572,7 +592,8 @@ pub async fn situation_view(
     .fetch_all(&mut *tx)
     .await?;
     let relationship_rows: Vec<RelationshipRow> = sqlx::query_as(
-        "SELECT relationship_id,subject_artifact_id,object_artifact_id,relationship_type,
+        "SELECT relationship_id,subject_artifact_id,object_artifact_id,
+                subject_representation_id,object_representation_id,relationship_type,
                 qualification,recorded_by_principal_id,recorded_at::text
          FROM niccolo.situation_artifact_relationships
          WHERE workspace_id=$1 AND situation_id=$2
@@ -670,6 +691,8 @@ pub async fn situation_view(
                     relationship_id,
                     subject_artifact_id,
                     object_artifact_id,
+                    subject_representation_id,
+                    object_representation_id,
                     relationship_type,
                     qualification,
                     recorded_by,
@@ -678,6 +701,8 @@ pub async fn situation_view(
                     relationship_id,
                     subject_artifact_id,
                     object_artifact_id,
+                    subject_representation_id,
+                    object_representation_id,
                     relationship_type,
                     qualification,
                     recorded_by,
@@ -914,6 +939,24 @@ pub async fn record_relationship(
     situation: Uuid,
     input: &ArtifactRelationshipInput,
 ) -> Result<bool, ArtifactError> {
+    record_scoped_relationship(
+        pool,
+        workspace,
+        situation,
+        input,
+        ArtifactRelationshipScope::default(),
+    )
+    .await
+}
+
+/// An endpoint without a representation ID refers to its entire artifact.
+pub async fn record_scoped_relationship(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    input: &ArtifactRelationshipInput,
+    scope: ArtifactRelationshipScope,
+) -> Result<bool, ArtifactError> {
     if !valid_relationship(input) {
         return Err(ArtifactError::Invalid);
     }
@@ -921,8 +964,9 @@ pub async fn record_relationship(
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_artifact_relationships
          (workspace_id,situation_id,relationship_id,subject_artifact_id,
-          object_artifact_id,relationship_type,qualification,recorded_by_principal_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+          object_artifact_id,subject_representation_id,object_representation_id,
+          relationship_type,qualification,recorded_by_principal_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT(workspace_id,situation_id,relationship_id) DO NOTHING",
     )
     .bind(workspace)
@@ -930,16 +974,33 @@ pub async fn record_relationship(
     .bind(input.relationship_id)
     .bind(input.subject_artifact_id)
     .bind(input.object_artifact_id)
+    .bind(scope.subject_representation_id)
+    .bind(scope.object_representation_id)
     .bind(&input.relationship_type)
     .bind(&input.qualification)
     .bind(input.recorded_by)
     .execute(&mut *tx)
-    .await?
+    .await
+    .map_err(|error| match &error {
+        sqlx::Error::Database(database)
+            if matches!(
+                database.constraint(),
+                Some(
+                    "artifact_relationship_subject_representation"
+                        | "artifact_relationship_object_representation"
+                )
+            ) =>
+        {
+            ArtifactError::Invalid
+        }
+        _ => ArtifactError::Database(error),
+    })?
     .rows_affected()
         == 1;
     if !inserted {
         let stored: Option<StoredRelationship> = sqlx::query_as(
-            "SELECT subject_artifact_id,object_artifact_id,relationship_type,
+            "SELECT subject_artifact_id,object_artifact_id,
+                    subject_representation_id,object_representation_id,relationship_type,
                     qualification,recorded_by_principal_id
              FROM niccolo.situation_artifact_relationships
              WHERE workspace_id=$1 AND situation_id=$2 AND relationship_id=$3",
@@ -953,6 +1014,8 @@ pub async fn record_relationship(
             != Some((
                 input.subject_artifact_id,
                 input.object_artifact_id,
+                scope.subject_representation_id,
+                scope.object_representation_id,
                 input.relationship_type.clone(),
                 input.qualification.clone(),
                 input.recorded_by,

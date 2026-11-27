@@ -946,6 +946,8 @@ struct RepresentationRequest {
 struct ArtifactRelationshipRequest {
     subject_artifact_id: Uuid,
     object_artifact_id: Uuid,
+    subject_representation_id: Option<Uuid>,
+    object_representation_id: Option<Uuid>,
     relationship_type: String,
     qualification: Option<String>,
 }
@@ -1082,7 +1084,7 @@ async fn record_artifact_relationship(
     Json(request): Json<ArtifactRelationshipRequest>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let replayed = artifacts::record_relationship(
+    let replayed = artifacts::record_scoped_relationship(
         &state.pool,
         workspace,
         situation,
@@ -1093,6 +1095,10 @@ async fn record_artifact_relationship(
             relationship_type: request.relationship_type,
             qualification: request.qualification,
             recorded_by: recorder,
+        },
+        artifacts::ArtifactRelationshipScope {
+            subject_representation_id: request.subject_representation_id,
+            object_representation_id: request.object_representation_id,
         },
     )
     .await?;

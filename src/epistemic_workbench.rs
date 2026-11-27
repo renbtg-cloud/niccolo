@@ -544,6 +544,10 @@ pub struct ArtifactDependenceReview {
     pub relationship_id: Uuid,
     pub derived_artifact_id: Uuid,
     pub source_artifact_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_representation_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_representation_id: Option<Uuid>,
     pub qualification: Option<String>,
     pub recorded_by: Uuid,
     pub routes_to_review: Vec<GroundingRouteRef>,

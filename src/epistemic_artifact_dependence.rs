@@ -9,6 +9,8 @@ type ReviewRow = (
     Uuid,
     Uuid,
     Uuid,
+    Option<Uuid>,
+    Option<Uuid>,
     Option<String>,
     Uuid,
     Uuid,
@@ -26,12 +28,14 @@ pub(super) async fn reviews_in(
     let rows: Vec<ReviewRow> = sqlx::query_as(
         "WITH derivations AS (
            SELECT relationship_id, subject_artifact_id, object_artifact_id,
+                  subject_representation_id, object_representation_id,
                   qualification, recorded_by_principal_id
            FROM niccolo.situation_artifact_relationships
            WHERE workspace_id=$1 AND situation_id=$2 AND ($3::uuid IS NULL OR relationship_id=$3)
              AND relationship_type IN ('CLAIMED_TO_BE_DERIVED_FROM','DERIVED_FROM')
          ), cited_artifacts AS (
-           SELECT DISTINCT a.conclusion_object_id, a.argument_id, g.grounding_set_id, r.artifact_id
+           SELECT DISTINCT a.conclusion_object_id, a.argument_id, g.grounding_set_id,
+                           r.artifact_id, r.representation_id
            FROM niccolo.epistemic_arguments a
            JOIN niccolo.epistemic_grounding_sets g USING(workspace_id,argument_id)
            JOIN niccolo.epistemic_grounding_members m USING(workspace_id,argument_id,grounding_set_id)
@@ -42,10 +46,16 @@ pub(super) async fn reviews_in(
            WHERE a.workspace_id=$1 AND a.situation_id=$2 AND g.effect='SUPPORTS' AND m.member_role<>'CONTEXT'
          ), cited_routes AS (
            SELECT c.conclusion_object_id, d.relationship_id, d.subject_artifact_id, d.object_artifact_id,
+                  d.subject_representation_id, d.object_representation_id,
                   d.qualification, d.recorded_by_principal_id, c.argument_id, c.grounding_set_id,
                   bool_or(c.artifact_id=d.object_artifact_id) AS cites_source
-           FROM derivations d JOIN cited_artifacts c ON c.artifact_id IN (d.subject_artifact_id,d.object_artifact_id)
+           FROM derivations d JOIN cited_artifacts c ON
+             (c.artifact_id=d.subject_artifact_id AND
+               (d.subject_representation_id IS NULL OR c.representation_id=d.subject_representation_id))
+             OR (c.artifact_id=d.object_artifact_id AND
+               (d.object_representation_id IS NULL OR c.representation_id=d.object_representation_id))
            GROUP BY c.conclusion_object_id, d.relationship_id, d.subject_artifact_id, d.object_artifact_id,
+                    d.subject_representation_id, d.object_representation_id,
                     d.qualification, d.recorded_by_principal_id, c.argument_id, c.grounding_set_id
          )
          SELECT c.*, COALESCE(latest.disposition='SUSPEND',false) AS suspended
@@ -70,6 +80,8 @@ pub(super) async fn reviews_in(
         relationship_id,
         derived_artifact_id,
         source_artifact_id,
+        derived_representation_id,
+        source_representation_id,
         qualification,
         recorded_by,
         argument_id,
@@ -84,6 +96,8 @@ pub(super) async fn reviews_in(
                 relationship_id,
                 derived_artifact_id,
                 source_artifact_id,
+                derived_representation_id,
+                source_representation_id,
                 qualification,
                 recorded_by,
                 routes_to_review: Vec::new(),
