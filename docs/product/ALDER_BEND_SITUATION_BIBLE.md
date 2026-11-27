@@ -167,6 +167,17 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
   alder_bend_replays_claires_correction_across_two_investigations
 ```
 
+### Sétimo replay — a origem da corroboração
+
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1901) examina um recorte sintético do avistamento do guincho 07 atrás da farmácia por volta das 21h20. Para essa alegação, a rota baseada na nota de Owen compartilha o depoimento de Claire com a rota direta. A mesma nota tem apoio documental próprio para uma alegação diferente, a de que Owen registrou a pista no dossiê. A descrição humana da gravação da farmácia acrescenta uma observação de outra origem sobre a presença do guincho. A identidade do motorista segue em aberto. A nota sem assinatura permanece no dossiê com uma lacuna explícita sobre sua origem.
+
+Cada fundamento da análise congelada preserva em `artifact_representation_ids` os vínculos registrados com as representações da revisão examinada. O campo `artifact_provenance_truncated` indica se havia mais de 16 vínculos para o fundamento. Uma nova análise pode incluir um vínculo registrado depois da anterior. O replay recupera as duas versões e confere a relação declarada entre a nota de Owen e o depoimento de Claire no pacote revisado.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_traces_apparent_corroboration_to_its_sources
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
