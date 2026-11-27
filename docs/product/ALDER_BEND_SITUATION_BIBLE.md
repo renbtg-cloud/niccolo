@@ -44,15 +44,15 @@ Leon de fato passou na rua naquela noite. Quando a mesa se volta para ele, diz q
 
 ## Rodada 2 — a auditoria
 
-Ruth encontra uma remoção faturada na pedreira por volta das oito e um chamado perto da farmácia cujo extrato parece colocar o mesmo guincho na sede no mesmo horário. O cabeçalho da coluna diz apenas *hora*. Isso pode indicar uma cobrança irregular ou a comparação de horários com significados diferentes.
+Ruth compara dois registros da terça-feira para o guincho 07. Na fatura da pedreira, a linha diz «20h00 — remoção concluída — unidade 07». No extrato do chamado da farmácia, diz «20h00 — farmácia — unidade 07», sob uma coluna intitulada apenas *hora*. O primeiro registro declara um serviço concluído. No momento da comparação, Ruth ainda não sabe o que o segundo horário mede. A anotação de Owen sobre Claire parece oferecer uma fonte independente para a presença do guincho na farmácia às 20h00.
 
-Eli viu a ordem do chamado ser cadastrada na manhã seguinte. Pode dizer quando o registro apareceu na tela. Não presenciou a remoção. A exportação do sistema e o histórico da ordem podem esclarecer a diferença entre hora informada no chamado, hora de cadastro e hora do serviço. A observação de Eli, sozinha, não resolve a cobrança.
+Na quarta, às 8h14, Eli viu a ordem da farmácia ser cadastrada. O histórico confirma a hora do cadastro. Eli estava no balcão na quarta de manhã e não observou o atendimento de terça. Na rodada 4, Ruth confere a definição da coluna no formulário de origem. Naquele extrato, *hora* é a abertura do chamado, recuperada do registro da central. A coluna não indica chegada, saída ou conclusão do serviço. Essa informação ainda não está disponível para Ruth na rodada 2.
 
 Frank garante que só ele tinha acesso às chaves. Na versão de trabalho, é uma mentira deliberada. Caleb ainda podia pegar o guincho emprestado com sua autorização, e Frank teme ter de explicar esse arranjo na renovação. Ainda fica em aberto se Caleb pegou a chave naquela noite.
 
 ## Rodada 3 — o que cada um escolheu esconder
 
-**Claire e o horário.** Claire disse que saiu da farmácia às oito e que viu o guincho atrás do prédio. Owen juntou as duas frases e anotou o avistamento às oito. Claire percebeu a junção quando conferiu a declaração e deixou passar. Viu o guincho por volta das nove e vinte da janela do apartamento de Adam. Ninguém pediu que ela escondesse nada. Corrigir o horário significava responder de onde tinha visto o veículo. Ela acaba contando primeiro a Ruth, que estava conferindo a origem do horário.
+**Claire e o horário.** No primeiro depoimento, Claire disse: «Fechei o caixa às oito. Vi o guincho 07 atrás da farmácia.» Owen registrou que Claire viu o veículo às 20h00. Ela percebeu a junção ao conferir a declaração e deixou passar. Na correção, diz: «Eu estava no apartamento do Adam. Vi o 07 pela janela logo depois de desligar o telefone.» O celular registra o fim da ligação às 21h18. Claire estima o avistamento por volta das 21h20. O registro da chamada dá uma referência à estimativa dela. A identificação do veículo continua baseada no que Claire diz ter visto. Ninguém pediu que ela escondesse nada. Corrigir o horário significava explicar de qual janela ela olhava. Ela conta primeiro a Ruth.
 
 **Nina e o aceno.** Nina diz que viu Daniel atravessar e acenar para o motorista. Afirma que estava na entrada da faculdade. Na verdade, estava no banco do passageiro do carro de Sam. Dali podia ver a travessia. Um pilar escondia a cabine do guincho. Ela pode ter visto um gesto, mas sua posição enfraquece a interpretação de que o gesto se dirigia ao motorista. Nina mentiu sobre onde estava. O vínculo entre Daniel e o motorista continua uma inferência discutível.
 
@@ -62,7 +62,7 @@ Frank garante que só ele tinha acesso às chaves. Na versão de trabalho, é um
 
 June percebe que o boné apareceu na edição ilustrada antes dos depoimentos de Leon e Mara e recupera a legenda original. A sequência faz a identificação do motorista perder força. A foto, por si só, não demonstra quem mentiu. O relato original de Mae e o que Jules viu da saída continuam úteis para localizar um guincho. Nenhum dos dois identifica o motorista.
 
-Na auditoria, o relato corrigido de Claire retira a suposta incompatibilidade que dependia de um avistamento às oito. O extrato ainda precisa ser interpretado por seus próprios méritos, e continua faltando confirmar que o serviço na pedreira ocorreu. No desaparecimento, a nova janela só entra na análise depois que Ruth encaminha a declaração e Owen registra a origem e a correção. A cópia no dossiê do xerife e o registro na auditoria remetem à mesma testemunha. Isso vale mesmo que os dois responsáveis cheguem a conclusões diferentes.
+Na auditoria, duas revisões distintas retiram o apoio à incompatibilidade das 20h00. A correção de Claire retira o depoimento que colocava o 07 atrás da farmácia naquele horário. A definição da coluna estabelece que o outro registro das 20h00 marca a abertura do chamado. A remoção da pedreira permanece possível e continua sem confirmação independente. No desaparecimento, o avistamento por volta de 21h20 só entra na análise depois que Ruth encaminha a declaração e Owen registra sua origem. A cópia no dossiê do xerife e a declaração na auditoria remetem à mesma testemunha.
 
 Ao fim da primeira parte, a travessia de Daniel tem apoio, a identidade do motorista está em aberto e a mentira de Frank sobre as chaves ainda importa para avaliar o contrato. Nenhuma dessas conclusões resolve por si só onde Daniel está. A votação, porém, tem hora marcada.
 
@@ -71,6 +71,14 @@ Ao fim da primeira parte, a travessia de Daniel tem apoio, a identidade do motor
 O dossiê pode crescer em rodadas até cerca de 30 a 40 peças. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
 
 Alunos, moradores e pessoas de passagem podem entrar conforme uma cena pedir. Um novo depoimento pode conter uma pista independente e, na frase seguinte, repetir um rumor. Por exemplo, alguém tem um bom motivo para recordar a hora de um guincho, mas se refere à terça anterior. Cada novo personagem individualizado recebe os mesmos quatro dados do elenco: idade, ocupação, atividade e situação conjugal. O vínculo deve aparecer na história quando ajuda a explicar presença, acesso, lealdade ou silêncio.
+
+## Critério de escrita e de avaliação
+
+Dê precisão aos detalhes que sustentam uma conclusão. Para cada peça que possa mudar a análise, fixe quem a produziu, o que ela registra, quando foi produzida e quando chegou a cada investigação. Separe a hora do acontecimento, a hora do registro e a hora em que alguém teve acesso a ele quando essa diferença importar. Se duas versões se contradisserem, preserve ambas e determine quando a contradição se torna detectável.
+
+A ambiguidade deliberada tem endereço. O formulário omite o significado de uma coluna. Claire dá uma hora aproximada porque está reconstruindo a sequência. A intenção de Mara pode permanecer indeterminada até para os autores. Em cada caso, o dossiê dá ao leitor elementos suficientes para entender por que a questão continua aberta. Antes de usar um recorte como teste, confira se duas leituras incompatíveis surgiram por intenção ou por uma transição mal escrita.
+
+O Niccolò pode mostrar de onde saiu cada alegação, quais conclusões dependem dela e que apoio sobreviveu a uma revisão. Cabe ao investigador decidir se muda o peso de um depoimento, se a pista merece uma diligência e se a semelhança entre versões indica memória contaminada, exagero consciente ou coincidência. A avaliação do software pode verificar se o resultado respeita as distinções documentadas. Para as escolhas humanas, o dossiê deve permitir mais de uma resposta defensável.
 
 ### Separação para autoria e investigação
 
