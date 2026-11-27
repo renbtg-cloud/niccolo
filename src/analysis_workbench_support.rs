@@ -47,6 +47,7 @@ pub(crate) async fn capture(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,
+    input_revision: i64,
 ) -> Result<Option<String>, sqlx::Error> {
     // All decisions and grounds in this projection come from one statement snapshot.
     let rows: Vec<String> = sqlx::query_scalar(
@@ -93,9 +94,24 @@ pub(crate) async fn capture(
            FROM (
              SELECT row_number() OVER (ORDER BY m.member_id) AS n, jsonb_build_object(
                'object_id',m.ground_object_id,'evidence_id',m.evidence_id,'role',m.member_role,
-               'text',left(t.text,384),'rationale',left(m.rationale,256)
+               'text',left(t.text,384),'rationale',left(m.rationale,256),
+               'artifact_representation_ids',COALESCE(p.representation_ids,'[]'::jsonb),
+               'artifact_provenance_truncated',COALESCE(p.truncated,false)
              ) AS ground
              FROM niccolo.epistemic_grounding_members m LEFT JOIN texts t ON t.object_id=m.ground_object_id
+             LEFT JOIN LATERAL (
+               SELECT jsonb_agg(representation_id ORDER BY n) FILTER (WHERE n<=16) AS representation_ids,
+                      count(*)>16 AS truncated
+               FROM (
+                 SELECT p.representation_id,row_number() OVER (ORDER BY p.representation_id) AS n
+                 FROM niccolo.workbench_artifact_provenance p
+                 JOIN niccolo.situation_revision_artifact_representations rr
+                   USING(workspace_id,situation_id,representation_id)
+                 WHERE p.workspace_id=$1 AND p.situation_id=$2 AND p.object_id=m.ground_object_id
+                   AND rr.revision=$3
+                 ORDER BY p.representation_id LIMIT 17
+               ) linked
+             ) p ON true
              WHERE m.workspace_id=$1 AND m.argument_id=r.argument_id AND m.grounding_set_id=r.grounding_set_id
                AND m.member_role<>'CONTEXT'
              ORDER BY m.member_id LIMIT 17
@@ -105,6 +121,7 @@ pub(crate) async fn capture(
     )
     .bind(workspace)
     .bind(situation)
+    .bind(input_revision)
     .fetch_all(&mut **tx)
     .await?;
     if rows.is_empty() {

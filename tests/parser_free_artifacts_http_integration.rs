@@ -1897,6 +1897,272 @@ async fn alder_bend_replays_claires_correction_across_two_investigations() {
     );
 }
 
+#[tokio::test]
+async fn alder_bend_traces_apparent_corroboration_to_its_sources() {
+    let case = setup_with_focus("What supports the presence of truck 07 around 21:20?").await;
+    let presence = case
+        .case_node(
+            "FINDING",
+            "Truck 07 was behind the pharmacy around 21:20.",
+            "Assess the reported time and location separately from the driver.",
+        )
+        .await;
+    let presence_argument = case
+        .case_argument(presence, "Trace each basis for the sighting.")
+        .await;
+    let claire = case
+        .case_node(
+            "PROPOSITION",
+            "Claire reports seeing truck 07 around 21:20.",
+            "Claire describes her own observation from a window.",
+        )
+        .await;
+    let claire_route = case
+        .case_ground(presence_argument, &[claire], "Claire's direct account.")
+        .await;
+    let claire_source = case
+        .case_source(
+            claire,
+            "Claire's corrected interview",
+            "Claire Mercer",
+            "I saw truck 07 behind the pharmacy around 21:20. I could not see the driver.",
+        )
+        .await;
+
+    let note_entry = case
+        .case_node(
+            "FINDING",
+            "Owen entered the 21:20 lead in the police file.",
+            "A fact about police recordkeeping.",
+        )
+        .await;
+    let note_argument = case
+        .case_argument(note_entry, "Establish what the police file records.")
+        .await;
+    let owen = case
+        .case_node(
+            "PROPOSITION",
+            "Owen's note puts truck 07 behind the pharmacy around 21:20.",
+            "The note records a lead, with the underlying source to be checked.",
+        )
+        .await;
+    let note_route = case
+        .case_ground(note_argument, &[owen], "Owen's note records the entry.")
+        .await;
+    let first = cross_case_freeze(&case, None).await;
+
+    let owen_source = case
+        .case_source(
+            owen,
+            "Owen's case note",
+            "Owen Pike's entry",
+            "Truck 07 behind the pharmacy around 21:20, per Claire Mercer's corrected interview.",
+        )
+        .await;
+    let derived_route = case
+        .case_ground(
+            presence_argument,
+            &[owen, claire],
+            "Owen's note relays Claire's observation and depends on it for the sighting.",
+        )
+        .await;
+    let camera = case
+        .case_node(
+            "PROPOSITION",
+            "The pharmacy camera description places unit 07 there around 21:20.",
+            "The operator describes a separately recorded image sequence; the cab is out of view.",
+        )
+        .await;
+    let camera_source = case.case_representation(camera, "VIDEO", "Pharmacy camera recording",
+        "21:19–21:21", "HUMAN_DESCRIPTION",
+        "Truck number 07 is visible behind the pharmacy around 21:20. The camera does not show the cab.").await;
+    let camera_route = case.case_ground(presence_argument, &[camera],
+        "The separately collected camera description provides another basis for the vehicle's presence.").await;
+    let unsigned = case
+        .case_node(
+            "PROPOSITION",
+            "An unsigned note also reports unit 07 behind the pharmacy.",
+            "Its author and whether it repeats another source are unknown.",
+        )
+        .await;
+    let unsigned_source = case
+        .case_source(
+            unsigned,
+            "Unsigned note",
+            "Unsigned entry; author and original source unknown",
+            "Unit 07 behind the pharmacy, about 21:20.",
+        )
+        .await;
+    let gap = case
+        .case_node(
+            "INFORMATION_GAP",
+            "Who produced the unsigned note and on what basis?",
+            "Trace its origin before treating it as an independent account.",
+        )
+        .await;
+    let gap_question = case
+        .case_node(
+            "QUESTION",
+            "Can we trace the source of the unsigned note?",
+            "The note may be a copy or an observation.",
+        )
+        .await;
+    case.case_request(
+        &format!("epistemic/relations/{}", Uuid::new_v4()),
+        Some(json!({
+            "family":"CONTEXTUAL", "kind":"ADDRESSES_GAP", "left_object_id":gap_question,
+            "right_object_id":gap, "rationale":"Identify the author and the basis of the entry."
+        })),
+    )
+    .await;
+    let driver = case
+        .case_node(
+            "HYPOTHESIS",
+            "Frank Vale was driving truck 07.",
+            "The material about the vehicle does not identify its driver.",
+        )
+        .await;
+
+    let workbench = case.case_request("epistemic/workbench", None).await;
+    let owen_artifact = &case_row(
+        &workbench,
+        "artifact_provenance",
+        "representation_id",
+        owen_source,
+    )["artifact_id"];
+    let claire_artifact = &case_row(
+        &workbench,
+        "artifact_provenance",
+        "representation_id",
+        claire_source,
+    )["artifact_id"];
+    let derivation = Uuid::new_v4();
+    case.case_request(&format!("artifact-relationships/{derivation}"), Some(json!({
+        "subject_artifact_id":owen_artifact, "object_artifact_id":claire_artifact,
+        "relationship_type":"DERIVED_FROM", "qualification":"Owen's note explicitly cites Claire's interview."
+    }))).await;
+
+    let presence_diagnostic = case_row(
+        &workbench,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        presence,
+    );
+    assert_eq!(
+        presence_diagnostic["non_suspended_supporting_routes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let shared = &presence_diagnostic["shared_grounds"];
+    let claire_shared = case_row(
+        presence_diagnostic,
+        "shared_grounds",
+        "ground_object_id",
+        claire,
+    );
+    let shared_routes = claire_shared["routes"].as_array().unwrap();
+    assert_eq!(shared.as_array().unwrap().len(), 1);
+    assert_eq!(shared_routes.len(), 2);
+    for route in [claire_route, derived_route] {
+        assert!(
+            shared_routes
+                .iter()
+                .any(|entry| entry["grounding_set_id"] == json!(route))
+        );
+    }
+    assert_eq!(
+        presence_diagnostic["direct_evidence_lineage"]["establishes_independence"],
+        false
+    );
+    assert_eq!(
+        case_row(
+            &workbench,
+            "artifact_provenance",
+            "representation_id",
+            unsigned_source
+        )["object_id"],
+        json!(unsigned)
+    );
+    assert_eq!(
+        case_row(&workbench, "nodes", "object_id", gap)["kind"],
+        "INFORMATION_GAP"
+    );
+    assert!(
+        workbench["arguments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|argument| argument["conclusion_object_id"] != json!(driver))
+    );
+
+    let revised = cross_case_freeze(&case, Some(first)).await;
+    let original = cross_case_packet(&case, first).await.frozen_input;
+    let current = cross_case_packet(&case, revised).await.frozen_input;
+    assert!(original.artifact_relationships.is_empty());
+    assert_eq!(current.artifact_relationships.len(), 1);
+    let relationship = &current.artifact_relationships[0];
+    assert_eq!(relationship.relationship_id, derivation);
+    assert_eq!(relationship.relationship_type, "DERIVED_FROM");
+    assert_eq!(json!(relationship.subject_artifact_id), *owen_artifact);
+    assert_eq!(json!(relationship.object_artifact_id), *claire_artifact);
+    assert!(!relationship.relationship_is_verified);
+    let camera_representation = current
+        .artifact_representations
+        .iter()
+        .find(|representation| representation.representation_id == camera_source)
+        .unwrap();
+    assert_eq!(
+        camera_representation.representation_type,
+        "HUMAN_DESCRIPTION"
+    );
+    assert!(!camera_representation.artifact_was_parsed);
+    assert!(!camera_representation.representation_establishes_truth);
+    assert!(
+        current
+            .artifact_representations
+            .iter()
+            .any(|representation| representation.representation_id == unsigned_source)
+    );
+
+    let initial_support = json!(original.workbench_support.unwrap());
+    let support = json!(current.workbench_support.unwrap());
+    assert_eq!(initial_support["routes"].as_array().unwrap().len(), 2);
+    assert_eq!(support["routes"].as_array().unwrap().len(), 4);
+    for (route, conclusion, expected_grounds) in [
+        (claire_route, presence, vec![(claire, claire_source)]),
+        (
+            derived_route,
+            presence,
+            vec![(owen, owen_source), (claire, claire_source)],
+        ),
+        (camera_route, presence, vec![(camera, camera_source)]),
+        (note_route, note_entry, vec![(owen, owen_source)]),
+    ] {
+        let row = case_row(&support, "routes", "grounding_set_id", route);
+        assert_eq!(row["conclusion_object_id"], json!(conclusion));
+        assert_eq!(
+            row["grounds"].as_array().unwrap().len(),
+            expected_grounds.len()
+        );
+        for (object, source) in expected_grounds {
+            let ground = case_row(row, "grounds", "object_id", object);
+            assert_eq!(ground["artifact_representation_ids"], json!([source]));
+            assert_eq!(ground["artifact_provenance_truncated"], false);
+        }
+    }
+    let old_note_route = case_row(&initial_support, "routes", "grounding_set_id", note_route);
+    assert_eq!(
+        case_row(old_note_route, "grounds", "object_id", owen)["artifact_representation_ids"],
+        json!([])
+    );
+    assert_eq!(
+        case_row(&initial_support, "routes", "grounding_set_id", claire_route),
+        case_row(&support, "routes", "grounding_set_id", claire_route)
+    );
+}
+
 async fn cross_case_freeze(case: &Setup, parent: Option<Uuid>) -> Uuid {
     let analysis = Uuid::new_v4();
     case.case_request(

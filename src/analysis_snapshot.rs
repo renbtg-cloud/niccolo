@@ -225,7 +225,8 @@ pub async fn begin(
                 _ => AnalysisSnapshotError::Integrity,
             })?
             .map_or((0, None), |(event_no, purpose)| (event_no, Some(purpose)));
-    let workbench_support = analysis_workbench_support::capture(&mut tx, workspace, situation).await?;
+    let workbench_support =
+        analysis_workbench_support::capture(&mut tx, workspace, situation, input_revision).await?;
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_snapshots \
          (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of,workbench_support_basis) \
