@@ -20,6 +20,10 @@ struct Setup {
 }
 
 async fn setup() -> Setup {
+    setup_with_focus("Compare explicitly supplied descriptions").await
+}
+
+async fn setup_with_focus(focus: &str) -> Setup {
     let admin = PgPoolOptions::new()
         .max_connections(4)
         .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
@@ -48,7 +52,7 @@ async fn setup() -> Setup {
             "POST",
             &format!("/v1/workspaces/{workspace}/situations/{situation}"),
             &token,
-            Some(json!({"focus":"Compare explicitly supplied descriptions"})),
+            Some(json!({"focus": focus})),
         ),
     )
     .await;
@@ -84,6 +88,457 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
         serde_json::from_slice(&bytes).unwrap()
     };
     (status, value)
+}
+
+impl Setup {
+    async fn case_request(&self, path: &str, body: Option<Value>) -> Value {
+        let (method, expected) = if body.is_some() {
+            ("POST", StatusCode::CREATED)
+        } else {
+            ("GET", StatusCode::OK)
+        };
+        let uri = format!(
+            "/v1/workspaces/{}/situations/{}/{}",
+            self.workspace, self.situation, path
+        );
+        let (status, result) = invoke(
+            self.router.clone(),
+            request(method, &uri, &self.token, body),
+        )
+        .await;
+        assert_eq!(status, expected, "{method} {path}: {result}");
+        result
+    }
+
+    async fn case_node(&self, kind: &str, text: &str, rationale: &str) -> Uuid {
+        let object = Uuid::new_v4();
+        self.case_request(
+            &format!("epistemic/objects/{object}"),
+            Some(json!({"kind":kind, "text":text, "rationale":rationale})),
+        )
+        .await;
+        object
+    }
+
+    async fn case_source(&self, object: Uuid, label: &str, speaker: &str, excerpt: &str) -> Uuid {
+        self.case_representation(
+            object,
+            "TRANSCRIPT_FILE",
+            label,
+            speaker,
+            "HUMAN_TRANSCRIPTION",
+            excerpt,
+        )
+        .await
+    }
+
+    async fn case_representation(
+        &self,
+        object: Uuid,
+        artifact_type: &str,
+        label: &str,
+        scope: &str,
+        representation_type: &str,
+        excerpt: &str,
+    ) -> Uuid {
+        let artifact = Uuid::new_v4();
+        self.case_request(
+            &format!("artifacts/{artifact}"),
+            Some(json!({"artifact_type":artifact_type, "label":label})),
+        )
+        .await;
+        let representation = Uuid::new_v4();
+        self.case_request(
+            &format!("artifacts/{artifact}/representations/{representation}"),
+            Some(json!({
+                "representation_type":representation_type, "producer_type":"USER",
+                "producer_label":"Owen Pike", "production_method":"Manually supplied excerpt",
+                "scope_locator":scope, "content":excerpt, "completeness_status":"PARTIAL",
+                "epistemic_qualification":"Attributed description", "limitations":"Excerpt only"
+            })),
+        )
+        .await;
+        self.case_request(
+            &format!("epistemic/objects/{object}/artifact-provenance/{representation}"),
+            Some(json!({"rationale":"This excerpt contains the attributed statement."})),
+        )
+        .await;
+        representation
+    }
+
+    async fn case_argument(&self, conclusion: Uuid, rationale: &str) -> Uuid {
+        let argument = Uuid::new_v4();
+        self.case_request(
+            &format!("epistemic/arguments/{argument}"),
+            Some(json!({"conclusion_object_id":conclusion, "mode":"INDUCTIVE", "rationale":rationale})),
+        )
+        .await;
+        argument
+    }
+
+    async fn case_ground(&self, argument: Uuid, premises: &[Uuid], rationale: &str) -> Uuid {
+        let grounding = Uuid::new_v4();
+        let members: Vec<_> = premises
+            .iter()
+            .map(|object| {
+                json!({
+                    "member_id":Uuid::new_v4(), "role":"PREMISE", "ground_object_id":object,
+                    "evidence_id":null, "rationale":rationale
+                })
+            })
+            .collect();
+        self.case_request(
+            &format!("epistemic/arguments/{argument}/grounding/{grounding}"),
+            Some(json!({"effect":"SUPPORTS", "adequacy":"PARTIAL", "rationale":rationale, "members":members})),
+        )
+        .await;
+        grounding
+    }
+}
+
+fn case_row<'a>(snapshot: &'a Value, collection: &str, key: &str, id: Uuid) -> &'a Value {
+    let id = json!(id);
+    snapshot[collection]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row[key] == id)
+        .unwrap_or_else(|| panic!("missing {collection} row with {key}={id}"))
+}
+
+#[tokio::test]
+async fn alder_bend_distinguishes_prominence_from_driver_identification() {
+    let case =
+        setup_with_focus("Why did Alder Bend collect more reports about the Vale truck?").await;
+    let vale = case
+        .case_node(
+            "FINDING",
+            "The Vale truck passed the college at 21:10.",
+            "Physical passage only.",
+        )
+        .await;
+    let driver = case
+        .case_node(
+            "HYPOTHESIS",
+            "Frank Vale was driving the Vale truck.",
+            "Investigator-authored driver hypothesis.",
+        )
+        .await;
+    let vale_argument = case
+        .case_argument(vale, "Assess the passage of the Vale truck.")
+        .await;
+    let driver_argument = case
+        .case_argument(driver, "Assess the driver's identity.")
+        .await;
+
+    let mae = case
+        .case_node(
+            "PROPOSITION",
+            "Mae reported seeing the Vale logo at 21:10.",
+            "Separately collected observation of the truck.",
+        )
+        .await;
+    let jules = case
+        .case_node(
+            "PROPOSITION",
+            "Jules reported seeing the Vale logo at 21:10.",
+            "Separately collected observation of the truck.",
+        )
+        .await;
+    let mae_source = case
+        .case_source(
+            mae,
+            "Mae interview",
+            "Mae Dorsey",
+            "I saw the logo. I guessed Frank because it is his company.",
+        )
+        .await;
+    let jules_source = case
+        .case_source(
+            jules,
+            "Jules interview",
+            "Jules Navarro",
+            "The sign said Vale. The first person I thought of was Frank.",
+        )
+        .await;
+    assert_ne!(mae_source, jules_source);
+    let mae_route = case
+        .case_ground(vale_argument, &[mae], "Mae reported the logo.")
+        .await;
+    let jules_route = case
+        .case_ground(vale_argument, &[jules], "Jules reported the logo.")
+        .await;
+
+    let prominence = case
+        .case_node(
+            "PROPOSITION",
+            "Mae and Jules know Frank as the owner of Vale Salvage.",
+            "Scope: these two people when initially interviewed.",
+        )
+        .await;
+    for (speaker, source) in [("Mae", mae_source), ("Jules", jules_source)] {
+        let inference = case
+            .case_node(
+                "PROPOSITION",
+                &format!("{speaker} guessed Frank was driving."),
+                "Attributed inference from the familiar owner, without seeing the driver.",
+            )
+            .await;
+        case.case_request(
+            &format!("epistemic/objects/{inference}/artifact-provenance/{source}"),
+            Some(
+                json!({"rationale":"The same excerpt separately records the speaker's inference."}),
+            ),
+        )
+        .await;
+        case.case_request(&format!("epistemic/relations/{}", Uuid::new_v4()), Some(json!({
+            "family":"CONTEXTUAL", "kind":"RELEVANT_TO", "left_object_id":prominence,
+            "right_object_id":inference, "rationale":"Shared association explains the inference, not visual identification."
+        }))).await;
+    }
+
+    let leon = case
+        .case_node(
+            "PROPOSITION",
+            "Leon claimed he saw Frank at the wheel.",
+            "Initially presented as an identification.",
+        )
+        .await;
+    let leon_source = case
+        .case_source(
+            leon,
+            "Leon initial interview",
+            "Leon Pratt",
+            "I saw Frank Vale at the wheel.",
+        )
+        .await;
+    let leon_route = case
+        .case_ground(
+            driver_argument,
+            &[leon],
+            "Only claimed visual identification.",
+        )
+        .await;
+    let request_scope = case
+        .case_node(
+            "PROPOSITION",
+            "Owen's first appeal requested reports about the Vale truck.",
+            "Scope of the initial collection.",
+        )
+        .await;
+    let appeal_source = case.case_source(request_scope, "Initial police appeal", "Text of the appeal",
+        "Anyone who saw a Vale Salvage tow truck near the college should contact the investigator.").await;
+    let before = case.case_request("epistemic/workbench", None).await;
+    let initial_driver = case_row(
+        &before,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        driver,
+    );
+    assert_eq!(initial_driver["routes"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        initial_driver["routes"][0]["grounding_set_id"],
+        json!(leon_route)
+    );
+    assert!(
+        before["reassessment_impacts"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let correction = case
+        .case_node(
+            "PROPOSITION",
+            "Leon now says he did not see the cab.",
+            "Withdraws the identification in his own earlier statement.",
+        )
+        .await;
+    let correction_source = case
+        .case_source(
+            correction,
+            "Leon follow-up",
+            "Leon Pratt",
+            "I never saw the cab. The table went quiet when I mentioned Frank.",
+        )
+        .await;
+    let reward = case
+        .case_node(
+            "PROPOSITION",
+            "Leon says people at the cafe stopped to listen when he named Frank.",
+            "An attributed report about the audience's reaction.",
+        )
+        .await;
+    case.case_request(
+        &format!("epistemic/objects/{reward}/artifact-provenance/{correction_source}"),
+        Some(
+            json!({"rationale":"Leon describes the audience reaction in the follow-up interview."}),
+        ),
+    )
+    .await;
+    let motive = case.case_node("HYPOTHESIS", "Leon may have overstated his account to attract attention.",
+        "Investigator-authored possible explanation; audience reaction does not establish motive.").await;
+    let motive_argument = case
+        .case_argument(motive, "Assess the possible incentive.")
+        .await;
+    case.case_ground(
+        motive_argument,
+        &[reward],
+        "The claimed social reaction is suggestive only.",
+    )
+    .await;
+    let retraction = Uuid::new_v4();
+    case.case_request(
+        &format!("epistemic/relations/{retraction}"),
+        Some(json!({
+            "family":"GENEALOGY", "kind":"RETRACTS", "left_object_id":correction,
+            "right_object_id":leon, "rationale":"Leon retracts the purported identification."
+        })),
+    )
+    .await;
+
+    let pine = case
+        .case_node(
+            "FINDING",
+            "A Pine Towing truck passed the college at 21:13.",
+            "Physical passage only.",
+        )
+        .await;
+    let mara = case
+        .case_node(
+            "PROPOSITION",
+            "Mara reported seeing the Pine logo at 21:13.",
+            "Collected after Owen broadened the appeal.",
+        )
+        .await;
+    let mara_source = case
+        .case_source(
+            mara,
+            "Mara interview after broadened appeal",
+            "Mara Ellis",
+            "I saw Pine Towing at 21:13. I thought the police only wanted the Vale truck.",
+        )
+        .await;
+    let pine_argument = case
+        .case_argument(pine, "Assess the passage of the Pine truck.")
+        .await;
+    let pine_route = case
+        .case_ground(pine_argument, &[mara], "Mara reported the Pine logo.")
+        .await;
+    let camera = case.case_node("PROPOSITION", "Owen reports that the college camera shows Vale at 21:10 and Pine at 21:13, without a view of either cab.",
+        "The investigator supplied a description of the external record.").await;
+    let camera_source = case
+        .case_representation(
+            camera,
+            "VIDEO",
+            "College exterior camera",
+            "Tuesday 21:10–21:13",
+            "HUMAN_DESCRIPTION",
+            "Vale at 21:10 and Pine at 21:13. The framing does not show either cab.",
+        )
+        .await;
+    let vale_camera_route = case
+        .case_ground(
+            vale_argument,
+            &[camera],
+            "Description supports Vale's passage.",
+        )
+        .await;
+    let pine_camera_route = case
+        .case_ground(
+            pine_argument,
+            &[camera],
+            "Description supports Pine's passage.",
+        )
+        .await;
+    let selection = case
+        .case_node(
+            "HYPOTHESIS",
+            "The initial appeal contributed to reports concentrating on Vale.",
+            "Attributable explanation of the collection gap.",
+        )
+        .await;
+    let selection_argument = case
+        .case_argument(selection, "Assess the effect of the initial appeal.")
+        .await;
+    let selection_route = case
+        .case_ground(
+            selection_argument,
+            &[request_scope, mara],
+            "Scope of request and Mara's attributed reason for waiting.",
+        )
+        .await;
+
+    let after = case.case_request("epistemic/workbench", None).await;
+    let impacts = after["reassessment_impacts"].as_array().unwrap();
+    assert_eq!(impacts.len(), 1);
+    assert_eq!(impacts[0]["trigger_relation_id"], json!(retraction));
+    assert_eq!(impacts[0]["grounding_set_id"], json!(leon_route));
+    assert_eq!(impacts[0]["conclusion_object_id"], json!(driver));
+    assert_eq!(impacts[0]["prior_object_id"], json!(leon));
+    assert_eq!(impacts[0]["revision_object_id"], json!(correction));
+    let revised_driver = case_row(&after, "reasoning_diagnostics", "conclusion_object_id", driver);
+    let route = case_row(revised_driver, "routes", "grounding_set_id", leon_route);
+    assert_eq!(route["reassessment"]["unreviewed"], 1);
+    for conclusion in [vale, pine] {
+        let passage = case_row(&after, "reasoning_diagnostics", "conclusion_object_id", conclusion);
+        assert_eq!(passage["has_supporting_routes"], true);
+        for route in passage["routes"].as_array().unwrap() {
+            assert_eq!(route["reassessment"]["impacted"], 0);
+        }
+    }
+    for (object, source) in [
+        (mae, mae_source),
+        (jules, jules_source),
+        (leon, leon_source),
+        (correction, correction_source),
+        (mara, mara_source),
+        (request_scope, appeal_source),
+        (camera, camera_source),
+    ] {
+        let link = case_row(&after, "artifact_provenance", "object_id", object);
+        assert_eq!(link["representation_id"], json!(source));
+    }
+    for (route, premise) in [
+        (mae_route, mae),
+        (jules_route, jules),
+        (pine_route, mara),
+        (vale_camera_route, camera),
+        (pine_camera_route, camera),
+    ] {
+        let stored = case_row(&after, "grounding_sets", "grounding_set_id", route);
+        assert_eq!(stored["members"][0]["ground_object_id"], json!(premise));
+    }
+    let stored = case_row(
+        &after,
+        "grounding_sets",
+        "grounding_set_id",
+        selection_route,
+    );
+    let members = stored["members"].as_array().unwrap();
+    assert_eq!(members.len(), 2);
+    for premise in [request_scope, mara] {
+        assert!(
+            members
+                .iter()
+                .any(|member| member["ground_object_id"] == json!(premise))
+        );
+    }
+    assert_eq!(
+        case_row(&after, "nodes", "object_id", selection)["kind"],
+        "HYPOTHESIS"
+    );
+    assert_eq!(
+        case_row(&after, "nodes", "object_id", motive)["kind"],
+        "HYPOTHESIS"
+    );
+    assert!(
+        !before["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["object_id"] == json!(pine))
+    );
 }
 
 #[tokio::test]
