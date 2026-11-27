@@ -23,6 +23,8 @@ pub mod action_decision;
 pub mod intervention;
 #[path = "epistemic_actor_state.rs"]
 pub mod actor_state;
+#[path = "epistemic_public_prominence.rs"]
+pub mod public_prominence;
 #[path = "epistemic_normative_assessment.rs"]
 pub mod normative_assessment;
 #[path = "epistemic_actor_act.rs"]

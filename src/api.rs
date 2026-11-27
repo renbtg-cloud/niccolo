@@ -27,6 +27,7 @@ use crate::discovery;
 use crate::epistemic_input_draft;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
+use crate::epistemic_workbench::public_prominence;
 use crate::epistemic_workbench::{self, WorkbenchError};
 use crate::epistemic_workbench_prose;
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
@@ -279,6 +280,14 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench",
             get(get_expert_epistemic_workbench),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/public-prominence",
+            get(lookup_public_prominence),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/public-prominence/{record}",
+            post(record_public_prominence),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/workbench/input-draft",
@@ -3754,6 +3763,30 @@ async fn get_expert_epistemic_workbench(
     let mut snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
     snapshot.investigator_free_text_compiler_enabled = state.model.provider() != "unconfigured";
     Ok(no_store(json!(snapshot), StatusCode::OK))
+}
+
+async fn lookup_public_prominence(
+    State(state): State<AppState>,
+    Path((workspace, situation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Query(query): Query<public_prominence::Lookup>,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let result = public_prominence::lookup(&state.pool, workspace, situation, query).await?;
+    Ok(no_store(json!(result), StatusCode::OK))
+}
+
+async fn record_public_prominence(
+    State(state): State<AppState>,
+    Path((workspace, situation, record)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<public_prominence::Input>,
+) -> Result<Response, ApiError> {
+    let author = guard(&state, &headers, workspace, Capability::Write).await?;
+    let created =
+        public_prominence::record(&state.pool, workspace, situation, author, record, input).await?;
+    let status = if created { StatusCode::CREATED } else { StatusCode::OK };
+    Ok(no_store(json!({"record_id": record, "replayed": !created}), status))
 }
 
 async fn create_expert_epistemic_node(
