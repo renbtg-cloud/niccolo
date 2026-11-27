@@ -124,6 +124,21 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
   alder_bend_reviews_only_the_detail_reachable_from_prior_exposure
 ```
 
+### Quarto replay — decisão humana sobre uma rota de apoio
+
+O alerta do terceiro replay permite escolher uma rota para revisão. Nesta variante, a hipótese de que Frank dirigia tem duas rotas. A primeira depende do boné no relato de Mara. A segunda depende do relato de Jules de que viu Frank junto à porta do motorista. O avistamento do guincho por Mara tem uma rota própria.
+
+O investigador começa mantendo a rota do boné. Depois suspende seu uso e registra o motivo. O Workbench retira a rota da lista de apoios não suspensos da hipótese e mantém visíveis a rota baseada em Jules e o avistamento do guincho. Uma decisão posterior pode voltar a incluir a rota suspensa. As três decisões ficam no histórico com autoria, justificativa e a checagem de exposição usada em cada uma. O relato, sua fonte e as rotas originais permanecem disponíveis para exame.
+
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L968) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}`. A entrada pede `argument_id`, `grounding_set_id`, `disposition` (`USE` ou `SUSPEND`), `rationale` e a mesma entrada de checagem em `review`. É preciso ter permissão de escrita. Só uma rota de apoio indicada pela checagem pode receber a decisão. O registro guarda a entrada e o resultado reavaliado no momento da decisão.
+
+O Workbench mostra a escolha mais recente por rota, `suspended_by_decision_id` nas rotas suspensas, `non_suspended_supporting_routes` no diagnóstico da conclusão e todos os eventos em `route_use_history`. Essa lista distingue o uso decidido pelo investigador da estrutura original, que permanece consultável. A decisão atua na rota selecionada no Workbench. Ela não altera a verdade da alegação, não suspende outros relatos da mesma testemunha e não se propaga automaticamente para outras rotas ou para análises externas ao Workbench.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_audits_suspension_and_restoration_of_one_support_route
+```
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
