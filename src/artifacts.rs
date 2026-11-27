@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+#[path = "artifact_representation_transfer.rs"]
+pub mod representation_transfer;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ArtifactError {
     #[error("database unavailable: {0}")]

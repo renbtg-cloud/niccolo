@@ -86,9 +86,16 @@ pub struct FrozenArtifactRepresentation {
     pub completeness_status: String,
     pub epistemic_qualification: Option<String>,
     pub limitations: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transfer_origin: Option<ArtifactTransferOrigin>,
     pub content_was_explicitly_supplied: bool,
     pub artifact_was_parsed: bool,
     pub representation_establishes_truth: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactTransferOrigin {
+    pub source_situation_id: Uuid,
+    pub transfer_id: Uuid,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrozenArtifactRelationship {
@@ -230,6 +237,8 @@ type FrozenArtifactRepresentationRow = (
     String,
     Option<String>,
     Option<String>,
+    Option<Uuid>,
+    Option<Uuid>,
 );
 type FrozenArtifactRelationshipRow = (Uuid, Uuid, Uuid, String, Option<String>);
 
@@ -460,11 +469,15 @@ async fn frozen_artifact_material(
     let representation_rows: Vec<FrozenArtifactRepresentationRow> = sqlx::query_as(
         "SELECT r.artifact_id,r.representation_id,r.representation_type,r.producer_type,
                 r.producer_label,r.production_method,r.scope_locator,r.content,
-                r.completeness_status,r.epistemic_qualification,r.limitations
+                r.completeness_status,r.epistemic_qualification,r.limitations,
+                t.source_situation_id,t.transfer_id
          FROM niccolo.situation_revision_artifact_representations rr
          JOIN niccolo.situation_artifact_representations r
            ON r.workspace_id=rr.workspace_id AND r.situation_id=rr.situation_id
           AND r.representation_id=rr.representation_id
+         LEFT JOIN niccolo.artifact_representation_transfers t
+           ON (t.workspace_id,t.target_situation_id,t.representation_id) =
+              (r.workspace_id,r.situation_id,r.representation_id)
          WHERE rr.workspace_id=$1 AND rr.situation_id=$2 AND rr.revision=$3
          ORDER BY r.representation_id LIMIT $4",
     )
@@ -573,6 +586,8 @@ async fn frozen_artifact_material(
         completeness_status,
         epistemic_qualification,
         limitations,
+        source_situation_id,
+        transfer_id,
     ) in representation_rows
     {
         if representations.len() >= MAX_ARTIFACT_REPRESENTATIONS as usize {
@@ -597,6 +612,12 @@ async fn frozen_artifact_material(
             completeness_status,
             epistemic_qualification,
             limitations,
+            transfer_origin: source_situation_id.zip(transfer_id).map(
+                |(source_situation_id, transfer_id)| ArtifactTransferOrigin {
+                    source_situation_id,
+                    transfer_id,
+                },
+            ),
             content_was_explicitly_supplied: true,
             artifact_was_parsed: false,
             representation_establishes_truth: false,

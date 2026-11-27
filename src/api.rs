@@ -397,6 +397,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_artifact_representation),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/artifacts/representation-transfers/{transfer}",
+            get(get_representation_transfer).post(record_representation_transfer),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/artifact-relationships/{relationship}",
             post(record_artifact_relationship),
         )
@@ -1095,6 +1099,32 @@ async fn record_artifact_relationship(
             "relationship_is_verified":false
         }),
         if replayed { StatusCode::OK } else { StatusCode::CREATED },
+    ))
+}
+
+async fn get_representation_transfer(
+    State(state): State<AppState>,
+    Path((workspace, situation, transfer)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    guard(&state, &headers, workspace, Capability::Read).await?;
+    let result = artifacts::representation_transfer::get(&state.pool, workspace, situation, transfer).await?;
+    Ok(no_store(json!(result), StatusCode::OK))
+}
+
+async fn record_representation_transfer(
+    State(state): State<AppState>,
+    Path((workspace, situation, transfer)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<artifacts::representation_transfer::Input>,
+) -> Result<Response, ApiError> {
+    let actor = guard(&state, &headers, workspace, Capability::Write).await?;
+    let (result, created) = artifacts::representation_transfer::record(
+        &state.pool, workspace, situation, transfer, actor, input,
+    ).await?;
+    Ok(no_store(
+        json!({"transfer":result,"replayed":!created}),
+        if created { StatusCode::CREATED } else { StatusCode::OK },
     ))
 }
 
