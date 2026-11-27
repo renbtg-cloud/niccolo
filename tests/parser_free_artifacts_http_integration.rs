@@ -2163,6 +2163,225 @@ async fn alder_bend_traces_apparent_corroboration_to_its_sources() {
     );
 }
 
+#[tokio::test]
+async fn alder_bend_flags_late_source_dependence_for_the_affected_route() {
+    let mut case = setup_with_focus("Review the basis for the 21:20 pharmacy sighting.").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        case.service = PgPoolOptions::new().connect(&url).await.unwrap();
+        case.router = api::router(case.service.clone());
+    }
+    let sighting = case
+        .case_node(
+            "FINDING",
+            "Truck 07 was behind the pharmacy around 21:20.",
+            "Assess the evidence for the reported sighting.",
+        )
+        .await;
+    let claire = case
+        .case_node(
+            "PROPOSITION",
+            "Claire says she saw truck 07 around 21:20.",
+            "Claire describes an observation from a window.",
+        )
+        .await;
+    let claire_rep = case
+        .case_source(
+            claire,
+            "Claire's statement",
+            "Claire Mercer",
+            "I saw truck 07 behind the pharmacy around 21:20.",
+        )
+        .await;
+    let owen = case
+        .case_node(
+            "PROPOSITION",
+            "Owen's case note records the same time and place.",
+            "The basis of the entry is still being checked.",
+        )
+        .await;
+    let owen_rep = case
+        .case_source(
+            owen,
+            "Owen's case note",
+            "Initial entry",
+            "Truck 07 at rear of pharmacy, approximately 21:20.",
+        )
+        .await;
+    let camera = case
+        .case_node(
+            "PROPOSITION",
+            "A separately collected camera description places unit 07 there.",
+            "The investigator reports the vehicle visible near 21:20.",
+        )
+        .await;
+    case.case_representation(
+        camera,
+        "VIDEO",
+        "Pharmacy camera",
+        "Rear lot",
+        "HUMAN_DESCRIPTION",
+        "Unit 07 is in view behind the pharmacy around 21:20.",
+    )
+    .await;
+    let witness_argument = case
+        .case_argument(sighting, "Claire's direct account.")
+        .await;
+    let note_argument = case
+        .case_argument(sighting, "Provisional reliance on the police note.")
+        .await;
+    let claire_route = case
+        .case_ground(witness_argument, &[claire], "Claire's direct account.")
+        .await;
+    let owen_route = case
+        .case_ground(
+            note_argument,
+            &[owen],
+            "A separate lead with origin pending.",
+        )
+        .await;
+    let camera_route = case
+        .case_ground(
+            witness_argument,
+            &[camera],
+            "The camera records the lot separately.",
+        )
+        .await;
+    let combined_route = case
+        .case_ground(
+            witness_argument,
+            &[owen, claire],
+            "Compare the police entry and its possible source together.",
+        )
+        .await;
+
+    let filing = case
+        .case_node(
+            "FINDING",
+            "Owen recorded the lead in the police file.",
+            "The police note supports this documentary claim directly.",
+        )
+        .await;
+    let filing_argument = case
+        .case_argument(filing, "Establish what the police file records.")
+        .await;
+    let filing_route = case
+        .case_ground(filing_argument, &[owen], "The police entry itself.")
+        .await;
+
+    let path = "epistemic/workbench";
+    let before = case.case_request(path, None).await;
+    let owen_link = case_row(
+        &before,
+        "artifact_provenance",
+        "representation_id",
+        owen_rep,
+    );
+    let claire_link = case_row(
+        &before,
+        "artifact_provenance",
+        "representation_id",
+        claire_rep,
+    );
+    let earlier = cross_case_freeze(&case, None).await;
+    let initial_basis = cross_case_packet(&case, earlier).await.frozen_input;
+    let before_sighting = case_row(
+        &before,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    assert_eq!(before_sighting["artifact_dependence_reviews"], json!([]));
+    assert!(initial_basis.artifact_relationships.is_empty());
+
+    let relationship = Uuid::new_v4();
+    const QUALIFICATION: &str = "Owen confirmed that his entry summarizes Claire's statement.";
+    case.case_request(&format!("artifact-relationships/{relationship}"), Some(json!({
+        "subject_artifact_id":owen_link["artifact_id"], "object_artifact_id":claire_link["artifact_id"],
+        "relationship_type":"CLAIMED_TO_BE_DERIVED_FROM", "qualification":QUALIFICATION
+    }))).await;
+
+    let after = case.case_request(path, None).await;
+    let after_sighting = case_row(
+        &after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    let review = case_row(
+        after_sighting,
+        "artifact_dependence_reviews",
+        "relationship_id",
+        relationship,
+    );
+    assert_eq!(
+        after_sighting["artifact_dependence_reviews"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(review["derived_artifact_id"], owen_link["artifact_id"]);
+    assert_eq!(review["source_artifact_id"], claire_link["artifact_id"]);
+    assert_eq!(review["qualification"], QUALIFICATION);
+    assert_eq!(review["recorded_by"], owen_link["recorded_by"]);
+    assert_eq!(
+        review["routes_to_review"],
+        json!([
+            {"argument_id":note_argument, "grounding_set_id":owen_route}
+        ])
+    );
+    let source_routes = review["source_routes"].as_array().unwrap();
+    assert_eq!(source_routes.len(), 2);
+    for route in [claire_route, combined_route] {
+        assert!(
+            source_routes
+                .contains(&json!({"argument_id":witness_argument, "grounding_set_id":route}))
+        );
+    }
+    let active = &after_sighting["non_suspended_supporting_routes"];
+    assert_eq!(*active, before_sighting["non_suspended_supporting_routes"]);
+    assert!(
+        active
+            .as_array()
+            .unwrap()
+            .contains(&json!({"argument_id":witness_argument, "grounding_set_id":camera_route}))
+    );
+    let after_filing = case_row(
+        &after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        filing,
+    );
+    assert_eq!(after_filing["artifact_dependence_reviews"], json!([]));
+    assert_eq!(
+        after_filing["non_suspended_supporting_routes"],
+        json!([
+            {"argument_id":filing_argument, "grounding_set_id":filing_route}
+        ])
+    );
+    assert_eq!(after["route_use_history"], before["route_use_history"]);
+
+    let revised = cross_case_freeze(&case, Some(earlier)).await;
+    let revised_basis = cross_case_packet(&case, revised).await.frozen_input;
+    let replayed_basis = cross_case_packet(&case, earlier).await.frozen_input;
+    assert_eq!(
+        replayed_basis.artifact_relationships,
+        initial_basis.artifact_relationships
+    );
+    assert_eq!(
+        replayed_basis.workbench_support,
+        initial_basis.workbench_support
+    );
+    assert_eq!(
+        revised_basis.workbench_support,
+        initial_basis.workbench_support
+    );
+    assert_eq!(revised_basis.artifact_relationships.len(), 1);
+    let frozen_relationship = &revised_basis.artifact_relationships[0];
+    assert_eq!(frozen_relationship.relationship_id, relationship);
+    assert!(!frozen_relationship.relationship_is_verified);
+}
+
 async fn cross_case_freeze(case: &Setup, parent: Option<Uuid>) -> Uuid {
     let analysis = Uuid::new_v4();
     case.case_request(
