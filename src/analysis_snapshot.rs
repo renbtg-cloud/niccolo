@@ -1,5 +1,6 @@
 //! Immutable binding between a requested analysis and the exact Situation revision it may use.
 use crate::{
+    analysis_workbench_support,
     purpose_history,
     situation_store::{self, SituationSnapshot},
 };
@@ -224,10 +225,11 @@ pub async fn begin(
                 _ => AnalysisSnapshotError::Integrity,
             })?
             .map_or((0, None), |(event_no, purpose)| (event_no, Some(purpose)));
+    let workbench_support = analysis_workbench_support::capture(&mut tx, workspace, situation).await?;
     let inserted = sqlx::query(
         "INSERT INTO niccolo.situation_analysis_snapshots \
-         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
+         (workspace_id,situation_id,analysis_id,input_revision,input_fingerprint,identity_event_no_max,actor_kind_event_no_max,actor_binding_event_no_max,purpose_event_no_max,declared_purpose,goal,requested_by_principal_id,reanalysis_of,workbench_support_basis) \
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::text::jsonb) ON CONFLICT(workspace_id,situation_id,analysis_id) DO NOTHING",
     )
     .bind(workspace)
     .bind(situation)
@@ -242,6 +244,7 @@ pub async fn begin(
     .bind(&goal)
     .bind(actor)
     .bind(reanalysis_of)
+    .bind(workbench_support)
     .execute(&mut *tx)
     .await?
     .rows_affected()

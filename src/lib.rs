@@ -7,6 +7,7 @@ pub mod analysis_delta;
 pub mod analysis_output;
 pub mod analysis_review;
 pub mod analysis_snapshot;
+pub mod analysis_workbench_support;
 pub mod api;
 pub mod authz;
 pub mod benchmark;

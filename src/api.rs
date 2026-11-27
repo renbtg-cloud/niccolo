@@ -1764,6 +1764,7 @@ fn analysis_output_json(output: &analysis_output::AnalysisOutput) -> Value {
         "input_fingerprint": output.input_fingerprint,
         "answer_text": output.answer_text,
         "coverage_note": output.coverage_note,
+        "workbench_support_links": output.workbench_support_links,
         "published_by_principal_id": output.published_by,
         "current_situation_revision": output.current_revision,
         "input_is_current": output.input_is_current,

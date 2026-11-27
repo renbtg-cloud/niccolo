@@ -1,6 +1,7 @@
 //! v0.601-v0.650: validated, atomic synthesis artifact ingestion.
 //! A model response is recorded as analysis output/claims; recording does not establish truth.
 use crate::analysis_structure::AnalysisScope;
+use crate::analysis_workbench_support::{self, SupportLink};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -14,6 +15,8 @@ pub enum ArtifactError {
     Invalid,
     #[error("restricted MVP hypotheses and assumptions must be authored by a human")]
     HumanAuthorshipRequired,
+    #[error("synthesis cited a Workbench route outside the frozen usable support")]
+    WorkbenchSupportUnavailable,
     #[error("artifact replay conflicts with stored analysis")]
     Conflict,
     #[error("serialization failed: {0}")]
@@ -85,6 +88,8 @@ pub struct SynthesisArtifact {
     pub source_links: Vec<ArtifactSourceLink>,
     #[serde(default)]
     pub context_links: Vec<ArtifactContextLink>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workbench_support_links: Vec<SupportLink>,
     #[serde(default)]
     pub assumptions: Vec<ArtifactAssumption>,
     #[serde(default)]
@@ -122,6 +127,7 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     if a.claims.len() > 256
         || a.source_links.len() > 512
         || a.context_links.len() > 512
+        || a.workbench_support_links.len() > 512
         || a.assumptions.len() > 128
         || a.alternatives.len() > 128
         || a.evidence_gaps.len() > 128
@@ -146,6 +152,12 @@ fn validate(a: &SynthesisArtifact) -> Result<(), ArtifactError> {
     }
     let claim_ids: std::collections::BTreeSet<Uuid> =
         a.claims.iter().map(|claim| claim.claim_id).collect();
+    let mut workbench_links = std::collections::BTreeSet::new();
+    for link in &a.workbench_support_links {
+        if !claim_ids.contains(&link.claim_id) || !workbench_links.insert(link) {
+            return Err(ArtifactError::Invalid);
+        }
+    }
     let mut source_links = std::collections::BTreeSet::new();
     for link in &a.source_links {
         if !claim_ids.contains(&link.claim_id)
@@ -263,15 +275,26 @@ pub async fn apply(
 ) -> Result<AppliedArtifact, ArtifactError> {
     validate(artifact)?;
     let mut tx = scoped(pool, scope.workspace).await?;
-    let inserted=sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
-  .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(artifact.answer_text.trim()).bind(artifact.coverage_note.trim()).bind(actor).execute(&mut *tx).await?.rows_affected()==1;
-    let stored:Option<(String,String,Uuid)>=sqlx::query_as("SELECT answer_text,coverage_note,published_by_principal_id FROM niccolo.situation_analysis_outputs WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).fetch_optional(&mut *tx).await?;
-    if stored
-        != Some((
-            artifact.answer_text.trim().into(),
-            artifact.coverage_note.trim().into(),
-            actor,
-        ))
+    let mut workbench_support_links = artifact.workbench_support_links.clone();
+    workbench_support_links.sort_unstable();
+    if !workbench_support_links.is_empty() {
+        let basis = analysis_workbench_support::read_in(&mut tx, scope)
+            .await?
+            .ok_or(ArtifactError::WorkbenchSupportUnavailable)?;
+        if !workbench_support_links.iter().all(|link| basis.allows(link)) {
+            return Err(ArtifactError::WorkbenchSupportUnavailable);
+        }
+    }
+    let links_json = serde_json::to_string(&workbench_support_links)?;
+    let inserted=sqlx::query("INSERT INTO niccolo.situation_analysis_outputs(workspace_id,situation_id,analysis_id,answer_text,coverage_note,published_by_principal_id,workbench_support_links) VALUES($1,$2,$3,$4,$5,$6,$7::text::jsonb) ON CONFLICT DO NOTHING")
+  .bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(artifact.answer_text.trim()).bind(artifact.coverage_note.trim()).bind(actor).bind(&links_json).execute(&mut *tx).await?.rows_affected()==1;
+    let stored:Option<(String,String,Uuid,bool)>=sqlx::query_as("SELECT answer_text,coverage_note,published_by_principal_id,workbench_support_links=$4::text::jsonb FROM niccolo.situation_analysis_outputs WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3").bind(scope.workspace).bind(scope.situation).bind(scope.analysis).bind(&links_json).fetch_optional(&mut *tx).await?;
+    if stored != Some((
+        artifact.answer_text.trim().into(),
+        artifact.coverage_note.trim().into(),
+        actor,
+        true,
+    ))
     {
         return Err(ArtifactError::Conflict);
     }
@@ -421,6 +444,7 @@ mod tests {
             claims: vec![],
             source_links: vec![],
             context_links: vec![],
+            workbench_support_links: vec![],
             assumptions: vec![],
             alternatives: vec![],
             evidence_gaps: vec![],

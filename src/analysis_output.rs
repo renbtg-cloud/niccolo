@@ -2,6 +2,7 @@
 //!
 //! Publishing an answer never edits the Situation or a previous answer. A later
 //! reanalysis gets a new analysis id and can coexist with the historical output.
+use crate::analysis_workbench_support::SupportLink;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -27,6 +28,7 @@ pub struct AnalysisOutput {
     pub input_fingerprint: String,
     pub answer_text: String,
     pub coverage_note: String,
+    pub workbench_support_links: Vec<SupportLink>,
     pub published_by: Uuid,
     pub current_revision: i64,
     pub input_is_current: bool,
@@ -68,7 +70,7 @@ async fn scoped(
     Ok(tx)
 }
 
-type OutputRow = (i64, String, String, String, Uuid, i64);
+type OutputRow = (i64, String, String, String, Uuid, i64, String);
 
 async fn load_in_tx(
     tx: &mut Transaction<'_, Postgres>,
@@ -78,7 +80,7 @@ async fn load_in_tx(
 ) -> Result<Option<OutputRow>, sqlx::Error> {
     sqlx::query_as(
         "SELECT s.input_revision,s.input_fingerprint,o.answer_text,o.coverage_note,\
-                o.published_by_principal_id,z.current_revision \
+                o.published_by_principal_id,z.current_revision,o.workbench_support_links::text \
          FROM niccolo.situation_analysis_outputs o \
          JOIN niccolo.situation_analysis_snapshots s \
            USING(workspace_id,situation_id,analysis_id) \
@@ -92,21 +94,36 @@ async fn load_in_tx(
     .await
 }
 
-fn from_row(analysis: Uuid, situation: Uuid, row: OutputRow, replayed: bool) -> AnalysisOutput {
-    let (input_revision, input_fingerprint, answer_text, coverage_note, published_by, current) =
-        row;
-    AnalysisOutput {
+fn from_row(
+    analysis: Uuid,
+    situation: Uuid,
+    row: OutputRow,
+    replayed: bool,
+) -> Result<AnalysisOutput, AnalysisOutputError> {
+    let (
+        input_revision,
+        input_fingerprint,
+        answer_text,
+        coverage_note,
+        published_by,
+        current,
+        links,
+    ) = row;
+    let workbench_support_links =
+        serde_json::from_str(&links).map_err(|error| sqlx::Error::Decode(error.into()))?;
+    Ok(AnalysisOutput {
         analysis_id: analysis,
         situation_id: situation,
         input_revision,
         input_fingerprint,
         answer_text,
         coverage_note,
+        workbench_support_links,
         published_by,
         current_revision: current,
         input_is_current: current == input_revision,
         replayed,
-    }
+    })
 }
 
 pub async fn publish(
@@ -124,11 +141,11 @@ pub async fn publish(
     let mut tx = scoped(pool, workspace, false).await?;
 
     if let Some(row) = load_in_tx(&mut tx, workspace, situation, analysis).await? {
-        if row.2 != answer_text || row.3 != coverage_note || row.4 != actor {
+        if row.2 != answer_text || row.3 != coverage_note || row.4 != actor || row.6 != "[]" {
             return Err(AnalysisOutputError::Conflict);
         }
         tx.commit().await?;
-        return Ok(from_row(analysis, situation, row, true));
+        return from_row(analysis, situation, row, true);
     }
 
     let snapshot_exists: bool = sqlx::query_scalar(
@@ -164,11 +181,13 @@ pub async fn publish(
     let Some(row) = load_in_tx(&mut tx, workspace, situation, analysis).await? else {
         return Err(AnalysisOutputError::Invisible);
     };
-    if !inserted && (row.2 != answer_text || row.3 != coverage_note || row.4 != actor) {
+    if !inserted
+        && (row.2 != answer_text || row.3 != coverage_note || row.4 != actor || row.6 != "[]")
+    {
         return Err(AnalysisOutputError::Conflict);
     }
     tx.commit().await?;
-    Ok(from_row(analysis, situation, row, !inserted))
+    from_row(analysis, situation, row, !inserted)
 }
 
 pub async fn get(
@@ -182,5 +201,5 @@ pub async fn get(
         return Err(AnalysisOutputError::Invisible);
     };
     tx.commit().await?;
-    Ok(from_row(analysis, situation, row, false))
+    from_row(analysis, situation, row, false)
 }

@@ -168,7 +168,23 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
             purpose: step.kind.clone(),
             input: json!({"operation_id":scope.operation,"analysis_id":analysis,"label":step.label,"plan_revision":plan_revision,"reasoning_packet_sha256":packet_sha,"reasoning_packet":packet}),
             output_contract: if step.kind == "SYNTHESIZE" {
-                json!({"type":"object","required":["purpose","status","niccolo_artifact"],"niccolo_artifact":{"required":["answer_text","coverage_note","claims"],"optional":["source_links","context_links","evidence_gaps","clarifications"]},"niccolo_rules":{"separate_evidence_from_inference":true,"hypotheses_and_what_if_assumptions_are_human_authored":true,"do_not_generate_hypotheses_or_assumptions":true,"do_not_execute_human_actions":true}})
+                json!({
+                    "type":"object", "required":["purpose","status","niccolo_artifact"],
+                    "niccolo_artifact":{
+                        "required":["answer_text","coverage_note","claims"],
+                        "optional":["source_links","context_links","workbench_support_links","evidence_gaps","clarifications"],
+                        "workbench_support_links":[{"claim_id":"claim UUID", "argument_id":"frozen Workbench argument UUID", "grounding_set_id":"frozen Workbench route UUID"}]
+                    },
+                    "niccolo_rules":{
+                        "separate_evidence_from_inference":true,
+                        "hypotheses_and_what_if_assumptions_are_human_authored":true,
+                        "do_not_generate_hypotheses_or_assumptions":true,
+                        "do_not_execute_human_actions":true,
+                        "cite_workbench_support_using_frozen_route_ids":true,
+                        "suspended_or_truncated_workbench_routes_cannot_be_used_as_support":true,
+                        "suspended_workbench_routes_may_be_explained_as_history":true
+                    }
+                })
             } else if matches!(
                 step.kind.as_str(),
                 "ASSESS_CONTEXT" | "CHECK_ASSUMPTIONS" | "PROPOSE_CLARIFICATION" | "CHECK_ALTERNATIVES"

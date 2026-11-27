@@ -4,6 +4,7 @@
 use crate::analysis_structure::AnalysisScope;
 use crate::{
     actors, agentic_policy, analysis_assumptions, analysis_claims, analysis_snapshot,
+    analysis_workbench_support,
     clarification, collection_provenance, decision_points, decision_readiness,
     epistemic_policy_store, human_agency, human_control, human_credence, hypothesis_portfolio,
     integrity_scope, observation_query_ledger, proactive_briefing, source_scope, temporal_state,
@@ -112,6 +113,8 @@ pub struct FrozenInputPacket {
     pub fingerprint: String,
     pub focus: String,
     pub goal: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workbench_support: Option<analysis_workbench_support::Basis>,
     pub sources: Vec<Uuid>,
     pub identity_event_no_max: i64,
     pub identity_bindings: Vec<FrozenIdentityBinding>,
@@ -618,6 +621,11 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
         analysis_snapshot::materialize(pool, scope.workspace, scope.situation, scope.analysis)
             .await
             .map_err(dep)?;
+    let mut support_tx = packet_tx(pool, scope.workspace).await?;
+    let workbench_support = analysis_workbench_support::read_in(&mut support_tx, scope)
+        .await
+        .map_err(dep)?;
+    support_tx.commit().await.map_err(dep)?;
     let (
         source_fragments,
         source_fragment_count_total,
@@ -746,6 +754,7 @@ pub async fn build(pool: &PgPool, scope: AnalysisScope) -> Result<ReasoningPacke
             fingerprint: frozen.input.fingerprint,
             focus: frozen.input.focus,
             goal: frozen.analysis.goal,
+            workbench_support,
             sources: frozen.input.sources,
             identity_event_no_max,
             identity_bindings,
