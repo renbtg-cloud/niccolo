@@ -84,11 +84,24 @@ O [teste HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration
 
 Este replay compara a resposta antes e depois das novas peças e verifica que o relato retirado e sua correção permanecem no estado posterior. O cliente do teste guarda a resposta anterior. A recuperação de um estado histórico completo diretamente do servidor ainda precisa de uma verificação própria.
 
-O próximo teste de representação deve tentar consultar, de forma estruturada, para qual público e em qual período Frank era reconhecível e quais relatos registram efeitos disso. Neste replay, público e período estão no texto da proposição e da justificativa, e o vínculo com os palpites foi informado pelo investigador. A hipótese sobre o efeito na coleta tem apoio próprio e pode ser revisada independentemente da identificação dos motoristas.
+Neste primeiro replay, público, período e associação com os palpites são descritos em texto ou em relações informadas pelo investigador. A hipótese sobre o efeito na coleta tem apoio próprio e pode ser revisada independentemente da identificação dos motoristas.
 
 ```bash
 cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
   alder_bend_distinguishes_prominence_from_driver_identification
+```
+
+### Segundo replay — reconhecibilidade por público e período
+
+Os relatos dos moradores sustentam reconhecimento facial apenas para Mae e Theo na janela registrada. Para a turma noturna, Jules relata que já conhecia o nome. Mara relata ter visto uma foto legendada no dia 19, depois do desaparecimento; seu relato entra no dossiê no dia 20. A partir do dia 20, o relato fica disponível para a consulta sobre o dia 19. A consulta sobre o dia do desaparecimento continua sem relato de reconhecimento facial para a turma. Estes registros dizem respeito a pessoas específicas dentro dos públicos, conforme o recorte de cada fonte.
+
+O [replay autenticado](../../tests/parser_free_artifacts_http_integration.rs#L545) registra os dados em `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/public-prominence/{record}`. Cada registro referencia uma proposição da Situation e uma representação de fonte já vinculada à proposição. Registra separadamente o aspecto (`NAME`, `FACE` ou `PUBLIC_ROLE`), o tipo de relato (por exemplo, `RECOGNITION_REPORTED` ou `EXPOSURE_REPORTED`), o público e seu recorte, o intervalo inclusivo (`effective_from`, `effective_through`) e a data declarada em que a informação chegou à investigação (`available_on`).
+
+`GET` no mesmo caminho, sem `/{record}`, recebe `subject_actor_id`, `audience_actor_id`, `on`, `known_through` e, opcionalmente, `cue`. As datas são dias de calendário ISO. A consulta filtra pelo dia a que o relato se refere e pela data-limite em que ele estava disponível ao investigador. `NO_RECORDED_REPORTS` indica ausência de registros nesse recorte. A resposta devolve as referências às fontes e indica truncamento caso ultrapasse 100 registros. Os dados são relatórios atribuídos; o endpoint não repondera conclusões, e a data declarada de disponibilidade não é um snapshot do banco.
+
+```bash
+cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
+  alder_bend_queries_recognizability_by_audience_and_two_dates
 ```
 
 ## Material para desenvolver

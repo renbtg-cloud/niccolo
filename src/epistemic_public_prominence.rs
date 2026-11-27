@@ -93,7 +93,9 @@ fn calendar_date(value: &str) -> bool {
     let month: u8 = value[5..7].parse().unwrap();
     let day: u8 = value[8..].parse().unwrap();
     let days = match month {
-        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
         2 => 28,
         4 | 6 | 9 | 11 => 30,
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,

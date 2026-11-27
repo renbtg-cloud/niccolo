@@ -542,6 +542,205 @@ async fn alder_bend_distinguishes_prominence_from_driver_identification() {
 }
 
 #[tokio::test]
+async fn alder_bend_queries_recognizability_by_audience_and_two_dates() {
+    let mut case = setup_with_focus("What could each audience recognize, and when?").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        let restricted = PgPoolOptions::new()
+            .max_connections(4)
+            .connect(&url)
+            .await
+            .unwrap();
+        case.router = api::router(restricted);
+    }
+
+    let [frank, residents, students] = std::array::from_fn(|_| Uuid::new_v4());
+    for (id, label) in [
+        (frank, "Frank Vale"),
+        (residents, "Long-time residents of Alder Bend"),
+        (students, "Night students at the community college"),
+    ] {
+        let uri = format!("/v1/workspaces/{}/actors/{id}", case.workspace);
+        let (status, body) = invoke(
+            case.router.clone(),
+            request(
+                "POST",
+                &uri,
+                &case.token,
+                Some(json!({"display_label":label})),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+
+    let neighborhood = case
+        .case_node(
+            "PROPOSITION",
+            "Mae and Theo report recognizing Frank by face.",
+            "Their reports explicitly refer to before the disappearance.",
+        )
+        .await;
+    let neighborhood_source = case
+        .case_source(
+            neighborhood,
+            "Neighborhood interviews",
+            "Mae and Theo",
+            "Before Daniel went missing, each of us knew Frank by sight.",
+        )
+        .await;
+    let roll_call = case
+        .case_node(
+            "PROPOSITION",
+            "Jules reports knowing Frank's name before the disappearance.",
+            "Jules did not identify a face in this interview.",
+        )
+        .await;
+    let name_source = case
+        .case_source(
+            roll_call,
+            "Jules interview",
+            "Jules Navarro",
+            "I already knew the name Frank Vale.",
+        )
+        .await;
+    let photo = case
+        .case_node("PROPOSITION", "Mara reports seeing Frank's labeled photo after the disappearance.",
+            "This describes the person and picture she recalls encountering, without a recognition claim.")
+        .await;
+    let photo_source = case
+        .case_source(photo, "Mara interview on newspaper coverage", "Mara Ellis",
+            "I opened the story on the 19th. The caption identified Frank. I saw the picture before my interview.")
+        .await;
+
+    let create = [
+        json!({
+            "subject_actor_id":frank, "audience_actor_id":residents,
+            "cue":"FACE", "observation":"RECOGNITION_REPORTED", "audience_scope":"Mae and Theo only",
+            "effective_from":"2026-11-15", "effective_through":"2026-11-17", "available_on":"2026-11-18",
+            "claim_object_id":neighborhood, "representation_id":neighborhood_source
+        }),
+        json!({
+            "subject_actor_id":frank, "audience_actor_id":students,
+            "cue":"NAME", "observation":"RECOGNITION_REPORTED", "audience_scope":"Jules only",
+            "effective_from":"2026-11-16", "effective_through":"2026-11-17", "available_on":"2026-11-18",
+            "claim_object_id":roll_call, "representation_id":name_source
+        }),
+        json!({
+            "subject_actor_id":frank, "audience_actor_id":students,
+            "cue":"FACE", "observation":"EXPOSURE_REPORTED", "audience_scope":"Mara only",
+            "effective_from":"2026-11-19", "effective_through":"2026-11-19", "available_on":"2026-11-20",
+            "claim_object_id":photo, "representation_id":photo_source
+        }),
+    ];
+    let ids: [Uuid; 3] = std::array::from_fn(|_| Uuid::new_v4());
+    for (id, input) in ids.into_iter().zip(&create) {
+        case.case_request(
+            &format!("epistemic/public-prominence/{id}"),
+            Some(input.clone()),
+        )
+        .await;
+    }
+
+    let lookup = |audience, cue, on, known_through| {
+        format!(
+            "epistemic/public-prominence?subject_actor_id={frank}&audience_actor_id={audience}&cue={cue}&on={on}&known_through={known_through}"
+        )
+    };
+    for (audience, cue, on, as_of, expected) in [
+        (residents, "FACE", "2026-11-17", "2026-11-17", None),
+        (residents, "FACE", "2026-11-17", "2026-11-18", Some(0)),
+        (students, "NAME", "2026-11-17", "2026-11-18", Some(1)),
+        (students, "FACE", "2026-11-17", "2026-11-20", None),
+        (students, "FACE", "2026-11-19", "2026-11-19", None),
+        (students, "FACE", "2026-11-19", "2026-11-20", Some(2)),
+        (residents, "FACE", "2026-11-19", "2026-11-20", None),
+    ] {
+        let result = case
+            .case_request(&lookup(audience, cue, on, as_of), None)
+            .await;
+        assert_eq!(result["query"]["on"], on);
+        assert_eq!(result["query"]["known_through"], as_of);
+        assert_eq!(result["truncated"], false);
+        let reports = result["records"].as_array().unwrap();
+        match expected {
+            Some(i) => {
+                assert_eq!(result["coverage"], "RECORDED_REPORTS");
+                assert_eq!(reports.len(), 1);
+                assert_eq!(reports[0]["record_id"], json!(ids[i]));
+                for (key, value) in create[i].as_object().unwrap() {
+                    assert_eq!(&reports[0][key], value, "returned field {key}");
+                }
+            }
+            None => {
+                assert_eq!(result["coverage"], "NO_RECORDED_REPORTS");
+                assert!(reports.is_empty());
+            }
+        }
+    }
+
+    let base = format!(
+        "/v1/workspaces/{}/situations/{}/",
+        case.workspace, case.situation
+    );
+    let mut foreign_basis = create[0].clone();
+    foreign_basis["representation_id"] = json!(name_source);
+    let mut changed_scope = create[0].clone();
+    changed_scope["audience_scope"] = json!("All residents");
+    for (id, payload, expected) in [
+        (ids[0], create[0].clone(), StatusCode::OK),
+        (ids[0], changed_scope, StatusCode::CONFLICT),
+        (Uuid::new_v4(), foreign_basis, StatusCode::NOT_FOUND),
+    ] {
+        let uri = format!("{base}epistemic/public-prominence/{id}");
+        let (status, body) = invoke(
+            case.router.clone(),
+            request("POST", &uri, &case.token, Some(payload)),
+        )
+        .await;
+        assert_eq!(status, expected, "{body}");
+    }
+    let invalid_calendar = lookup(students, "FACE", "2026-02-29", "2026-11-20");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request(
+            "GET",
+            &format!("{base}{invalid_calendar}"),
+            &case.token,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), case.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let historical = lookup(residents, "FACE", "2026-11-17", "2026-11-18");
+    let (status, body) = invoke(
+        case.router.clone(),
+        request("GET", &format!("{base}{historical}"), &reader, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["records"][0]["record_id"], json!(ids[0]));
+    let (status, _) = invoke(
+        case.router.clone(),
+        request(
+            "POST",
+            &format!("{base}epistemic/public-prominence/{}", Uuid::new_v4()),
+            &reader,
+            Some(create[0].clone()),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn http_flow_records_human_material_without_accepting_or_reading_artifact_bytes() {
     let setup = setup().await;
     let video = Uuid::new_v4();
