@@ -3509,6 +3509,12 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
         )
         .await;
     assert_eq!(input["workbench_support"], json!(basis));
+    let difference = case
+        .case_request(&format!("analysis-snapshots/{revised}/reanalysis-revision"), None)
+        .await;
+    assert_eq!(difference["shared_origin_changes"], json!({
+        "added": basis.shared_artifact_origins, "removed": [], "changed": [], "comparison_is_partial": false
+    }));
     let original_handoff = case
         .case_request(&format!("analysis-snapshots/{previous}/bff/handoff"), None)
         .await;

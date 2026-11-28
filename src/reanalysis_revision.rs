@@ -1,8 +1,13 @@
 //! v1.701-v1.800: explain what is recorded as changed across a direct reanalysis.
 //! Input deltas and claim lineage are facts about records; they do not prove causal reason or truth.
-use crate::{analysis_compare, analysis_structure::AnalysisScope};
+use crate::{
+    analysis_compare,
+    analysis_structure::AnalysisScope,
+    analysis_workbench_support::{self, Basis, FrozenSharedOrigin},
+};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 #[derive(Debug, thiserror::Error)]
 pub enum RevisionError {
@@ -24,6 +29,8 @@ pub struct RevisionExplanation {
     pub removed_source_count: i64,
     pub added_context_count: i64,
     pub removed_context_count: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_origin_changes: Option<SharedOriginChanges>,
     pub retained: i64,
     pub refined: i64,
     pub reversed: i64,
@@ -35,6 +42,58 @@ pub struct RevisionExplanation {
     pub unlinked_claims_are_inferred_change: bool,
     pub input_change_proves_causal_reason_for_output_change: bool,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedOriginChanges {
+    pub added: Vec<FrozenSharedOrigin>,
+    pub removed: Vec<FrozenSharedOrigin>,
+    pub changed: Vec<FrozenSharedOrigin>,
+    pub comparison_is_partial: bool,
+}
+
+fn origin_changes(prior: Option<Basis>, current: Option<Basis>) -> Option<SharedOriginChanges> {
+    let comparison_is_partial = prior.iter().chain(current.iter()).any(|basis| {
+        basis.truncated
+            || basis.shared_artifact_origins_truncated
+            || basis.routes.iter().any(|route| {
+                route.grounds_truncated
+                    || route.grounds.iter().any(|ground| {
+                        ground["artifact_provenance_truncated"].as_bool() == Some(true)
+                    })
+            })
+    });
+    let indexed = |basis: Option<Basis>| {
+        basis
+            .into_iter()
+            .flat_map(|basis| basis.shared_artifact_origins)
+            .map(|origin| {
+                (
+                    (origin.conclusion_object_id, origin.source_representation_id),
+                    origin,
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let mut prior = indexed(prior);
+    let mut added = Vec::new();
+    let mut changed = Vec::new();
+    for (key, origin) in indexed(current) {
+        match prior.remove(&key) {
+            None => added.push(origin),
+            Some(previous) if previous != origin => changed.push(origin),
+            Some(_) => {}
+        }
+    }
+    let removed = prior.into_values().collect::<Vec<_>>();
+    (comparison_is_partial || !added.is_empty() || !removed.is_empty() || !changed.is_empty())
+        .then_some(SharedOriginChanges {
+            added,
+            removed,
+            changed,
+            comparison_is_partial,
+        })
+}
+
 async fn scoped(pool: &PgPool, w: Uuid) -> Result<Transaction<'_, Postgres>, RevisionError> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
@@ -61,6 +120,15 @@ pub async fn explain(
     let added_context_count:i64=sqlx::query_scalar("SELECT count(*) FROM(SELECT contribution_id FROM niccolo.situation_revision_contributions WHERE workspace_id=$1 AND situation_id=$2 AND revision=$4 EXCEPT SELECT contribution_id FROM niccolo.situation_revision_contributions WHERE workspace_id=$1 AND situation_id=$2 AND revision=$3)x").bind(scope.workspace).bind(scope.situation).bind(prev_rev).bind(new_rev).fetch_one(&mut *tx).await?;
     let removed_context_count:i64=sqlx::query_scalar("SELECT count(*) FROM(SELECT contribution_id FROM niccolo.situation_revision_contributions WHERE workspace_id=$1 AND situation_id=$2 AND revision=$3 EXCEPT SELECT contribution_id FROM niccolo.situation_revision_contributions WHERE workspace_id=$1 AND situation_id=$2 AND revision=$4)x").bind(scope.workspace).bind(scope.situation).bind(prev_rev).bind(new_rev).fetch_one(&mut *tx).await?;
     let(retained,refined,reversed,dropped,split,merged):(i64,i64,i64,i64,i64,i64)=sqlx::query_as("SELECT count(*) FILTER(WHERE relation='RETAINED'),count(*) FILTER(WHERE relation='REFINED'),count(*) FILTER(WHERE relation='REVERSED'),count(*) FILTER(WHERE relation='DROPPED'),count(*) FILTER(WHERE relation='SPLIT'),count(*) FILTER(WHERE relation='MERGED') FROM niccolo.situation_analysis_claim_lineage WHERE workspace_id=$1 AND situation_id=$2 AND prior_analysis_id=$3 AND new_analysis_id=$4").bind(scope.workspace).bind(scope.situation).bind(prior).bind(scope.analysis).fetch_one(&mut *tx).await?;
+    let prior_basis = analysis_workbench_support::read_in(
+        &mut tx,
+        AnalysisScope {
+            analysis: prior,
+            ..scope
+        },
+    )
+    .await?;
+    let current_basis = analysis_workbench_support::read_in(&mut tx, scope).await?;
     tx.commit().await?;
     let c = analysis_compare::compare_direct_reanalysis(
         pool,
@@ -80,6 +148,7 @@ pub async fn explain(
         removed_source_count,
         added_context_count,
         removed_context_count,
+        shared_origin_changes: origin_changes(prior_basis, current_basis),
         retained,
         refined,
         reversed,
@@ -91,4 +160,48 @@ pub async fn explain(
         unlinked_claims_are_inferred_change: false,
         input_change_proves_causal_reason_for_output_change: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        analysis_workbench_support::FrozenOriginDerivation, epistemic_workbench::GroundingRouteRef,
+    };
+
+    #[test]
+    fn compares_origin_keys_and_reports_incomplete_frozen_support() {
+        let origin = |source, route| FrozenSharedOrigin {
+            conclusion_object_id: Uuid::from_u128(1),
+            source_artifact_id: Uuid::from_u128(2),
+            source_representation_id: Uuid::from_u128(source),
+            source_artifact_label: "Interview".into(),
+            source_scope_locator: "Answer".into(),
+            derivations: vec![FrozenOriginDerivation {
+                relationship_id: Uuid::from_u128(3),
+                via_relationship_id: None,
+                routes: vec![GroundingRouteRef {
+                    argument_id: Uuid::from_u128(4),
+                    grounding_set_id: Uuid::from_u128(route),
+                }],
+            }],
+        };
+        let basis = |origins, truncated| {
+            Some(Basis {
+                routes: Vec::new(),
+                truncated,
+                shared_artifact_origins: origins,
+                shared_artifact_origins_truncated: false,
+            })
+        };
+        let unchanged = origin(5, 6);
+        let prior = basis(vec![unchanged.clone(), origin(7, 8), origin(9, 10)], false);
+        let current = basis(vec![unchanged, origin(7, 11), origin(12, 13)], true);
+        let changes = origin_changes(prior, current).unwrap();
+        assert_eq!(changes.added, vec![origin(12, 13)]);
+        assert_eq!(changes.removed, vec![origin(9, 10)]);
+        assert_eq!(changes.changed, vec![origin(7, 11)]);
+        assert!(changes.comparison_is_partial);
+        assert!(origin_changes(None, None).is_none());
+    }
 }
