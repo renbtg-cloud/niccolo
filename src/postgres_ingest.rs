@@ -231,7 +231,8 @@ pub async fn ingest_source_with_operational_id(
         .bind(raw)
         .execute(&mut *tx)
         .await?
-        .rows_affected() == 1;
+        .rows_affected()
+            == 1;
         if !payload_inserted
             && stored_original_matches(&mut tx, workspace, document_id, raw).await? != Some(true)
         {
@@ -306,7 +307,10 @@ async fn write_fragments(
     let mut speakers = Vec::with_capacity(count);
     for fragment in &parsed.fragments {
         ids.push(Uuid::new_v4());
-        locators.push(format!("{locator}#bytes={}-{}", fragment.byte_start, fragment.byte_end));
+        locators.push(format!(
+            "{locator}#bytes={}-{}",
+            fragment.byte_start, fragment.byte_end
+        ));
         contents.push(fragment.content.as_str());
         ordinals.push(fragment.ordinal);
         starts.push(fragment.byte_start);
@@ -363,17 +367,20 @@ async fn verify_replay(
     .await?;
     let matches = |candidate: &ParsedSource| {
         stored.len() == candidate.fragments.len()
-            && stored.iter().zip(&candidate.fragments).all(|(row, expected)| {
-                let (ordinal, _, start, end, speaker, content) = row;
-                (*ordinal, *start, *end, speaker.as_str(), content.as_str())
-                    == (
-                        expected.ordinal,
-                        expected.byte_start,
-                        expected.byte_end,
-                        expected.speaker_label.as_str(),
-                        expected.content.as_str(),
-                    )
-            })
+            && stored
+                .iter()
+                .zip(&candidate.fragments)
+                .all(|(row, expected)| {
+                    let (ordinal, _, start, end, speaker, content) = row;
+                    (*ordinal, *start, *end, speaker.as_str(), content.as_str())
+                        == (
+                            expected.ordinal,
+                            expected.byte_start,
+                            expected.byte_end,
+                            expected.speaker_label.as_str(),
+                            expected.content.as_str(),
+                        )
+                })
     };
     if !matches(parsed)
         && !parse_source_for_replay(format, raw).is_ok_and(|legacy| matches(&legacy))

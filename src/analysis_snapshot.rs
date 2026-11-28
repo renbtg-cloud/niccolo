@@ -1,7 +1,6 @@
 //! Immutable binding between a requested analysis and the exact Situation revision it may use.
 use crate::{
-    analysis_workbench_support,
-    purpose_history,
+    analysis_workbench_support, purpose_history,
     situation_store::{self, SituationSnapshot},
 };
 use sqlx::{PgPool, Postgres, Transaction};

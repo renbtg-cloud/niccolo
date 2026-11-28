@@ -454,7 +454,15 @@ pub async fn fail_claimed(
     if owner.trim().is_empty() || owner.len() > 128 {
         return Err(BffOperationError::Invalid);
     }
-    fail_with_owner(pool, scope, expected_version, actor, (code, message), Some(owner)).await
+    fail_with_owner(
+        pool,
+        scope,
+        expected_version,
+        actor,
+        (code, message),
+        Some(owner),
+    )
+    .await
 }
 
 async fn fail_with_owner(

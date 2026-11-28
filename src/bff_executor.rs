@@ -32,7 +32,13 @@ async fn mark_failed_best_effort(
         && !current.terminal
     {
         let _ = bff_operations::fail_claimed(
-            pool, scope, current.state_version, actor, lease_owner, code, message,
+            pool,
+            scope,
+            current.state_version,
+            actor,
+            lease_owner,
+            code,
+            message,
         )
         .await;
     }

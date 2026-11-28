@@ -172,7 +172,9 @@ pub async fn view(pool: &PgPool, s: OperationScope) -> Result<BudgetView, Budget
     .bind(s.operation)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((input, remaining_deadline_ms, used_invocations, used_total_tokens, missing_usage)) = row else {
+    let Some((input, remaining_deadline_ms, used_invocations, used_total_tokens, missing_usage)) =
+        row
+    else {
         return Err(BudgetError::Missing);
     };
     let input: Value = serde_json::from_str(&input).map_err(|_| BudgetError::Invalid)?;

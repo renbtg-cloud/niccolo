@@ -27,8 +27,8 @@ use crate::discovery;
 use crate::epistemic_input_draft;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
-use crate::epistemic_workbench::{detail_exposure, public_prominence, route_use};
 use crate::epistemic_workbench::{self, WorkbenchError};
+use crate::epistemic_workbench::{detail_exposure, public_prominence, route_use};
 use crate::epistemic_workbench_prose;
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
@@ -711,12 +711,14 @@ impl From<ArtifactError> for ApiError {
             ArtifactError::Invalid => Self(StatusCode::BAD_REQUEST, "invalid artifact metadata"),
             ArtifactError::Conflict => Self(StatusCode::CONFLICT, "artifact identity conflict"),
             ArtifactError::Invisible => Self(StatusCode::NOT_FOUND, "artifact unavailable"),
-            ArtifactError::Limit => {
-                Self(StatusCode::UNPROCESSABLE_ENTITY, "artifact view exceeds MVP limit")
-            }
-            ArtifactError::Privileged | ArtifactError::Database(_) => {
-                Self(StatusCode::INTERNAL_SERVER_ERROR, "artifact registry unavailable")
-            }
+            ArtifactError::Limit => Self(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "artifact view exceeds MVP limit",
+            ),
+            ArtifactError::Privileged | ArtifactError::Database(_) => Self(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "artifact registry unavailable",
+            ),
         }
     }
 }
@@ -1034,7 +1036,11 @@ async fn record_artifact_storage_reference(
             "locator_was_dereferenced":false,
             "access_status_is_human_declared":true
         }),
-        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
@@ -1073,7 +1079,11 @@ async fn record_artifact_representation(
             "artifact_was_parsed":false,
             "representation_establishes_truth":false
         }),
-        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
@@ -1108,7 +1118,11 @@ async fn record_artifact_relationship(
             "replayed":replayed,
             "relationship_is_verified":false
         }),
-        if replayed { StatusCode::OK } else { StatusCode::CREATED },
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
     ))
 }
 
@@ -1131,11 +1145,15 @@ async fn record_representation_transfer(
     Json(input): Json<artifacts::representation_transfer::Input>,
 ) -> Result<Response, ApiError> {
     let actor = guard(&state, &headers, workspace, Capability::Write).await?;
-    let (result, created) =
-        artifacts::representation_transfer::record(
-            &state.pool, workspace, situation, transfer, actor, input,
-        )
-        .await?;
+    let (result, created) = artifacts::representation_transfer::record(
+        &state.pool,
+        workspace,
+        situation,
+        transfer,
+        actor,
+        input,
+    )
+    .await?;
     Ok(no_store(
         json!({"transfer": result, "replayed": !created}),
         if created {
@@ -3683,19 +3701,27 @@ async fn propose_expert_input_draft(
     Json(input): Json<ExpertInputDraftRequest>,
 ) -> Result<Response, ApiError> {
     let investigator = guard(&state, &headers, workspace, Capability::Write).await?;
-    let request = epistemic_input_draft::request(&input.text)
-        .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid investigator text"))?;
+    let request = epistemic_input_draft::request(&input.text).ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "invalid investigator text",
+    ))?;
     let snapshot = situation_store::get_snapshot(&state.pool, workspace, situation, None).await?;
     let response = invoke_workbench_model(&state, &request).await?;
-    let draft = epistemic_input_draft::validate(&input.text, response.value)
-        .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned an invalid draft"))?;
+    let draft = epistemic_input_draft::validate(&input.text, response.value).ok_or(ApiError(
+        StatusCode::BAD_GATEWAY,
+        "model returned an invalid draft",
+    ))?;
     let record = epistemic_input_draft::DraftRecord {
         draft_id: Uuid::new_v4(),
         situation_revision: snapshot.revision,
         requested_by: investigator,
         input_text: input.text,
-        provider: response.effective_provider.unwrap_or_else(|| state.model.provider().to_owned()),
-        model: response.effective_model.unwrap_or_else(|| state.model.model().to_owned()),
+        provider: response
+            .effective_provider
+            .unwrap_or_else(|| state.model.provider().to_owned()),
+        model: response
+            .effective_model
+            .unwrap_or_else(|| state.model.model().to_owned()),
         draft,
         adoption: None,
     };
@@ -3713,15 +3739,18 @@ async fn invoke_workbench_model(
             "reasoning model not configured",
         ));
     }
-    tokio::time::timeout(std::time::Duration::from_secs(120), state.model.invoke(request))
-        .await
-        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "model request timed out"))?
-        .map_err(|error| match error {
-            crate::model_adapter::ModelError::Timeout => {
-                ApiError(StatusCode::GATEWAY_TIMEOUT, "model request timed out")
-            }
-            _ => ApiError(StatusCode::BAD_GATEWAY, "model request failed"),
-        })
+    tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        state.model.invoke(request),
+    )
+    .await
+    .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "model request timed out"))?
+    .map_err(|error| match error {
+        crate::model_adapter::ModelError::Timeout => {
+            ApiError(StatusCode::GATEWAY_TIMEOUT, "model request timed out")
+        }
+        _ => ApiError(StatusCode::BAD_GATEWAY, "model request failed"),
+    })
 }
 
 async fn describe_expert_workbench_selection(
@@ -3733,18 +3762,29 @@ async fn describe_expert_workbench_selection(
     guard(&state, &headers, workspace, Capability::Write).await?;
     let snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
     let (request, references) = epistemic_workbench_prose::prepare(
-        &snapshot, &selection, epistemic_workbench_prose::GraphModelTask::Describe,
+        &snapshot,
+        &selection,
+        epistemic_workbench_prose::GraphModelTask::Describe,
     )
-        .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid or oversized Workbench selection"))?;
+    .ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "invalid or oversized Workbench selection",
+    ))?;
     let response = invoke_workbench_model(&state, &request).await?;
-    let prose = epistemic_workbench_prose::validate(response.value, &references)
-        .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned an invalid description"))?;
-    Ok(no_store(json!({
-        "prose":prose,
-        "basis":references,
-        "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
-        "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),
-    }), StatusCode::OK))
+    let prose =
+        epistemic_workbench_prose::validate(response.value, &references).ok_or(ApiError(
+            StatusCode::BAD_GATEWAY,
+            "model returned an invalid description",
+        ))?;
+    Ok(no_store(
+        json!({
+            "prose":prose,
+            "basis":references,
+            "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
+            "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn suggest_expert_workbench_investigation(
@@ -3756,18 +3796,29 @@ async fn suggest_expert_workbench_investigation(
     guard(&state, &headers, workspace, Capability::Write).await?;
     let snapshot = epistemic_workbench::snapshot(&state.pool, workspace, situation).await?;
     let (request, references) = epistemic_workbench_prose::prepare(
-        &snapshot, &selection, epistemic_workbench_prose::GraphModelTask::SuggestInvestigation,
+        &snapshot,
+        &selection,
+        epistemic_workbench_prose::GraphModelTask::SuggestInvestigation,
     )
-    .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid or oversized Workbench selection"))?;
+    .ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "invalid or oversized Workbench selection",
+    ))?;
     let response = invoke_workbench_model(&state, &request).await?;
     let result = epistemic_workbench_prose::validate_suggestions(response.value, &references)
-        .ok_or(ApiError(StatusCode::BAD_GATEWAY, "model returned invalid suggestions"))?;
-    Ok(no_store(json!({
-        "suggestions":result.suggestions,
-        "basis":references,
-        "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
-        "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),
-    }), StatusCode::OK))
+        .ok_or(ApiError(
+            StatusCode::BAD_GATEWAY,
+            "model returned invalid suggestions",
+        ))?;
+    Ok(no_store(
+        json!({
+            "suggestions":result.suggestions,
+            "basis":references,
+            "provider":response.effective_provider.as_deref().unwrap_or_else(|| state.model.provider()),
+            "model":response.effective_model.as_deref().unwrap_or_else(|| state.model.model()),
+        }),
+        StatusCode::OK,
+    ))
 }
 
 async fn get_expert_input_draft(
@@ -3776,8 +3827,8 @@ async fn get_expert_input_draft(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let investigator = guard(&state, &headers, workspace, Capability::Read).await?;
-    let record = epistemic_input_draft::read(&state.pool, workspace, situation, draft, investigator)
-        .await?;
+    let record =
+        epistemic_input_draft::read(&state.pool, workspace, situation, draft, investigator).await?;
     Ok(no_store(json!(record), StatusCode::OK))
 }
 
@@ -3788,10 +3839,20 @@ async fn adopt_expert_input_draft(
     Json(reviewed): Json<epistemic_input_draft::InputDraft>,
 ) -> Result<Response, ApiError> {
     let investigator = guard(&state, &headers, workspace, Capability::Write).await?;
-    let adoption =
-        epistemic_input_draft::adopt(&state.pool, workspace, situation, draft, investigator, reviewed)
-            .await?;
-    let status = if adoption.replayed { StatusCode::OK } else { StatusCode::CREATED };
+    let adoption = epistemic_input_draft::adopt(
+        &state.pool,
+        workspace,
+        situation,
+        draft,
+        investigator,
+        reviewed,
+    )
+    .await?;
+    let status = if adoption.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     Ok(no_store(json!(adoption), status))
 }
 
@@ -3844,8 +3905,15 @@ async fn record_public_prominence(
     let author = guard(&state, &headers, workspace, Capability::Write).await?;
     let created =
         public_prominence::record(&state.pool, workspace, situation, author, record, input).await?;
-    let status = if created { StatusCode::CREATED } else { StatusCode::OK };
-    Ok(no_store(json!({"record_id": record, "replayed": !created}), status))
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok(no_store(
+        json!({"record_id": record, "replayed": !created}),
+        status,
+    ))
 }
 
 async fn review_detail_exposure(
@@ -3870,7 +3938,11 @@ async fn record_detail_route_use(
         route_use::record(&state.pool, workspace, situation, event, author, input).await?;
     Ok(no_store(
         json!({"decision": decision, "replayed": !created}),
-        if created { StatusCode::CREATED } else { StatusCode::OK },
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
     ))
 }
 
@@ -3881,12 +3953,22 @@ async fn record_artifact_dependence_route_use(
     Json(input): Json<route_use::ArtifactDependenceInput>,
 ) -> Result<Response, ApiError> {
     let author = guard(&state, &headers, workspace, Capability::Write).await?;
-    let (decision, created) =
-        route_use::record_artifact_dependence(&state.pool, workspace, situation, event, author, input)
-            .await?;
+    let (decision, created) = route_use::record_artifact_dependence(
+        &state.pool,
+        workspace,
+        situation,
+        event,
+        author,
+        input,
+    )
+    .await?;
     Ok(no_store(
         json!({"decision": decision, "replayed": !created}),
-        if created { StatusCode::CREATED } else { StatusCode::OK },
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
     ))
 }
 
@@ -3958,9 +4040,20 @@ async fn link_expert_artifact_provenance(
 ) -> Result<Response, ApiError> {
     let author = guard(&state, &headers, workspace, Capability::Write).await?;
     let inserted = epistemic_workbench::link_artifact_provenance(
-        &state.pool, workspace, situation, author, object, representation, &input.rationale,
-    ).await?;
-    let status = if inserted { StatusCode::CREATED } else { StatusCode::OK };
+        &state.pool,
+        workspace,
+        situation,
+        author,
+        object,
+        representation,
+        &input.rationale,
+    )
+    .await?;
+    let status = if inserted {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
     Ok(no_store(json!({"replayed":!inserted}), status))
 }
 
@@ -4154,8 +4247,23 @@ async fn record_expert_question_decision(
     Json(input): Json<epistemic_workbench::inquiry_decision::InquiryDecisionInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::inquiry_decision::record(&state.pool,workspace,situation,recorder,decision,input).await?;
-    Ok(no_store(json!({"decision":view}),if view.replayed {StatusCode::OK} else {StatusCode::CREATED}))
+    let view = epistemic_workbench::inquiry_decision::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        decision,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"decision":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_decision_review(
@@ -4165,8 +4273,24 @@ async fn record_expert_decision_review(
     Json(input): Json<epistemic_workbench::inquiry_decision_review::DecisionBasisReviewInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::inquiry_decision_review::record(&state.pool, workspace, situation, recorder, decision, event, input).await?;
-    Ok(no_store(json!({"review":view}), if view.replayed {StatusCode::OK} else {StatusCode::CREATED}))
+    let view = epistemic_workbench::inquiry_decision_review::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        decision,
+        event,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"review":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_action_recommendation(
@@ -4177,9 +4301,22 @@ async fn record_expert_action_recommendation(
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
     let view = epistemic_workbench::action_recommendation::record(
-        &state.pool, workspace, situation, recorder, recommendation, input,
-    ).await?;
-    Ok(no_store(json!({"recommendation":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        recommendation,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"recommendation":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_action_decision(
@@ -4189,8 +4326,23 @@ async fn record_expert_action_decision(
     Json(input): Json<epistemic_workbench::action_decision::DecisionInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::action_decision::record(&state.pool, workspace, situation, recorder, decision, input).await?;
-    Ok(no_store(json!({"decision":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+    let view = epistemic_workbench::action_decision::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        decision,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"decision":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_intervention(
@@ -4200,8 +4352,23 @@ async fn record_expert_intervention(
     Json(input): Json<epistemic_workbench::intervention::InterventionInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::intervention::record(&state.pool, workspace, situation, recorder, record, input).await?;
-    Ok(no_store(json!({"record":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+    let view = epistemic_workbench::intervention::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        record,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"record":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_intervention_assessment(
@@ -4211,8 +4378,23 @@ async fn record_expert_intervention_assessment(
     Json(input): Json<epistemic_workbench::intervention::CausalAssessmentInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::intervention::assess(&state.pool, workspace, situation, recorder, assessment, input).await?;
-    Ok(no_store(json!({"assessment":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+    let view = epistemic_workbench::intervention::assess(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        assessment,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"assessment":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_intervention_review(
@@ -4222,8 +4404,23 @@ async fn record_expert_intervention_review(
     Json(input): Json<epistemic_workbench::intervention::CausalReviewInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::intervention::review(&state.pool, workspace, situation, recorder, review, input).await?;
-    Ok(no_store(json!({"review":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+    let view = epistemic_workbench::intervention::review(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        review,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"review":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_normative_assessment(
@@ -4233,8 +4430,23 @@ async fn record_expert_normative_assessment(
     Json(input): Json<epistemic_workbench::normative_assessment::NormativeInput>,
 ) -> Result<Response, ApiError> {
     let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
-    let view = epistemic_workbench::normative_assessment::record(&state.pool, workspace, situation, recorder, event, input).await?;
-    Ok(no_store(json!({"assessment":view}), if view.replayed { StatusCode::OK } else { StatusCode::CREATED }))
+    let view = epistemic_workbench::normative_assessment::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"assessment":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_actor_state(
@@ -4243,9 +4455,24 @@ async fn record_expert_actor_state(
     headers: HeaderMap,
     Json(input): Json<epistemic_workbench::actor_state::StateInput>,
 ) -> Result<Response, ApiError> {
-    let recorder=guard(&state,&headers,workspace,Capability::Write).await?;
-    let view=epistemic_workbench::actor_state::record(&state.pool,workspace,situation,recorder,event,input).await?;
-    Ok(no_store(json!({"state":view}),if view.replayed {StatusCode::OK} else {StatusCode::CREATED}))
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::actor_state::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"state":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_actor_act(
@@ -4254,9 +4481,24 @@ async fn record_expert_actor_act(
     headers: HeaderMap,
     Json(input): Json<epistemic_workbench::actor_act::ActInput>,
 ) -> Result<Response, ApiError> {
-    let recorder=guard(&state,&headers,workspace,Capability::Write).await?;
-    let view=epistemic_workbench::actor_act::record(&state.pool,workspace,situation,recorder,event,input).await?;
-    Ok(no_store(json!({"act":view}),if view.replayed {StatusCode::OK} else {StatusCode::CREATED}))
+    let recorder = guard(&state, &headers, workspace, Capability::Write).await?;
+    let view = epistemic_workbench::actor_act::record(
+        &state.pool,
+        workspace,
+        situation,
+        recorder,
+        event,
+        input,
+    )
+    .await?;
+    Ok(no_store(
+        json!({"act":view}),
+        if view.replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+    ))
 }
 
 async fn record_expert_question_response(
@@ -5155,13 +5397,7 @@ async fn list_source_requests(
 
 async fn record_source_request_event(
     State(state): State<AppState>,
-    Path((workspace, situation, analysis, request, event)): Path<(
-        Uuid,
-        Uuid,
-        Uuid,
-        Uuid,
-        Uuid,
-    )>,
+    Path((workspace, situation, analysis, request, event)): Path<(Uuid, Uuid, Uuid, Uuid, Uuid)>,
     headers: HeaderMap,
     Json(body): Json<SourceRequestEventRequest>,
 ) -> Result<Response, ApiError> {
@@ -5401,10 +5637,16 @@ async fn submit_bff(
     if request.kind == "AGENTIC_ANALYSIS" {
         operation_budget::configured(&request.input)
             .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid operation model budget"))?;
-        if request.input.get("human_intent").is_some_and(|intent| !intent.is_null())
+        if request
+            .input
+            .get("human_intent")
+            .is_some_and(|intent| !intent.is_null())
             && crate::agentic_policy::intent_from_operation_input(&request.input).is_none()
         {
-            return Err(ApiError(StatusCode::BAD_REQUEST, "invalid operation human intent"));
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "invalid operation human intent",
+            ));
         }
     }
     bff_operations::submit(
@@ -5428,7 +5670,10 @@ async fn submit_bff(
     .await
     .map_err(|error| match &error {
         BffOperationError::Database(sqlx::Error::Database(database))
-            if matches!(database.code().as_deref(), Some("22007" | "22008" | "22009")) =>
+            if matches!(
+                database.code().as_deref(),
+                Some("22007" | "22008" | "22009")
+            ) =>
         {
             ApiError(StatusCode::BAD_REQUEST, "invalid operation deadline")
         }
@@ -5672,22 +5917,23 @@ async fn plan_agentic_operation(
             "agentic operation requires analysis",
         ));
     }
-    let (view, created) = agentic_runtime::ensure_default_plan_with_status(&state.pool, scope, actor)
-        .await
-        .map_err(|error| {
-            if matches!(
-                error,
-                agentic_runtime::RuntimeError::Controller(
-                    agentic_controller::ControllerError::StateConflict
+    let (view, created) =
+        agentic_runtime::ensure_default_plan_with_status(&state.pool, scope, actor)
+            .await
+            .map_err(|error| {
+                if matches!(
+                    error,
+                    agentic_runtime::RuntimeError::Controller(
+                        agentic_controller::ControllerError::StateConflict
+                    )
+                ) {
+                    return ApiError(StatusCode::CONFLICT, "operation cannot accept a new plan");
+                }
+                ApiError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "agentic planning unavailable",
                 )
-            ) {
-                return ApiError(StatusCode::CONFLICT, "operation cannot accept a new plan");
-            }
-            ApiError(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "agentic planning unavailable",
-            )
-        })?;
+            })?;
     let status = if created {
         StatusCode::CREATED
     } else {

@@ -336,10 +336,9 @@ async fn operation_budget_reports_actual_postgres_deadline_and_expiry() {
 async fn postgres_infinite_deadlines_keep_their_ordering_semantics() {
     let (admin, app) = pools().await;
     let s = seed(&admin).await;
-    for (deadline, remaining, within_deadline) in [
-        ("infinity", None, true),
-        ("-infinity", Some(0), false),
-    ] {
+    for (deadline, remaining, within_deadline) in
+        [("infinity", None, true), ("-infinity", Some(0), false)]
+    {
         let scope = op(s, Uuid::new_v4());
         let mut request = input(s, "BUILD_BRIEFING", None);
         request.deadline_at = Some(deadline.into());
@@ -360,27 +359,62 @@ async fn only_the_current_lease_owner_can_record_a_worker_failure() {
     let queued = bff_operations::submit(&app, scope, &input(s, "BUILD_BRIEFING", None))
         .await
         .unwrap();
-    assert!(bff_operations::claim_execution(&app, scope, "old", 60_000).await.unwrap());
+    assert!(
+        bff_operations::claim_execution(&app, scope, "old", 60_000)
+            .await
+            .unwrap()
+    );
     let running = bff_operations::start(&app, scope, queued.state_version, s.principal)
         .await
         .unwrap();
-    assert!(bff_operations::release_execution(&app, scope, "old").await.unwrap());
-    assert!(bff_operations::claim_execution(&app, scope, "new", 60_000).await.unwrap());
+    assert!(
+        bff_operations::release_execution(&app, scope, "old")
+            .await
+            .unwrap()
+    );
+    assert!(
+        bff_operations::claim_execution(&app, scope, "new", 60_000)
+            .await
+            .unwrap()
+    );
     assert!(matches!(
         bff_operations::fail_claimed(
-            &app, scope, running.state_version, s.principal, "old", "OLD", "old worker failed",
-        ).await,
+            &app,
+            scope,
+            running.state_version,
+            s.principal,
+            "old",
+            "OLD",
+            "old worker failed",
+        )
+        .await,
         Err(bff_operations::BffOperationError::StateConflict)
     ));
-    assert_eq!(bff_operations::get(&app, scope).await.unwrap().state, "RUNNING");
+    assert_eq!(
+        bff_operations::get(&app, scope).await.unwrap().state,
+        "RUNNING"
+    );
     let failed = bff_operations::fail_claimed(
-        &app, scope, running.state_version, s.principal, "new", "NEW", "current worker failed",
+        &app,
+        scope,
+        running.state_version,
+        s.principal,
+        "new",
+        "NEW",
+        "current worker failed",
     )
     .await
     .unwrap();
     assert_eq!(failed.state, "FAILED");
     let events = bff_operations::events(&app, scope, 0, 200).await.unwrap();
-    assert_eq!(events.events.iter().filter(|event| event.kind == "FAILED").count(), 1);
+    assert_eq!(
+        events
+            .events
+            .iter()
+            .filter(|event| event.kind == "FAILED")
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]
