@@ -125,6 +125,8 @@ A checagem é somente leitura. Ela percorre as dependências explícitas de prem
 
 Na consulta de reconhecibilidade do Workbench, um relato de exposição permite abrir **Review a testimony detail**. O investigador seleciona o trecho do depoimento, a possível origem e o intervalo do depoimento. O resultado mostra a condição temporal e aponta para as conclusões das rotas atingidas no grafo.
 
+Na mesma tela, **Record a source that states which came first** registra a ordem declarada no trecho selecionado. **Basis for the order of events** mostra de onde veio cada direção e quando o relato ficou disponível para a investigação.
+
 ```bash
 cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
   alder_bend_reviews_only_the_detail_reachable_from_prior_exposure

@@ -80,6 +80,9 @@ export class NiccoloClient {
   reviewDetailExposure(body) {
     return this.request('POST', `${situationPath(this.config)}/epistemic/detail-exposure-review`, { body });
   }
+  recordExposureOrder(reportId, body) {
+    return this.request('POST', `${situationPath(this.config)}/epistemic/detail-exposure-review/order-reports/${reportId}`, { body });
+  }
   recordDetailExposureRouteUse(eventId, body) {
     return this.request('POST', `${situationPath(this.config)}/epistemic/detail-exposure-review/route-use/${eventId}`, { body });
   }

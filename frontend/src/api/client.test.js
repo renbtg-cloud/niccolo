@@ -147,6 +147,21 @@ it('asks the backend to review only the selected detail and exposure', async () 
   expect((await client.recordDetailExposureRouteUse('event', decision)).value.decision.event_id).toBe('event');
 });
 
+it('records an attributed order without supplying clock times', async () => {
+  const body = {
+    exposure_record_id: 'viewing', testimony_representation_id: 'testimony',
+    candidate_representation_id: 'photo', direction: 'EXPOSURE_BEFORE_TESTIMONY',
+    source: {object_id: 'order-proposition', representation_id: 'follow-up'}, available_on: '2026-11-24',
+  };
+  const client = new NiccoloClient(c, async (url, options) => {
+    expect(url).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/detail-exposure-review/order-reports/order`);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual(body);
+    return response(201, {report_id: 'order'});
+  });
+  expect((await client.recordExposureOrder('order', body)).value.report_id).toBe('order');
+});
+
 it('passes cancellation through a review read and rejects an aborted body', async () => {
   const controller = new AbortController();
   const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (_, options) => {

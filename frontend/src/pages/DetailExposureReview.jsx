@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { SupportRouteDecision } from './SupportRouteDecision.jsx';
+import { ExposureOrderReportForm, ExposureOrderReports } from './ExposureOrderReports.jsx';
 
 const dispositionLabels = {
   REVIEW_CANDIDATE: 'The earlier reported exposure makes this detail worth reviewing.',
   EXPOSURE_AFTER_TESTIMONY: 'This reported exposure follows the testimony.',
-  ORDER_UNCERTAIN: 'The reported dates leave the order uncertain.',
+  ORDER_UNCERTAIN: 'The available information leaves the order uncertain.',
+  ORDER_CONFLICT: 'The available sources disagree about which came first.',
   EXPOSURE_NOT_AVAILABLE_AT_CUTOFF: 'The exposure report was unavailable at the chosen cutoff.',
 };
 
@@ -15,7 +17,7 @@ export function DetailExposureResult({ result, nodes, children }) {
   return <section aria-label="Exposure review result">
     <p><strong>{dispositionLabels[result.disposition]}</strong></p>
     <p>{labels.get(result.testimony_detail.object_id) ?? result.testimony_detail.object_id}</p>
-    {result.needs_finer_timing && <p>Look for a more precise date or time for the exposure or testimony.</p>}
+    {result.needs_finer_timing && <p>Look for a source that establishes which came first.</p>}
     {routes.length > 0 && <>
       <h5>Routes that depend on this detail</h5>
       <ul>{routes.map((route) => <li key={`${route.argument_id}:${route.grounding_set_id}`}>
@@ -34,12 +36,17 @@ export function DetailExposureReview({
   onRouteChanged, onClose,
 }) {
   const panel = useRef(null);
+  const currentComparison = useRef(null);
   const [draft, setDraft] = useState({
     testimony_detail: '', candidate_source: '', testimony_from: '', testimony_through: '',
     known_through: knownThrough,
   });
   const review = useMutation({ mutationFn: (body) => client.reviewDetailExposure(body) });
-  useEffect(() => panel.current?.focus(), []);
+  const [savedOrderDate, setSavedOrderDate] = useState('');
+  useEffect(() => {
+    panel.current?.focus();
+    return () => { currentComparison.current = null; };
+  }, []);
   const labels = new Map(nodes.map((node) => [node.object_id, node.text]));
   const sources = new Map(provenance.map((link) => [`${link.object_id}:${link.representation_id}`, link]));
   const testimony = sources.get(draft.testimony_detail);
@@ -48,7 +55,9 @@ export function DetailExposureReview({
     && draft.testimony_from && draft.testimony_through && draft.known_through
     && draft.testimony_from <= draft.testimony_through && draft.testimony_through <= draft.known_through;
   function update(field, value) {
+    currentComparison.current = null;
     setDraft({...draft, [field]: value});
+    setSavedOrderDate('');
     review.reset();
   }
   const sourceOptions = [...sources].map(([key, link]) => <option key={key} value={key}>
@@ -64,12 +73,14 @@ export function DetailExposureReview({
     {new Set(provenance.map((link) => link.object_id)).size > 1 ? <form className="human-context" onSubmit={(event) => {
       event.preventDefault();
       if (!ready || review.isPending) return;
-      review.mutate({
+      const input = {
         witness_actor_id: exposure.audience_actor_id, exposure_record_id: exposure.record_id,
         testimony_detail: pair(testimony), candidate_source: pair(candidate),
         testimony_from: draft.testimony_from, testimony_through: draft.testimony_through,
         known_through: draft.known_through,
-      });
+      };
+      currentComparison.current = input;
+      review.mutate(input);
     }}>
       <fieldset disabled={review.isPending}>
         <label>Detail in the testimony<select value={draft.testimony_detail}
@@ -92,10 +103,23 @@ export function DetailExposureReview({
       </fieldset>
     </form> : <p>Link the testimony detail and its candidate origin to source passages first.</p>}
     {review.error && <p role="alert">{review.error.message}</p>}
-    {review.data && <DetailExposureResult result={review.data.value} nodes={nodes}>
-      <DetailExposureRouteDecisions result={review.data.value} input={review.variables} client={client}
-        groundingSets={groundingSets} routeHistory={routeHistory} onSaved={onRouteChanged}/>
-    </DetailExposureResult>}
+    {review.isPending && <p role="status">Checking the order of events…</p>}
+    {savedOrderDate && <p role="status">Order report recorded.
+      {savedOrderDate > draft.known_through && ` It is available from ${savedOrderDate}, after this review's cutoff.`}
+    </p>}
+    {review.data && <>
+      <DetailExposureResult result={review.data.value} nodes={nodes}>
+        <ExposureOrderReports result={review.data.value} provenance={provenance}/>
+        <DetailExposureRouteDecisions result={review.data.value} input={review.variables} client={client}
+          groundingSets={groundingSets} routeHistory={routeHistory} onSaved={onRouteChanged}/>
+      </DetailExposureResult>
+      {review.data.value.exposure && <ExposureOrderReportForm client={client} review={review.variables}
+        sources={sources} sourceOptions={sourceOptions} onSaved={(date, comparison) => {
+          if (currentComparison.current !== comparison) return;
+          setSavedOrderDate(date);
+          review.mutate(comparison);
+        }}/>}
+    </>}
   </section>;
 }
 

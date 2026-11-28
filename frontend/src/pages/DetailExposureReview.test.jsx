@@ -25,7 +25,8 @@ it('renders only the detail and affected route returned by the review', () => {
 
 it.each([
   ['EXPOSURE_AFTER_TESTIMONY', 'follows the testimony'],
-  ['ORDER_UNCERTAIN', 'leave the order uncertain'],
+  ['ORDER_UNCERTAIN', 'leaves the order uncertain'],
+  ['ORDER_CONFLICT', 'disagree about which came first'],
   ['EXPOSURE_NOT_AVAILABLE_AT_CUTOFF', 'unavailable at the chosen cutoff'],
 ])('preserves the backend disposition %s', (disposition, message) => {
   const result = {
@@ -34,7 +35,7 @@ it.each([
   const html = renderToStaticMarkup(<DetailExposureResult result={result} nodes={nodes}/>);
   expect(html).toContain(message);
   expect(html).not.toContain('Routes that depend on this detail');
-  expect(html.includes('more precise date')).toBe(result.needs_finer_timing);
+  expect(html.includes('source that establishes which came first')).toBe(result.needs_finer_timing);
 });
 
 it('allows an explicit use decision only for an affected supporting route', () => {
