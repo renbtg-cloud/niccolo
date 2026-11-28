@@ -206,14 +206,25 @@ pub(super) async fn review_in(
 
     let detail_needs_review = disposition == Disposition::ReviewCandidate;
     let needs_finer_timing = disposition == Disposition::OrderUncertain;
-    let reconsiderable_suspensions = if disposition == Disposition::OrderConflict {
+    let reconsiderable_suspensions = if disposition == Disposition::OrderConflict
+        || (!detail_needs_review && !order_reports.withdrawn.is_empty())
+    {
         let comparison = serde_json::json!({
             "witness_actor_id": input.witness_actor_id,
             "exposure_record_id": input.exposure_record_id,
             "testimony_detail": input.testimony_detail,
             "candidate_source": input.candidate_source,
         });
-        route_use::reconsiderable_suspensions(tx, workspace, situation, &comparison).await?
+        let relevant_withdrawal =
+            (disposition != Disposition::OrderConflict).then_some(input.known_through.as_str());
+        route_use::reconsiderable_suspensions(
+            tx,
+            workspace,
+            situation,
+            &comparison,
+            relevant_withdrawal,
+        )
+        .await?
     } else {
         Vec::new()
     };

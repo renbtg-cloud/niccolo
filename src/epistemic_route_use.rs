@@ -145,6 +145,7 @@ pub(super) async fn reconsiderable_suspensions(
     workspace: Uuid,
     situation: Uuid,
     comparison: &Value,
+    withdrawal_cutoff: Option<&str>,
 ) -> Result<Vec<ReconsiderableSuspension>, WorkbenchError> {
     // A newer use or suspension on a different basis takes precedence over an
     // earlier suspension attributed to the selected sequence.
@@ -158,11 +159,19 @@ pub(super) async fn reconsiderable_suspensions(
            ORDER BY argument_id, grounding_set_id, event_no DESC
          ) latest
          WHERE disposition='SUSPEND' AND (basis->'input') @> $3::text::jsonb
+           AND ($4::text IS NULL OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements(COALESCE(basis->'result'->'order_reports','[]')) original
+             JOIN niccolo.exposure_order_report_withdrawals w
+               ON w.workspace_id=$1 AND w.situation_id=$2
+               AND w.report_id=(original->>'report_id')::uuid
+             WHERE w.available_on <= $4::text::date
+           ))
          ORDER BY argument_id, grounding_set_id",
     )
     .bind(workspace)
     .bind(situation)
     .bind(comparison.to_string())
+    .bind(withdrawal_cutoff)
     .fetch_all(&mut **tx)
     .await?;
     Ok(rows

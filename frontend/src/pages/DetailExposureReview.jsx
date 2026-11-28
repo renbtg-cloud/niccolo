@@ -140,7 +140,7 @@ function sameRoute(left, right) {
 }
 
 export function DetailExposureRouteDecisions({ result, input, client, groundingSets, routeHistory, onSaved }) {
-  const reconsidering = result.disposition === 'ORDER_CONFLICT';
+  const reconsidering = (result.reconsiderable_suspensions?.length ?? 0) > 0;
   if (!result.detail_needs_review && !reconsidering) return null;
   const reviewedRoutes = reconsidering ? (result.reconsiderable_suspensions ?? []) : result.affected_routes;
   const eligible = groundingSets.filter((grounding) => grounding.effect === 'SUPPORTS'

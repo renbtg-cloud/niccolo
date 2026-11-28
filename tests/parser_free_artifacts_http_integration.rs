@@ -1373,7 +1373,7 @@ async fn assert_same_day_exposure_order(
     assert_eq!(withdraw(&case.token, edited).await.0, StatusCode::CONFLICT);
     assert_eq!(compare(review.clone()).await, current);
     review["known_through"] = json!("2026-11-26");
-    let corrected = compare(review).await;
+    let corrected = compare(review.clone()).await;
     assert_eq!(corrected["withdrawable_order_report_ids"], json!([prior]));
     assert_eq!(corrected["disposition"], "REVIEW_CANDIDATE");
     assert_eq!(corrected["order_reports"].as_array().unwrap().len(), 1);
@@ -1389,6 +1389,42 @@ async fn assert_same_day_exposure_order(
         withdrawn["withdrawal"]["recorded_by"],
         withdrawn["recorded_by"]
     );
+
+    let subsequent_suspension = json!({
+        "argument_id": route["argument_id"], "grounding_set_id":hat_route,
+        "disposition":"SUSPEND", "rationale":"Check the remaining report.",
+        "review":review, "expected_review_sha256":corrected["review_sha256"],
+    });
+    let (status, subsequent) = write_choice(subsequent_suspension.clone()).await;
+    assert_eq!(status, StatusCode::CREATED);
+    case.case_request(
+        &format!("epistemic/detail-exposure-review/order-reports/{prior}/withdraw"),
+        Some(json!({"available_on":"2026-11-27","rationale":"The remaining report also cites the wrong interview."})),
+    ).await;
+    review["known_through"] = json!("2026-11-27");
+    let undetermined = compare(review.clone()).await;
+    assert_eq!(undetermined["disposition"], "ORDER_UNCERTAIN");
+    assert_eq!(undetermined["order_reports"], json!([]));
+    let suspension = case_row(
+        &undetermined,
+        "reconsiderable_suspensions",
+        "grounding_set_id",
+        hat_route,
+    );
+    assert_eq!(
+        suspension["suspension_event_id"],
+        subsequent["decision"]["event_id"]
+    );
+    let mut restore = subsequent_suspension;
+    restore["disposition"] = json!("USE");
+    restore["rationale"] =
+        json!("Resume use after withdrawing the report that prompted the suspension.");
+    restore["review"] = review.clone();
+    restore["expected_review_sha256"] = undetermined["review_sha256"].clone();
+    assert_eq!(write_choice(restore).await.0, StatusCode::CREATED);
+    let reopened = compare(review).await;
+    assert_eq!(reopened["disposition"], "ORDER_UNCERTAIN");
+    assert!(reopened.get("reconsiderable_suspensions").is_none());
 }
 
 async fn assert_undated_exposure_order(
