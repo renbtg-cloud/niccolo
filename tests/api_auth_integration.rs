@@ -75,6 +75,51 @@ fn source(w: Uuid, id: Uuid) -> String {
 const CHAT_FRAGMENTS: &[(&str, &str)] = &[("Ana", "source A"), ("Bob", "source B")];
 const CHAT: &[u8] = b"[02/11/2026, 12:00] Ana: source A\n[02/11/2026, 12:01] Bob: source B\n";
 
+fn situation_path(workspace: Uuid, situation: Uuid) -> String {
+    format!("/v1/workspaces/{workspace}/situations/{situation}")
+}
+
+fn json_post(path: &str, token: &str, body: Value) -> Request<Body> {
+    request(
+        "POST",
+        path,
+        Some(token),
+        Some("application/json"),
+        None,
+        body.to_string().as_bytes(),
+    )
+}
+
+fn artifact_metadata(label: &str) -> Value {
+    json!({"artifact_type":"EXTERNAL_RECORD", "label":label})
+}
+
+async fn create_situation(router: &Router, path: &str, token: &str) {
+    let (status, body) = invoke(
+        router.clone(),
+        json_post(path, token, json!({"focus":"Inspect attributed records"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+async fn list_artifact_view(router: &Router, situation: &str, token: &str) -> Value {
+    let (status, body) = invoke(
+        router.clone(),
+        request(
+            "GET",
+            &format!("{situation}/artifacts"),
+            Some(token),
+            None,
+            None,
+            b"",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body
+}
+
 #[tokio::test]
 async fn only_signed_in_members_may_read_workspace() {
     let (admin, app, w, _, token, router) = setup().await;
@@ -117,44 +162,42 @@ async fn only_signed_in_members_may_read_workspace() {
 }
 #[tokio::test]
 async fn read_only_members_cannot_write_but_writers_can_read() {
-    let (admin, app, w, _, _, router) = setup().await;
-    let p = Uuid::new_v4();
-    let read = authz::provision_token(&admin, p, w, true, false, 7)
+    let (admin, app, workspace, _, token, router) = setup().await;
+    let situation = situation_path(workspace, Uuid::new_v4());
+    create_situation(&router, &situation, &token).await;
+    let read = authz::provision_token(&admin, Uuid::new_v4(), workspace, true, false, 7)
         .await
         .unwrap();
     assert!(
-        authz::authorize(&app, &read, w, Capability::Read)
+        authz::authorize(&app, &read, workspace, Capability::Read)
             .await
             .unwrap()
     );
     assert!(
-        !authz::authorize(&app, &read, w, Capability::Write)
+        !authz::authorize(&app, &read, workspace, Capability::Write)
             .await
             .unwrap()
     );
+    let uri = format!("{situation}/artifacts/{}", Uuid::new_v4());
     let (status, _) = invoke(
         router.clone(),
-        request(
-            "POST",
-            &source(w, Uuid::new_v4()),
-            Some(&read),
-            Some("text/plain"),
-            Some("fixture://chat"),
-            CHAT,
-        ),
+        json_post(&uri, &read, artifact_metadata("Proposed record")),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let writer = authz::provision_token(&admin, Uuid::new_v4(), w, false, true, 7)
+    let writer = authz::provision_token(&admin, Uuid::new_v4(), workspace, false, true, 7)
         .await
         .unwrap();
     let (status, _) = invoke(
-        router,
-        request("GET", &graph(w), Some(&writer), None, None, b""),
+        router.clone(),
+        json_post(&uri, &writer, artifact_metadata("Writer's record")),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::CREATED);
+    let view = list_artifact_view(&router, &situation, &writer).await;
+    assert_eq!(view["artifacts"][0]["label"], "Writer's record");
 }
+
 #[tokio::test]
 async fn revocation_expiry_and_disabled_principal_are_enforced() {
     let (admin, app, w, p, token, _) = setup().await;
@@ -231,129 +274,115 @@ async fn service_role_cannot_query_auth_tables_or_modify_access() {
     );
 }
 #[tokio::test]
-async fn rejected_source_explains_the_format_limit_without_echoing_evidence() {
+async fn retired_upload_rejects_email_bytes_without_echoing_or_storing_them() {
     let (admin, _, workspace, _, token, router) = setup().await;
-    let document = Uuid::new_v4();
     let (status, response) = invoke(
         router,
         request(
-            "POST", &source(workspace, document), Some(&token), Some("message/rfc822"),
-            Some("report.eml"), b"From: Ana\nContent-Type: text/html\n\n<p>Private evidence</p>",
+            "POST",
+            &source(workspace, Uuid::new_v4()),
+            Some(&token),
+            Some("message/rfc822"),
+            Some("report.eml"),
+            b"From: Ana\nContent-Type: text/html\n\n<p>Private evidence</p>",
         ),
-    ).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(response["error"], "non-plain-text MIME");
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1",
-    ).bind(workspace).fetch_one(&admin).await.unwrap();
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!response.to_string().contains("Private evidence"));
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1")
+            .bind(workspace)
+            .fetch_one(&admin)
+            .await
+            .unwrap();
     assert_eq!(count, 0);
 }
 
 #[tokio::test]
-async fn source_locator_can_preserve_utf8_file_names() {
-    let (admin, _, workspace, _, token, router) = setup().await;
-    let id = Uuid::new_v4();
-    let path = source(workspace, id);
-    let encoded = "UmVjZXDDp8OjbyDigJQgcmV1bmnDo28udHh0";
-    let upload = |encoded, plain| {
-        let mut req = request("POST", &path, Some(&token), Some("text/plain"), plain, CHAT);
-        req.headers_mut().insert("x-source-locator-utf8", header::HeaderValue::from_static(encoded));
-        req
-    };
-    let (invalid, _) = invoke(router.clone(), upload("***", None)).await;
-    assert_eq!(invalid, StatusCode::BAD_REQUEST);
-    let (ambiguous, _) = invoke(router.clone(), upload(encoded, Some("other.txt"))).await;
-    assert_eq!(ambiguous, StatusCode::BAD_REQUEST);
-    let (created, _) = invoke(router.clone(), upload(encoded, None)).await;
-    assert_eq!(created, StatusCode::CREATED);
-    let (replay, _) = invoke(router, upload(encoded, None)).await;
-    assert_eq!(replay, StatusCode::OK);
-    let locator: String = sqlx::query_scalar(
-        "SELECT locator FROM niccolo.source_documents WHERE workspace_id=$1 AND document_id=$2",
-    )
-    .bind(workspace).bind(id).fetch_one(&admin).await.unwrap();
-    assert_eq!(locator, "Recepção — reunião.txt");
+async fn external_artifact_locator_preserves_utf8_file_names() {
+    let (_, _, workspace, _, token, router) = setup().await;
+    let situation = situation_path(workspace, Uuid::new_v4());
+    create_situation(&router, &situation, &token).await;
+    let artifact = format!("{situation}/artifacts/{}", Uuid::new_v4());
+    assert_eq!(
+        invoke(
+            router.clone(),
+            json_post(&artifact, &token, artifact_metadata("Meeting notes"))
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let uri = format!("{artifact}/storage-references/{}", Uuid::new_v4());
+    let locator = "Recepção — reunião.txt";
+    let input = json!({
+        "access_event_id":Uuid::new_v4(), "storage_type":"FILE_PATH", "locator":locator,
+        "access_status":"UNVERIFIED"
+    });
+    assert_eq!(
+        invoke(router.clone(), json_post(&uri, &token, input.clone()))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        invoke(router.clone(), json_post(&uri, &token, input))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let view = list_artifact_view(&router, &situation, &token).await;
+    assert_eq!(view["storage_references"].as_array().unwrap().len(), 1);
+    assert_eq!(view["storage_references"][0]["locator"], locator);
 }
 
 #[tokio::test]
-async fn source_is_atomic_replayable_and_provenance_is_returned_without_truth_claims() {
-    let (_admin, _app, w, _, token, router) = setup().await;
+async fn artifact_is_atomic_replayable_and_preserves_attributed_provenance() {
+    let (_, _, workspace, _, token, router) = setup().await;
+    let situation = situation_path(workspace, Uuid::new_v4());
+    create_situation(&router, &situation, &token).await;
     let id = Uuid::new_v4();
-    let (created, first) = invoke(
-        router.clone(),
-        request(
-            "POST",
-            &source(w, id),
-            Some(&token),
-            Some("text/plain"),
-            Some("fixture://chat"),
-            CHAT,
-        ),
-    )
-    .await;
+    let path = format!("{situation}/artifacts/{id}");
+    let request = |label| json_post(&path, &token, artifact_metadata(label));
+    let (created, first) = invoke(router.clone(), request("Audit notes")).await;
     assert_eq!(created, StatusCode::CREATED);
-    assert_eq!(first["fragment_ids"].as_array().unwrap().len(), 2);
-    let (replayed, again) = invoke(
-        router.clone(),
-        request(
-            "POST",
-            &source(w, id),
-            Some(&token),
-            Some("text/plain"),
-            Some("fixture://chat"),
-            CHAT,
-        ),
-    )
-    .await;
+    let (replayed, again) = invoke(router.clone(), request("Audit notes")).await;
     assert_eq!(replayed, StatusCode::OK);
     assert_eq!(again["replayed"], true);
-    assert_eq!(again["fragment_ids"], first["fragment_ids"]);
-    assert_eq!(again["revision"], first["revision"]);
-    let (conflict, _) = invoke(
-        router.clone(),
-        request(
-            "POST",
-            &source(w, id),
-            Some(&token),
-            Some("text/plain"),
-            Some("fixture://chat"),
-            b"[02/11/2026, 12:00] Ana: altered A\n[02/11/2026, 12:01] Bob: source B\n",
-        ),
-    )
-    .await;
-    assert_eq!(conflict, StatusCode::CONFLICT);
-    let (status, graph_json) = invoke(
-        router.clone(),
-        request("GET", &graph(w), Some(&token), None, None, b""),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(graph_json["node_count"], 2);
-    let assess_path = format!("/v1/workspaces/{w}/assess");
-    let ids = first["fragment_ids"].clone();
-    let (status, assessment) = invoke(
-        router,
-        request(
-            "POST",
-            &assess_path,
-            Some(&token),
-            Some("application/json"),
-            None,
-            json!({"report_ids":ids}).to_string().as_bytes(),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(assessment["independence_established"], false);
+    assert_eq!(again["artifact_id"], first["artifact_id"]);
+    assert_eq!(first["source_bytes_stored"], false);
+    assert_eq!(first["artifact_was_inspected"], false);
     assert_eq!(
-        assessment["shared_source_documents"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
+        invoke(router.clone(), request("Altered label")).await.0,
+        StatusCode::CONFLICT
     );
-    assert_eq!(assessment["shared_origins"].as_array().unwrap().len(), 0);
+    let representation = Uuid::new_v4();
+    let representation_path = format!("{path}/representations/{representation}");
+    let body = json!({
+        "representation_type":"HUMAN_TRANSCRIPTION", "producer_type":"THIRD_PARTY_HUMAN",
+        "producer_label":"Ana", "scope_locator":"Second answer", "content":"Described timing only",
+        "completeness_status":"PARTIAL"
+    });
+    assert_eq!(
+        invoke(
+            router.clone(),
+            json_post(&representation_path, &token, body)
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let view = list_artifact_view(&router, &situation, &token).await;
+    assert_eq!(view["artifacts"].as_array().unwrap().len(), 1);
+    assert_eq!(view["artifacts"][0]["label"], "Audit notes");
+    let excerpt = &view["representations"][0];
+    assert_eq!(excerpt["representation_id"], json!(representation));
+    assert_eq!(excerpt["producer_label"], "Ana");
+    assert_eq!(excerpt["scope_locator"], "Second answer");
+    assert_eq!(excerpt["representation_establishes_truth"], false);
 }
+
 #[tokio::test]
 async fn unauthorized_assessment_is_rejected_before_graph_loading() {
     let (_admin, _app, w, _, token, router) = setup().await;
@@ -399,93 +428,87 @@ async fn unauthorized_assessment_is_rejected_before_graph_loading() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 #[tokio::test]
-async fn wrong_content_type_and_missing_locator_do_not_write() {
-    let (_admin, _app, w, _, token, router) = setup().await;
-    let doc = source(w, Uuid::new_v4());
+async fn invalid_storage_reference_requests_do_not_write() {
+    let (_, _, workspace, _, token, router) = setup().await;
+    let situation = situation_path(workspace, Uuid::new_v4());
+    create_situation(&router, &situation, &token).await;
+    let artifact = format!("{situation}/artifacts/{}", Uuid::new_v4());
+    assert_eq!(
+        invoke(
+            router.clone(),
+            json_post(&artifact, &token, artifact_metadata("Audit notes"))
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let path = format!("{artifact}/storage-references/{}", Uuid::new_v4());
     let (status, _) = invoke(
         router.clone(),
-        request(
-            "POST",
-            &doc,
-            Some(&token),
-            Some("application/json"),
-            Some("file://f"),
-            CHAT,
-        ),
+        request("POST", &path, Some(&token), Some("text/plain"), None, CHAT),
     )
     .await;
     assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    let (status, _) = invoke(
-        router.clone(),
-        request("POST", &doc, Some(&token), Some("text/plain"), None, CHAT),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    let (status, data) = invoke(
-        router,
-        request("GET", &graph(w), Some(&token), None, None, b""),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(data["node_count"], 0);
+    let input = json!({"access_event_id":Uuid::new_v4(), "storage_type":"FILE_PATH", "access_status":"UNVERIFIED"});
+    let (status, _) = invoke(router.clone(), json_post(&path, &token, input)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        list_artifact_view(&router, &situation, &token).await["storage_references"],
+        json!([])
+    );
 }
+
 #[tokio::test]
-async fn payload_limit_is_enforced() {
-    let (_admin, _app, w, _, token, router) = setup().await;
-    let huge = vec![b'X'; 4 * 1024 * 1024 + 1];
-    let res = router
-        .oneshot(request(
-            "POST",
-            &source(w, Uuid::new_v4()),
-            Some(&token),
-            Some("text/plain"),
-            Some("file://huge"),
-            &huge,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
+async fn artifact_payload_limit_is_enforced() {
+    let (_, _, workspace, _, token, router) = setup().await;
+    let situation = situation_path(workspace, Uuid::new_v4());
+    create_situation(&router, &situation, &token).await;
+    let path = format!("{situation}/artifacts/{}", Uuid::new_v4());
+    let huge = artifact_metadata(&"X".repeat(4 * 1024 * 1024 + 1));
+    let (status, _) = invoke(router.clone(), json_post(&path, &token, huge)).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(
+        list_artifact_view(&router, &situation, &token).await["artifacts"],
+        json!([])
+    );
 }
+
 #[tokio::test]
-async fn concurrent_uploads_have_only_one_insert() {
-    let (_admin, _app, w, _, token, router) = setup().await;
-    let path = source(w, Uuid::new_v4());
-    let mut joins = Vec::new();
-    for _ in 0..32 {
-        let cloned = router.clone();
-        let t = token.clone();
-        let p = path.clone();
-        joins.push(tokio::spawn(async move {
-            invoke(
-                cloned,
-                request(
-                    "POST",
-                    &p,
-                    Some(&t),
-                    Some("text/plain"),
-                    Some("fixture://raced"),
-                    CHAT,
-                ),
-            )
-            .await
-        }));
-    }
+async fn concurrent_artifact_replays_have_only_one_insert() {
+    let (_, _, workspace, _, token, router) = setup().await;
+    let situation = situation_path(workspace, Uuid::new_v4());
+    create_situation(&router, &situation, &token).await;
+    let path = format!("{situation}/artifacts/{}", Uuid::new_v4());
+    let joins = (0..32)
+        .map(|_| {
+            let router = router.clone();
+            let req = json_post(&path, &token, artifact_metadata("Raced record"));
+            tokio::spawn(invoke(router, req))
+        })
+        .collect::<Vec<_>>();
     let mut inserted = 0;
     let mut replayed = 0;
     for join in joins {
-        let (status, _) = join.await.unwrap();
+        let (status, body) = join.await.unwrap();
         match status {
             StatusCode::CREATED => inserted += 1,
             StatusCode::OK => replayed += 1,
-            other => panic!("unexpected {other}"),
+            other => panic!("unexpected {other}: {body}"),
         }
     }
-    assert_eq!(inserted, 1);
-    assert_eq!(replayed, 31);
+    assert_eq!((inserted, replayed), (1, 31));
+    assert_eq!(
+        list_artifact_view(&router, &situation, &token).await["artifacts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
 }
+
 #[tokio::test]
-async fn cross_workspace_identical_document_uuid_never_crosses_tenants() {
-    let (admin, app, w, _, token, router) = setup().await;
+async fn cross_workspace_identical_artifact_uuid_never_crosses_tenants() {
+    let (admin, app, workspace, _, token, router) = setup().await;
     let other = Uuid::new_v4();
     sqlx::query("INSERT INTO niccolo.workspaces(workspace_id,label) VALUES ($1,'second')")
         .bind(other)
@@ -495,58 +518,50 @@ async fn cross_workspace_identical_document_uuid_never_crosses_tenants() {
     let other_token = authz::provision_token(&admin, Uuid::new_v4(), other, true, true, 7)
         .await
         .unwrap();
+    let situation = Uuid::new_v4();
+    let local = situation_path(workspace, situation);
+    let foreign = situation_path(other, situation);
     let id = Uuid::new_v4();
-    assert_eq!(
-        invoke(
+    for (path, credential, label) in [
+        (&local, &token, "Local record"),
+        (&foreign, &other_token, "Foreign record"),
+    ] {
+        create_situation(&router, path, credential).await;
+        let (status, body) = invoke(
             router.clone(),
-            request(
-                "POST",
-                &source(w, id),
-                Some(&token),
-                Some("text/plain"),
-                Some("fixture://one"),
-                CHAT
-            )
+            json_post(
+                &format!("{path}/artifacts/{id}"),
+                credential,
+                artifact_metadata(label),
+            ),
         )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
-    assert_eq!(
-        invoke(
-            router.clone(),
-            request(
-                "POST",
-                &source(other, id),
-                Some(&other_token),
-                Some("text/plain"),
-                Some("fixture://two"),
-                CHAT
-            )
-        )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(
+            list_artifact_view(&router, path, credential).await["artifacts"][0]["label"],
+            label
+        );
+    }
     let (status, _) = invoke(
-        router.clone(),
-        request("GET", &graph(other), Some(&token), None, None, b""),
+        router,
+        request(
+            "GET",
+            &format!("{foreign}/artifacts"),
+            Some(&token),
+            None,
+            None,
+            b"",
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, visible) = invoke(
-        router,
-        request("GET", &graph(other), Some(&other_token), None, None, b""),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(visible["node_count"], 2);
     assert!(
-        !authz::authorize(&app, &other_token, w, Capability::Read)
+        !authz::authorize(&app, &other_token, workspace, Capability::Read)
             .await
             .unwrap()
     );
 }
+
 #[tokio::test]
 async fn unsupported_provisioning_options_are_rejected() {
     let (admin, _app, w, _, _, _) = setup().await;
