@@ -2363,6 +2363,8 @@ async fn alder_bend_flags_late_source_dependence_for_the_affected_route() {
     assert_eq!(after["route_use_history"], before["route_use_history"]);
 
     let revised = cross_case_freeze(&case, Some(earlier)).await;
+    let dashboard_path = format!("analysis-snapshots/{revised}/bff/dashboard");
+    assert_eq!(case.case_request(&dashboard_path, None).await["reanalysis"]["recommended"], false);
     let revised_basis = cross_case_packet(&case, revised).await.frozen_input;
     let replayed_basis = cross_case_packet(&case, earlier).await.frozen_input;
     assert_eq!(
@@ -2433,6 +2435,12 @@ async fn alder_bend_flags_late_source_dependence_for_the_affected_route() {
         json!(sighting)
     );
     assert_eq!(decision["basis"]["result"]["review"], *review);
+    let advice = &case.case_request(&dashboard_path, None).await["reanalysis"];
+    assert_eq!(advice["recommended"], true);
+    assert_eq!(advice["input_revision"], advice["current_revision"]);
+    assert_eq!(advice["human_approval_required"], true);
+    assert_eq!(advice["recommendation_starts_analysis"], false);
+    assert_eq!(advice["reasons"], json!(["Use changed for 1 frozen Workbench route(s)"]));
     let (status, repeated) = invoke(
         case.router.clone(),
         request("POST", &uri, &case.token, Some(body.clone())),
@@ -2562,6 +2570,9 @@ async fn alder_bend_flags_late_source_dependence_for_the_affected_route() {
     let restored = case
         .case_request(&format!("{route_use}/{restored_id}"), Some(restore))
         .await;
+    assert_eq!(case.case_request(&dashboard_path, None).await["reanalysis"]["recommended"], false);
+    let after_restore = case.case_request(&format!("analysis-snapshots/{accepted}/bff/dashboard"), None).await;
+    assert_eq!(after_restore["reanalysis"]["recommended"], true);
     let final_snapshot = case.case_request(path, None).await;
     let final_sighting = case_row(
         &final_snapshot,

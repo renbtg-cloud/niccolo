@@ -59,6 +59,13 @@ pub async fn assess(
             d.removed_contributions.len()
         ));
     }
+    if d.changed_workbench_route_use_count > 0 {
+        score += 25;
+        reasons.push(format!(
+            "Use changed for {} frozen Workbench route(s)",
+            d.changed_workbench_route_use_count
+        ));
+    }
     score = score.min(100);
     Ok(ReanalysisRecommendation {
         recommended: score >= 20,

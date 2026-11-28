@@ -40,6 +40,7 @@ pub struct AnalysisDelta {
     pub removed_sources: Vec<Uuid>,
     pub added_contributions: Vec<situation_store::SnapshotContribution>,
     pub removed_contributions: Vec<RemovedContribution>,
+    pub changed_workbench_route_use_count: i64,
 }
 
 async fn scoped(
@@ -159,6 +160,25 @@ pub async fn get(
             corrected_by,
         });
     }
+    let changed_workbench_route_use_count = sqlx::query_scalar(
+        "SELECT count(*) FROM niccolo.situation_analysis_snapshots s
+         CROSS JOIN LATERAL jsonb_to_recordset(s.workbench_support_basis->'routes') AS r(
+           argument_id uuid,grounding_set_id uuid,suspended_by_decision_id uuid,grounds_truncated boolean)
+         LEFT JOIN LATERAL (
+           SELECT disposition FROM niccolo.epistemic_route_use_decisions d
+           WHERE (d.workspace_id,d.situation_id,d.argument_id,d.grounding_set_id)=
+                 (s.workspace_id,s.situation_id,r.argument_id,r.grounding_set_id)
+           ORDER BY event_no DESC LIMIT 1
+         ) latest ON true
+         WHERE (s.workspace_id,s.situation_id,s.analysis_id)=($1,$2,$3)
+           AND NOT r.grounds_truncated
+           AND (r.suspended_by_decision_id IS NOT NULL) <> COALESCE(latest.disposition='SUSPEND',false)",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(analysis)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(AnalysisDelta {
         analysis_id: analysis,
@@ -173,5 +193,6 @@ pub async fn get(
         removed_sources,
         added_contributions,
         removed_contributions,
+        changed_workbench_route_use_count,
     })
 }

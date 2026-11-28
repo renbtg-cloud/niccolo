@@ -2196,6 +2196,7 @@ async fn analysis_delta(
             "focus_now":delta.focus_now,
             "added_source_document_ids":delta.added_sources,
             "removed_source_document_ids":delta.removed_sources,
+            "changed_workbench_route_use_count":delta.changed_workbench_route_use_count,
             "added_contributions":delta.added_contributions.iter().map(|c|json!({
                 "contribution_id":c.id,"author_principal_id":c.author,"kind":c.kind,
                 "text":c.text,"scope":c.scope,"related_evidence_id":c.related_evidence_id,
