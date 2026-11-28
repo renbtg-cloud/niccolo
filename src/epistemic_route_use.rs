@@ -70,13 +70,15 @@ pub struct Decision {
     pub basis: Value,
 }
 
+type StoredRouteDecisionRow = (Uuid, Uuid, Uuid, String, String, Uuid, String, String);
+
 async fn load(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,
     event_id: Option<Uuid>,
 ) -> Result<Vec<Decision>, WorkbenchError> {
-    let rows: Vec<(Uuid, Uuid, Uuid, String, String, Uuid, String, String)> = sqlx::query_as(
+    let rows: Vec<StoredRouteDecisionRow> = sqlx::query_as(
         "SELECT event_id, argument_id, grounding_set_id, disposition, rationale, recorded_by,
                 recorded_at::text, basis::text
          FROM niccolo.epistemic_route_use_decisions

@@ -111,7 +111,10 @@ async fn seed(h: &Harness) -> Seed {
         h.workspace,
         document,
         "two-fragments.txt",
-        &[("Alice", "André had a meeting"), ("Bob", "I heard the same story")],
+        &[
+            ("Alice", "André had a meeting"),
+            ("Bob", "I heard the same story"),
+        ],
     )
     .await;
     historical_sources::attach(&h.secure, &h.writer, h.workspace, h.situation, document).await;
@@ -127,7 +130,14 @@ async fn seed(h: &Harness) -> Seed {
         )
         .await,
     );
-    historical_sources::attach(&h.secure, &h.writer, h.workspace, h.situation, second_document).await;
+    historical_sources::attach(
+        &h.secure,
+        &h.writer,
+        h.workspace,
+        h.situation,
+        second_document,
+    )
+    .await;
     let analysis = Uuid::new_v4();
     let analysis_path = format!("{sp}/analysis-snapshots/{analysis}");
     assert_eq!(

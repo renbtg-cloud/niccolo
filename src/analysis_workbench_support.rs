@@ -251,9 +251,7 @@ pub(crate) async fn capture_basis(
     let complete_routes = basis
         .routes
         .iter()
-        .filter(|route| {
-            route.suspended_by_decision_id.is_none() && !route.provenance_was_limited()
-        })
+        .filter(|route| route.suspended_by_decision_id.is_none() && !route.provenance_was_limited())
         .collect::<Vec<_>>();
     if complete_routes.iter().any(|route| {
         route.grounds.iter().any(|ground| {
