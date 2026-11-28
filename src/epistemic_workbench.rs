@@ -28,7 +28,7 @@ pub mod public_prominence;
 #[path = "epistemic_detail_exposure.rs"]
 pub mod detail_exposure;
 #[path = "epistemic_artifact_dependence.rs"]
-mod artifact_dependence;
+pub(crate) mod artifact_dependence;
 #[path = "epistemic_route_use.rs"]
 pub mod route_use;
 #[path = "epistemic_normative_assessment.rs"]

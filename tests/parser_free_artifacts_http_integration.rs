@@ -3458,14 +3458,10 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
     assert_eq!(joint["shared_artifact_origins"], json!([]));
 
     let revised = cross_case_freeze(&case, Some(previous)).await;
-    let archived = cross_case_packet(&case, previous)
-        .await
-        .frozen_input
-        .artifact_relationships;
-    let reconsidered = cross_case_packet(&case, revised)
-        .await
-        .frozen_input
-        .artifact_relationships;
+    let archived_input = cross_case_packet(&case, previous).await.frozen_input;
+    let reconsidered_input = cross_case_packet(&case, revised).await.frozen_input;
+    let archived = archived_input.artifact_relationships;
+    let reconsidered = reconsidered_input.artifact_relationships;
     assert!(
         archived
             .iter()
@@ -3478,6 +3474,41 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
             .count(),
         2
     );
+    assert!(
+        archived_input
+            .workbench_support
+            .unwrap()
+            .shared_artifact_origins
+            .is_empty()
+    );
+    let basis = reconsidered_input.workbench_support.unwrap();
+    assert!(!basis.shared_artifact_origins_truncated);
+    assert_eq!(basis.shared_artifact_origins.len(), 1);
+    let frozen = &basis.shared_artifact_origins[0];
+    assert_eq!(frozen.conclusion_object_id, sighting);
+    assert_eq!(frozen.source_artifact_id, claire);
+    assert_eq!(frozen.source_representation_id, claire_time);
+    assert_eq!(frozen.source_scope_locator, "Second answer");
+    assert_eq!(frozen.derivations.len(), 2);
+    for (id, route) in [(police_relation, owen_route), (audit_relation, ruth_route)] {
+        let copy = frozen
+            .derivations
+            .iter()
+            .find(|copy| copy.relationship_id == id)
+            .unwrap();
+        assert_eq!(
+            json!(copy.routes),
+            json!([{"argument_id":argument, "grounding_set_id":route}])
+        );
+        assert!(copy.via_relationship_id.is_none());
+    }
+    let input = case
+        .case_request(
+            &format!("analysis-snapshots/{revised}/bff/reasoning-input"),
+            None,
+        )
+        .await;
+    assert_eq!(input["workbench_support"], json!(basis));
 }
 
 #[tokio::test]

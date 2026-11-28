@@ -1,8 +1,8 @@
 //! Claim-specific reviews of human-declared derivation between artifact grounds.
 use super::{
     ArtifactDependenceReview, ArtifactDependenceVia, GroundingRouteRef, SharedArtifactOrigin,
-    WorkbenchError,
 };
+use serde_json::Value;
 use sqlx::{Postgres, Transaction};
 use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use uuid::Uuid;
@@ -27,9 +27,9 @@ type ReviewRow = (
 );
 
 #[derive(Default)]
-pub(super) struct ArtifactDependenceReport {
-    pub(super) reviews: BTreeMap<Uuid, Vec<ArtifactDependenceReview>>,
-    pub(super) shared_origins: BTreeMap<Uuid, Vec<SharedArtifactOrigin>>,
+pub(crate) struct ArtifactDependenceReport {
+    pub(crate) reviews: BTreeMap<Uuid, Vec<ArtifactDependenceReview>>,
+    pub(crate) shared_origins: BTreeMap<Uuid, Vec<SharedArtifactOrigin>>,
 }
 
 pub(super) async fn reviews_in(
@@ -38,15 +38,61 @@ pub(super) async fn reviews_in(
     situation: Uuid,
     relationship: Option<Uuid>,
     via_relationship: Option<Uuid>,
-) -> Result<ArtifactDependenceReport, WorkbenchError> {
+) -> Result<ArtifactDependenceReport, sqlx::Error> {
+    load(
+        tx,
+        workspace,
+        situation,
+        relationship,
+        via_relationship,
+        None,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn frozen_origins_in(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    revision: i64,
+    routes: &Value,
+) -> Result<BTreeMap<Uuid, Vec<SharedArtifactOrigin>>, sqlx::Error> {
+    Ok(load(
+        tx,
+        workspace,
+        situation,
+        None,
+        None,
+        Some(revision),
+        Some(routes),
+    )
+    .await?
+    .shared_origins)
+}
+
+async fn load(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    relationship: Option<Uuid>,
+    via_relationship: Option<Uuid>,
+    revision: Option<i64>,
+    frozen_routes: Option<&Value>,
+) -> Result<ArtifactDependenceReport, sqlx::Error> {
     let rows: Vec<ReviewRow> = sqlx::query_as(
         "WITH derivations AS (
            SELECT relationship_id, subject_artifact_id, object_artifact_id,
                   subject_representation_id, object_representation_id,
                   qualification, recorded_by_principal_id
-           FROM niccolo.situation_artifact_relationships
+           FROM niccolo.situation_artifact_relationships d
            WHERE workspace_id=$1 AND situation_id=$2
              AND relationship_type IN ('CLAIMED_TO_BE_DERIVED_FROM','DERIVED_FROM')
+             AND ($5::bigint IS NULL OR EXISTS (
+               SELECT 1 FROM niccolo.situation_revision_artifact_relationships rr
+               WHERE (rr.workspace_id,rr.situation_id,rr.revision,rr.relationship_id)=
+                     (d.workspace_id,d.situation_id,$5,d.relationship_id)
+             ))
          ), dependence AS (
            SELECT d.*, NULL::uuid AS via_relationship_id FROM derivations d
            WHERE ($3::uuid IS NULL OR d.relationship_id=$3) AND $4::uuid IS NULL
@@ -69,7 +115,16 @@ pub(super) async fn reviews_in(
              ON (p.workspace_id,p.situation_id,p.object_id)=(a.workspace_id,a.situation_id,m.ground_object_id)
            JOIN niccolo.situation_artifact_representations r
              ON (r.workspace_id,r.situation_id,r.representation_id)=(p.workspace_id,p.situation_id,p.representation_id)
-           WHERE a.workspace_id=$1 AND a.situation_id=$2 AND g.effect='SUPPORTS' AND m.member_role<>'CONTEXT'
+           WHERE $5::bigint IS NULL AND a.workspace_id=$1 AND a.situation_id=$2
+             AND g.effect='SUPPORTS' AND m.member_role<>'CONTEXT'
+           UNION
+           SELECT route.conclusion_object_id,route.argument_id,route.grounding_set_id,r.artifact_id,r.representation_id
+           FROM jsonb_to_recordset($6::text::jsonb) AS route(
+             conclusion_object_id uuid,argument_id uuid,grounding_set_id uuid,grounds jsonb)
+           CROSS JOIN LATERAL jsonb_array_elements(route.grounds) AS ground(value)
+           CROSS JOIN LATERAL jsonb_array_elements_text(ground.value->'artifact_representation_ids') AS representation(id)
+           JOIN niccolo.situation_artifact_representations r
+             ON (r.workspace_id,r.situation_id,r.representation_id)=($1,$2,representation.id::uuid)
          ), cited_routes AS (
            SELECT c.conclusion_object_id, d.relationship_id, d.via_relationship_id,
                   d.subject_artifact_id, d.object_artifact_id,
@@ -109,13 +164,15 @@ pub(super) async fn reviews_in(
            WHERE (h.workspace_id,h.situation_id,h.argument_id,h.grounding_set_id) =
                  ($1,$2,c.argument_id,c.grounding_set_id)
            ORDER BY event_no DESC LIMIT 1
-         ) latest ON true
+         ) latest ON $5::bigint IS NULL
          ORDER BY c.conclusion_object_id,c.relationship_id,c.via_relationship_id,c.argument_id,c.grounding_set_id",
     )
     .bind(workspace)
     .bind(situation)
     .bind(relationship)
     .bind(via_relationship)
+    .bind(revision)
+    .bind(frozen_routes.map(Value::to_string))
     .fetch_all(&mut **tx)
     .await?;
 
@@ -147,7 +204,7 @@ pub(super) async fn reviews_in(
                     .as_deref()
                     .map(serde_json::from_str::<ArtifactDependenceVia>)
                     .transpose()
-                    .map_err(|_| WorkbenchError::Invalid)?;
+                    .map_err(|error| sqlx::Error::Decode(error.into()))?;
                 entry.insert((
                     ArtifactDependenceReview {
                         relationship_id,

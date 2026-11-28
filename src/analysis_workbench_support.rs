@@ -1,5 +1,6 @@
 //! One analysis's recorded view of authored Workbench support routes.
 use crate::analysis_structure::AnalysisScope;
+use crate::epistemic_workbench::{GroundingRouteRef, artifact_dependence};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Postgres, Transaction};
@@ -9,6 +10,28 @@ use uuid::Uuid;
 pub struct Basis {
     pub routes: Vec<Route>,
     pub truncated: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_artifact_origins: Vec<FrozenSharedOrigin>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared_artifact_origins_truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FrozenSharedOrigin {
+    pub conclusion_object_id: Uuid,
+    pub source_artifact_id: Uuid,
+    pub source_representation_id: Uuid,
+    pub source_artifact_label: String,
+    pub source_scope_locator: String,
+    pub derivations: Vec<FrozenOriginDerivation>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FrozenOriginDerivation {
+    pub relationship_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_relationship_id: Option<Uuid>,
+    pub routes: Vec<GroundingRouteRef>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -128,15 +151,75 @@ pub(crate) async fn capture(
         return Ok(None);
     }
     let truncated = rows.len() > 32;
-    let routes = rows
+    let routes: Vec<Route> = rows
         .iter()
         .take(32)
         .map(|row| serde_json::from_str(row))
         .collect::<Result<Vec<Route>, _>>()
         .map_err(|error| sqlx::Error::Decode(error.into()))?;
-    serde_json::to_string(&Basis { routes, truncated })
-        .map(Some)
-        .map_err(|error| sqlx::Error::Encode(error.into()))
+    let complete_routes = routes
+        .iter()
+        .filter(|route| {
+            route.suspended_by_decision_id.is_none()
+                && !route.grounds_truncated
+                && route
+                    .grounds
+                    .iter()
+                    .all(|ground| ground["artifact_provenance_truncated"] != Value::Bool(true))
+        })
+        .collect::<Vec<_>>();
+    let mut shared_artifact_origins = Vec::new();
+    let mut shared_artifact_origins_truncated = false;
+    if complete_routes.iter().any(|route| {
+        route.grounds.iter().any(|ground| {
+            ground["artifact_representation_ids"]
+                .as_array()
+                .is_some_and(|ids| !ids.is_empty())
+        })
+    }) {
+        let frozen = serde_json::to_value(complete_routes)
+            .map_err(|error| sqlx::Error::Encode(error.into()))?;
+        let origins = artifact_dependence::frozen_origins_in(
+            tx,
+            workspace,
+            situation,
+            input_revision,
+            &frozen,
+        )
+        .await?;
+        let mut origins = origins.into_iter().flat_map(|(conclusion, origins)| {
+            origins.into_iter().map(move |origin| (conclusion, origin))
+        });
+        for (conclusion_object_id, origin) in origins.by_ref().take(32) {
+            shared_artifact_origins_truncated |= origin.derivations.len() > 16;
+            shared_artifact_origins.push(FrozenSharedOrigin {
+                conclusion_object_id,
+                source_artifact_id: origin.source_artifact_id,
+                source_representation_id: origin.source_representation_id,
+                source_artifact_label: origin.source_artifact_label,
+                source_scope_locator: origin.source_scope_locator,
+                derivations: origin
+                    .derivations
+                    .into_iter()
+                    .take(16)
+                    .map(|derivation| FrozenOriginDerivation {
+                        relationship_id: derivation.relationship_id,
+                        via_relationship_id: derivation.via.map(|via| via.relationship_id),
+                        routes: derivation.routes_to_review,
+                    })
+                    .collect(),
+            });
+        }
+        shared_artifact_origins_truncated |= origins.next().is_some();
+    }
+    serde_json::to_string(&Basis {
+        routes,
+        truncated,
+        shared_artifact_origins,
+        shared_artifact_origins_truncated,
+    })
+    .map(Some)
+    .map_err(|error| sqlx::Error::Encode(error.into()))
 }
 
 pub(crate) async fn read_in(
