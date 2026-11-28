@@ -945,7 +945,7 @@ async fn alder_bend_reviews_only_the_detail_reachable_from_prior_exposure() {
         )
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        let mut unlinked_source = payload;
+        let mut unlinked_source = payload.clone();
         unlinked_source["candidate_source"]["representation_id"] = json!(interview);
         let (status, _) = invoke(
             case.router.clone(),
@@ -953,6 +953,9 @@ async fn alder_bend_reviews_only_the_detail_reachable_from_prior_exposure() {
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+        if from == "2026-11-20" && through == from {
+            assert_same_day_exposure_order(&case, &uri, payload, hat_route, identity_route).await;
+        }
     }
     let after = case.case_request("epistemic/workbench", None).await;
     assert_eq!(
@@ -1061,6 +1064,165 @@ async fn alder_analysis(
         "reanalysis_of":prior, "step_budget":32, "context":{}
     })))).await;
     (status, operation, reply)
+}
+
+async fn assert_same_day_exposure_order(
+    case: &Setup,
+    uri: &str,
+    mut review: Value,
+    hat_route: Uuid,
+    identity_route: Uuid,
+) {
+    let order = case
+        .case_node(
+            "PROPOSITION",
+            "Mara reports seeing the photo before giving the initial testimony.",
+            "A statement of relative order, without clock times.",
+        )
+        .await;
+    let passage = case
+        .case_source(
+            order,
+            "Follow-up with Mara",
+            "Mara Ellis",
+            "I saw the archive photo before I gave that first statement.",
+        )
+        .await;
+    let prior = Uuid::new_v4();
+    let report_uri = format!("{uri}/order-reports/{prior}");
+    let report = json!({
+        "exposure_record_id":review["exposure_record_id"],
+        "testimony_representation_id":review["testimony_detail"]["representation_id"],
+        "candidate_representation_id":review["candidate_source"]["representation_id"],
+        "direction":"EXPOSURE_BEFORE_TESTIMONY",
+        "source":{"object_id":order,"representation_id":passage},
+        "available_on":"2026-11-24"
+    });
+    for expected in [StatusCode::CREATED, StatusCode::OK] {
+        let (status, body) = invoke(
+            case.router.clone(),
+            request("POST", &report_uri, &case.token, Some(report.clone())),
+        )
+        .await;
+        assert_eq!(status, expected, "{body}");
+        assert_eq!(body["report_id"], json!(prior));
+        assert_eq!(body["replayed"], expected == StatusCode::OK);
+    }
+    let mut altered = report.clone();
+    altered["direction"] = json!("EXPOSURE_AFTER_TESTIMONY");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &report_uri, &case.token, Some(altered)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let admin = PgPoolOptions::new()
+        .connect(&std::env::var("NICCOLO_PG_ADMIN_URL").unwrap())
+        .await
+        .unwrap();
+    let reader = authz::provision_token(&admin, Uuid::new_v4(), case.workspace, true, false, 1)
+        .await
+        .unwrap();
+    let (status, _) = invoke(
+        case.router.clone(),
+        request(
+            "POST",
+            &format!("{uri}/order-reports/{}", Uuid::new_v4()),
+            &reader,
+            Some(report.clone()),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let compare = |payload: Value| async move {
+        let (status, response) = invoke(
+            case.router.clone(),
+            request("POST", uri, &case.token, Some(payload)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{response}");
+        response
+    };
+    let historical = compare(review.clone()).await;
+    assert_eq!(historical["disposition"], "ORDER_UNCERTAIN");
+    assert_eq!(historical["order_reports"], json!([]));
+
+    review["known_through"] = json!("2026-11-24");
+    let resolved = compare(review.clone()).await;
+    assert_eq!(resolved["disposition"], "REVIEW_CANDIDATE");
+    assert_eq!(resolved["date_order"], Value::Null);
+    assert_eq!(resolved["order_reports"][0]["report_id"], json!(prior));
+    assert_eq!(resolved["order_reports"][0]["source"], report["source"]);
+    assert_eq!(
+        resolved["order_reports"][0]["recorded_by"],
+        resolved["exposure"]["recorded_by"]
+    );
+    assert_eq!(resolved["affected_routes"].as_array().unwrap().len(), 2);
+    for route in [hat_route, identity_route] {
+        case_row(&resolved, "affected_routes", "grounding_set_id", route);
+    }
+
+    let alternative = case
+        .case_node(
+            "PROPOSITION",
+            "A different archive image.",
+            "Scope control.",
+        )
+        .await;
+    let other_photo = case
+        .case_source(
+            alternative,
+            "Different image",
+            "Archivist",
+            "A second archive image.",
+        )
+        .await;
+    let mut other_review = review.clone();
+    other_review["candidate_source"] =
+        json!({"object_id":alternative, "representation_id":other_photo});
+    let unrelated = compare(other_review).await;
+    assert_eq!(unrelated["disposition"], "ORDER_UNCERTAIN");
+    assert_eq!(unrelated["order_reports"], json!([]));
+
+    let later = case
+        .case_node(
+            "PROPOSITION",
+            "June places the viewing after the interview.",
+            "An incompatible account.",
+        )
+        .await;
+    let later_passage = case
+        .case_source(
+            later,
+            "Interview with June",
+            "June",
+            "I showed Mara that photo after her first interview.",
+        )
+        .await;
+    let opposite = Uuid::new_v4();
+    let mut conflict = report;
+    conflict["direction"] = json!("EXPOSURE_AFTER_TESTIMONY");
+    conflict["source"] = json!({"object_id":later,"representation_id":later_passage});
+    conflict["available_on"] = json!("2026-11-25");
+    case.case_request(
+        &format!("epistemic/detail-exposure-review/order-reports/{opposite}"),
+        Some(conflict),
+    )
+    .await;
+    assert_eq!(
+        compare(review.clone()).await["disposition"],
+        "REVIEW_CANDIDATE"
+    );
+    review["known_through"] = json!("2026-11-25");
+    let conflicted = compare(review).await;
+    assert_eq!(conflicted["disposition"], "ORDER_CONFLICT");
+    assert_eq!(conflicted["detail_needs_review"], false);
+    assert_eq!(conflicted["affected_routes"], json!([]));
+    assert_eq!(conflicted["order_reports"].as_array().unwrap().len(), 2);
+    for id in [prior, opposite] {
+        case_row(&conflicted, "order_reports", "report_id", id);
+    }
 }
 
 #[tokio::test]

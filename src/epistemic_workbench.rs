@@ -27,6 +27,8 @@ pub mod actor_state;
 pub mod public_prominence;
 #[path = "epistemic_detail_exposure.rs"]
 pub mod detail_exposure;
+#[path = "epistemic_exposure_order.rs"]
+pub mod exposure_order;
 #[path = "epistemic_artifact_dependence.rs"]
 pub(crate) mod artifact_dependence;
 #[path = "epistemic_route_use.rs"]

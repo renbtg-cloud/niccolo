@@ -28,7 +28,7 @@ use crate::epistemic_input_draft;
 use crate::epistemic_policy_store::{self, NewPolicy, PolicyStoreError};
 use crate::epistemic_weights::{self, WeightPolicy, WeightedObservation};
 use crate::epistemic_workbench::{self, WorkbenchError};
-use crate::epistemic_workbench::{detail_exposure, public_prominence, route_use};
+use crate::epistemic_workbench::{detail_exposure, exposure_order, public_prominence, route_use};
 use crate::epistemic_workbench_prose;
 use crate::grounded_claim_weights::{self, DeclaredEvidenceStrength, GroundedWeightError};
 use crate::human_credence::{self, CredenceError, NewHumanCredence};
@@ -292,6 +292,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review",
             post(review_detail_exposure),
+        )
+        .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/order-reports/{report}",
+            post(record_exposure_order),
         )
         .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}",
@@ -3925,6 +3929,25 @@ async fn review_detail_exposure(
     guard(&state, &headers, workspace, Capability::Read).await?;
     let review = detail_exposure::review(&state.pool, workspace, situation, input).await?;
     Ok(no_store(json!(review), StatusCode::OK))
+}
+
+async fn record_exposure_order(
+    State(state): State<AppState>,
+    Path((workspace, situation, report)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<exposure_order::Input>,
+) -> Result<Response, ApiError> {
+    let author = guard(&state, &headers, workspace, Capability::Write).await?;
+    let created =
+        exposure_order::record(&state.pool, workspace, situation, author, report, input).await?;
+    Ok(no_store(
+        json!({"report_id": report, "replayed": !created}),
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+    ))
 }
 
 async fn record_detail_route_use(

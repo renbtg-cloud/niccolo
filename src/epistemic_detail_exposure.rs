@@ -1,6 +1,7 @@
 //! Read-only screening of an investigator-selected possible origin of a detail.
 use super::{
     WorkbenchError,
+    exposure_order::{self, Direction},
     public_prominence::{self, Observation, calendar_date},
     scoped,
 };
@@ -8,23 +9,23 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DetailSource {
-    object_id: Uuid,
-    representation_id: Uuid,
+    pub(super) object_id: Uuid,
+    pub(super) representation_id: Uuid,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
     witness_actor_id: Uuid,
-    testimony_detail: DetailSource,
-    candidate_source: DetailSource,
-    exposure_record_id: Uuid,
+    pub(super) testimony_detail: DetailSource,
+    pub(super) candidate_source: DetailSource,
+    pub(super) exposure_record_id: Uuid,
     testimony_from: String,
     testimony_through: String,
-    known_through: String,
+    pub(super) known_through: String,
 }
 
 #[derive(PartialEq, Serialize)]
@@ -33,6 +34,7 @@ enum Disposition {
     ReviewCandidate,
     ExposureAfterTestimony,
     OrderUncertain,
+    OrderConflict,
     ExposureNotAvailableAtCutoff,
 }
 
@@ -52,6 +54,9 @@ pub struct Review {
     known_through: String,
     candidate_source: Option<DetailSource>,
     exposure: Option<public_prominence::Record>,
+    date_order: Option<Direction>,
+    order_reports: Vec<exposure_order::Report>,
+    order_reports_truncated: bool,
     disposition: Disposition,
     needs_finer_timing: bool,
     detail_needs_review: bool,
@@ -121,14 +126,39 @@ pub(super) async fn review_in(
     }
 
     let available = exposure.input.available_on <= input.known_through;
-    let disposition = if !available {
-        Disposition::ExposureNotAvailableAtCutoff
-    } else if exposure.input.effective_through < input.testimony_from {
-        Disposition::ReviewCandidate
-    } else if exposure.input.effective_from > input.testimony_through {
-        Disposition::ExposureAfterTestimony
+    let (date_order, order_reports, order_reports_truncated, disposition) = if available {
+        let date_order = if exposure.input.effective_through < input.testimony_from {
+            Some(Direction::ExposureBeforeTestimony)
+        } else if exposure.input.effective_from > input.testimony_through {
+            Some(Direction::ExposureAfterTestimony)
+        } else {
+            None
+        };
+        let (reports, truncated) =
+            exposure_order::for_review(tx, workspace, situation, input).await?;
+        let has_direction = |direction| {
+            date_order == Some(direction)
+                || reports
+                    .iter()
+                    .any(|report| report.input.direction == direction)
+        };
+        let disposition = match (
+            has_direction(Direction::ExposureBeforeTestimony),
+            has_direction(Direction::ExposureAfterTestimony),
+        ) {
+            (true, true) => Disposition::OrderConflict,
+            (true, false) => Disposition::ReviewCandidate,
+            (false, true) => Disposition::ExposureAfterTestimony,
+            (false, false) => Disposition::OrderUncertain,
+        };
+        (date_order, reports, truncated, disposition)
     } else {
-        Disposition::OrderUncertain
+        (
+            None,
+            Vec::new(),
+            false,
+            Disposition::ExposureNotAvailableAtCutoff,
+        )
     };
 
     let detail_needs_review = disposition == Disposition::ReviewCandidate;
@@ -175,6 +205,9 @@ pub(super) async fn review_in(
         known_through: input.known_through.clone(),
         candidate_source: available.then(|| input.candidate_source.clone()),
         exposure: available.then_some(exposure),
+        date_order,
+        order_reports,
+        order_reports_truncated,
         disposition,
         needs_finer_timing,
         detail_needs_review,
