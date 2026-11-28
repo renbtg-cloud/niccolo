@@ -542,6 +542,8 @@ pub struct SharedGroundDiagnostic {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactDependenceReview {
     pub relationship_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<ArtifactDependenceVia>,
     pub derived_artifact_id: Uuid,
     pub source_artifact_id: Uuid,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -554,6 +556,17 @@ pub struct ArtifactDependenceReview {
     #[serde(default)]
     pub suspended_routes: Vec<GroundingRouteRef>,
     pub source_routes: Vec<GroundingRouteRef>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDependenceVia {
+    pub relationship_id: Uuid,
+    pub artifact_id: Uuid,
+    pub representation_id: Uuid,
+    pub artifact_label: String,
+    pub scope_locator: String,
+    pub qualification: Option<String>,
+    pub recorded_by: Uuid,
 }
 
 /// An authored contradiction whose two endpoints both occur as non-contextual
@@ -3027,7 +3040,7 @@ pub async fn snapshot(
     })
     .collect();
     if !artifact_provenance.is_empty() {
-        let mut reviews = artifact_dependence::reviews_in(&mut tx, workspace, situation, None).await?;
+        let mut reviews = artifact_dependence::reviews_in(&mut tx, workspace, situation, None, None).await?;
         for diagnostic in &mut reasoning_diagnostics {
             diagnostic.artifact_dependence_reviews = reviews
                 .remove(&diagnostic.conclusion_object_id)

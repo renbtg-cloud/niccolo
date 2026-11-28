@@ -41,11 +41,15 @@ pub struct ArtifactDependenceInput {
     pub disposition: Disposition,
     pub rationale: String,
     pub relationship_id: Uuid,
+    pub via_relationship_id: Option<Uuid>,
 }
 
 enum ReviewBasis {
     Exposure(detail_exposure::Input),
-    ArtifactDependence(Uuid),
+    ArtifactDependence {
+        relationship_id: Uuid,
+        via_relationship_id: Option<Uuid>,
+    },
 }
 
 struct Choice {
@@ -173,7 +177,10 @@ pub async fn record_artifact_dependence(
             },
             disposition: input.disposition,
             rationale: input.rationale,
-            basis: ReviewBasis::ArtifactDependence(input.relationship_id),
+            basis: ReviewBasis::ArtifactDependence {
+                relationship_id: input.relationship_id,
+                via_relationship_id: input.via_relationship_id,
+            },
         },
     )
     .await
@@ -195,7 +202,16 @@ async fn record_choice(
         ReviewBasis::Exposure(input) => {
             serde_json::to_value(input).map_err(|_| WorkbenchError::Invalid)?
         }
-        ReviewBasis::ArtifactDependence(relationship) => json!({"relationship_id":relationship}),
+        ReviewBasis::ArtifactDependence {
+            relationship_id,
+            via_relationship_id,
+        } => {
+            let mut identity = json!({"relationship_id":relationship_id});
+            if let Some(via) = via_relationship_id {
+                identity["via_relationship_id"] = json!(via);
+            }
+            identity
+        }
     };
     let mut tx = scoped(pool, workspace, false).await?;
     let mut stored = load(&mut tx, workspace, situation, Some(event_id))
@@ -211,12 +227,16 @@ async fn record_choice(
                 }
                 json!(result)
             }
-            ReviewBasis::ArtifactDependence(relationship) => {
+            ReviewBasis::ArtifactDependence {
+                relationship_id,
+                via_relationship_id,
+            } => {
                 let reviews = artifact_dependence::reviews_in(
                     &mut tx,
                     workspace,
                     situation,
-                    Some(*relationship),
+                    Some(*relationship_id),
+                    *via_relationship_id,
                 )
                 .await?;
                 let (conclusion, review) = reviews
