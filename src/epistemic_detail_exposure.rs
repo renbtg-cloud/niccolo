@@ -2,7 +2,7 @@
 use super::{
     WorkbenchError,
     exposure_order::{self, Direction},
-    public_prominence::{self, Observation, calendar_date},
+    public_prominence::{self, Observation, calendar_date, calendar_range},
     scoped,
 };
 use serde::{Deserialize, Serialize};
@@ -24,8 +24,8 @@ pub struct Input {
     pub(super) testimony_detail: DetailSource,
     pub(super) candidate_source: DetailSource,
     pub(super) exposure_record_id: Uuid,
-    testimony_from: String,
-    testimony_through: String,
+    testimony_from: Option<String>,
+    testimony_through: Option<String>,
     pub(super) known_through: String,
 }
 
@@ -50,8 +50,8 @@ struct AffectedRoute {
 pub struct Review {
     witness_actor_id: Uuid,
     testimony_detail: DetailSource,
-    testimony_from: String,
-    testimony_through: String,
+    testimony_from: Option<String>,
+    testimony_through: Option<String>,
     known_through: String,
     candidate_source: Option<DetailSource>,
     exposure: Option<public_prominence::Record>,
@@ -97,11 +97,19 @@ pub(super) async fn review_in(
     situation: Uuid,
     input: &Input,
 ) -> Result<Review, WorkbenchError> {
-    if !calendar_date(&input.testimony_from)
-        || !calendar_date(&input.testimony_through)
-        || !calendar_date(&input.known_through)
-        || input.testimony_from > input.testimony_through
-        || input.testimony_through > input.known_through
+    let testimony_dates = (
+        input.testimony_from.as_deref(),
+        input.testimony_through.as_deref(),
+    );
+    let dates_valid = match testimony_dates {
+        (Some(from), Some(through)) => {
+            calendar_range(from, through) && through <= input.known_through.as_str()
+        }
+        (None, None) => true,
+        _ => false,
+    };
+    if !calendar_date(&input.known_through)
+        || !dates_valid
         || input.testimony_detail.object_id == input.candidate_source.object_id
     {
         return Err(WorkbenchError::Invalid);
@@ -135,12 +143,22 @@ pub(super) async fn review_in(
 
     let available = exposure.input.available_on <= input.known_through;
     let (date_order, order_reports, order_reports_truncated, disposition) = if available {
-        let date_order = if exposure.input.effective_through < input.testimony_from {
-            Some(Direction::ExposureBeforeTestimony)
-        } else if exposure.input.effective_from > input.testimony_through {
-            Some(Direction::ExposureAfterTestimony)
-        } else {
-            None
+        let exposure_dates = (
+            exposure.input.effective_from.as_deref(),
+            exposure.input.effective_through.as_deref(),
+        );
+        let date_order = match (exposure_dates, testimony_dates) {
+            ((Some(_), Some(exposure_through)), (Some(testimony_from), Some(_)))
+                if exposure_through < testimony_from =>
+            {
+                Some(Direction::ExposureBeforeTestimony)
+            }
+            ((Some(exposure_from), Some(_)), (Some(_), Some(testimony_through)))
+                if exposure_from > testimony_through =>
+            {
+                Some(Direction::ExposureAfterTestimony)
+            }
+            _ => None,
         };
         let (reports, truncated) =
             exposure_order::for_review(tx, workspace, situation, input).await?;

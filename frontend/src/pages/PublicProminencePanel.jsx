@@ -52,9 +52,12 @@ export function PublicProminenceRecordForm({ client, actors, nodes, provenance, 
   const source = sources.get(draft.source);
   const audienceScope = draft.audience_scope.trim();
   const update = (field) => (event) => setDraft({...draft, [field]: event.target.value});
+  const datesOptional = draft.observation === 'EXPOSURE_REPORTED';
+  const datesValid = dateRangeIsValid(draft.effective_from, draft.effective_through)
+    || (datesOptional && !draft.effective_from && !draft.effective_through);
   const ready = draft.subject_actor_id && draft.audience_actor_id
     && draft.subject_actor_id !== draft.audience_actor_id && draft.cue && draft.observation
-    && dateRangeIsValid(draft.effective_from, draft.effective_through) && draft.available_on
+    && datesValid && draft.available_on
     && audienceScope && encoder.encode(audienceScope).length <= 2048 && source;
 
   return <details>
@@ -66,7 +69,7 @@ export function PublicProminenceRecordForm({ client, actors, nodes, provenance, 
         record.mutate({
           subject_actor_id: draft.subject_actor_id, audience_actor_id: draft.audience_actor_id,
           cue: draft.cue, observation: draft.observation, audience_scope: audienceScope,
-          effective_from: draft.effective_from, effective_through: draft.effective_through,
+          effective_from: draft.effective_from || null, effective_through: draft.effective_through || null,
           available_on: draft.available_on,
           claim_object_id: source.object_id, representation_id: source.representation_id,
         });
@@ -86,9 +89,11 @@ export function PublicProminenceRecordForm({ client, actors, nodes, provenance, 
           </select></label>
           <label>Who in the audience the source describes<textarea value={draft.audience_scope}
             onChange={update('audience_scope')} maxLength={2048} required/></label>
-          <label>Applies from<input type="date" value={draft.effective_from} onChange={update('effective_from')} required/></label>
+          {datesOptional && <p>Leave both event dates blank if the source gives no date for the exposure.</p>}
+          <label>Applies from<input type="date" value={draft.effective_from}
+            onChange={update('effective_from')} required={!datesOptional}/></label>
           <label>Applies through<input type="date" value={draft.effective_through} min={draft.effective_from || undefined}
-            onChange={update('effective_through')} required/></label>
+            onChange={update('effective_through')} required={!datesOptional}/></label>
           <label>Report available on<input type="date" value={draft.available_on} onChange={update('available_on')} required/></label>
           <label>Linked source passage<select value={draft.source} onChange={update('source')} required>
             <option value="">Choose…</option>
@@ -114,7 +119,7 @@ export function PublicProminenceReports({ result, actors, provenance, onReview }
   return <>
     <p><strong>{actorLabel(query.subject_actor_id)}</strong> · {actorLabel(query.audience_actor_id)}
       {query.cue && ` · ${cueLabels[query.cue]}`}</p>
-    <p>On {query.on} · reports available through {query.known_through}</p>
+    <p>{query.on ? `On ${query.on}` : 'Exposure reports without an event date'} · reports available through {query.known_through}</p>
     {result.coverage === 'NO_RECORDED_REPORTS' && <p>No reports recorded for this selection.</p>}
     {truncated && <p role="status">Showing only the first 100 matching reports.</p>}
     {records.length > 0 && <ul>{records.map((record) => {
@@ -122,7 +127,8 @@ export function PublicProminenceReports({ result, actors, provenance, onReview }
       return <li key={record.record_id}>
         <strong>{reportLabels[record.observation]}</strong> · {cueLabels[record.cue]}
         <p>{record.audience_scope}</p>
-        <p>Applies {record.effective_from} to {record.effective_through} · available {record.available_on}</p>
+        <p>{record.effective_from ? `Applies ${record.effective_from} to ${record.effective_through}`
+          : 'Exposure date unknown'} · available {record.available_on}</p>
         {source ? <a href={`#source-${record.claim_object_id}-${record.representation_id}`}>
           {source.artifact_label} · {source.scope_locator}
         </a> : <small>Source {record.representation_id}</small>}
@@ -136,18 +142,21 @@ export function PublicProminenceReports({ result, actors, provenance, onReview }
 
 export function PublicProminencePanel({ client, actors, nodes, provenance, groundingSets, routeHistory, onRouteChanged }) {
   const [draft, setDraft] = useState({
-    subject_actor_id: '', audience_actor_id: '', cue: '', on: '', known_through: '',
+    subject_actor_id: '', audience_actor_id: '', cue: '', on: '', known_through: '', undated: false,
   });
   const [lookup, setLookup] = useState(null);
   const [review, setReview] = useState(null);
   const reports = useQuery({
     queryKey: ['public-prominence', client.config.workspace, client.config.situation, lookup],
     enabled: lookup !== null,
-    queryFn: async ({ signal }) => (await client.publicProminence(lookup, signal)).value,
+    queryFn: async ({ signal }) => {
+      const { undated, ...criteria } = lookup;
+      return (await client.publicProminence({...criteria, on: undated ? null : criteria.on}, signal)).value;
+    },
   });
   const update = (field) => (event) => setDraft({...draft, [field]: event.target.value});
   const ready = draft.subject_actor_id && draft.audience_actor_id
-    && draft.subject_actor_id !== draft.audience_actor_id && draft.on && draft.known_through;
+    && draft.subject_actor_id !== draft.audience_actor_id && (draft.undated || draft.on) && draft.known_through;
 
   return <details className="review-panel">
     <summary>Recognizability by audience</summary>
@@ -167,7 +176,11 @@ export function PublicProminencePanel({ client, actors, nodes, provenance, groun
           <option value="">Any cue</option>
           {Object.entries(cueLabels).map(([cue, label]) => <option key={cue} value={cue}>{label}</option>)}
         </select></label>
-        <label>Date being investigated<input type="date" value={draft.on} onChange={update('on')} required/></label>
+        <label><input type="checkbox" checked={draft.undated}
+          onChange={(event) => setDraft({...draft, undated: event.target.checked})}/>
+          Find exposures with unknown dates</label>
+        <label>Date being investigated<input type="date" value={draft.on} onChange={update('on')}
+          required={!draft.undated} disabled={draft.undated}/></label>
         <label>Reports available through<input type="date" value={draft.known_through}
           onChange={update('known_through')} required/></label>
         <button disabled={!ready || reports.isFetching}>Find reports</button>

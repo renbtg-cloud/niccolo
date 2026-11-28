@@ -100,9 +100,12 @@ it('queries recognizability with separate event and availability dates', async (
   };
   await client.publicProminence(lookup, signal);
   await client.publicProminence({ ...lookup, cue: 'FACE' }, signal);
+  await client.publicProminence({ ...lookup, on: null }, signal);
   expect(urls[0].pathname).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/public-prominence`);
   expect(Object.fromEntries(urls[0].searchParams)).toEqual(lookup);
   expect(Object.fromEntries(urls[1].searchParams)).toEqual({ ...lookup, cue: 'FACE' });
+  expect(urls[2].searchParams.has('on')).toBe(false);
+  expect(urls[2].searchParams.get('known_through')).toBe(lookup.known_through);
 });
 
 it('posts an attributed recognizability report through the Situation client', async () => {

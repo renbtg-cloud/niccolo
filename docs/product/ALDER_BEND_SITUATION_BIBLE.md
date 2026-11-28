@@ -127,6 +127,8 @@ Na consulta de reconhecibilidade do Workbench, um relato de exposição permite 
 
 Na mesma tela, **Record a source that states which came first** registra a ordem declarada no trecho selecionado. **Basis for the order of events** mostra de onde veio cada direção e quando o relato ficou disponível para a investigação.
 
+Se a fonte disser apenas que a foto veio antes ou depois do depoimento, o investigador pode registrar a exposição com as duas datas vazias, encontrá-la com **Find exposures with unknown dates** e deixar também em branco as datas do depoimento. A data em que cada relato chegou à investigação continua obrigatória. Uma consulta com dia especificado mantém o recorte de calendário. Uma consulta sem `on` retorna as exposições de data desconhecida.
+
 ```bash
 cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
   alder_bend_reviews_only_the_detail_reachable_from_prior_exposure
@@ -142,7 +144,7 @@ No formulário de revisão do detalhe, o Workbench apresenta a decisão de uso a
 
 A tela vincula uma nova decisão à revisão que a pessoa examinou. Se chegar um relato incompatível antes de salvar a decisão, a API pede uma nova checagem da ordem. As decisões já registradas continuam com a base que tinham quando foram tomadas.
 
-O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1066) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}`. A entrada pede `argument_id`, `grounding_set_id`, `disposition` (`USE` ou `SUSPEND`), `rationale` e a mesma entrada de checagem em `review`. É preciso ter permissão de escrita. Só uma rota de apoio indicada pela checagem pode receber a decisão. O registro guarda a entrada e o resultado reavaliado no momento da decisão.
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1401) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}`. A entrada pede `argument_id`, `grounding_set_id`, `disposition` (`USE` ou `SUSPEND`), `rationale` e a mesma entrada de checagem em `review`. É preciso ter permissão de escrita. Só uma rota de apoio indicada pela checagem pode receber a decisão. O registro guarda a entrada e o resultado reavaliado no momento da decisão.
 
 O Workbench mostra a escolha mais recente por rota, `suspended_by_decision_id` nas rotas suspensas, `non_suspended_supporting_routes` no diagnóstico da conclusão e todos os eventos em `route_use_history`. Essa lista distingue o uso decidido pelo investigador da estrutura original, que permanece consultável. A decisão não altera a verdade da alegação e não suspende outros relatos da mesma testemunha.
 

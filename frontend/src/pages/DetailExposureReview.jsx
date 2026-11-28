@@ -51,9 +51,11 @@ export function DetailExposureReview({
   const sources = new Map(provenance.map((link) => [`${link.object_id}:${link.representation_id}`, link]));
   const testimony = sources.get(draft.testimony_detail);
   const candidate = sources.get(draft.candidate_source);
+  const testimonyDatesValid = (!draft.testimony_from && !draft.testimony_through)
+    || (draft.testimony_from && draft.testimony_through
+      && draft.testimony_from <= draft.testimony_through && draft.testimony_through <= draft.known_through);
   const ready = testimony && candidate && testimony.object_id !== candidate.object_id
-    && draft.testimony_from && draft.testimony_through && draft.known_through
-    && draft.testimony_from <= draft.testimony_through && draft.testimony_through <= draft.known_through;
+    && draft.known_through && testimonyDatesValid;
   function update(field, value) {
     currentComparison.current = null;
     setDraft({...draft, [field]: value});
@@ -68,7 +70,8 @@ export function DetailExposureReview({
   return <section className="review-panel" ref={panel} tabIndex={-1} aria-label="Testimony detail review">
     <h4>Review a testimony detail for prior exposure</h4>
     <p>Reported exposure for <strong>{witness}</strong> · {exposure.audience_scope}</p>
-    <p>Applies {exposure.effective_from} to {exposure.effective_through} · available {exposure.available_on}</p>
+    <p>{exposure.effective_from ? `Applies ${exposure.effective_from} to ${exposure.effective_through}`
+      : 'Exposure date unknown'} · available {exposure.available_on}</p>
     <button type="button" onClick={onClose}>Close detail review</button>
     {new Set(provenance.map((link) => link.object_id)).size > 1 ? <form className="human-context" onSubmit={(event) => {
       event.preventDefault();
@@ -76,7 +79,7 @@ export function DetailExposureReview({
       const input = {
         witness_actor_id: exposure.audience_actor_id, exposure_record_id: exposure.record_id,
         testimony_detail: pair(testimony), candidate_source: pair(candidate),
-        testimony_from: draft.testimony_from, testimony_through: draft.testimony_through,
+        testimony_from: draft.testimony_from || null, testimony_through: draft.testimony_through || null,
         known_through: draft.known_through,
       };
       currentComparison.current = input;
@@ -93,10 +96,11 @@ export function DetailExposureReview({
         </select></label>
         {testimony && candidate && testimony.object_id === candidate.object_id &&
           <p>Choose a separate graph object for the candidate origin.</p>}
+        <p>Leave both testimony dates blank if the date is unknown.</p>
         <label>Earliest testimony date<input type="date" value={draft.testimony_from}
-          onChange={(event) => update('testimony_from', event.target.value)} required/></label>
+          onChange={(event) => update('testimony_from', event.target.value)}/></label>
         <label>Latest testimony date<input type="date" value={draft.testimony_through} min={draft.testimony_from || undefined}
-          onChange={(event) => update('testimony_through', event.target.value)} required/></label>
+          onChange={(event) => update('testimony_through', event.target.value)}/></label>
         <label>Reports available through<input type="date" value={draft.known_through} min={draft.testimony_through || undefined}
           onChange={(event) => update('known_through', event.target.value)} required/></label>
         <button disabled={!ready}>Check possible influence</button>

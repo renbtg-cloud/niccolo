@@ -954,6 +954,7 @@ async fn alder_bend_reviews_only_the_detail_reachable_from_prior_exposure() {
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         if from == "2026-11-20" && through == from {
+            assert_undated_exposure_order(&case, &uri, payload.clone(), frank, mara).await;
             assert_same_day_exposure_order(&case, &uri, payload, hat_route, identity_route).await;
         }
     }
@@ -1163,6 +1164,14 @@ async fn assert_same_day_exposure_order(
         case_row(&resolved, "affected_routes", "grounding_set_id", route);
     }
 
+    let mut conflicting_dates = review.clone();
+    conflicting_dates["testimony_from"] = json!("2026-11-19");
+    conflicting_dates["testimony_through"] = json!("2026-11-19");
+    let conflicting_dates = compare(conflicting_dates).await;
+    assert_eq!(conflicting_dates["date_order"], "EXPOSURE_AFTER_TESTIMONY");
+    assert_eq!(conflicting_dates["disposition"], "ORDER_CONFLICT");
+    assert_eq!(conflicting_dates["affected_routes"], json!([]));
+
     let alternative = case
         .case_node(
             "PROPOSITION",
@@ -1280,6 +1289,112 @@ async fn assert_same_day_exposure_order(
     assert_eq!(status, StatusCode::OK);
     assert_eq!(replay["replayed"], true);
     assert_eq!(replay["decision"]["basis"], *saved_basis);
+}
+
+async fn assert_undated_exposure_order(
+    case: &Setup,
+    uri: &str,
+    mut review: Value,
+    subject: Uuid,
+    witness: Uuid,
+) {
+    let claim = case
+        .case_node(
+            "PROPOSITION",
+            "Mara places the photo before her original testimony.",
+            "The source supplies a sequence without event dates.",
+        )
+        .await;
+    let passage = case
+        .case_source(
+            claim,
+            "Mara's later statement",
+            "Mara Ellis",
+            "I saw the photo before giving my original testimony. I cannot place either day.",
+        )
+        .await;
+    let exposure = Uuid::new_v4();
+    let body = json!({
+        "subject_actor_id":subject, "audience_actor_id":witness, "cue":"FACE",
+        "observation":"EXPOSURE_REPORTED", "audience_scope":"Mara only",
+        "effective_from":null, "effective_through":null, "available_on":"2026-11-23",
+        "claim_object_id":claim, "representation_id":passage,
+    });
+    case.case_request(
+        &format!("epistemic/public-prominence/{exposure}"),
+        Some(body.clone()),
+    )
+    .await;
+    let listing_path = format!(
+        "epistemic/public-prominence?subject_actor_id={subject}&audience_actor_id={witness}&known_through=2026-11-23"
+    );
+    let undated = case.case_request(&listing_path, None).await;
+    let records = undated["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["record_id"], json!(exposure));
+    assert_eq!(records[0]["effective_from"], Value::Null);
+    assert_eq!(records[0]["effective_through"], Value::Null);
+    let dated = case
+        .case_request(&format!("{listing_path}&on=2026-11-20"), None)
+        .await;
+    assert!(
+        dated["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["record_id"] != json!(exposure))
+    );
+    let registration = format!(
+        "/v1/workspaces/{}/situations/{}/epistemic/public-prominence/{}",
+        case.workspace,
+        case.situation,
+        Uuid::new_v4()
+    );
+    let mut non_exposure = body;
+    non_exposure["observation"] = json!("RECOGNITION_REPORTED");
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &registration, &case.token, Some(non_exposure)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    review["exposure_record_id"] = json!(exposure);
+    review["testimony_from"] = Value::Null;
+    review["testimony_through"] = Value::Null;
+    let examine = |payload: Value| async move {
+        invoke(
+            case.router.clone(),
+            request("POST", uri, &case.token, Some(payload)),
+        )
+        .await
+    };
+    let (status, unresolved) = examine(review.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{unresolved}");
+    assert_eq!(unresolved["disposition"], "ORDER_UNCERTAIN");
+    let mut partial = review.clone();
+    partial["testimony_from"] = json!("2026-11-20");
+    assert_eq!(examine(partial).await.0, StatusCode::BAD_REQUEST);
+
+    let order = Uuid::new_v4();
+    case.case_request(
+        &format!("epistemic/detail-exposure-review/order-reports/{order}"),
+        Some(json!({
+            "exposure_record_id": exposure,
+            "testimony_representation_id":review["testimony_detail"]["representation_id"],
+            "candidate_representation_id":review["candidate_source"]["representation_id"],
+            "direction":"EXPOSURE_BEFORE_TESTIMONY",
+            "source":{"object_id":claim, "representation_id":passage},
+            "available_on":"2026-11-23",
+        })),
+    )
+    .await;
+    let (status, resolved) = examine(review).await;
+    assert_eq!(status, StatusCode::OK, "{resolved}");
+    assert_eq!(resolved["disposition"], "REVIEW_CANDIDATE");
+    assert_eq!(resolved["date_order"], Value::Null);
+    assert_eq!(resolved["order_reports"][0]["report_id"], json!(order));
+    assert_eq!(resolved["affected_routes"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]

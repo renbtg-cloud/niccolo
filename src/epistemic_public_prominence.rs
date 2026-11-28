@@ -28,8 +28,8 @@ pub struct Input {
     pub cue: Cue,
     pub observation: Observation,
     pub audience_scope: String,
-    pub effective_from: String,
-    pub effective_through: String,
+    pub effective_from: Option<String>,
+    pub effective_through: Option<String>,
     pub available_on: String,
     pub claim_object_id: Uuid,
     pub representation_id: Uuid,
@@ -41,7 +41,7 @@ pub struct Lookup {
     pub subject_actor_id: Uuid,
     pub audience_actor_id: Uuid,
     pub cue: Option<Cue>,
-    pub on: String,
+    pub on: Option<String>,
     pub known_through: String,
 }
 
@@ -102,6 +102,10 @@ pub(super) fn calendar_date(value: &str) -> bool {
         _ => return false,
     };
     year != 0 && (1..=days).contains(&day)
+}
+
+pub(super) fn calendar_range(from: &str, through: &str) -> bool {
+    calendar_date(from) && calendar_date(through) && from <= through
 }
 
 fn encode(value: impl Serialize) -> String {
@@ -189,11 +193,17 @@ pub async fn record(
     record_id: Uuid,
     input: Input,
 ) -> Result<bool, WorkbenchError> {
+    let dates_valid = match (
+        input.effective_from.as_deref(),
+        input.effective_through.as_deref(),
+    ) {
+        (Some(from), Some(through)) => calendar_range(from, through),
+        (None, None) => input.observation == Observation::ExposureReported,
+        _ => false,
+    };
     if !valid_text(&input.audience_scope, 2048)
-        || !calendar_date(&input.effective_from)
-        || !calendar_date(&input.effective_through)
         || !calendar_date(&input.available_on)
-        || input.effective_from > input.effective_through
+        || !dates_valid
     {
         return Err(WorkbenchError::Invalid);
     }
@@ -255,7 +265,9 @@ pub async fn lookup(
     situation: Uuid,
     query: Lookup,
 ) -> Result<LookupResult, WorkbenchError> {
-    if !calendar_date(&query.on) || !calendar_date(&query.known_through) {
+    if query.on.as_deref().is_some_and(|date| !calendar_date(date))
+        || !calendar_date(&query.known_through)
+    {
         return Err(WorkbenchError::Invalid);
     }
     let mut tx = scoped(pool, workspace, true).await?;
@@ -270,7 +282,8 @@ pub async fn lookup(
     let sql = format!(
         "SELECT {RECORD_COLUMNS} FROM niccolo.public_prominence_records
          WHERE workspace_id=$1 AND situation_id=$2 AND subject_actor_id=$3 AND audience_actor_id=$4
-           AND $5::text::date BETWEEN effective_from AND effective_through
+           AND (($5::text IS NULL AND effective_from IS NULL)
+                OR $5::text::date BETWEEN effective_from AND effective_through)
            AND available_on <= $6::text::date AND ($7::text IS NULL OR cue=$7)
          ORDER BY available_on, recorded_at, record_id LIMIT $8"
     );

@@ -50,6 +50,17 @@ it('renders missing reports separately from a report of non-recognition', () => 
   expect(html).not.toContain('Non-recognition reported');
 });
 
+it('keeps an unknown exposure date separate from when the report became available', () => {
+  const result = { query: {...query, on: null}, coverage: 'RECORDED_REPORTS', records: [{
+    record_id: 'record', cue: 'FACE', observation: 'EXPOSURE_REPORTED',
+    audience_scope: 'Mara only', effective_from: null, effective_through: null,
+    available_on: '2026-11-20', claim_object_id: 'report', representation_id: 'excerpt',
+  }] };
+  const html = renderToStaticMarkup(<PublicProminenceReports result={result} actors={actors} provenance={provenance}/>);
+  expect(html).toContain('Exposure reports without an event date');
+  expect(html).toContain('Exposure date unknown · available 2026-11-20');
+});
+
 it('only offers source passages already linked to a proposition', () => {
   const nodes = [
     { object_id: 'report', kind: 'PROPOSITION', text: 'Mara reports seeing the photo' },
