@@ -95,6 +95,20 @@ function AuthoredImpactPanel({snapshot}) {
   </details>;
 }
 
+function RecordedArtifactDerivation({derived, source, via, qualification}) {
+  if (via) {
+    const intermediate = `${via.artifact_label} (${via.scope_locator})`;
+    return <ol>
+      <li><p><strong>{derived}</strong> was reported to draw on <strong>{intermediate}</strong>.</p>{qualification && <p>{qualification}</p>}</li>
+      <li><p><strong>{intermediate}</strong> was reported to draw on <strong>{source}</strong>.</p>{via.qualification && <p>{via.qualification}</p>}</li>
+    </ol>;
+  }
+  return <>
+    <p><strong>{derived}</strong> was reported to draw on <strong>{source}</strong>.</p>
+    {qualification && <p>{qualification}</p>}
+  </>;
+}
+
 function ArtifactDependenceRouteDecision({client, basis, route, label, suspended, history, onSaved}) {
   const [disposition, setDisposition] = useState('');
   const [rationale, setRationale] = useState('');
@@ -521,16 +535,9 @@ export function ExpertWorkbenchPage() {
               const derived = artifactLabel(review.derived_artifact_id, review.derived_representation_id);
               const source = artifactLabel(review.source_artifact_id, review.source_representation_id);
               const via = review.via;
-              const intermediate = via && `${via.artifact_label} (${via.scope_locator})`;
               const basis = {relationship_id: review.relationship_id, ...(via ? {via_relationship_id: via.relationship_id} : {})};
               return <li key={`${review.relationship_id}:${via?.relationship_id ?? ''}`}>
-                {via ? <ol>
-                  <li><p><strong>{derived}</strong> was reported to draw on <strong>{intermediate}</strong>.</p>{review.qualification && <p>{review.qualification}</p>}</li>
-                  <li><p><strong>{intermediate}</strong> was reported to draw on <strong>{source}</strong>.</p>{via.qualification && <p>{via.qualification}</p>}</li>
-                </ol> : <>
-                  <p><strong>{derived}</strong> was reported to draw on <strong>{source}</strong>.</p>
-                  {review.qualification && <p>{review.qualification}</p>}
-                </>}
+                <RecordedArtifactDerivation derived={derived} source={source} via={via} qualification={review.qualification}/>
                 <strong>Use of derived routes</strong>
                 <ul>{[...review.routes_to_review, ...(review.suspended_routes ?? [])].map((route) => {
                   const matches = (candidate) => candidate.argument_id === route.argument_id && candidate.grounding_set_id === route.grounding_set_id;
@@ -544,6 +551,17 @@ export function ExpertWorkbenchPage() {
             </li>;
             })}</ul>
           </details>}
+          {diagnostic.shared_artifact_origins?.map((origin) => {
+            const source = `${origin.source_artifact_label} (${origin.source_scope_locator})`;
+            return <details open key={origin.source_representation_id}>
+              <summary>Review candidate — support routes share a recorded origin</summary>
+              <ul>{origin.derivations.map((copy) => <li key={`${copy.relationship_id}:${copy.via?.relationship_id ?? ''}`}>
+                <RecordedArtifactDerivation derived={artifactLabel(copy.derived_artifact_id, copy.derived_representation_id)}
+                  source={source} via={copy.via} qualification={copy.qualification}/>
+                <ul>{copy.routes_to_review.map((route) => <li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)}</li>)}</ul>
+              </li>)}</ul>
+            </details>;
+          })}
           {diagnostic.direct_evidence_lineage && diagnostic.direct_evidence_lineage.status !== 'NO_DIRECT_EVIDENCE' && <details open><summary>Recorded documentary dependence</summary>
             {diagnostic.direct_evidence_lineage.status === 'RECORDED_LINEAGE_RESOLVED' ? <><p>{diagnostic.direct_evidence_lineage.selected_evidence_count} directly selected fragment(s) in {diagnostic.direct_evidence_lineage.components.length} recorded dependence component(s).</p><ul>{diagnostic.direct_evidence_lineage.components.map((component) => <li key={component.evidence_ids.join(':')}>{component.evidence_ids.length} fragment(s), {component.routes.length} authored route(s)<ul>{component.evidence_ids.map((id) => <li key={id}>{groundText({evidence_id: id})}</li>)}</ul></li>)}</ul></> : <p>Recorded lineage could not be resolved ({diagnostic.direct_evidence_lineage.status}); no independence inference is justified.</p>}
             <small>Shared recorded origins or source documents indicate possible dependence. Different components do not establish independent corroboration. This diagnostic covers direct documentary grounds only, not indirect object-ground ancestry.</small></details>}
