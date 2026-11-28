@@ -181,6 +181,7 @@ async fn execute_step<M: ReasoningModel + ?Sized>(
                         "do_not_generate_hypotheses_or_assumptions":true,
                         "do_not_execute_human_actions":true,
                         "cite_workbench_support_using_frozen_route_ids":true,
+                        "workbench_shared_origin_guidance":"Use workbench_support.shared_artifact_origins to identify support routes with a recorded common origin. When citing those routes for the same claim, describe the shared origin and count it once for corroboration. Treat the recorded derivation as attributed. Missing or truncated provenance leaves independence unresolved.",
                         "suspended_or_truncated_workbench_routes_cannot_be_used_as_support":true,
                         "suspended_workbench_routes_may_be_explained_as_history":true
                     }

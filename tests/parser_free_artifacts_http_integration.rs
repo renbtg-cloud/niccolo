@@ -3509,6 +3509,106 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
         )
         .await;
     assert_eq!(input["workbench_support"], json!(basis));
+
+    let links = [(argument, owen_route), (argument, ruth_route)];
+    case.router = api::router_with_model(
+        case.service.clone(),
+        std::sync::Arc::new(SharedOriginSynthesis {
+            origin: claire_time,
+            links,
+        }),
+    );
+    let model_analysis = Uuid::new_v4();
+    let base = format!(
+        "/v1/workspaces/{}/situations/{}",
+        case.workspace, case.situation
+    );
+    let (status, _, result) = alder_analysis(
+        &case,
+        &base,
+        model_analysis,
+        Some(previous),
+        "How many recorded origins support the sighting time?",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    assert_eq!(result["operation"]["state"], "SUCCEEDED");
+    let output = case
+        .case_request(&format!("analysis-snapshots/{model_analysis}/output"), None)
+        .await;
+    assert_eq!(output["answer_text"], SHARED_ORIGIN_ANSWER);
+    let published_links = output["workbench_support_links"].as_array().unwrap();
+    assert_eq!(published_links.len(), 2);
+    for (argument, route) in links {
+        assert!(
+            published_links
+                .iter()
+                .any(|link| link["argument_id"] == json!(argument)
+                    && link["grounding_set_id"] == json!(route))
+        );
+    }
+}
+
+const SHARED_ORIGIN_ANSWER: &str =
+    "Owen's note and Ruth's summary both trace the time to Claire's second answer.";
+
+struct SharedOriginSynthesis {
+    origin: Uuid,
+    links: [(Uuid, Uuid); 2],
+}
+
+impl niccolo_evidence::model_adapter::ReasoningModel for SharedOriginSynthesis {
+    fn provider(&self) -> &str {
+        "alder-bend-fixture"
+    }
+    fn model(&self) -> &str {
+        "shared-origin-replay"
+    }
+
+    fn invoke<'a>(
+        &'a self,
+        request: &'a niccolo_evidence::model_adapter::ModelRequest,
+    ) -> niccolo_evidence::model_adapter::ModelFuture<'a> {
+        use niccolo_evidence::model_adapter::{DeterministicModel, ModelResponse};
+        Box::pin(async move {
+            if request.purpose != "SYNTHESIZE" {
+                return DeterministicModel::new(self.provider(), self.model())?
+                    .invoke(request)
+                    .await;
+            }
+            let basis = &request.input["reasoning_packet"]["frozen_input"]["workbench_support"];
+            let origin = case_row(
+                basis,
+                "shared_artifact_origins",
+                "source_representation_id",
+                self.origin,
+            );
+            assert_eq!(origin["derivations"].as_array().unwrap().len(), 2);
+            let guidance =
+                request.output_contract["niccolo_rules"]["workbench_shared_origin_guidance"]
+                    .as_str()
+                    .unwrap();
+            assert!(guidance.contains("count it once for corroboration"));
+            let claim = Uuid::new_v4();
+            let links = self.links.map(|(argument, route)| {
+                json!({
+                    "claim_id":claim, "argument_id":argument, "grounding_set_id":route
+                })
+            });
+            Ok(ModelResponse {
+                value: json!({"purpose":"SYNTHESIZE","status":"ok","niccolo_artifact":{
+                    "answer_text":SHARED_ORIGIN_ANSWER, "coverage_note":"Recorded derivations point to one origin.",
+                    "claims":[{"claim_id":claim,"ordinal":1,"kind":"OBSERVATION","text":SHARED_ORIGIN_ANSWER}],
+                    "workbench_support_links":links
+                }}),
+                prompt_tokens: Some(8),
+                completion_tokens: Some(5),
+                effective_provider: None,
+                effective_model: None,
+                fallback_used: false,
+            })
+        })
+    }
 }
 
 #[tokio::test]
