@@ -197,6 +197,8 @@ O investigador suspende a rota que usava a nota de Owen como apoio separado ao a
 
 O replay testa uma síntese que cita Claire e a câmera para o avistamento e a nota de Owen para a alegação sobre o dossiê. Quando outra síntese tenta citar a rota suspensa, a operação falha e o resultado fica sem publicação. As bases anteriores preservam as rotas que estavam disponíveis quando foram congeladas. A retomada acrescenta uma decisão ao histórico.
 
+Uma suspensão ou retomada que altera o uso de uma rota congelada aparece como motivo para reanalisar. A interface mantém a aprovação humana como condição para iniciar a reanálise.
+
 O endpoint `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/artifact-dependence-review/route-use/{event}` recebe `relationship_id`, `argument_id`, `grounding_set_id`, `disposition` e `rationale`. A API verifica a permissão de escrita e a participação da rota no alerta. As escolhas são `USE` e `SUSPEND`.
 
 ### Décimo replay — derivação delimitada a dois trechos
