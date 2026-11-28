@@ -105,6 +105,22 @@ it('queries recognizability with separate event and availability dates', async (
   expect(Object.fromEntries(urls[1].searchParams)).toEqual({ ...lookup, cue: 'FACE' });
 });
 
+it('posts an attributed recognizability report through the Situation client', async () => {
+  const input = {
+    subject_actor_id: 'frank', audience_actor_id: 'evening-class', cue: 'FACE',
+    observation: 'EXPOSURE_REPORTED', audience_scope: 'Mara only',
+    effective_from: '2026-11-19', effective_through: '2026-11-19', available_on: '2026-11-20',
+    claim_object_id: 'proposition', representation_id: 'passage',
+  };
+  const client = new NiccoloClient(c, async (path, options) => {
+    expect(path).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/public-prominence/record`);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual(input);
+    return response(201, { record_id: 'record' });
+  });
+  expect((await client.recordPublicProminence('record', input)).value.record_id).toBe('record');
+});
+
 it('passes cancellation through a review read and rejects an aborted body', async () => {
   const controller = new AbortController();
   const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (_, options) => {

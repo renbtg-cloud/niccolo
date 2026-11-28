@@ -447,7 +447,7 @@ export function ExpertWorkbenchPage() {
       })}</ul><small>Current judgments in their own revision chains remain separate, including disagreement. Earlier revisions are retained in assessment history.</small></details>}
       <InquiryComparisonPanel key={`${client.config.workspace}:${client.config.situation}`} snapshot={data} client={client} onChanged={()=>workbench.refetch()}/>
       {actors.isSuccess && <PublicProminencePanel key={`recognizability:${client.config.workspace}:${client.config.situation}`}
-        client={client} actors={actors.data} provenance={data.artifact_provenance ?? []}/>}
+        client={client} actors={actors.data} nodes={data.nodes} provenance={data.artifact_provenance ?? []}/>}
       <ActorEpistemicStatePanel key={`actor-states:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <NormativeAssessmentPanel key={`normative-assessments:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicActPanel key={`actor-acts:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>

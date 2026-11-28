@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 const cueLabels = { NAME: 'Name', FACE: 'Face', PUBLIC_ROLE: 'Public role' };
 const reportLabels = {
@@ -7,6 +7,101 @@ const reportLabels = {
   NON_RECOGNITION_REPORTED: 'Non-recognition reported',
   EXPOSURE_REPORTED: 'Exposure reported',
 };
+const encoder = new TextEncoder();
+const emptyReport = {
+  subject_actor_id: '', audience_actor_id: '', cue: '', observation: '',
+  effective_from: '', effective_through: '', available_on: '', audience_scope: '', source: '',
+};
+
+function ActorSelect({ label, actors, value, onChange, excluded }) {
+  return <label>{label}<select value={value} onChange={onChange} required>
+    <option value="">Choose…</option>
+    {actors.map((actor) => <option key={actor.actor_id} value={actor.actor_id}
+      disabled={actor.actor_id === excluded}>{actor.display_label}</option>)}
+  </select></label>;
+}
+
+function dateRangeIsValid(from, through) {
+  return from && through && from <= through;
+}
+
+export function PublicProminenceRecordForm({ client, actors, nodes, provenance, onRecorded }) {
+  const [draft, setDraft] = useState(emptyReport);
+  const pending = useRef(null);
+  const propositions = new Map(nodes.filter((node) => node.kind === 'PROPOSITION').map(
+    (node) => [node.object_id, node.text],
+  ));
+  const sources = new Map(provenance.filter((link) => propositions.has(link.object_id)).map(
+    (link) => [`${link.object_id}:${link.representation_id}`, link],
+  ));
+  const record = useMutation({
+    mutationFn: (body) => {
+      const signature = JSON.stringify(body);
+      if (pending.current?.signature !== signature) {
+        pending.current = { signature, id: crypto.randomUUID() };
+      }
+      return client.recordPublicProminence(pending.current.id, body);
+    },
+    onSuccess: async () => {
+      pending.current = null;
+      setDraft(emptyReport);
+      await onRecorded();
+    },
+  });
+  const source = sources.get(draft.source);
+  const audienceScope = draft.audience_scope.trim();
+  const update = (field) => (event) => setDraft({...draft, [field]: event.target.value});
+  const ready = draft.subject_actor_id && draft.audience_actor_id
+    && draft.subject_actor_id !== draft.audience_actor_id && draft.cue && draft.observation
+    && dateRangeIsValid(draft.effective_from, draft.effective_through) && draft.available_on
+    && audienceScope && encoder.encode(audienceScope).length <= 2048 && source;
+
+  return <details>
+    <summary>Record a recognizability report</summary>
+    {sources.size === 0 ? <p>Link a description or transcription to a proposition before recording a report.</p> :
+      <form className="human-context" onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready || record.isPending) return;
+        record.mutate({
+          subject_actor_id: draft.subject_actor_id, audience_actor_id: draft.audience_actor_id,
+          cue: draft.cue, observation: draft.observation, audience_scope: audienceScope,
+          effective_from: draft.effective_from, effective_through: draft.effective_through,
+          available_on: draft.available_on,
+          claim_object_id: source.object_id, representation_id: source.representation_id,
+        });
+      }}>
+        <fieldset disabled={record.isPending}>
+          <ActorSelect label="Subject" actors={actors} value={draft.subject_actor_id}
+            onChange={update('subject_actor_id')}/>
+          <ActorSelect label="Audience" actors={actors} value={draft.audience_actor_id}
+            onChange={update('audience_actor_id')} excluded={draft.subject_actor_id}/>
+          <label>Recognition cue<select value={draft.cue} onChange={update('cue')} required>
+            <option value="">Choose…</option>
+            {Object.entries(cueLabels).map(([cue, label]) => <option key={cue} value={cue}>{label}</option>)}
+          </select></label>
+          <label>What the report says<select value={draft.observation} onChange={update('observation')} required>
+            <option value="">Choose…</option>
+            {Object.entries(reportLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select></label>
+          <label>Who in the audience the source describes<textarea value={draft.audience_scope}
+            onChange={update('audience_scope')} maxLength={2048} required/></label>
+          <label>Applies from<input type="date" value={draft.effective_from} onChange={update('effective_from')} required/></label>
+          <label>Applies through<input type="date" value={draft.effective_through} min={draft.effective_from || undefined}
+            onChange={update('effective_through')} required/></label>
+          <label>Report available on<input type="date" value={draft.available_on} onChange={update('available_on')} required/></label>
+          <label>Linked source passage<select value={draft.source} onChange={update('source')} required>
+            <option value="">Choose…</option>
+            {[...sources].map(([key, link]) => <option key={key} value={key}>
+              {propositions.get(link.object_id)} · {link.artifact_label} · {link.scope_locator}
+            </option>)}
+          </select></label>
+          <button disabled={!ready}>Record report</button>
+        </fieldset>
+      </form>}
+    {record.error && <p role="alert">{record.error.message}</p>}
+    {record.isSuccess && <p role="status">Report recorded.</p>}
+  </details>;
+}
 
 export function PublicProminenceReports({ result, actors, provenance }) {
   const {query, records, truncated} = result;
@@ -35,7 +130,7 @@ export function PublicProminenceReports({ result, actors, provenance }) {
   </>;
 }
 
-export function PublicProminencePanel({ client, actors, provenance }) {
+export function PublicProminencePanel({ client, actors, nodes, provenance }) {
   const [draft, setDraft] = useState({
     subject_actor_id: '', audience_actor_id: '', cue: '', on: '', known_through: '',
   });
@@ -59,15 +154,10 @@ export function PublicProminencePanel({ client, actors, provenance }) {
         if (lookup === draft) void reports.refetch();
         else setLookup(draft);
       }}>
-        <label>Subject<select value={draft.subject_actor_id} onChange={update('subject_actor_id')} required>
-          <option value="">Choose…</option>
-          {actors.map((actor) => <option key={actor.actor_id} value={actor.actor_id}>{actor.display_label}</option>)}
-        </select></label>
-        <label>Audience<select value={draft.audience_actor_id} onChange={update('audience_actor_id')} required>
-          <option value="">Choose…</option>
-          {actors.map((actor) => <option key={actor.actor_id} value={actor.actor_id}
-            disabled={actor.actor_id === draft.subject_actor_id}>{actor.display_label}</option>)}
-        </select></label>
+        <ActorSelect label="Subject" actors={actors} value={draft.subject_actor_id}
+          onChange={update('subject_actor_id')}/>
+        <ActorSelect label="Audience" actors={actors} value={draft.audience_actor_id}
+          onChange={update('audience_actor_id')} excluded={draft.subject_actor_id}/>
         <label>Recognition cue<select value={draft.cue} onChange={update('cue')}>
           <option value="">Any cue</option>
           {Object.entries(cueLabels).map(([cue, label]) => <option key={cue} value={cue}>{label}</option>)}
@@ -80,5 +170,7 @@ export function PublicProminencePanel({ client, actors, provenance }) {
     {reports.isFetching && <p role="status">Looking up reports…</p>}
     {reports.error && <p role="alert">{reports.error.message}</p>}
     {reports.data && <PublicProminenceReports result={reports.data} actors={actors} provenance={provenance}/>}
+    {actors.length >= 2 && <PublicProminenceRecordForm client={client} actors={actors} nodes={nodes}
+      provenance={provenance} onRecorded={() => lookup && reports.refetch()}/>}
   </details>;
 }

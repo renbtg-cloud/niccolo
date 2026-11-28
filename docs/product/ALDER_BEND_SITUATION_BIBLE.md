@@ -99,6 +99,8 @@ O [replay autenticado](../../tests/parser_free_artifacts_http_integration.rs#L54
 
 `GET` no mesmo caminho, sem `/{record}`, recebe `subject_actor_id`, `audience_actor_id`, `on`, `known_through` e, opcionalmente, `cue`. As datas são dias de calendário ISO. A consulta filtra pelo dia a que o relato se refere e pela data-limite em que ele estava disponível ao investigador. `NO_RECORDED_REPORTS` indica ausência de registros nesse recorte. A resposta devolve as referências às fontes e indica truncamento caso ultrapasse 100 registros. Os dados são relatórios atribuídos; o endpoint não repondera conclusões, e a data declarada de disponibilidade não é um snapshot do banco.
 
+No Workbench, a seção **Recognizability by audience** permite consultar e registrar esses relatos. O formulário de registro oferece apenas trechos de fonte já vinculados a uma proposição. Os resultados mostram o recorte de público, as datas e o trecho que sustenta cada relato.
+
 ```bash
 cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
   alder_bend_queries_recognizability_by_audience_and_two_dates

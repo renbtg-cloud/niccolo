@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PublicProminenceReports } from './PublicProminencePanel.jsx';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PublicProminenceRecordForm, PublicProminenceReports } from './PublicProminencePanel.jsx';
 
 const query = {
   subject_actor_id: 'frank',
@@ -47,4 +48,23 @@ it('renders missing reports separately from a report of non-recognition', () => 
     result={{query, coverage: 'NO_RECORDED_REPORTS', records: []}} actors={actors} provenance={provenance}/>);
   expect(html).toContain('No reports recorded for this selection.');
   expect(html).not.toContain('Non-recognition reported');
+});
+
+it('only offers source passages already linked to a proposition', () => {
+  const nodes = [
+    { object_id: 'report', kind: 'PROPOSITION', text: 'Mara reports seeing the photo' },
+    { object_id: 'guess', kind: 'HYPOTHESIS', text: 'Frank drove' },
+    { object_id: 'unlinked', kind: 'PROPOSITION', text: 'Unlinked proposition' },
+  ];
+  const links = [...provenance, {
+    object_id: 'guess', representation_id: 'other', artifact_label: 'Guess', scope_locator: 'Page 1',
+  }];
+  const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}>
+    <PublicProminenceRecordForm client={{}} actors={actors} nodes={nodes} provenance={links}/>
+  </QueryClientProvider>);
+  expect(html).toContain('Report available on');
+  expect(html).toContain('value="report:excerpt"');
+  expect(html).toContain('Mara reports seeing the photo');
+  expect(html).not.toContain('value="guess:other"');
+  expect(html).not.toContain('Unlinked proposition');
 });
