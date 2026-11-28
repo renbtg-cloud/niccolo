@@ -11,8 +11,12 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
+
 struct Setup {
     admin: PgPool,
+    secure: PgPool,
     router: Router,
     workspace: Uuid,
     writer: String,
@@ -46,7 +50,8 @@ async fn setup() -> Setup {
         .unwrap();
     Setup {
         admin,
-        router: api::router(secure),
+        router: api::router(secure.clone()),
+        secure,
         workspace,
         writer,
         reader,
@@ -110,66 +115,23 @@ async fn create_situation(f: &Setup, situation: Uuid) {
 
 async fn seed_document(f: &Setup, fragments: usize) -> (Uuid, Vec<Uuid>) {
     let document = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length) \
-         VALUES($1,$2,'WHATSAPP_EXPORT',$3,$4,1000)",
+    let lines = (0..fragments)
+        .map(|ordinal| format!("fragment {ordinal}"))
+        .collect::<Vec<_>>();
+    let fragments = lines.iter().map(|line| ("Alice", line.as_str())).collect::<Vec<_>>();
+    let ids = historical_sources::seed(
+        &f.admin,
+        f.workspace,
+        document,
+        &format!("fixture://{document}"),
+        &fragments,
     )
-    .bind(f.workspace)
-    .bind(document)
-    .bind(format!("fixture://{document}"))
-    .bind("a".repeat(64))
-    .execute(&f.admin)
-    .await
-    .unwrap();
-    let mut ids = Vec::with_capacity(fragments);
-    for ordinal in 0..fragments {
-        let evidence = Uuid::new_v4();
-        let start = (ordinal * 20) as i32;
-        let end = start + 10;
-        sqlx::query(
-            "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class) \
-             VALUES($1,$2,$3,$4,'REPORTED_SPEECH')",
-        )
-        .bind(f.workspace)
-        .bind(evidence)
-        .bind(format!("fixture://{document}#{ordinal}"))
-        .bind(format!("fragment {ordinal}"))
-        .execute(&f.admin)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label) \
-             VALUES($1,$2,$3,$4,$5,$6,'Alice')",
-        )
-        .bind(f.workspace)
-        .bind(document)
-        .bind(ordinal as i32)
-        .bind(evidence)
-        .bind(start)
-        .bind(end)
-        .execute(&f.admin)
-        .await
-        .unwrap();
-        ids.push(evidence);
-    }
+    .await;
     (document, ids)
 }
 
 async fn add_source(f: &Setup, situation: Uuid, document: Uuid) {
-    assert_eq!(
-        call(
-            f.router.clone(),
-            req(
-                "POST",
-                format!("{}/sources/{document}", situation_path(f, situation)),
-                &f.writer,
-                None,
-            ),
-        )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
+    historical_sources::attach(&f.secure, &f.writer, f.workspace, situation, document).await;
 }
 
 async fn begin_analysis(f: &Setup, situation: Uuid, analysis: Uuid, parent: Option<Uuid>) {

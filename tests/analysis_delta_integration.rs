@@ -7,10 +7,15 @@ use axum::{
 use http_body_util::BodyExt;
 use niccolo_evidence::{api, authz};
 use serde_json::{Value, json};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
 struct F {
+    admin: PgPool,
+    secure: PgPool,
     router: Router,
     w: Uuid,
     writer: String,
@@ -39,7 +44,9 @@ async fn setup() -> F {
         .await
         .unwrap();
     F {
-        router: api::router(p),
+        router: api::router(p.clone()),
+        admin: a,
+        secure: p,
         w,
         writer,
         reader,
@@ -52,16 +59,6 @@ fn req(m: &str, p: String, t: &str, b: Option<Value>) -> Request<Body> {
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::AUTHORIZATION, format!("Bearer {t}"))
         .body(b.map_or_else(Body::empty, |v| Body::from(v.to_string())))
-        .unwrap()
-}
-fn raw(m: &str, p: String, t: &str, ct: &str, locator: &str, b: &'static [u8]) -> Request<Body> {
-    Request::builder()
-        .method(m)
-        .uri(p)
-        .header(header::CONTENT_TYPE, ct)
-        .header(header::AUTHORIZATION, format!("Bearer {t}"))
-        .header("x-source-locator", locator)
-        .body(Body::from(b))
         .unwrap()
 }
 async fn call(r: Router, q: Request<Body>) -> (StatusCode, Value) {
@@ -144,36 +141,8 @@ async fn focus_source_and_new_context_are_visible() {
     let (s, _c, a) = seed(&f).await;
     let d = Uuid::new_v4();
     let late = Uuid::new_v4();
-    assert_eq!(
-        call(
-            f.router.clone(),
-            raw(
-                "POST",
-                format!("/v1/workspaces/{}/sources/{d}", f.w),
-                &f.writer,
-                "text/plain",
-                "fixture://delta",
-                b"[02/11/2026, 12:00] Ana: hello\n"
-            )
-        )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
-    assert_eq!(
-        call(
-            f.router.clone(),
-            req(
-                "POST",
-                format!("{}/sources/{d}", sit(&f, s)),
-                &f.writer,
-                None
-            )
-        )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
+    historical_sources::seed(&f.admin, f.w, d, "fixture://delta", &[("Ana", "hello")]).await;
+    historical_sources::attach(&f.secure, &f.writer, f.w, s, d).await;
     assert_eq!(
         call(
             f.router.clone(),
