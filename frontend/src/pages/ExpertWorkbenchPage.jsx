@@ -95,7 +95,7 @@ function AuthoredImpactPanel({snapshot}) {
   </details>;
 }
 
-function ArtifactDependenceRouteDecision({client, relationship, route, label, suspended, history, onSaved}) {
+function ArtifactDependenceRouteDecision({client, basis, route, label, suspended, history, onSaved}) {
   const [disposition, setDisposition] = useState('');
   const [rationale, setRationale] = useState('');
   const pending = useRef(null);
@@ -117,7 +117,7 @@ function ArtifactDependenceRouteDecision({client, relationship, route, label, su
     <form onSubmit={(event) => {
       event.preventDefault();
       if (mutation.isPending || !disposition || !rationale.trim()) return;
-      mutation.mutate({ ...route, relationship_id:relationship, disposition, rationale:rationale.trim() });
+      mutation.mutate({ ...route, ...basis, disposition, rationale:rationale.trim() });
     }}>
       <label>Use of this route<select value={disposition} onChange={(event) => setDisposition(event.target.value)} required>
         <option value="">Choose…</option><option value="USE">{suspended ? 'Restore use' : 'Keep in use'}</option><option value="SUSPEND">Suspend use</option>
@@ -517,20 +517,32 @@ export function ExpertWorkbenchPage() {
           {diagnostic.shared_grounds?.length > 0 && <details><summary>Shared grounds — route reuse is not independent corroboration</summary><ul>{diagnostic.shared_grounds.map((shared) => <li key={shared.ground_object_id ?? shared.evidence_id}>{groundText(shared)} · {shared.routes.length} routes</li>)}</ul><small>Exact identity reuse only; different grounds may still share provenance.</small></details>}
           {diagnostic.artifact_dependence_reviews?.length > 0 && <details open>
             <summary>Review candidate — recorded source dependence</summary>
-            <ul>{diagnostic.artifact_dependence_reviews.map((review) => <li key={review.relationship_id}>
-              <p><strong>{artifactLabel(review.derived_artifact_id, review.derived_representation_id)}</strong> was reported to draw on <strong>{artifactLabel(review.source_artifact_id, review.source_representation_id)}</strong>.</p>
-              {review.qualification && <p>{review.qualification}</p>}
-              <strong>Use of derived routes</strong>
-              <ul>{[...review.routes_to_review, ...(review.suspended_routes ?? [])].map((route) => {
-                const matches = (candidate) => candidate.argument_id === route.argument_id && candidate.grounding_set_id === route.grounding_set_id;
-                return <ArtifactDependenceRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
-                  client={client} relationship={review.relationship_id} route={route} label={routeLabel(route)}
-                  suspended={review.suspended_routes?.some(matches)} onSaved={() => workbench.refetch()}
-                  history={(data.route_use_history ?? []).filter((decision) => matches(decision.route) && decision.basis?.input?.relationship_id === review.relationship_id)}/>;
-              })}</ul>
+            <ul>{diagnostic.artifact_dependence_reviews.map((review) => {
+              const derived = artifactLabel(review.derived_artifact_id, review.derived_representation_id);
+              const source = artifactLabel(review.source_artifact_id, review.source_representation_id);
+              const via = review.via;
+              const intermediate = via && `${via.artifact_label} (${via.scope_locator})`;
+              const basis = {relationship_id: review.relationship_id, ...(via ? {via_relationship_id: via.relationship_id} : {})};
+              return <li key={`${review.relationship_id}:${via?.relationship_id ?? ''}`}>
+                {via ? <ol>
+                  <li><p><strong>{derived}</strong> was reported to draw on <strong>{intermediate}</strong>.</p>{review.qualification && <p>{review.qualification}</p>}</li>
+                  <li><p><strong>{intermediate}</strong> was reported to draw on <strong>{source}</strong>.</p>{via.qualification && <p>{via.qualification}</p>}</li>
+                </ol> : <>
+                  <p><strong>{derived}</strong> was reported to draw on <strong>{source}</strong>.</p>
+                  {review.qualification && <p>{review.qualification}</p>}
+                </>}
+                <strong>Use of derived routes</strong>
+                <ul>{[...review.routes_to_review, ...(review.suspended_routes ?? [])].map((route) => {
+                  const matches = (candidate) => candidate.argument_id === route.argument_id && candidate.grounding_set_id === route.grounding_set_id;
+                  return <ArtifactDependenceRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
+                    client={client} basis={basis} route={route} label={routeLabel(route)}
+                    suspended={review.suspended_routes?.some(matches)} onSaved={() => workbench.refetch()}
+                    history={(data.route_use_history ?? []).filter((decision) => matches(decision.route) && decision.basis?.input?.relationship_id === review.relationship_id && decision.basis?.input?.via_relationship_id === via?.relationship_id)}/>;
+                })}</ul>
               <strong>Routes that already cite the source</strong>
               <ul>{review.source_routes.map((route) => <li key={`${route.argument_id}:${route.grounding_set_id}`}>{routeLabel(route)}</li>)}</ul>
-            </li>)}</ul>
+            </li>;
+            })}</ul>
           </details>}
           {diagnostic.direct_evidence_lineage && diagnostic.direct_evidence_lineage.status !== 'NO_DIRECT_EVIDENCE' && <details open><summary>Recorded documentary dependence</summary>
             {diagnostic.direct_evidence_lineage.status === 'RECORDED_LINEAGE_RESOLVED' ? <><p>{diagnostic.direct_evidence_lineage.selected_evidence_count} directly selected fragment(s) in {diagnostic.direct_evidence_lineage.components.length} recorded dependence component(s).</p><ul>{diagnostic.direct_evidence_lineage.components.map((component) => <li key={component.evidence_ids.join(':')}>{component.evidence_ids.length} fragment(s), {component.routes.length} authored route(s)<ul>{component.evidence_ids.map((id) => <li key={id}>{groundText({evidence_id: id})}</li>)}</ul></li>)}</ul></> : <p>Recorded lineage could not be resolved ({diagnostic.direct_evidence_lineage.status}); no independence inference is justified.</p>}

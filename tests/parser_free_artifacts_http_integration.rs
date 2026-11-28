@@ -2982,6 +2982,264 @@ async fn alder_bend_limits_derivation_to_the_passages_about_timing() {
 }
 
 #[tokio::test]
+async fn alder_bend_follows_derivation_through_the_same_intermediate_passage() {
+    let mut case =
+        setup_with_focus("Does the audit summary independently support the sighting time?").await;
+    if let Ok(url) = std::env::var("NICCOLO_PG_SECURE_URL") {
+        case.service = PgPoolOptions::new().connect(&url).await.unwrap();
+        case.router = api::router(case.service.clone());
+    }
+    let claire = Uuid::new_v4();
+    let owen = Uuid::new_v4();
+    let ruth = Uuid::new_v4();
+    for (artifact, label) in [
+        (claire, "Claire's statement"),
+        (owen, "Owen's note"),
+        (ruth, "Ruth's audit summary"),
+    ] {
+        case.case_request(
+            &format!("artifacts/{artifact}"),
+            Some(json!({"artifact_type":"MANUAL_RECORD", "label":label})),
+        )
+        .await;
+    }
+    let claire_claim = case
+        .case_node(
+            "PROPOSITION",
+            "Claire estimates the sighting at 21:20.",
+            "A direct report from Claire.",
+        )
+        .await;
+    let ruth_claim = case
+        .case_node(
+            "PROPOSITION",
+            "Ruth's summary also places the sighting at about 21:20.",
+            "Check the origin of the reported time.",
+        )
+        .await;
+    let claire_time = Uuid::new_v4();
+    let owen_time = Uuid::new_v4();
+    let owen_other = Uuid::new_v4();
+    let ruth_time = Uuid::new_v4();
+    for (artifact, representation, object, scope, content) in [
+        (
+            claire,
+            claire_time,
+            Some(claire_claim),
+            "Time estimate",
+            "I saw truck 07 around 21:20.",
+        ),
+        (
+            owen,
+            owen_time,
+            None,
+            "Second paragraph",
+            "Estimated sighting time from Claire: 21:20.",
+        ),
+        (
+            owen,
+            owen_other,
+            None,
+            "First paragraph",
+            "Truck 07 was assigned to the afternoon shift.",
+        ),
+        (
+            ruth,
+            ruth_time,
+            Some(ruth_claim),
+            "Timeline entry",
+            "Truck 07 was sighted around 21:20.",
+        ),
+    ] {
+        case.case_request(
+            &format!("artifacts/{artifact}/representations/{representation}"),
+            Some(json!({
+                "representation_type":"HUMAN_TRANSCRIPTION", "producer_type":"USER",
+                "scope_locator":scope, "content":content, "completeness_status":"PARTIAL"
+            })),
+        )
+        .await;
+        if let Some(object) = object {
+            case.case_request(
+                &format!("epistemic/objects/{object}/artifact-provenance/{representation}"),
+                Some(json!({
+                    "rationale":"The cited passage records this attributed statement."
+                })),
+            )
+            .await;
+        }
+    }
+    let sighting = case
+        .case_node(
+            "FINDING",
+            "Truck 07 was seen around 21:20.",
+            "Assess the basis for the time.",
+        )
+        .await;
+    let argument = case
+        .case_argument(sighting, "Compare the witness statement and audit summary.")
+        .await;
+    let claire_route = case
+        .case_ground(argument, &[claire_claim], "Claire's estimate.")
+        .await;
+    let ruth_route = case
+        .case_ground(argument, &[ruth_claim], "Ruth's timeline entry.")
+        .await;
+
+    let earlier_leg = Uuid::new_v4();
+    const OWEN_QUALIFICATION: &str = "Owen transcribed the time Claire supplied.";
+    case.case_request(
+        &format!("artifact-relationships/{earlier_leg}"),
+        Some(json!({
+            "subject_artifact_id":owen, "subject_representation_id":owen_time,
+            "object_artifact_id":claire, "object_representation_id":claire_time,
+            "relationship_type":"CLAIMED_TO_BE_DERIVED_FROM", "qualification":OWEN_QUALIFICATION
+        })),
+    )
+    .await;
+    let mismatched_leg = Uuid::new_v4();
+    let unscoped_leg = Uuid::new_v4();
+    for (relationship, scope) in [(mismatched_leg, Some(owen_other)), (unscoped_leg, None)] {
+        case.case_request(
+            &format!("artifact-relationships/{relationship}"),
+            Some(json!({
+                "subject_artifact_id":ruth, "subject_representation_id":ruth_time,
+                "object_artifact_id":owen, "object_representation_id":scope,
+                "relationship_type":"CLAIMED_TO_BE_DERIVED_FROM",
+                "qualification":"Preliminary attribution for comparison."
+            })),
+        )
+        .await;
+    }
+    let previous = cross_case_freeze(&case, None).await;
+    let before = case.case_request("epistemic/workbench", None).await;
+    let before_sighting = case_row(
+        &before,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    assert_eq!(before_sighting["artifact_dependence_reviews"], json!([]));
+
+    let later_leg = Uuid::new_v4();
+    const RUTH_QUALIFICATION: &str =
+        "Ruth copied the time from the second paragraph of Owen's note.";
+    case.case_request(
+        &format!("artifact-relationships/{later_leg}"),
+        Some(json!({
+            "subject_artifact_id":ruth, "subject_representation_id":ruth_time,
+            "object_artifact_id":owen, "object_representation_id":owen_time,
+            "relationship_type":"CLAIMED_TO_BE_DERIVED_FROM", "qualification":RUTH_QUALIFICATION
+        })),
+    )
+    .await;
+    let after = case.case_request("epistemic/workbench", None).await;
+    let after_sighting = case_row(
+        &after,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    assert_eq!(
+        after_sighting["non_suspended_supporting_routes"],
+        before_sighting["non_suspended_supporting_routes"]
+    );
+    assert_eq!(
+        after_sighting["artifact_dependence_reviews"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let review = case_row(
+        after_sighting,
+        "artifact_dependence_reviews",
+        "relationship_id",
+        later_leg,
+    );
+    assert_eq!(review["derived_representation_id"], json!(ruth_time));
+    assert_eq!(review["source_representation_id"], json!(claire_time));
+    assert_eq!(review["qualification"], RUTH_QUALIFICATION);
+    assert_eq!(review["via"]["relationship_id"], json!(earlier_leg));
+    assert_eq!(review["via"]["representation_id"], json!(owen_time));
+    assert_eq!(review["via"]["artifact_label"], "Owen's note");
+    assert_eq!(review["via"]["scope_locator"], "Second paragraph");
+    assert_eq!(review["via"]["qualification"], OWEN_QUALIFICATION);
+    assert_eq!(
+        review["routes_to_review"],
+        json!([{"argument_id":argument, "grounding_set_id":ruth_route}])
+    );
+    assert_eq!(
+        review["source_routes"],
+        json!([{"argument_id":argument, "grounding_set_id":claire_route}])
+    );
+
+    let revised = cross_case_freeze(&case, Some(previous)).await;
+    let archived = cross_case_packet(&case, previous)
+        .await
+        .frozen_input
+        .artifact_relationships;
+    let current = cross_case_packet(&case, revised)
+        .await
+        .frozen_input
+        .artifact_relationships;
+    assert_eq!(archived.len(), 3);
+    assert_eq!(current.len(), 4);
+    assert!(
+        archived
+            .iter()
+            .all(|link| link.relationship_id != later_leg)
+    );
+    let origin_link = current
+        .iter()
+        .find(|link| link.relationship_id == earlier_leg)
+        .unwrap();
+    let copied_link = current
+        .iter()
+        .find(|link| link.relationship_id == later_leg)
+        .unwrap();
+    assert_eq!(
+        origin_link.subject_representation_id,
+        copied_link.object_representation_id
+    );
+
+    let event = Uuid::new_v4();
+    let path = format!("epistemic/artifact-dependence-review/route-use/{event}");
+    let uri = format!(
+        "/v1/workspaces/{}/situations/{}/{path}",
+        case.workspace, case.situation
+    );
+    let mut decision = json!({
+        "relationship_id":later_leg, "argument_id":argument, "grounding_set_id":ruth_route,
+        "disposition":"SUSPEND", "rationale":"Ruth's copy repeats Claire's reported time through Owen."
+    });
+    let (status, _) = invoke(
+        case.router.clone(),
+        request("POST", &uri, &case.token, Some(decision.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    decision["via_relationship_id"] = json!(earlier_leg);
+    let saved = case.case_request(&path, Some(decision)).await;
+    assert_eq!(
+        saved["decision"]["basis"]["input"]["via_relationship_id"],
+        json!(earlier_leg)
+    );
+    assert_eq!(saved["decision"]["basis"]["result"]["review"], *review);
+    let reviewed = case.case_request("epistemic/workbench", None).await;
+    let reviewed_sighting = case_row(
+        &reviewed,
+        "reasoning_diagnostics",
+        "conclusion_object_id",
+        sighting,
+    );
+    assert_eq!(
+        reviewed_sighting["non_suspended_supporting_routes"],
+        review["source_routes"]
+    );
+}
+
+#[tokio::test]
 async fn http_flow_records_human_material_without_accepting_or_reading_artifact_bytes() {
     let setup = setup().await;
     let video = Uuid::new_v4();

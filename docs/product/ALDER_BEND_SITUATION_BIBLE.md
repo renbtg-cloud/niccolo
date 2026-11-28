@@ -212,6 +212,12 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
   alder_bend_limits_derivation_to_the_passages_about_timing
 ```
 
+### Décimo primeiro replay — um trecho intermediário
+
+Ruth copia para o resumo da auditoria a estimativa de 21h20 que Owen registrou a partir do relato de Claire. A análise cita Claire e Ruth. O Workbench sinaliza a rota de Ruth e mostra os dois vínculos declarados por meio do segundo parágrafo da nota de Owen. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L2985)
+
+Para formar a cadeia, os vínculos precisam apontar para a mesma representação intermediária. O replay testa o parágrafo errado e uma referência à nota inteira antes de registrar a relação precisa. A decisão de suspender a rota recebe `relationship_id` e `via_relationship_id` e guarda os dois vínculos no histórico.
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
