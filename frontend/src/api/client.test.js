@@ -121,6 +121,22 @@ it('posts an attributed recognizability report through the Situation client', as
   expect((await client.recordPublicProminence('record', input)).value.record_id).toBe('record');
 });
 
+it('asks the backend to review only the selected detail and exposure', async () => {
+  const body = {
+    witness_actor_id: 'mara', exposure_record_id: 'one-exposure',
+    testimony_detail: { object_id: 'hat', representation_id: 'interview-detail' },
+    candidate_source: { object_id: 'archive-photo', representation_id: 'photo-description' },
+    testimony_from: '2026-11-20', testimony_through: '2026-11-20', known_through: '2026-11-21',
+  };
+  const client = new NiccoloClient(c, async (url, options) => {
+    expect(url).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/detail-exposure-review`);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual(body);
+    return response(200, { disposition: 'REVIEW_CANDIDATE' });
+  });
+  expect((await client.reviewDetailExposure(body)).value.disposition).toBe('REVIEW_CANDIDATE');
+});
+
 it('passes cancellation through a review read and rejects an aborted body', async () => {
   const controller = new AbortController();
   const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (_, options) => {

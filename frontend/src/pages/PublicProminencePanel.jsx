@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { DetailExposureReview } from './DetailExposureReview.jsx';
 
 const cueLabels = { NAME: 'Name', FACE: 'Face', PUBLIC_ROLE: 'Public role' };
 const reportLabels = {
@@ -103,7 +104,7 @@ export function PublicProminenceRecordForm({ client, actors, nodes, provenance, 
   </details>;
 }
 
-export function PublicProminenceReports({ result, actors, provenance }) {
+export function PublicProminenceReports({ result, actors, provenance, onReview }) {
   const {query, records, truncated} = result;
   const actorLabel = (id) => actors.find((actor) => actor.actor_id === id)?.display_label ?? id;
   const sources = new Map(provenance.map((link) => [
@@ -125,6 +126,9 @@ export function PublicProminenceReports({ result, actors, provenance }) {
         {source ? <a href={`#source-${record.claim_object_id}-${record.representation_id}`}>
           {source.artifact_label} · {source.scope_locator}
         </a> : <small>Source {record.representation_id}</small>}
+        {record.observation === 'EXPOSURE_REPORTED' && onReview && <p>
+          <button type="button" onClick={() => onReview(record, query.known_through)}>Review a testimony detail</button>
+        </p>}
       </li>;
     })}</ul>}
   </>;
@@ -135,6 +139,7 @@ export function PublicProminencePanel({ client, actors, nodes, provenance }) {
     subject_actor_id: '', audience_actor_id: '', cue: '', on: '', known_through: '',
   });
   const [lookup, setLookup] = useState(null);
+  const [review, setReview] = useState(null);
   const reports = useQuery({
     queryKey: ['public-prominence', client.config.workspace, client.config.situation, lookup],
     enabled: lookup !== null,
@@ -169,7 +174,13 @@ export function PublicProminencePanel({ client, actors, nodes, provenance }) {
       </form>}
     {reports.isFetching && <p role="status">Looking up reports…</p>}
     {reports.error && <p role="alert">{reports.error.message}</p>}
-    {reports.data && <PublicProminenceReports result={reports.data} actors={actors} provenance={provenance}/>}
+    {reports.data && <PublicProminenceReports result={reports.data} actors={actors} provenance={provenance}
+      onReview={(record, knownThrough) => setReview({ record, knownThrough })}/>}
+    {review && <DetailExposureReview
+      key={`${review.record.record_id}:${review.knownThrough}`} client={client} exposure={review.record}
+      knownThrough={review.knownThrough} nodes={nodes} provenance={provenance}
+      witness={actors.find((actor) => actor.actor_id === review.record.audience_actor_id)?.display_label
+        ?? review.record.audience_actor_id} onClose={() => setReview(null)}/>}
     {actors.length >= 2 && <PublicProminenceRecordForm client={client} actors={actors} nodes={nodes}
       provenance={provenance} onRecorded={() => lookup && reports.refetch()}/>}
   </details>;

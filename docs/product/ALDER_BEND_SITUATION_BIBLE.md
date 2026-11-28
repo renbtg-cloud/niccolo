@@ -121,6 +121,8 @@ O [teste HTTP](../../tests/parser_free_artifacts_http_integration.rs#L744) usa `
 
 A checagem é somente leitura. Ela percorre as dependências explícitas de premissas no grafo atual. O avistamento do guincho permanece utilizável e as rotas do Workbench permanecem inalteradas. A assinatura temporal de uma influência é apenas uma condição para investigá-la. O limite de disponibilidade permite refazer a leitura da exposição, sem reconstruir versões históricas completas do grafo.
 
+Na consulta de reconhecibilidade do Workbench, um relato de exposição permite abrir **Review a testimony detail**. O investigador seleciona o trecho do depoimento, a possível origem e o intervalo do depoimento. O resultado mostra a condição temporal e aponta para as conclusões das rotas atingidas no grafo.
+
 ```bash
 cargo test --locked --features pg-integration --test parser_free_artifacts_http_integration \
   alder_bend_reviews_only_the_detail_reachable_from_prior_exposure
