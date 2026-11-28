@@ -3530,6 +3530,11 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
         )
         .await;
     assert_eq!(input["workbench_support"], json!(basis));
+    assert_eq!(input["source_fragment_count_total"], 0);
+    assert_eq!(input["artifact_representation_count_total"], 4);
+    assert_eq!(input["artifact_representation_count_included"], 4);
+    assert_eq!(input["artifact_representation_bytes_included"], json!(reconsidered_input.artifact_representation_bytes_included));
+    assert_eq!(input["artifact_packet_truncated"], false);
     let difference = case
         .case_request(
             &format!("analysis-snapshots/{revised}/reanalysis-revision"),
