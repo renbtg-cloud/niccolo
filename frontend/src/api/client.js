@@ -69,6 +69,11 @@ export class NiccoloClient {
   compareEpistemic(body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/compare`, { body }); }
   recordEpistemicPolicy(policyId, body) { return this.request('POST', `/v1/workspaces/${this.config.workspace}/epistemic/policies/${policyId}`, { body }); }
   expertWorkbench(signal) { return this.request('GET', `${situationPath(this.config)}/epistemic/workbench`, { signal }); }
+  publicProminence({ cue, ...scope }, signal) {
+    const query = new URLSearchParams(scope);
+    if (cue) query.set('cue', cue);
+    return this.request('GET', `${situationPath(this.config)}/epistemic/public-prominence?${query}`, { signal });
+  }
   recordArtifactDependenceRouteUse(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/artifact-dependence-review/route-use/${eventId}`, { body }); }
   draftExpertInput(text) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/input-draft`, { body: { text } }); }
   adoptExpertInputDraft(draftId, reviewed) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/input-draft/${draftId}`, { body: reviewed }); }

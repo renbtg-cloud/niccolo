@@ -83,6 +83,28 @@ it('passes the observation cancellation signal to fetch', async () => {
   await client.observeOperation('operation', 0, 0, 5000, 100, controller.signal);
 });
 
+it('queries recognizability with separate event and availability dates', async () => {
+  const { signal } = new AbortController();
+  const urls = [];
+  const client = new NiccoloClient(c, async (path, options) => {
+    urls.push(new URL(path, 'http://localhost'));
+    expect(options.method).toBe('GET');
+    expect(options.signal).toBe(signal);
+    return response(200, { records: [] });
+  });
+  const lookup = {
+    subject_actor_id: 'frank',
+    audience_actor_id: 'evening-class',
+    on: '2026-11-19',
+    known_through: '2026-11-20',
+  };
+  await client.publicProminence(lookup, signal);
+  await client.publicProminence({ ...lookup, cue: 'FACE' }, signal);
+  expect(urls[0].pathname).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/public-prominence`);
+  expect(Object.fromEntries(urls[0].searchParams)).toEqual(lookup);
+  expect(Object.fromEntries(urls[1].searchParams)).toEqual({ ...lookup, cue: 'FACE' });
+});
+
 it('passes cancellation through a review read and rejects an aborted body', async () => {
   const controller = new AbortController();
   const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (_, options) => {

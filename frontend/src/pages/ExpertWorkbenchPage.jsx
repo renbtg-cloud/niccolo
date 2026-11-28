@@ -5,6 +5,7 @@ import { ResponseInterpretationPanel } from './ResponseInterpretationPanel.jsx';
 import { InterpretationRelianceReview } from './InterpretationRelianceReview.jsx';
 import { InquiryComparisonPanel } from './InquiryComparisonPanel.jsx';
 import { ActorEpistemicStatePanel } from './ActorEpistemicStatePanel.jsx';
+import { PublicProminencePanel } from './PublicProminencePanel.jsx';
 import { NormativeAssessmentPanel } from './NormativeAssessmentPanel.jsx';
 import { ActorEpistemicActPanel } from './ActorEpistemicActPanel.jsx';
 import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
@@ -445,6 +446,8 @@ export function ExpertWorkbenchPage() {
         return <li key={gap.object_id}><strong>{gap.text}</strong><p>{gap.rationale}</p>{judgments.length === 0 ? <p>No explicit gap resolution judgment recorded.</p> : <ul>{judgments.map(a => <li key={a.event_id}><strong>{a.input.result}</strong> · confidence {a.input.confidence}<p>{a.input.criterion} · {a.input.context}</p><p>{a.input.rationale}</p><small>Recorded by {a.recorded_by} · {a.event_id}</small><ul>{a.input.grounds.map(g => <li key={assessmentKey(g)}>{assessmentLabel(g)}</li>)}</ul>{!a.input.grounds.length && <small>No explicit grounds recorded.</small>}</li>)}</ul>}</li>;
       })}</ul><small>Current judgments in their own revision chains remain separate, including disagreement. Earlier revisions are retained in assessment history.</small></details>}
       <InquiryComparisonPanel key={`${client.config.workspace}:${client.config.situation}`} snapshot={data} client={client} onChanged={()=>workbench.refetch()}/>
+      {actors.isSuccess && <PublicProminencePanel key={`recognizability:${client.config.workspace}:${client.config.situation}`}
+        client={client} actors={actors.data} provenance={data.artifact_provenance ?? []}/>}
       <ActorEpistemicStatePanel key={`actor-states:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <NormativeAssessmentPanel key={`normative-assessments:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicActPanel key={`actor-acts:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
