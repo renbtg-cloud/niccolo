@@ -1,9 +1,12 @@
 //! One analysis's recorded view of authored Workbench support routes.
 use crate::analysis_structure::AnalysisScope;
-use crate::epistemic_workbench::{GroundingRouteRef, artifact_dependence};
+use crate::epistemic_workbench::{
+    ArtifactDependenceReview, GroundingRouteRef, artifact_dependence,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Postgres, Transaction};
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -32,6 +35,56 @@ pub struct FrozenOriginDerivation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via_relationship_id: Option<Uuid>,
     pub routes: Vec<GroundingRouteRef>,
+}
+
+const MAX_ORIGIN_DERIVATIONS: usize = 16;
+
+fn supporting_pair(derivations: &[ArtifactDependenceReview]) -> Option<(usize, usize)> {
+    let first = derivations.first()?;
+    let first_route = first.routes_to_review.first()?;
+    let other_artifact =
+        |review: &ArtifactDependenceReview| review.derived_artifact_id != first.derived_artifact_id;
+    let other_route = |review: &ArtifactDependenceReview| {
+        review
+            .routes_to_review
+            .iter()
+            .any(|route| route != first_route)
+    };
+    if let Some(second) = derivations
+        .iter()
+        .position(|review| other_artifact(review) && other_route(review))
+    {
+        return Some((0, second));
+    }
+    Some((
+        derivations.iter().position(other_route)?,
+        derivations.iter().position(other_artifact)?,
+    ))
+}
+
+fn bounded_derivations(derivations: Vec<ArtifactDependenceReview>) -> Vec<FrozenOriginDerivation> {
+    let mut keep = BTreeSet::new();
+    if derivations.len() > MAX_ORIGIN_DERIVATIONS
+        && let Some((first, second)) = supporting_pair(&derivations)
+    {
+        keep.extend([first, second]);
+    }
+    for index in 0..derivations.len() {
+        if keep.len() == MAX_ORIGIN_DERIVATIONS {
+            break;
+        }
+        keep.insert(index);
+    }
+    derivations
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| keep.contains(index))
+        .map(|(_, derivation)| FrozenOriginDerivation {
+            relationship_id: derivation.relationship_id,
+            via_relationship_id: derivation.via.map(|via| via.relationship_id),
+            routes: derivation.routes_to_review,
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -205,23 +258,14 @@ pub(crate) async fn capture_basis(
             origins.into_iter().map(move |origin| (conclusion, origin))
         });
         for (conclusion_object_id, origin) in origins.by_ref().take(32) {
-            shared_artifact_origins_truncated |= origin.derivations.len() > 16;
+            shared_artifact_origins_truncated |= origin.derivations.len() > MAX_ORIGIN_DERIVATIONS;
             shared_artifact_origins.push(FrozenSharedOrigin {
                 conclusion_object_id,
                 source_artifact_id: origin.source_artifact_id,
                 source_representation_id: origin.source_representation_id,
                 source_artifact_label: origin.source_artifact_label,
                 source_scope_locator: origin.source_scope_locator,
-                derivations: origin
-                    .derivations
-                    .into_iter()
-                    .take(16)
-                    .map(|derivation| FrozenOriginDerivation {
-                        relationship_id: derivation.relationship_id,
-                        via_relationship_id: derivation.via.map(|via| via.relationship_id),
-                        routes: derivation.routes_to_review,
-                    })
-                    .collect(),
+                derivations: bounded_derivations(origin.derivations),
             });
         }
         shared_artifact_origins_truncated |= origins.next().is_some();
@@ -252,4 +296,40 @@ pub(crate) async fn read_in(
         .map(|value| serde_json::from_str(&value))
         .transpose()
         .map_err(|error| sqlx::Error::Decode(error.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn derivation(id: u128, artifact: u128, route: u128) -> ArtifactDependenceReview {
+        ArtifactDependenceReview {
+            relationship_id: Uuid::from_u128(id),
+            via: None,
+            derived_artifact_id: Uuid::from_u128(artifact),
+            source_artifact_id: Uuid::from_u128(90),
+            derived_representation_id: None,
+            source_representation_id: Some(Uuid::from_u128(91)),
+            qualification: None,
+            recorded_by: Uuid::from_u128(92),
+            routes_to_review: vec![GroundingRouteRef {
+                argument_id: Uuid::from_u128(93),
+                grounding_set_id: Uuid::from_u128(route),
+            }],
+            suspended_routes: Vec::new(),
+            source_routes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn derivation_budget_keeps_a_pair_with_distinct_copies_and_routes() {
+        let mut derivations = (1..=20).map(|id| derivation(id, 1, 5)).collect::<Vec<_>>();
+        derivations.push(derivation(21, 1, 6));
+        derivations.push(derivation(22, 2, 5));
+        let frozen = bounded_derivations(derivations);
+        assert_eq!(frozen.len(), MAX_ORIGIN_DERIVATIONS);
+        assert_eq!(frozen[14].relationship_id, Uuid::from_u128(21));
+        assert_eq!(frozen[15].relationship_id, Uuid::from_u128(22));
+        assert_ne!(frozen[14].routes, frozen[15].routes);
+    }
 }
