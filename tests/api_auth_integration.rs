@@ -11,6 +11,9 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
+
 async fn setup() -> (PgPool, PgPool, Uuid, Uuid, String, Router) {
     let admin = PgPoolOptions::new()
         .max_connections(5)
@@ -69,6 +72,7 @@ fn graph(w: Uuid) -> String {
 fn source(w: Uuid, id: Uuid) -> String {
     format!("/v1/workspaces/{w}/sources/{id}")
 }
+const CHAT_FRAGMENTS: &[(&str, &str)] = &[("Ana", "source A"), ("Bob", "source B")];
 const CHAT: &[u8] = b"[02/11/2026, 12:00] Ana: source A\n[02/11/2026, 12:01] Bob: source B\n";
 
 #[tokio::test]
@@ -569,42 +573,11 @@ async fn list_sources_is_paginated_and_tenant_scoped() {
         .execute(&admin)
         .await
         .unwrap();
-    let foreign_token = authz::provision_token(&admin, Uuid::new_v4(), foreign, true, true, 7)
-        .await
-        .unwrap();
     for idx in 0..6 {
-        let loc = format!("fixture://source-{idx}");
-        let (status, _) = invoke(
-            router.clone(),
-            request(
-                "POST",
-                &source(w, Uuid::new_v4()),
-                Some(&token),
-                Some("text/plain"),
-                Some(&loc),
-                CHAT,
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::CREATED);
+        historical_sources::seed(&admin, w, Uuid::new_v4(), &format!("fixture://source-{idx}"), CHAT_FRAGMENTS).await;
     }
     let foreign_id = Uuid::new_v4();
-    assert_eq!(
-        invoke(
-            router.clone(),
-            request(
-                "POST",
-                &source(foreign, foreign_id),
-                Some(&foreign_token),
-                Some("text/plain"),
-                Some("fixture://private"),
-                CHAT
-            )
-        )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
+    historical_sources::seed(&admin, foreign, foreign_id, "fixture://private", CHAT_FRAGMENTS).await;
     let mut cursor: Option<String> = None;
     let mut seen = std::collections::BTreeSet::new();
     for page_no in 0..3 {
@@ -695,21 +668,9 @@ async fn rotation_is_atomic_and_preserves_expiration() {
 
 #[tokio::test]
 async fn source_speaker_labels_are_visible_without_becoming_identities() {
-    let (_admin, _app, w, _, token, router) = setup().await;
+    let (admin, _, w, _, token, router) = setup().await;
     let document = Uuid::new_v4();
-    let (status, _) = invoke(
-        router.clone(),
-        request(
-            "POST",
-            &source(w, document),
-            Some(&token),
-            Some("text/plain"),
-            Some("fixture://identity-review"),
-            CHAT,
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
+    historical_sources::seed(&admin, w, document, "fixture://identity-review", CHAT_FRAGMENTS).await;
 
     let path = format!("{}/speakers", source(w, document));
     let (status, view) = invoke(

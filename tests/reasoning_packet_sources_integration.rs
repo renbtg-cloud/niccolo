@@ -10,10 +10,12 @@ use niccolo_evidence::{
     analysis_structure::AnalysisScope, api, authz, reasoning_packet, situation_store,
 };
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
 
 struct Harness {
     router: Router,
@@ -93,35 +95,11 @@ async fn attach_historical_source(
     lines: &[&str],
 ) -> Uuid {
     let document = Uuid::new_v4();
-    let text = lines.join("\n");
-    let mut tx = h.admin.begin().await.unwrap();
-    sqlx::query(
-        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
-         VALUES($1,$2,'WHATSAPP_EXPORT',$3,$4,$5)",
-    )
-    .bind(h.workspace).bind(document).bind(locator)
-    .bind(format!("{:x}", Sha256::digest(text.as_bytes())))
-    .bind(text.len() as i64)
-    .execute(&mut *tx).await.unwrap();
-    let mut offset = 0;
-    for (ordinal, line) in lines.iter().enumerate() {
-        let evidence = Uuid::new_v4();
-        let end = offset + line.len() as i32;
-        sqlx::query(
-            "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class)
-             VALUES($1,$2,$3,$4,'REPORTED_SPEECH')",
-        )
-        .bind(h.workspace).bind(evidence).bind(format!("{locator}#{ordinal}")).bind(line)
-        .execute(&mut *tx).await.unwrap();
-        sqlx::query(
-            "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
-             VALUES($1,$2,$3,$4,$5,$6,$7)",
-        )
-        .bind(h.workspace).bind(document).bind(ordinal as i32).bind(evidence).bind(offset).bind(end).bind(speaker)
-        .execute(&mut *tx).await.unwrap();
-        offset = end + 1;
-    }
-    tx.commit().await.unwrap();
+    let fragments = lines
+        .iter()
+        .map(|line| (speaker, *line))
+        .collect::<Vec<_>>();
+    historical_sources::seed(&h.admin, h.workspace, document, locator, &fragments).await;
     authz::with_auth_digest(
         authz::credential_digest(&h.token).unwrap(),
         situation_store::add_source(&h.secure, h.workspace, h.principal, h.situation, document),
