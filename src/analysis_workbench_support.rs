@@ -72,6 +72,20 @@ pub(crate) async fn capture(
     situation: Uuid,
     input_revision: i64,
 ) -> Result<Option<String>, sqlx::Error> {
+    capture_basis(tx, workspace, situation, input_revision)
+        .await?
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| sqlx::Error::Encode(error.into()))
+}
+
+pub(crate) async fn capture_basis(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    input_revision: i64,
+) -> Result<Option<Basis>, sqlx::Error> {
     // All decisions and grounds in this projection come from one statement snapshot.
     let rows: Vec<String> = sqlx::query_scalar(
         "WITH routes AS (
@@ -212,14 +226,12 @@ pub(crate) async fn capture(
         }
         shared_artifact_origins_truncated |= origins.next().is_some();
     }
-    serde_json::to_string(&Basis {
+    Ok(Some(Basis {
         routes,
         truncated,
         shared_artifact_origins,
         shared_artifact_origins_truncated,
-    })
-    .map(Some)
-    .map_err(|error| sqlx::Error::Encode(error.into()))
+    }))
 }
 
 pub(crate) async fn read_in(

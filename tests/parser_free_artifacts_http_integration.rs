@@ -3411,6 +3411,8 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
         sighting,
     );
     assert_eq!(prior["shared_artifact_origins"], json!([]));
+    let previous_dashboard = format!("analysis-snapshots/{previous}/bff/dashboard");
+    assert_eq!(case.case_request(&previous_dashboard, None).await["reanalysis"]["recommended"], false);
 
     case.case_request(
         &format!("artifact-relationships/{audit_relation}"),
@@ -3468,7 +3470,15 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
     );
     assert_eq!(joint["shared_artifact_origins"], json!([]));
 
+    let advice = case.case_request(&previous_dashboard, None).await;
+    let advice = &advice["reanalysis"];
+    assert_eq!(advice["recommended"], true);
+    assert_eq!(advice["human_approval_required"], true);
+    assert_eq!(advice["recommendation_starts_analysis"], false);
+    assert_eq!(advice["reasons"], json!(["Common origins newly recorded for frozen Workbench support (1)"]));
+
     let revised = cross_case_freeze(&case, Some(previous)).await;
+    assert_eq!(case.case_request(&format!("analysis-snapshots/{revised}/bff/dashboard"), None).await["reanalysis"]["recommended"], false);
     let archived_input = cross_case_packet(&case, previous).await.frozen_input;
     let reconsidered_input = cross_case_packet(&case, revised).await.frozen_input;
     let archived = archived_input.artifact_relationships;

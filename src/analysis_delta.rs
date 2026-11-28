@@ -1,6 +1,10 @@
 //! Deterministic difference between an analysis' frozen Situation input and the
 //! Situation as it exists now. A delta is a change log, not a truth judgement.
-use crate::situation_store;
+use crate::{
+    analysis_structure::AnalysisScope,
+    analysis_workbench_support::{self, Basis},
+    situation_store,
+};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -41,6 +45,7 @@ pub struct AnalysisDelta {
     pub added_contributions: Vec<situation_store::SnapshotContribution>,
     pub removed_contributions: Vec<RemovedContribution>,
     pub changed_workbench_route_use_count: i64,
+    pub newly_recorded_shared_origin_count: usize,
 }
 
 async fn scoped(
@@ -74,6 +79,61 @@ fn source_delta(before: &[Uuid], now: &[Uuid]) -> (Vec<Uuid>, Vec<Uuid>) {
         now.difference(&before).copied().collect(),
         before.difference(&now).copied().collect(),
     )
+}
+
+async fn newly_recorded_origins(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: AnalysisScope,
+    current_revision: i64,
+) -> Result<usize, sqlx::Error> {
+    let Some(frozen) = analysis_workbench_support::read_in(tx, scope).await? else {
+        return Ok(0);
+    };
+    let cited: BTreeSet<_> = frozen
+        .routes
+        .iter()
+        .filter(|route| route.suspended_by_decision_id.is_none() && !route.grounds_truncated)
+        .map(|route| (route.argument_id, route.grounding_set_id))
+        .collect();
+    if cited.len() < 2 {
+        return Ok(0);
+    }
+    let current = analysis_workbench_support::capture_basis(
+        tx,
+        scope.workspace,
+        scope.situation,
+        current_revision,
+    )
+    .await?;
+    Ok(new_shared_origin_count(&frozen, current, &cited))
+}
+
+fn new_shared_origin_count(
+    frozen: &Basis,
+    current: Option<Basis>,
+    cited: &BTreeSet<(Uuid, Uuid)>,
+) -> usize {
+    let known: BTreeSet<_> = frozen
+        .shared_artifact_origins
+        .iter()
+        .map(|origin| (origin.conclusion_object_id, origin.source_representation_id))
+        .collect();
+    current
+        .into_iter()
+        .flat_map(|basis| basis.shared_artifact_origins)
+        .filter(|origin| {
+            !known.contains(&(origin.conclusion_object_id, origin.source_representation_id))
+                && origin
+                    .derivations
+                    .iter()
+                    .flat_map(|derivation| &derivation.routes)
+                    .map(|route| (route.argument_id, route.grounding_set_id))
+                    .filter(|route| cited.contains(route))
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    >= 2
+        })
+        .count()
 }
 
 pub async fn get(
@@ -179,6 +239,16 @@ pub async fn get(
     .bind(analysis)
     .fetch_one(&mut *tx)
     .await?;
+    let newly_recorded_shared_origin_count = newly_recorded_origins(
+        &mut tx,
+        AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+        now.revision,
+    )
+    .await?;
     tx.commit().await?;
     Ok(AnalysisDelta {
         analysis_id: analysis,
@@ -194,5 +264,6 @@ pub async fn get(
         added_contributions,
         removed_contributions,
         changed_workbench_route_use_count,
+        newly_recorded_shared_origin_count,
     })
 }

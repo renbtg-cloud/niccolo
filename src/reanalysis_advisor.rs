@@ -66,6 +66,13 @@ pub async fn assess(
             d.changed_workbench_route_use_count
         ));
     }
+    if d.newly_recorded_shared_origin_count > 0 {
+        score += 25;
+        reasons.push(format!(
+            "Common origins newly recorded for frozen Workbench support ({})",
+            d.newly_recorded_shared_origin_count
+        ));
+    }
     score = score.min(100);
     Ok(ReanalysisRecommendation {
         recommended: score >= 20,
