@@ -1328,11 +1328,67 @@ async fn assert_same_day_exposure_order(
     restore["disposition"] = json!("USE");
     let (status, restored) = write_choice(restore).await;
     assert_eq!(status, StatusCode::CREATED, "{restored}");
-    assert_eq!(restored["decision"]["basis"]["result"], conflicted);
+    let mut stored_review = conflicted.clone();
+    stored_review
+        .as_object_mut()
+        .unwrap()
+        .remove("withdrawable_order_report_ids");
+    assert_eq!(restored["decision"]["basis"]["result"], stored_review);
     assert_eq!(restored["decision"]["disposition"], "USE");
-    let current = compare(review).await;
+    let current = compare(review.clone()).await;
     assert_eq!(current["disposition"], "ORDER_CONFLICT");
     assert!(current.get("reconsiderable_suspensions").is_none());
+
+    let co_investigator =
+        authz::provision_token(&admin, Uuid::new_v4(), case.workspace, true, true, 1)
+            .await
+            .unwrap();
+    let withdraw_uri = format!("{uri}/order-reports/{opposite}/withdraw");
+    let withdraw = |token: &str, body| {
+        let request = request("POST", &withdraw_uri, token, Some(body));
+        invoke(case.router.clone(), request)
+    };
+    let note = json!({"available_on":"2026-11-26","rationale":"The passage was assigned to the wrong interview."});
+    assert_eq!(
+        withdraw(&reader, note.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        withdraw(&co_investigator, note.clone()).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let mut early = note.clone();
+    early["available_on"] = json!("2026-11-24");
+    assert_eq!(
+        withdraw(&case.token, early).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    for status in [StatusCode::CREATED, StatusCode::OK] {
+        let (actual, body) = withdraw(&case.token, note.clone()).await;
+        assert_eq!(actual, status, "{body}");
+        assert_eq!(body["replayed"], status == StatusCode::OK);
+    }
+    let mut edited = note.clone();
+    edited["rationale"] = json!("A different rationale");
+    assert_eq!(withdraw(&case.token, edited).await.0, StatusCode::CONFLICT);
+    assert_eq!(compare(review.clone()).await, current);
+    review["known_through"] = json!("2026-11-26");
+    let corrected = compare(review).await;
+    assert_eq!(corrected["withdrawable_order_report_ids"], json!([prior]));
+    assert_eq!(corrected["disposition"], "REVIEW_CANDIDATE");
+    assert_eq!(corrected["order_reports"].as_array().unwrap().len(), 1);
+    assert_eq!(corrected["order_reports"][0]["report_id"], json!(prior));
+    let withdrawn = case_row(&corrected, "withdrawn_order_reports", "report_id", opposite);
+    assert_eq!(withdrawn["direction"], "EXPOSURE_AFTER_TESTIMONY");
+    assert_eq!(
+        withdrawn["withdrawal"]["available_on"],
+        note["available_on"]
+    );
+    assert_eq!(withdrawn["withdrawal"]["rationale"], note["rationale"]);
+    assert_eq!(
+        withdrawn["withdrawal"]["recorded_by"],
+        withdrawn["recorded_by"]
+    );
 }
 
 async fn assert_undated_exposure_order(

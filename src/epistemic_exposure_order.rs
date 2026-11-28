@@ -1,6 +1,7 @@
 //! Source-backed assertions about the order of one exposure and one testimony.
 use super::{
     WorkbenchError, detail_exposure::DetailSource, public_prominence::calendar_date, scoped,
+    valid_text,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
@@ -39,6 +40,34 @@ pub struct Report {
     #[serde(flatten)]
     pub input: Input,
     pub recorded_by: Uuid,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WithdrawalInput {
+    pub available_on: String,
+    pub rationale: String,
+}
+
+#[derive(Serialize)]
+pub struct Withdrawal {
+    pub available_on: String,
+    pub rationale: String,
+    pub recorded_by: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct WithdrawnReport {
+    #[serde(flatten)]
+    pub report: Report,
+    pub withdrawal: Withdrawal,
+}
+
+#[derive(Default)]
+pub(super) struct ReviewReports {
+    pub active: Vec<Report>,
+    pub withdrawn: Vec<WithdrawnReport>,
+    pub truncated: bool,
 }
 
 const REPORT_COLUMNS: &str = "
@@ -139,27 +168,96 @@ pub async fn record(
     Ok(created)
 }
 
-pub(super) const REPORTS_PER_DIRECTION: usize = 50;
+pub async fn withdraw(
+    pool: &PgPool,
+    workspace: Uuid,
+    situation: Uuid,
+    author: Uuid,
+    report_id: Uuid,
+    input: WithdrawalInput,
+) -> Result<bool, WorkbenchError> {
+    let rationale = input.rationale.trim();
+    if !calendar_date(&input.available_on) || !valid_text(rationale, 4096) {
+        return Err(WorkbenchError::Invalid);
+    }
+    let mut tx = scoped(pool, workspace, false).await?;
+    let earliest: String = sqlx::query_scalar(
+        "SELECT to_char(available_on, 'YYYY-MM-DD') FROM niccolo.exposure_order_reports
+         WHERE (workspace_id,situation_id,report_id)=($1,$2,$3) AND recorded_by=$4",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(report_id)
+    .bind(author)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(WorkbenchError::Invisible)?;
+    if input.available_on < earliest {
+        return Err(WorkbenchError::Invalid);
+    }
+    let created = sqlx::query(
+        "INSERT INTO niccolo.exposure_order_report_withdrawals
+          (workspace_id,situation_id,report_id,available_on,rationale,recorded_by)
+         VALUES ($1,$2,$3,$4::text::date,$5,$6)
+         ON CONFLICT (workspace_id,situation_id,report_id) DO NOTHING",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(report_id)
+    .bind(&input.available_on)
+    .bind(rationale)
+    .bind(author)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1;
+    if !created {
+        let stored: (String, String) = sqlx::query_as(
+            "SELECT to_char(available_on,'YYYY-MM-DD'),rationale
+             FROM niccolo.exposure_order_report_withdrawals
+             WHERE (workspace_id,situation_id,report_id)=($1,$2,$3)",
+        )
+        .bind(workspace)
+        .bind(situation)
+        .bind(report_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if stored.0 != input.available_on || stored.1 != rationale {
+            return Err(WorkbenchError::Conflict);
+        }
+    }
+    tx.commit().await?;
+    Ok(created)
+}
+
+const REPORTS_PER_GROUP: usize = 50;
 
 pub(super) async fn for_review(
     tx: &mut Transaction<'_, Postgres>,
     workspace: Uuid,
     situation: Uuid,
     input: &super::detail_exposure::Input,
-) -> Result<(Vec<Report>, bool), WorkbenchError> {
-    // Keep a bounded sample from each direction so a minority report still
-    // participates in the comparison when the other direction fills its page.
+) -> Result<ReviewReports, WorkbenchError> {
+    // Bound each direction separately. Withdrawn reports are listed independently
+    // so they cannot hide a remaining active report beyond the review's limit.
     let sql = format!(
-        "SELECT {REPORT_COLUMNS}
+        "SELECT {REPORT_COLUMNS}, withdrawal_on, withdrawal_rationale, withdrawal_author
          FROM (VALUES ('EXPOSURE_BEFORE_TESTIMONY'), ('EXPOSURE_AFTER_TESTIMONY')) AS d(value)
+         CROSS JOIN (VALUES (true),(false)) AS state(withdrawn)
          CROSS JOIN LATERAL (
-           SELECT * FROM niccolo.exposure_order_reports
-           WHERE (workspace_id,situation_id,exposure_record_id,
-                  testimony_representation_id,candidate_representation_id)=($1,$2,$3,$4,$5)
-             AND direction=d.value AND available_on <= $6::text::date
-           ORDER BY available_on,report_id LIMIT $7
+           SELECT r.*, to_char(w.available_on,'YYYY-MM-DD') AS withdrawal_on,
+                  w.rationale AS withdrawal_rationale, w.recorded_by AS withdrawal_author
+           FROM niccolo.exposure_order_reports r
+           LEFT JOIN niccolo.exposure_order_report_withdrawals w
+             ON (w.workspace_id,w.situation_id,w.report_id)=(r.workspace_id,r.situation_id,r.report_id)
+             AND w.available_on <= $6::text::date
+           WHERE (r.workspace_id,r.situation_id,r.exposure_record_id,
+                  r.testimony_representation_id,r.candidate_representation_id)=($1,$2,$3,$4,$5)
+             AND r.direction=d.value AND r.available_on <= $6::text::date
+             AND (w.report_id IS NOT NULL)=state.withdrawn
+           ORDER BY r.available_on,r.report_id LIMIT $7
          ) report
-         ORDER BY direction,available_on,report_id"
+         ORDER BY direction,state.withdrawn,available_on,report_id"
     );
     let rows = sqlx::query(&sql)
         .bind(workspace)
@@ -168,25 +266,35 @@ pub(super) async fn for_review(
         .bind(input.testimony_detail.representation_id)
         .bind(input.candidate_source.representation_id)
         .bind(&input.known_through)
-        .bind((REPORTS_PER_DIRECTION + 1) as i64)
+        .bind((REPORTS_PER_GROUP + 1) as i64)
         .fetch_all(&mut **tx)
         .await?;
-    let mut before = 0;
-    let mut after = 0;
-    let mut reports = Vec::with_capacity(rows.len());
+    let mut counts = [[0; 2]; 2];
+    let mut reports = ReviewReports::default();
     for row in rows {
+        let withdrawal_on: Option<String> = row.try_get("withdrawal_on")?;
+        let withdrawal = withdrawal_on
+            .map(|available_on| -> Result<_, sqlx::Error> {
+                Ok(Withdrawal {
+                    available_on,
+                    rationale: row.try_get("withdrawal_rationale")?,
+                    recorded_by: row.try_get("withdrawal_author")?,
+                })
+            })
+            .transpose()?;
         let report = read_report(row)?;
-        let count = match report.input.direction {
-            Direction::ExposureBeforeTestimony => &mut before,
-            Direction::ExposureAfterTestimony => &mut after,
-        };
+        let direction = usize::from(report.input.direction == Direction::ExposureAfterTestimony);
+        let count = &mut counts[direction][usize::from(withdrawal.is_some())];
         *count += 1;
-        if *count <= REPORTS_PER_DIRECTION {
-            reports.push(report);
+        if *count > REPORTS_PER_GROUP {
+            reports.truncated = true;
+        } else if let Some(withdrawal) = withdrawal {
+            reports
+                .withdrawn
+                .push(WithdrawnReport { report, withdrawal });
+        } else {
+            reports.active.push(report);
         }
     }
-    Ok((
-        reports,
-        before > REPORTS_PER_DIRECTION || after > REPORTS_PER_DIRECTION,
-    ))
+    Ok(reports)
 }

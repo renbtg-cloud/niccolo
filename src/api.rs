@@ -298,6 +298,10 @@ pub fn router_with_model(pool: PgPool, model: Arc<dyn ReasoningModel>) -> Router
             post(record_exposure_order),
         )
         .route(
+            "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/order-reports/{report}/withdraw",
+            post(withdraw_exposure_order),
+        )
+        .route(
             "/v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}",
             post(record_detail_route_use),
         )
@@ -3930,9 +3934,14 @@ async fn review_detail_exposure(
     headers: HeaderMap,
     Json(input): Json<detail_exposure::Input>,
 ) -> Result<Response, ApiError> {
-    guard(&state, &headers, workspace, Capability::Read).await?;
+    let viewer = guard(&state, &headers, workspace, Capability::Read).await?;
     let review = detail_exposure::review(&state.pool, workspace, situation, input).await?;
-    Ok(no_store(review.with_sha256()?, StatusCode::OK))
+    let mut body = review.with_sha256()?;
+    let own_reports = review.withdrawable_report_ids(viewer);
+    if !own_reports.is_empty() {
+        body["withdrawable_order_report_ids"] = json!(own_reports);
+    }
+    Ok(no_store(body, StatusCode::OK))
 }
 
 async fn record_exposure_order(
@@ -3944,6 +3953,25 @@ async fn record_exposure_order(
     let author = guard(&state, &headers, workspace, Capability::Write).await?;
     let created =
         exposure_order::record(&state.pool, workspace, situation, author, report, input).await?;
+    Ok(no_store(
+        json!({"report_id": report, "replayed": !created}),
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+    ))
+}
+
+async fn withdraw_exposure_order(
+    State(state): State<AppState>,
+    Path((workspace, situation, report)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(input): Json<exposure_order::WithdrawalInput>,
+) -> Result<Response, ApiError> {
+    let author = guard(&state, &headers, workspace, Capability::Write).await?;
+    let created =
+        exposure_order::withdraw(&state.pool, workspace, situation, author, report, input).await?;
     Ok(no_store(
         json!({"report_id": report, "replayed": !created}),
         if created {

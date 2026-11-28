@@ -59,6 +59,8 @@ pub struct Review {
     order_reports: Vec<exposure_order::Report>,
     order_reports_truncated: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    withdrawn_order_reports: Vec<exposure_order::WithdrawnReport>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     reconsiderable_suspensions: Vec<route_use::ReconsiderableSuspension>,
     disposition: Disposition,
     needs_finer_timing: bool,
@@ -67,6 +69,14 @@ pub struct Review {
 }
 
 impl Review {
+    pub fn withdrawable_report_ids(&self, principal: Uuid) -> Vec<Uuid> {
+        self.order_reports
+            .iter()
+            .filter(|report| report.recorded_by == principal)
+            .map(|report| report.report_id)
+            .collect()
+    }
+
     pub fn with_sha256(&self) -> Result<serde_json::Value, WorkbenchError> {
         let mut value = serde_json::to_value(self).map_err(|_| WorkbenchError::Invalid)?;
         let bytes = serde_json::to_vec(&value).map_err(|_| WorkbenchError::Invalid)?;
@@ -150,7 +160,7 @@ pub(super) async fn review_in(
     }
 
     let available = exposure.input.available_on <= input.known_through;
-    let (date_order, order_reports, order_reports_truncated, disposition) = if available {
+    let (date_order, order_reports, disposition) = if available {
         let exposure_dates = (
             exposure.input.effective_from.as_deref(),
             exposure.input.effective_through.as_deref(),
@@ -168,11 +178,11 @@ pub(super) async fn review_in(
             }
             _ => None,
         };
-        let (reports, truncated) =
-            exposure_order::for_review(tx, workspace, situation, input).await?;
+        let reports = exposure_order::for_review(tx, workspace, situation, input).await?;
         let has_direction = |direction| {
             date_order == Some(direction)
                 || reports
+                    .active
                     .iter()
                     .any(|report| report.input.direction == direction)
         };
@@ -185,12 +195,11 @@ pub(super) async fn review_in(
             (false, true) => Disposition::ExposureAfterTestimony,
             (false, false) => Disposition::OrderUncertain,
         };
-        (date_order, reports, truncated, disposition)
+        (date_order, reports, disposition)
     } else {
         (
             None,
-            Vec::new(),
-            false,
+            exposure_order::ReviewReports::default(),
             Disposition::ExposureNotAvailableAtCutoff,
         )
     };
@@ -251,8 +260,9 @@ pub(super) async fn review_in(
         candidate_source: available.then(|| input.candidate_source.clone()),
         exposure: available.then_some(exposure),
         date_order,
-        order_reports,
-        order_reports_truncated,
+        order_reports: order_reports.active,
+        order_reports_truncated: order_reports.truncated,
+        withdrawn_order_reports: order_reports.withdrawn,
         reconsiderable_suspensions,
         disposition,
         needs_finer_timing,
