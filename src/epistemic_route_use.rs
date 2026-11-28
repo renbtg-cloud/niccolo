@@ -240,6 +240,7 @@ async fn record_choice(
                 )
                 .await?;
                 let (conclusion, review) = reviews
+                    .reviews
                     .into_iter()
                     .flat_map(|(conclusion, reviews)| {
                         reviews.into_iter().map(move |review| (conclusion, review))

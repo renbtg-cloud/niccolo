@@ -1,7 +1,10 @@
 //! Claim-specific reviews of human-declared derivation between artifact grounds.
-use super::{ArtifactDependenceReview, ArtifactDependenceVia, GroundingRouteRef, WorkbenchError};
+use super::{
+    ArtifactDependenceReview, ArtifactDependenceVia, GroundingRouteRef, SharedArtifactOrigin,
+    WorkbenchError,
+};
 use sqlx::{Postgres, Transaction};
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use uuid::Uuid;
 
 type ReviewRow = (
@@ -19,7 +22,15 @@ type ReviewRow = (
     bool,
     bool,
     Option<String>,
+    Option<String>,
+    Option<String>,
 );
+
+#[derive(Default)]
+pub(super) struct ArtifactDependenceReport {
+    pub(super) reviews: BTreeMap<Uuid, Vec<ArtifactDependenceReview>>,
+    pub(super) shared_origins: BTreeMap<Uuid, Vec<SharedArtifactOrigin>>,
+}
 
 pub(super) async fn reviews_in(
     tx: &mut Transaction<'_, Postgres>,
@@ -27,7 +38,7 @@ pub(super) async fn reviews_in(
     situation: Uuid,
     relationship: Option<Uuid>,
     via_relationship: Option<Uuid>,
-) -> Result<BTreeMap<Uuid, Vec<ArtifactDependenceReview>>, WorkbenchError> {
+) -> Result<ArtifactDependenceReport, WorkbenchError> {
     let rows: Vec<ReviewRow> = sqlx::query_as(
         "WITH derivations AS (
            SELECT relationship_id, subject_artifact_id, object_artifact_id,
@@ -81,12 +92,18 @@ pub(super) async fn reviews_in(
                   'representation_id',middle.subject_representation_id,'artifact_label',a.label,
                   'scope_locator',r.scope_locator,'qualification',middle.qualification,
                   'recorded_by',middle.recorded_by_principal_id
-                )::text END AS via
+                )::text END AS via,
+                origin_artifact.label, origin_passage.scope_locator
          FROM cited_routes c
          LEFT JOIN derivations middle ON middle.relationship_id=c.via_relationship_id
          LEFT JOIN niccolo.situation_artifact_representations r
            ON (r.workspace_id,r.situation_id,r.representation_id)=($1,$2,middle.subject_representation_id)
          LEFT JOIN niccolo.artifacts a ON (a.workspace_id,a.artifact_id)=($1,middle.subject_artifact_id)
+         LEFT JOIN niccolo.situation_artifact_representations origin_passage
+           ON (origin_passage.workspace_id,origin_passage.situation_id,origin_passage.representation_id)=
+              ($1,$2,c.object_representation_id)
+         LEFT JOIN niccolo.artifacts origin_artifact
+           ON (origin_artifact.workspace_id,origin_artifact.artifact_id)=($1,origin_passage.artifact_id)
          LEFT JOIN LATERAL (
            SELECT disposition FROM niccolo.epistemic_route_use_decisions h
            WHERE (h.workspace_id,h.situation_id,h.argument_id,h.grounding_set_id) =
@@ -118,9 +135,12 @@ pub(super) async fn reviews_in(
         cites_source,
         suspended,
         via,
+        source_artifact_label,
+        source_scope_locator,
     ) in rows
     {
-        let review = match candidates.entry((conclusion, relationship_id, via_relationship_id)) {
+        let (review, _) = match candidates.entry((conclusion, relationship_id, via_relationship_id))
+        {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 let via = via
@@ -128,19 +148,22 @@ pub(super) async fn reviews_in(
                     .map(serde_json::from_str::<ArtifactDependenceVia>)
                     .transpose()
                     .map_err(|_| WorkbenchError::Invalid)?;
-                entry.insert(ArtifactDependenceReview {
-                    relationship_id,
-                    via,
-                    derived_artifact_id,
-                    source_artifact_id,
-                    derived_representation_id,
-                    source_representation_id,
-                    qualification,
-                    recorded_by,
-                    routes_to_review: Vec::new(),
-                    suspended_routes: Vec::new(),
-                    source_routes: Vec::new(),
-                })
+                entry.insert((
+                    ArtifactDependenceReview {
+                        relationship_id,
+                        via,
+                        derived_artifact_id,
+                        source_artifact_id,
+                        derived_representation_id,
+                        source_representation_id,
+                        qualification,
+                        recorded_by,
+                        routes_to_review: Vec::new(),
+                        suspended_routes: Vec::new(),
+                        source_routes: Vec::new(),
+                    },
+                    source_artifact_label.zip(source_scope_locator),
+                ))
             }
         };
         let route = GroundingRouteRef {
@@ -156,13 +179,48 @@ pub(super) async fn reviews_in(
             review.routes_to_review.push(route);
         }
     }
-    let mut by_conclusion = BTreeMap::<Uuid, Vec<ArtifactDependenceReview>>::new();
-    for ((conclusion, _, _), review) in candidates {
+    let mut report = ArtifactDependenceReport::default();
+    let mut shared_origins = BTreeMap::new();
+    for ((conclusion, _, _), (review, labels)) in candidates {
         if !review.source_routes.is_empty()
             && (!review.routes_to_review.is_empty() || !review.suspended_routes.is_empty())
         {
-            by_conclusion.entry(conclusion).or_default().push(review);
+            report.reviews.entry(conclusion).or_default().push(review);
+        } else if relationship.is_none()
+            && !review.routes_to_review.is_empty()
+            && let Some(source_representation_id) = review.source_representation_id
+            && let Some((source_artifact_label, source_scope_locator)) = labels
+        {
+            let origin = shared_origins
+                .entry((conclusion, source_representation_id))
+                .or_insert_with(|| SharedArtifactOrigin {
+                    source_artifact_id: review.source_artifact_id,
+                    source_representation_id,
+                    source_artifact_label,
+                    source_scope_locator,
+                    derivations: Vec::new(),
+                });
+            origin.derivations.push(review);
         }
     }
-    Ok(by_conclusion)
+    for ((conclusion, _), origin) in shared_origins {
+        let copies = origin
+            .derivations
+            .iter()
+            .map(|copy| copy.derived_artifact_id)
+            .collect::<BTreeSet<_>>();
+        let routes = origin
+            .derivations
+            .iter()
+            .flat_map(|copy| &copy.routes_to_review)
+            .collect::<BTreeSet<_>>();
+        if copies.len() > 1 && routes.len() > 1 {
+            report
+                .shared_origins
+                .entry(conclusion)
+                .or_default()
+                .push(origin);
+        }
+    }
+    Ok(report)
 }

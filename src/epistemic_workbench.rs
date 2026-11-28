@@ -569,6 +569,16 @@ pub struct ArtifactDependenceVia {
     pub recorded_by: Uuid,
 }
 
+/// Distinct supporting copies of a passage that has no supporting route of its own.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedArtifactOrigin {
+    pub source_artifact_id: Uuid,
+    pub source_representation_id: Uuid,
+    pub source_artifact_label: String,
+    pub source_scope_locator: String,
+    pub derivations: Vec<ArtifactDependenceReview>,
+}
+
 /// An authored contradiction whose two endpoints both occur as non-contextual
 /// grounds in supporting routes for the same conclusion. This is a structural
 /// review candidate, not evidence that the contradiction is true or self-sealing.
@@ -636,6 +646,8 @@ pub struct ConclusionReasoningDiagnostic {
     pub shared_grounds: Vec<SharedGroundDiagnostic>,
     #[serde(default)]
     pub artifact_dependence_reviews: Vec<ArtifactDependenceReview>,
+    #[serde(default)]
+    pub shared_artifact_origins: Vec<SharedArtifactOrigin>,
     #[serde(default)]
     pub contradictory_supports: Vec<ContradictorySupportDiagnostic>,
     #[serde(default)]
@@ -2321,6 +2333,7 @@ fn reasoning_diagnostics(
             information_gap_supports,
             direct_evidence_lineage: DirectEvidenceLineageDiagnostic::default(),
             artifact_dependence_reviews: Vec::new(),
+            shared_artifact_origins: Vec::new(),
             has_supporting_routes,
             non_suspended_supporting_routes: Vec::new(),
             has_opposing_routes,
@@ -3040,9 +3053,12 @@ pub async fn snapshot(
     })
     .collect();
     if !artifact_provenance.is_empty() {
-        let mut reviews = artifact_dependence::reviews_in(&mut tx, workspace, situation, None, None).await?;
+        let mut report = artifact_dependence::reviews_in(&mut tx, workspace, situation, None, None).await?;
         for diagnostic in &mut reasoning_diagnostics {
-            diagnostic.artifact_dependence_reviews = reviews
+            diagnostic.artifact_dependence_reviews = report.reviews
+                .remove(&diagnostic.conclusion_object_id)
+                .unwrap_or_default();
+            diagnostic.shared_artifact_origins = report.shared_origins
                 .remove(&diagnostic.conclusion_object_id)
                 .unwrap_or_default();
         }
