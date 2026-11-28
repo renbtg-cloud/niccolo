@@ -236,6 +236,8 @@ A seção de mudanças da reanálise mostra quantas origens comuns entraram na n
 
 Quando uma origem comum recém-registrada envolve pelo menos duas rotas antes disponíveis à análise, o painel recomenda avaliar uma reanálise. A recomendação cessa na análise que já incorporou essa origem.
 
+A entrada congelada da reanálise informa quantas representações atribuídas de artefatos estavam catalogadas, quantas entraram no pacote e quantos bytes de texto foram incluídos. No replay, quatro representações entram no pacote sem depender dos fragmentos de fontes legadas.
+
 O ZIP da análise publicada inclui `data/workbench_support.json` quando há citações do Workbench, origens comuns ou truncamento dessas origens. O arquivo contém os identificadores das citações e as origens congeladas da análise selecionada. O replay verifica o conteúdo e o SHA-256 registrado no pacote.
 
 ## Material para desenvolver
