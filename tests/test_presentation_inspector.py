@@ -19,8 +19,9 @@ class PresentationInspectorTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         (self.root / "data").mkdir()
         (self.root / "inspect.py").write_bytes(SOURCE.read_bytes())
+        self.analysis_id = "00000000-0000-0000-0000-000000000003"
         bundle = {
-            "analysis_id": "00000000-0000-0000-0000-000000000003",
+            "analysis_id": self.analysis_id,
             "input_revision": 3,
             "goal": "What happened?",
             "answer_text": "One recorded interpretation, not proven.",
@@ -58,6 +59,33 @@ class PresentationInspectorTests(unittest.TestCase):
             capture_output=True, text=True, check=False, timeout=10
         )
 
+    def write_shared_origin_support(self, second_claim, *, listed=True):
+        routes = [{"argument_id": "a1", "grounding_set_id": route} for route in ["r1", "r2"]]
+        sidecar = {
+            "analysis_id": self.analysis_id,
+            "format": "niccolo.presentation-workbench-support",
+            "format_version": 1,
+            "support": {
+                "citations": [
+                    {"claim_id": "c1", **routes[0]},
+                    {"claim_id": second_claim, **routes[1]},
+                ],
+                "shared_artifact_origins": [{
+                    "source_artifact_label": "Claire's interview",
+                    "source_scope_locator": "Second answer",
+                    "derivations": [{"routes": [route]} for route in routes],
+                }],
+                "shared_artifact_origins_truncated": True,
+            },
+        }
+        path = self.root / "data" / "workbench_support.json"
+        path.write_text(json.dumps(sidecar), encoding="utf-8")
+        if listed:
+            manifest = self.root / "SHA256SUMS.json"
+            sums = json.loads(manifest.read_text(encoding="utf-8"))
+            sums["data/workbench_support.json"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            manifest.write_text(json.dumps(sums), encoding="utf-8")
+
     def test_reports_original_and_actual_stored_relations(self):
         result = self.run_inspector()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -66,6 +94,25 @@ class PresentationInspectorTests(unittest.TestCase):
         self.assertIn("SUPPORTS", result.stdout)
         self.assertIn("CONTRADICTS", result.stdout)
         self.assertIn("NOT evidence weights", result.stdout)
+
+    def test_shared_origins_are_reported_per_cited_claim(self):
+        self.write_shared_origin_support("c1")
+        same_claim = self.run_inspector()
+        self.assertEqual(same_claim.returncode, 0, same_claim.stderr)
+        self.assertIn("Shared origin for Unverified interpretation", same_claim.stdout)
+        self.assertIn("Claire's interview · Second answer", same_claim.stdout)
+        self.assertIn("limited set of recorded derivations", same_claim.stdout)
+
+        self.write_shared_origin_support("c2")
+        different_claims = self.run_inspector()
+        self.assertEqual(different_claims.returncode, 0, different_claims.stderr)
+        self.assertNotIn("Shared origin for", different_claims.stdout)
+
+    def test_unlisted_workbench_support_is_ignored(self):
+        self.write_shared_origin_support("c1", listed=False)
+        result = self.run_inspector()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Recorded Workbench route citations", result.stdout)
 
     def test_integrity_failure_is_fail_closed(self):
         path = self.root / "data" / "claims.csv"
