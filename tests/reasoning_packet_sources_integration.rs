@@ -6,17 +6,22 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{analysis_structure::AnalysisScope, api, authz, reasoning_packet};
+use niccolo_evidence::{
+    analysis_structure::AnalysisScope, api, authz, reasoning_packet, situation_store,
+};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 struct Harness {
     router: Router,
+    admin: PgPool,
     secure: PgPool,
     workspace: Uuid,
     situation: Uuid,
+    principal: Uuid,
     token: String,
 }
 
@@ -46,9 +51,11 @@ async fn setup() -> Harness {
         .unwrap();
     Harness {
         router: api::router(secure.clone()),
+        admin,
         secure,
         workspace,
         situation,
+        principal,
         token,
     }
 }
@@ -68,18 +75,6 @@ fn json_request(method: &str, path: &str, token: &str, body: Option<Value>) -> R
     builder.body(Body::from(bytes)).unwrap()
 }
 
-fn source_request(path: &str, token: &str, locator: &str, body: &'static str) -> Request<Body> {
-    Request::builder()
-        .method("POST")
-        .uri(path)
-        .header(header::AUTHORIZATION, format!("Bearer {token}"))
-        .header(header::ACCEPT, "application/json")
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header("x-source-locator", locator)
-        .body(Body::from(body))
-        .unwrap()
-}
-
 async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
     let response = router.oneshot(request).await.unwrap();
     let status = response.status();
@@ -90,25 +85,49 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
     )
 }
 
-async fn ingest_and_attach(h: &Harness, locator: &str, text: &'static str) -> Uuid {
+// Seed the historical representation directly. The shipping HTTP router no longer accepts source bytes.
+async fn attach_historical_source(
+    h: &Harness,
+    locator: &str,
+    speaker: &str,
+    lines: &[&str],
+) -> Uuid {
     let document = Uuid::new_v4();
-    let source_path = format!("/v1/workspaces/{}/sources/{document}", h.workspace);
-    let (status, _) = invoke(
-        h.router.clone(),
-        source_request(&source_path, &h.token, locator, text),
+    let text = lines.join("\n");
+    let mut tx = h.admin.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
+         VALUES($1,$2,'WHATSAPP_EXPORT',$3,$4,$5)",
     )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let attach_path = format!(
-        "/v1/workspaces/{}/situations/{}/sources/{document}",
-        h.workspace, h.situation
-    );
-    let (status, _) = invoke(
-        h.router.clone(),
-        json_request("POST", &attach_path, &h.token, None),
+    .bind(h.workspace).bind(document).bind(locator)
+    .bind(format!("{:x}", Sha256::digest(text.as_bytes())))
+    .bind(text.len() as i64)
+    .execute(&mut *tx).await.unwrap();
+    let mut offset = 0;
+    for (ordinal, line) in lines.iter().enumerate() {
+        let evidence = Uuid::new_v4();
+        let end = offset + line.len() as i32;
+        sqlx::query(
+            "INSERT INTO niccolo.evidence(workspace_id,evidence_id,source_locator,content,source_class)
+             VALUES($1,$2,$3,$4,'REPORTED_SPEECH')",
+        )
+        .bind(h.workspace).bind(evidence).bind(format!("{locator}#{ordinal}")).bind(line)
+        .execute(&mut *tx).await.unwrap();
+        sqlx::query(
+            "INSERT INTO niccolo.source_fragments(workspace_id,document_id,ordinal,evidence_id,byte_start,byte_end,speaker_label)
+             VALUES($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(h.workspace).bind(document).bind(ordinal as i32).bind(evidence).bind(offset).bind(end).bind(speaker)
+        .execute(&mut *tx).await.unwrap();
+        offset = end + 1;
+    }
+    tx.commit().await.unwrap();
+    authz::with_auth_digest(
+        authz::credential_digest(&h.token).unwrap(),
+        situation_store::add_source(&h.secure, h.workspace, h.principal, h.situation, document),
     )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
+    .await
+    .unwrap();
     document
 }
 
@@ -129,17 +148,10 @@ async fn v1041_v1060_reasoning_packet_uses_only_fragments_from_frozen_revision()
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(created["revision"], 1);
 
-    let before = ingest_and_attach(
-        &h,
-        "before.txt",
-        "01/01/2026, 10:00 - Ana: BEFORE_FREEZE_SOURCE\n",
-    )
-    .await;
+    let before = attach_historical_source(&h, "before.txt", "Ana", &["BEFORE_FREEZE_SOURCE"]).await;
 
     let analysis = Uuid::new_v4();
-    let analysis_path = format!(
-        "{situation_path}/analysis-snapshots/{analysis}"
-    );
+    let analysis_path = format!("{situation_path}/analysis-snapshots/{analysis}");
     let (status, frozen) = invoke(
         h.router.clone(),
         json_request(
@@ -153,12 +165,7 @@ async fn v1041_v1060_reasoning_packet_uses_only_fragments_from_frozen_revision()
     assert_eq!(status, StatusCode::CREATED);
     let frozen_revision = frozen["input_revision"].as_i64().unwrap();
 
-    let after = ingest_and_attach(
-        &h,
-        "after.txt",
-        "01/01/2026, 10:01 - Beto: AFTER_FREEZE_SOURCE\n",
-    )
-    .await;
+    let after = attach_historical_source(&h, "after.txt", "Beto", &["AFTER_FREEZE_SOURCE"]).await;
     assert_ne!(before, after);
 
     let digest = authz::credential_digest(&h.token).unwrap();
@@ -221,16 +228,10 @@ async fn v1061_v1080_reasoning_packet_truncates_deterministically_at_fragment_bu
     assert_eq!(status, StatusCode::CREATED);
 
     let many = (0..300)
-        .map(|i| {
-            format!(
-                "01/01/2026, 10:{:02} - Ana: FROZEN_FRAGMENT_{:03}\n",
-                i % 60,
-                i
-            )
-        })
-        .collect::<String>();
-    let many: &'static str = Box::leak(many.into_boxed_str());
-    let document = ingest_and_attach(&h, "many.txt", many).await;
+        .map(|i| format!("FROZEN_FRAGMENT_{i:03}"))
+        .collect::<Vec<_>>();
+    let lines = many.iter().map(String::as_str).collect::<Vec<_>>();
+    let document = attach_historical_source(&h, "many.txt", "Ana", &lines).await;
 
     let analysis = Uuid::new_v4();
     let analysis_path = format!("{situation_path}/analysis-snapshots/{analysis}");
@@ -328,10 +329,11 @@ async fn v1161_v1180_reasoning_packet_freezes_human_identity_assignment_at_analy
     .await;
     assert_eq!(status, StatusCode::CREATED);
 
-    let document = ingest_and_attach(
+    let document = attach_historical_source(
         &h,
         "identity-freeze.txt",
-        "01/01/2026, 10:00 - Ana: identity freeze source\n",
+        "Ana",
+        &["identity freeze source"],
     )
     .await;
 
@@ -350,7 +352,10 @@ async fn v1161_v1180_reasoning_packet_freezes_human_identity_assignment_at_analy
     assert_eq!(status, StatusCode::CREATED);
 
     let first_event = Uuid::new_v4();
-    let first_event_path = format!("/v1/workspaces/{}/identity-events/{first_event}", h.workspace);
+    let first_event_path = format!(
+        "/v1/workspaces/{}/identity-events/{first_event}",
+        h.workspace
+    );
     let (status, first_assignment) = invoke(
         h.router.clone(),
         json_request(
@@ -400,7 +405,10 @@ async fn v1161_v1180_reasoning_packet_freezes_human_identity_assignment_at_analy
     assert_eq!(status, StatusCode::CREATED);
 
     let second_event = Uuid::new_v4();
-    let second_event_path = format!("/v1/workspaces/{}/identity-events/{second_event}", h.workspace);
+    let second_event_path = format!(
+        "/v1/workspaces/{}/identity-events/{second_event}",
+        h.workspace
+    );
     let (status, later_assignment) = invoke(
         h.router.clone(),
         json_request(
@@ -448,7 +456,11 @@ async fn v1161_v1180_reasoning_packet_freezes_human_identity_assignment_at_analy
     assert_eq!(binding.event_id, first_event);
     assert_eq!(binding.event_no, first_event_no);
     assert!(packet.frozen_input.identity_bindings_are_human_confirmed);
-    assert!(!packet.frozen_input.matching_speaker_labels_imply_same_person);
+    assert!(
+        !packet
+            .frozen_input
+            .matching_speaker_labels_imply_same_person
+    );
 
     let summary_path = format!("{analysis_path}/bff/reasoning-input");
     let (status, summary) = invoke(
@@ -462,4 +474,3 @@ async fn v1161_v1180_reasoning_packet_freezes_human_identity_assignment_at_analy
     assert_eq!(summary["identity_bindings_are_human_confirmed"], true);
     assert_eq!(summary["matching_speaker_labels_imply_same_person"], false);
 }
-
