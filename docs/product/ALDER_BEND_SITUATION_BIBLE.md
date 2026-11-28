@@ -127,6 +127,8 @@ Na consulta de reconhecibilidade do Workbench, um relato de exposição permite 
 
 Na mesma tela, **Record a source that states which came first** registra a ordem declarada no trecho selecionado. **Basis for the order of events** mostra de onde veio cada direção e quando o relato ficou disponível para a investigação.
 
+Quem registrou um relato por engano pode usar **Withdraw this order report** e informar a justificativa e a data a partir da qual a retirada ficou disponível. A checagem conserva o relato original no histórico. A partir dessa data, ele deixa de contribuir para a ordem. Uma transcrição corrigida entra como novo relato e recebe sua própria data de disponibilidade. Versões opostas de fontes continuam sendo registradas como relatos distintos.
+
 Se a fonte disser apenas que a foto veio antes ou depois do depoimento, o investigador pode registrar a exposição com as duas datas vazias, encontrá-la com **Find exposures with unknown dates** e deixar também em branco as datas do depoimento. A data em que cada relato chegou à investigação continua obrigatória. Uma consulta com dia especificado mantém o recorte de calendário. Uma consulta sem `on` retorna as exposições de data desconhecida.
 
 ```bash
@@ -146,7 +148,7 @@ A tela vincula uma nova decisão à revisão que a pessoa examinou. Se chegar um
 
 Se um relato incompatível surgir depois de uma suspensão, **Reconsider an earlier suspension** permite que o investigador retome explicitamente a rota suspensa na mesma checagem. O relatório mantém a divergência e o histórico conserva a suspensão anterior e a justificativa da retomada.
 
-O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1445) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}`. A entrada pede `argument_id`, `grounding_set_id`, `disposition` (`USE` ou `SUSPEND`), `rationale` e a mesma entrada de checagem em `review`. O Workbench envia também `expected_review_sha256` para vincular a decisão à checagem exibida. É preciso ter permissão de escrita. Uma rota indicada pela checagem pode receber uma decisão. Durante uma divergência, `USE` pode retomar uma suspensão vigente registrada com a mesma exposição, foco do depoimento e fonte candidata. O histórico guarda a entrada e o resultado que embasaram cada decisão.
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1501) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}`. A entrada pede `argument_id`, `grounding_set_id`, `disposition` (`USE` ou `SUSPEND`), `rationale` e a mesma entrada de checagem em `review`. O Workbench envia também `expected_review_sha256` para vincular a decisão à checagem exibida. É preciso ter permissão de escrita. Uma rota indicada pela checagem pode receber uma decisão. Durante uma divergência, `USE` pode retomar uma suspensão vigente registrada com a mesma exposição, foco do depoimento e fonte candidata. O histórico guarda a entrada e o resultado que embasaram cada decisão.
 
 O Workbench mostra a escolha mais recente por rota, `suspended_by_decision_id` nas rotas suspensas, `non_suspended_supporting_routes` no diagnóstico da conclusão e todos os eventos em `route_use_history`. Essa lista distingue o uso decidido pelo investigador da estrutura original, que permanece consultável. A decisão não altera a verdade da alegação e não suspende outros relatos da mesma testemunha.
 
@@ -165,7 +167,7 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
 
 ### Sexto replay — a correção de Claire chega a duas investigações
 
-O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1837) abre duas Situations no mesmo workspace. Ruth e Owen registram material com credenciais distintas. As mudanças na janela das 20h são examinadas em rodadas.
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1893) abre duas Situations no mesmo workspace. Ruth e Owen registram material com credenciais distintas. As mudanças na janela das 20h são examinadas em rodadas.
 
 | Rodada | Auditoria do contrato | Desaparecimento |
 | --- | --- | --- |
@@ -185,7 +187,7 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
 
 ### Sétimo replay — a origem da corroboração
 
-O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L2280) examina um recorte sintético do avistamento do guincho 07 atrás da farmácia por volta das 21h20. Para essa alegação, a rota baseada na nota de Owen compartilha o depoimento de Claire com a rota direta. A mesma nota tem apoio documental próprio para uma alegação diferente, a de que Owen registrou a pista no dossiê. A descrição humana da gravação da farmácia acrescenta uma observação de outra origem sobre a presença do guincho. A identidade do motorista segue em aberto. A nota sem assinatura permanece no dossiê com uma lacuna explícita sobre sua origem.
+O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L2336) examina um recorte sintético do avistamento do guincho 07 atrás da farmácia por volta das 21h20. Para essa alegação, a rota baseada na nota de Owen compartilha o depoimento de Claire com a rota direta. A mesma nota tem apoio documental próprio para uma alegação diferente, a de que Owen registrou a pista no dossiê. A descrição humana da gravação da farmácia acrescenta uma observação de outra origem sobre a presença do guincho. A identidade do motorista segue em aberto. A nota sem assinatura permanece no dossiê com uma lacuna explícita sobre sua origem.
 
 Cada fundamento da análise congelada preserva em `artifact_representation_ids` os vínculos registrados com as representações da revisão examinada. O campo `artifact_provenance_truncated` indica se havia mais de 16 vínculos para o fundamento. Uma nova análise pode incluir um vínculo registrado depois da anterior. O replay recupera as duas versões e confere a relação declarada entre a nota de Owen e o depoimento de Claire no pacote revisado.
 
@@ -196,7 +198,7 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
 
 ### Oitavo replay — dependência descoberta depois da análise
 
-Na primeira rodada, o investigador registra a nota de Owen como uma pista cuja origem está em aberto. A nota, o relato direto de Claire e a descrição da câmera têm rotas próprias para o avistamento. Depois de congelar a análise, o investigador registra que Owen confirmou ter resumido o depoimento de Claire. [Teste HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L2546)
+Na primeira rodada, o investigador registra a nota de Owen como uma pista cuja origem está em aberto. A nota, o relato direto de Claire e a descrição da câmera têm rotas próprias para o avistamento. Depois de congelar a análise, o investigador registra que Owen confirmou ter resumido o depoimento de Claire. [Teste HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L2602)
 
 O Workbench passa a sinalizar a rota que usa somente a nota para sustentar o avistamento. O aviso aponta para a declaração de origem e para as rotas que já citam Claire. O apoio da câmera e o uso da nota para demonstrar que Owen registrou a pista continuam disponíveis. O alerta deixa o uso de todas as rotas a cargo do investigador. A base anterior segue consultável, e o pacote da reanálise inclui a nova relação declarada.
 
@@ -209,7 +211,7 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
 
 ### Nono replay — decisão de uso após o alerta
 
-O investigador suspende a rota que usava a nota de Owen como apoio separado ao avistamento. O Workbench registra quem decidiu, a justificativa, a rota e o vínculo declarado que deu origem ao alerta. A interface mantém o histórico no próprio alerta e permite registrar a retomada do uso. [Replay da descoberta até a reanálise](../../tests/parser_free_artifacts_http_integration.rs#L2546)
+O investigador suspende a rota que usava a nota de Owen como apoio separado ao avistamento. O Workbench registra quem decidiu, a justificativa, a rota e o vínculo declarado que deu origem ao alerta. A interface mantém o histórico no próprio alerta e permite registrar a retomada do uso. [Replay da descoberta até a reanálise](../../tests/parser_free_artifacts_http_integration.rs#L2602)
 
 O replay testa uma síntese que cita Claire e a câmera para o avistamento e a nota de Owen para a alegação sobre o dossiê. Quando outra síntese tenta citar a rota suspensa, a operação falha e o resultado fica sem publicação. As bases anteriores preservam as rotas que estavam disponíveis quando foram congeladas. A retomada acrescenta uma decisão ao histórico.
 
@@ -219,7 +221,7 @@ O endpoint `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/art
 
 ### Décimo replay — derivação delimitada a dois trechos
 
-Nesta variante sintética, Owen e Claire dizem ter visto o guincho 07 atrás da farmácia. A primeira passagem da nota de Owen descreve o que ele viu durante a ronda. A segunda dá o horário aproximado de 21h20, que Owen atribui a Claire. O investigador registra a derivação entre a segunda passagem da nota e o trecho correspondente do depoimento. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L3062)
+Nesta variante sintética, Owen e Claire dizem ter visto o guincho 07 atrás da farmácia. A primeira passagem da nota de Owen descreve o que ele viu durante a ronda. A segunda dá o horário aproximado de 21h20, que Owen atribui a Claire. O investigador registra a derivação entre a segunda passagem da nota e o trecho correspondente do depoimento. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L3118)
 
 O Workbench sinaliza a rota de Owen para a alegação sobre o horário e mostra a passagem de Claire que serve de origem. Os relatos diretos sobre a presença do guincho continuam disponíveis. O replay verifica que a decisão associada a esse alerta só pode suspender a rota do horário. A reanálise guarda os dois trechos declarados na relação e a análise anterior continua consultável.
 
@@ -232,13 +234,13 @@ cargo test --locked --features pg-integration --test parser_free_artifacts_http_
 
 ### Décimo primeiro replay — um trecho intermediário
 
-Ruth copia para o resumo da auditoria a estimativa de 21h20 que Owen registrou a partir do relato de Claire. A análise cita Claire e Ruth. O Workbench sinaliza a rota de Ruth e mostra os dois vínculos declarados por meio do segundo parágrafo da nota de Owen. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L3374)
+Ruth copia para o resumo da auditoria a estimativa de 21h20 que Owen registrou a partir do relato de Claire. A análise cita Claire e Ruth. O Workbench sinaliza a rota de Ruth e mostra os dois vínculos declarados por meio do segundo parágrafo da nota de Owen. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L3430)
 
 Para formar a cadeia, os vínculos precisam apontar para a mesma representação intermediária. O replay testa o parágrafo errado e uma referência à nota inteira antes de registrar a relação precisa. A decisão de suspender a rota recebe `relationship_id` e `via_relationship_id` e guarda os dois vínculos no histórico.
 
 ### Décimo segundo replay — duas cópias sem citação direta da origem
 
-Owen e Ruth copiam o horário de 21h20 da mesma resposta de Claire em dois documentos. A análise usa cada cópia em sua própria rota, e o depoimento de Claire fica no dossiê. O alerta do Workbench identifica a resposta original e mostra as derivações e as rotas envolvidas. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L3632)
+Owen e Ruth copiam o horário de 21h20 da mesma resposta de Claire em dois documentos. A análise usa cada cópia em sua própria rota, e o depoimento de Claire fica no dossiê. O alerta do Workbench identifica a resposta original e mostra as derivações e as rotas envolvidas. [Replay HTTP com PostgreSQL](../../tests/parser_free_artifacts_http_integration.rs#L3688)
 
 O diagnóstico `shared_artifact_origins` reúne derivações de artefatos distintos que citam o mesmo trecho de origem em rotas ativas da mesma alegação. O replay controla a precisão usando trechos diferentes do mesmo depoimento e duas cópias usadas juntas em uma única rota. O alerta preserva as decisões de uso já registradas.
 

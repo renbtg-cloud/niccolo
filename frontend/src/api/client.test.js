@@ -165,6 +165,17 @@ it('records an attributed order without supplying clock times', async () => {
   expect((await client.recordExposureOrder('order', body)).value.report_id).toBe('order');
 });
 
+it('withdraws an order report with a dated reason', async () => {
+  const body = { available_on: '2026-11-26', rationale: 'It refers to another interview.' };
+  const client = new NiccoloClient(c, async (url, options) => {
+    expect(url).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/detail-exposure-review/order-reports/order/withdraw`);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual(body);
+    return response(201, { report_id: 'order', replayed: false });
+  });
+  expect((await client.withdrawExposureOrder('order', body)).value.replayed).toBe(false);
+});
+
 it('passes cancellation through a review read and rejects an aborted body', async () => {
   const controller = new AbortController();
   const client = new NiccoloClient({workspace:'w', situation:'s', token:'fixture'}, async (_, options) => {

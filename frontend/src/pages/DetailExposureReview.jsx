@@ -42,7 +42,7 @@ export function DetailExposureReview({
     known_through: knownThrough,
   });
   const review = useMutation({ mutationFn: (body) => client.reviewDetailExposure(body) });
-  const [savedOrderDate, setSavedOrderDate] = useState('');
+  const [savedOrderChange, setSavedOrderChange] = useState(null);
   useEffect(() => {
     panel.current?.focus();
     return () => { currentComparison.current = null; };
@@ -59,13 +59,18 @@ export function DetailExposureReview({
   function update(field, value) {
     currentComparison.current = null;
     setDraft({...draft, [field]: value});
-    setSavedOrderDate('');
+    setSavedOrderChange(null);
     review.reset();
   }
   const sourceOptions = [...sources].map(([key, link]) => <option key={key} value={key}>
     {labels.get(link.object_id)} · {link.artifact_label} · {link.scope_locator}
   </option>);
   const pair = (link) => ({ object_id: link.object_id, representation_id: link.representation_id });
+  function refreshAfterOrderChange(date, comparison, message) {
+    if (currentComparison.current !== comparison) return;
+    setSavedOrderChange({ date, message });
+    review.mutate(comparison);
+  }
 
   return <section className="review-panel" ref={panel} tabIndex={-1} aria-label="Testimony detail review">
     <h4>Review a testimony detail for prior exposure</h4>
@@ -108,12 +113,14 @@ export function DetailExposureReview({
     </form> : <p>Link the testimony detail and its candidate origin to source passages first.</p>}
     {review.error && <p role="alert">{review.error.message}</p>}
     {review.isPending && <p role="status">Checking the order of events…</p>}
-    {savedOrderDate && <p role="status">Order report recorded.
-      {savedOrderDate > draft.known_through && ` It is available from ${savedOrderDate}, after this review's cutoff.`}
+    {savedOrderChange && <p role="status">{savedOrderChange.message}
+      {savedOrderChange.date > draft.known_through &&
+        ` It is available from ${savedOrderChange.date}, after this review's cutoff.`}
     </p>}
     {review.data && <>
       <DetailExposureResult result={review.data.value} nodes={nodes}>
-        <ExposureOrderReports result={review.data.value} provenance={provenance}/>
+        <ExposureOrderReports result={review.data.value} provenance={provenance}
+          client={client} onWithdrawn={(date) => refreshAfterOrderChange(date, review.variables, 'Withdrawal recorded.')}/>
         <DetailExposureRouteDecisions result={review.data.value} input={review.variables} client={client}
           groundingSets={groundingSets} routeHistory={routeHistory} onSaved={async () => {
             const comparison = review.variables;
@@ -122,11 +129,8 @@ export function DetailExposureReview({
           }}/>
       </DetailExposureResult>
       {review.data.value.exposure && <ExposureOrderReportForm client={client} review={review.variables}
-        sources={sources} sourceOptions={sourceOptions} onSaved={(date, comparison) => {
-          if (currentComparison.current !== comparison) return;
-          setSavedOrderDate(date);
-          review.mutate(comparison);
-        }}/>}
+        sources={sources} sourceOptions={sourceOptions} onSaved={(date, comparison) =>
+          refreshAfterOrderChange(date, comparison, 'Order report recorded.')}/>}
     </>}
   </section>;
 }
