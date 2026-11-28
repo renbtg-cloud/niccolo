@@ -15,7 +15,11 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
+
 struct Harness {
+    admin: PgPool,
     router: Router,
     secure: PgPool,
     workspace: Uuid,
@@ -49,6 +53,7 @@ async fn setup() -> Harness {
         .await
         .unwrap();
     Harness {
+        admin,
         router: api::router(secure.clone()),
         secure,
         workspace,
@@ -73,18 +78,6 @@ fn json_request(method: &str, path: &str, token: &str, body: Option<Value>) -> R
     builder.body(Body::from(bytes)).unwrap()
 }
 
-fn source_request(path: &str, token: &str, locator: &str, body: &'static str) -> Request<Body> {
-    Request::builder()
-        .method("POST")
-        .uri(path)
-        .header(header::AUTHORIZATION, format!("Bearer {token}"))
-        .header(header::ACCEPT, "application/json")
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header("x-source-locator", locator)
-        .body(Body::from(body))
-        .unwrap()
-}
-
 async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
     let response = router.oneshot(request).await.unwrap();
     let status = response.status();
@@ -95,28 +88,13 @@ async fn invoke(router: Router, request: Request<Body>) -> (StatusCode, Value) {
     )
 }
 
-async fn ingest_and_attach(h: &Harness, locator: &str, text: &'static str) -> Uuid {
+async fn attach_historical_source(h: &Harness, locator: &str, speaker: &str, text: &str) -> Uuid {
     let document = Uuid::new_v4();
-    let source_path = format!("/v1/workspaces/{}/sources/{document}", h.workspace);
-    let (status, _) = invoke(
-        h.router.clone(),
-        source_request(&source_path, &h.token, locator, text),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let attach_path = format!(
-        "/v1/workspaces/{}/situations/{}/sources/{document}",
-        h.workspace, h.situation
-    );
-    let (status, _) = invoke(
-        h.router.clone(),
-        json_request("POST", &attach_path, &h.token, None),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
+    let fragments = text.lines().map(|line| (speaker, line)).collect::<Vec<_>>();
+    historical_sources::seed(&h.admin, h.workspace, document, locator, &fragments).await;
+    historical_sources::attach(&h.secure, &h.token, h.workspace, h.situation, document).await;
     document
 }
-
 
 #[tokio::test]
 async fn a_model_intent_retrieves_late_frozen_evidence_into_the_next_packet() {
@@ -132,8 +110,7 @@ async fn a_model_intent_retrieves_late_frozen_evidence_into_the_next_packet() {
         let text = if i == 299 { "MENSAGEMDECISIVATARDIA" } else { "routine communication" };
         format!("01/01/2026, 10:{:02} - Ana: {} ordinal {}\n", i % 60, text, i)
     }).collect::<String>();
-    let content: &'static str = Box::leak(content.into_boxed_str());
-    let document = ingest_and_attach(&h, "hypothesis-search.txt", content).await;
+    let document = attach_historical_source(&h, "hypothesis-search.txt", "Ana", &content).await;
     let analysis = Uuid::new_v4();
     let analysis_path = format!("{situation_path}/analysis-snapshots/{analysis}");
     let (status, _) = invoke(
@@ -218,7 +195,7 @@ async fn query_hit_recording_rejects_an_unauthorized_document() {
         }))),
     ).await;
     assert_eq!(status, StatusCode::CREATED);
-    ingest_and_attach(&h,"later.txt","01/01/2026, 10:00 - Ana: FUTUREEVIDENCETOKEN\n").await;
+    attach_historical_source(&h, "later.txt", "Ana", "01/01/2026, 10:00 - Ana: FUTUREEVIDENCETOKEN\n").await;
     let query_id = Uuid::new_v4();
     let update: reasoning_updates::ReasoningUpdate = serde_json::from_value(json!({
         "source_queries":[{
