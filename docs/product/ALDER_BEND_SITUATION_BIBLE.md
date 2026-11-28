@@ -226,7 +226,7 @@ O diagnóstico `shared_artifact_origins` reúne derivações de artefatos distin
 
 A base congelada da reanálise guarda o trecho comum, a alegação, as relações de derivação e as rotas citáveis que motivaram o alerta. O replay recupera a análise anterior e a versão posterior à descoberta. A análise anterior conserva a base que tinha na época.
 
-A página de revisão da análise mostra o trecho de origem e as rotas agrupadas na seção sobre a entrada do modelo.
+A página de revisão da análise mostra o trecho de origem e as rotas agrupadas na seção sobre a entrada do modelo. O pacote de repasse inclui os vínculos da análise selecionada.
 
 ## Material para desenvolver
 

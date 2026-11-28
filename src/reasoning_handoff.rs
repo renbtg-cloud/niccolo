@@ -3,6 +3,7 @@
 use crate::analysis_assumptions;
 use crate::analysis_claims;
 use crate::analysis_structure::AnalysisScope;
+use crate::analysis_workbench_support::{self, FrozenSharedOrigin};
 use crate::{
     collection_provenance, decision_points, decision_readiness, hypothesis_portfolio,
     integrity_scope, source_scope, temporal_state,
@@ -111,6 +112,10 @@ pub struct ReasoningHandoffBundle {
     pub temporal_assertions: Vec<temporal_state::TemporalAssertion>,
     pub source_scope: Vec<source_scope::SourceScopeAssertion>,
     pub collection_events: Vec<collection_provenance::CollectionEvent>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub shared_artifact_origins: Vec<FrozenSharedOrigin>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub shared_artifact_origins_truncated: bool,
     pub integrity_assessments: Vec<integrity_scope::IntegrityAssessment>,
     pub decisions: decision_points::DecisionPackage,
     pub decision_readiness: Vec<decision_readiness::DecisionReadinessView>,
@@ -151,6 +156,11 @@ pub async fn bundle(
     .bind(scope.analysis)
     .fetch_all(&mut *tx)
     .await?;
+    let (shared_artifact_origins, shared_artifact_origins_truncated) =
+        analysis_workbench_support::read_in(&mut tx, scope)
+            .await?
+            .map(|basis| (basis.shared_artifact_origins, basis.shared_artifact_origins_truncated))
+            .unwrap_or_default();
     tx.commit().await?;
     let claims =
         analysis_claims::list_claims(pool, scope.workspace, scope.situation, scope.analysis)
@@ -241,6 +251,8 @@ pub async fn bundle(
         temporal_assertions,
         source_scope,
         collection_events,
+        shared_artifact_origins,
+        shared_artifact_origins_truncated,
         integrity_assessments,
         decisions,
         decision_readiness,

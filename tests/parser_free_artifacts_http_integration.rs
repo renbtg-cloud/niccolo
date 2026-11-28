@@ -3509,6 +3509,22 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
         )
         .await;
     assert_eq!(input["workbench_support"], json!(basis));
+    let original_handoff = case
+        .case_request(&format!("analysis-snapshots/{previous}/bff/handoff"), None)
+        .await;
+    assert!(
+        original_handoff["handoff"]
+            .get("shared_artifact_origins")
+            .is_none()
+    );
+    let handoff = case
+        .case_request(&format!("analysis-snapshots/{revised}/bff/handoff"), None)
+        .await;
+    assert_eq!(
+        handoff["handoff"]["shared_artifact_origins"],
+        json!(basis.shared_artifact_origins)
+    );
+    assert_eq!(handoff["handoff"]["handoff_grants_authority"], false);
 
     let links = [(argument, owen_route), (argument, ruth_route)];
     case.router = api::router_with_model(
@@ -3547,6 +3563,11 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
                     && link["grounding_set_id"] == json!(route))
         );
     }
+    assert_eq!(
+        case.case_request(&format!("analysis-snapshots/{revised}/bff/handoff"), None)
+            .await["handoff_sha256"],
+        handoff["handoff_sha256"]
+    );
 }
 
 const SHARED_ORIGIN_ANSWER: &str =
