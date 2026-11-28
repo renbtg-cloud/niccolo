@@ -100,6 +100,17 @@ pub struct Route {
     pub suspension_rationale: Option<String>,
 }
 
+impl Route {
+    fn provenance_was_limited(&self) -> bool {
+        self.suspended_by_decision_id.is_none()
+            && (self.grounds_truncated
+                || self
+                    .grounds
+                    .iter()
+                    .any(|ground| ground["artifact_provenance_truncated"] == Value::Bool(true)))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SupportLink {
@@ -109,6 +120,12 @@ pub struct SupportLink {
 }
 
 impl Basis {
+    pub(crate) fn shared_origins_are_partial(&self) -> bool {
+        self.truncated
+            || self.shared_artifact_origins_truncated
+            || self.routes.iter().any(Route::provenance_was_limited)
+    }
+
     pub(crate) fn allows(&self, link: &SupportLink) -> bool {
         self.routes.iter().any(|route| {
             route.argument_id == link.argument_id
@@ -224,19 +241,20 @@ pub(crate) async fn capture_basis(
         .map(|row| serde_json::from_str(row))
         .collect::<Result<Vec<Route>, _>>()
         .map_err(|error| sqlx::Error::Decode(error.into()))?;
-    let complete_routes = routes
+    let mut basis = Basis {
+        routes,
+        truncated,
+        shared_artifact_origins: Vec::new(),
+        shared_artifact_origins_truncated: false,
+    };
+    basis.shared_artifact_origins_truncated = basis.shared_origins_are_partial();
+    let complete_routes = basis
+        .routes
         .iter()
         .filter(|route| {
-            route.suspended_by_decision_id.is_none()
-                && !route.grounds_truncated
-                && route
-                    .grounds
-                    .iter()
-                    .all(|ground| ground["artifact_provenance_truncated"] != Value::Bool(true))
+            route.suspended_by_decision_id.is_none() && !route.provenance_was_limited()
         })
         .collect::<Vec<_>>();
-    let mut shared_artifact_origins = Vec::new();
-    let mut shared_artifact_origins_truncated = false;
     if complete_routes.iter().any(|route| {
         route.grounds.iter().any(|ground| {
             ground["artifact_representation_ids"]
@@ -258,8 +276,9 @@ pub(crate) async fn capture_basis(
             origins.into_iter().map(move |origin| (conclusion, origin))
         });
         for (conclusion_object_id, origin) in origins.by_ref().take(32) {
-            shared_artifact_origins_truncated |= origin.derivations.len() > MAX_ORIGIN_DERIVATIONS;
-            shared_artifact_origins.push(FrozenSharedOrigin {
+            basis.shared_artifact_origins_truncated |=
+                origin.derivations.len() > MAX_ORIGIN_DERIVATIONS;
+            basis.shared_artifact_origins.push(FrozenSharedOrigin {
                 conclusion_object_id,
                 source_artifact_id: origin.source_artifact_id,
                 source_representation_id: origin.source_representation_id,
@@ -268,14 +287,9 @@ pub(crate) async fn capture_basis(
                 derivations: bounded_derivations(origin.derivations),
             });
         }
-        shared_artifact_origins_truncated |= origins.next().is_some();
+        basis.shared_artifact_origins_truncated |= origins.next().is_some();
     }
-    Ok(Some(Basis {
-        routes,
-        truncated,
-        shared_artifact_origins,
-        shared_artifact_origins_truncated,
-    }))
+    Ok(Some(basis))
 }
 
 pub(crate) async fn read_in(
@@ -331,5 +345,34 @@ mod tests {
         assert_eq!(frozen[14].relationship_id, Uuid::from_u128(21));
         assert_eq!(frozen[15].relationship_id, Uuid::from_u128(22));
         assert_ne!(frozen[14].routes, frozen[15].routes);
+    }
+
+    #[test]
+    fn older_bases_still_report_partial_origins_when_routes_or_provenance_were_omitted() {
+        let route = Route {
+            argument_id: Uuid::from_u128(1),
+            grounding_set_id: Uuid::from_u128(2),
+            conclusion_object_id: Uuid::from_u128(3),
+            conclusion_text: None,
+            adequacy: "RELEVANT".into(),
+            grounds: vec![serde_json::json!({"artifact_provenance_truncated": true})],
+            grounds_truncated: false,
+            suspended_by_decision_id: None,
+            suspension_rationale: None,
+        };
+        let mut basis = Basis {
+            routes: vec![route],
+            truncated: false,
+            shared_artifact_origins: Vec::new(),
+            shared_artifact_origins_truncated: false,
+        };
+        assert!(basis.shared_origins_are_partial());
+        basis.routes[0].grounds.clear();
+        basis.routes[0].grounds_truncated = true;
+        assert!(basis.shared_origins_are_partial());
+        basis.routes[0].suspended_by_decision_id = Some(Uuid::from_u128(4));
+        assert!(!basis.shared_origins_are_partial());
+        basis.truncated = true;
+        assert!(basis.shared_origins_are_partial());
     }
 }

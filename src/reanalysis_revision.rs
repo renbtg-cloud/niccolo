@@ -52,16 +52,10 @@ pub struct SharedOriginChanges {
 }
 
 fn origin_changes(prior: Option<Basis>, current: Option<Basis>) -> Option<SharedOriginChanges> {
-    let comparison_is_partial = prior.iter().chain(current.iter()).any(|basis| {
-        basis.truncated
-            || basis.shared_artifact_origins_truncated
-            || basis.routes.iter().any(|route| {
-                route.grounds_truncated
-                    || route.grounds.iter().any(|ground| {
-                        ground["artifact_provenance_truncated"].as_bool() == Some(true)
-                    })
-            })
-    });
+    let comparison_is_partial = prior
+        .iter()
+        .chain(current.iter())
+        .any(Basis::shared_origins_are_partial);
     let indexed = |basis: Option<Basis>| {
         basis
             .into_iter()

@@ -234,10 +234,8 @@ pub(crate) async fn recorded_workbench_support(
         analysis_workbench_support::read_in(&mut tx, scope)
             .await?
             .map(|basis| {
-                (
-                    basis.shared_artifact_origins,
-                    basis.shared_artifact_origins_truncated,
-                )
+                let partial = basis.shared_origins_are_partial();
+                (basis.shared_artifact_origins, partial)
             })
             .unwrap_or_default();
     tx.commit().await?;
