@@ -3510,11 +3510,17 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
         .await;
     assert_eq!(input["workbench_support"], json!(basis));
     let difference = case
-        .case_request(&format!("analysis-snapshots/{revised}/reanalysis-revision"), None)
+        .case_request(
+            &format!("analysis-snapshots/{revised}/reanalysis-revision"),
+            None,
+        )
         .await;
-    assert_eq!(difference["shared_origin_changes"], json!({
-        "added": basis.shared_artifact_origins, "removed": [], "changed": [], "comparison_is_partial": false
-    }));
+    assert_eq!(
+        difference["shared_origin_changes"],
+        json!({
+            "added": basis.shared_artifact_origins, "removed": [], "changed": [], "comparison_is_partial": false
+        })
+    );
     let original_handoff = case
         .case_request(&format!("analysis-snapshots/{previous}/bff/handoff"), None)
         .await;
@@ -3561,6 +3567,30 @@ async fn alder_bend_flags_distinct_copies_of_an_uncited_source_passage() {
     assert_eq!(output["answer_text"], SHARED_ORIGIN_ANSWER);
     let published_links = output["workbench_support_links"].as_array().unwrap();
     assert_eq!(published_links.len(), 2);
+    let package = case
+        .case_request(
+            &format!("analysis-snapshots/{model_analysis}/presentation-package"),
+            None,
+        )
+        .await;
+    let files = &package["files"];
+    let support_path = "data/workbench_support.json";
+    let support_json = files[support_path].as_str().unwrap();
+    let exported: Value = serde_json::from_str(support_json).unwrap();
+    assert_eq!(exported["analysis_id"], json!(model_analysis));
+    assert_eq!(exported["support"]["citations"], json!(published_links));
+    assert_eq!(
+        exported["support"]["shared_artifact_origins"],
+        json!(basis.shared_artifact_origins)
+    );
+    assert!(exported["support"].get("routes").is_none());
+    let checksums: Value =
+        serde_json::from_str(files["SHA256SUMS.json"].as_str().unwrap()).unwrap();
+    use sha2::{Digest, Sha256};
+    assert_eq!(
+        checksums[support_path],
+        format!("{:x}", Sha256::digest(support_json.as_bytes()))
+    );
     for (argument, route) in links {
         assert!(
             published_links

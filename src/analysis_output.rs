@@ -2,7 +2,9 @@
 //!
 //! Publishing an answer never edits the Situation or a previous answer. A later
 //! reanalysis gets a new analysis id and can coexist with the historical output.
-use crate::analysis_workbench_support::SupportLink;
+use crate::analysis_structure::AnalysisScope;
+use crate::analysis_workbench_support::{self, FrozenSharedOrigin, SupportLink};
+use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -202,4 +204,49 @@ pub async fn get(
     };
     tx.commit().await?;
     from_row(analysis, situation, row, false)
+}
+
+#[derive(Serialize)]
+pub(crate) struct RecordedWorkbenchSupport {
+    pub citations: Vec<SupportLink>,
+    pub shared_artifact_origins: Vec<FrozenSharedOrigin>,
+    pub shared_artifact_origins_truncated: bool,
+}
+
+pub(crate) async fn recorded_workbench_support(
+    pool: &PgPool,
+    scope: AnalysisScope,
+) -> Result<Option<RecordedWorkbenchSupport>, AnalysisOutputError> {
+    let mut tx = scoped(pool, scope.workspace, true).await?;
+    let links: Option<String> = sqlx::query_scalar(
+        "SELECT workbench_support_links::text FROM niccolo.situation_analysis_outputs
+         WHERE workspace_id=$1 AND situation_id=$2 AND analysis_id=$3",
+    )
+    .bind(scope.workspace)
+    .bind(scope.situation)
+    .bind(scope.analysis)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let citations: Vec<SupportLink> =
+        serde_json::from_str(&links.ok_or(AnalysisOutputError::Invisible)?)
+            .map_err(|error| sqlx::Error::Decode(error.into()))?;
+    let (shared_artifact_origins, shared_artifact_origins_truncated) =
+        analysis_workbench_support::read_in(&mut tx, scope)
+            .await?
+            .map(|basis| {
+                (
+                    basis.shared_artifact_origins,
+                    basis.shared_artifact_origins_truncated,
+                )
+            })
+            .unwrap_or_default();
+    tx.commit().await?;
+    Ok((!citations.is_empty()
+        || !shared_artifact_origins.is_empty()
+        || shared_artifact_origins_truncated)
+        .then_some(RecordedWorkbenchSupport {
+            citations,
+            shared_artifact_origins,
+            shared_artifact_origins_truncated,
+        }))
 }

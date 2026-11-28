@@ -4,6 +4,8 @@
 //! The PostgreSQL analysis bundle (loaded with workspace authorization) is the
 //! only source of values. CSV is presentation-friendly; JSON is lossless.
 use crate::analysis_manifest::{self, AnalysisBundle, ManifestError};
+use crate::analysis_output::{self, AnalysisOutputError, RecordedWorkbenchSupport};
+use crate::analysis_structure::AnalysisScope;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -18,6 +20,8 @@ const INSPECT_PY: &str = include_str!("../assets/presentation/inspect.py");
 pub enum PresentationError {
     #[error("published analysis unavailable: {0}")]
     Manifest(#[from] ManifestError),
+    #[error("recorded support unavailable: {0}")]
+    Support(#[from] AnalysisOutputError),
     #[error("presentation serialization failed: {0}")]
     Json(#[from] serde_json::Error),
     #[error("presentation exceeds the configured byte budget")]
@@ -87,8 +91,26 @@ fn csv(header: &[&str], rows: Vec<Vec<String>>) -> String {
 /// Produce a presentation only from a recorded, immutable analysis bundle.
 /// No caller-controlled evidence roots, invented model steps or inferred truth.
 pub fn from_bundle(bundle: &AnalysisBundle) -> Result<PresentationPackage, PresentationError> {
+    assemble(bundle, None)
+}
+
+fn assemble(
+    bundle: &AnalysisBundle,
+    support: Option<&RecordedWorkbenchSupport>,
+) -> Result<PresentationPackage, PresentationError> {
     let mut files: BTreeMap<String, String> = BTreeMap::new();
 
+    if let Some(support) = support {
+        files.insert(
+            "data/workbench_support.json".into(),
+            serde_json::to_string_pretty(&json!({
+                "format": "niccolo.presentation-workbench-support",
+                "format_version": 1,
+                "analysis_id": bundle.analysis_id,
+                "support": support,
+            }))?,
+        );
+    }
     files.insert(
         "data/analysis.json".into(),
         serde_json::to_string_pretty(&json!({
@@ -379,7 +401,16 @@ pub async fn build(
 ) -> Result<PresentationPackage, PresentationError> {
     // This load performs the authorized workspace-scoped PostgreSQL read.
     let bundle = analysis_manifest::load_bundle(pool, workspace, situation, analysis).await?;
-    from_bundle(&bundle)
+    let support = analysis_output::recorded_workbench_support(
+        pool,
+        AnalysisScope {
+            workspace,
+            situation,
+            analysis,
+        },
+    )
+    .await?;
+    assemble(&bundle, support.as_ref())
 }
 
 #[cfg(test)]
