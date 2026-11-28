@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { FrozenSupportOrigins, PublishedSupportOrigins } from './FrozenSupportOrigins.jsx';
+import { FrozenArtifactCoverage, FrozenSupportOrigins, PublishedSupportOrigins } from './FrozenSupportOrigins.jsx';
 
 it('renders the recorded origin and counts distinct routes for the frozen claim', () => {
   const route = { argument_id: 'argument', grounding_set_id: 'route' };
@@ -22,6 +22,21 @@ it('renders the recorded origin and counts distinct routes for the frozen claim'
   expect(renderToStaticMarkup(<FrozenSupportOrigins basis={{routes: []}}/>)).toBe('');
   expect(renderToStaticMarkup(<FrozenSupportOrigins basis={{shared_artifact_origins_truncated: true}}/>))
     .toContain('The analysis received a limited set of recorded derivations.');
+});
+
+it('renders artifact input coverage and indicates omissions independently of legacy fragments', () => {
+  const input = {
+    artifact_representation_count_total: 3,
+    artifact_representation_count_included: 2,
+    artifact_representation_bytes_included: 64,
+    artifact_packet_truncated: true,
+    source_packet_truncated: false,
+  };
+  const markup = renderToStaticMarkup(<FrozenArtifactCoverage input={input}/>);
+  expect(markup).toContain('<strong>2/3</strong> attributed artifact representations included');
+  expect(markup).toContain('64 text bytes');
+  expect(markup).toContain('Some frozen artifact material exceeded the packet limits');
+  expect(renderToStaticMarkup(<FrozenArtifactCoverage input={{source_packet_truncated: true}}/>)).toBe('');
 });
 
 it('shows a common origin beside the answer when a published claim cited multiple routes from it', () => {

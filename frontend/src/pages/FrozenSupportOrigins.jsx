@@ -2,6 +2,19 @@ function routeKey(route) {
   return `${route.argument_id}:${route.grounding_set_id}`;
 }
 
+export function FrozenArtifactCoverage({input}) {
+  const total = input?.artifact_representation_count_total ?? 0;
+  const truncated = input?.artifact_packet_truncated === true;
+  if (!total && !truncated) return null;
+
+  return <>
+    {total > 0 && <p>
+      <strong>{input.artifact_representation_count_included}/{total}</strong> attributed artifact representations included · {input.artifact_representation_bytes_included} text bytes.
+    </p>}
+    {truncated && <p><strong>Some frozen artifact material exceeded the packet limits.</strong></p>}
+  </>;
+}
+
 export function FrozenSupportOrigins({basis}) {
   const origins = basis?.shared_artifact_origins ?? [];
   const truncated = basis?.shared_artifact_origins_truncated;
