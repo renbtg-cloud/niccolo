@@ -226,6 +226,8 @@ O diagnóstico `shared_artifact_origins` reúne derivações de artefatos distin
 
 A base congelada da reanálise guarda o trecho comum, a alegação, as relações de derivação e as rotas citáveis que motivaram o alerta. O replay recupera a análise anterior e a versão posterior à descoberta. A análise anterior conserva a base que tinha na época.
 
+A página de revisão da análise mostra o trecho de origem e as rotas agrupadas na seção sobre a entrada do modelo.
+
 ## Material para desenvolver
 
 Amplie o dossiê quando um novo registro criar uma condição de teste relevante. As 30 a 40 peças são uma estimativa, sem valor de meta. As primeiras seriam a nota da central, o depoimento original de Mae, a matéria e sua foto de arquivo, as primeiras mensagens da turma, as entrevistas de Leon e Mara, as duas entrevistas de Jules, as duas versões da declaração de Claire, o extrato de cobrança, o histórico da ordem, o depoimento de Eli, a declaração de Frank sobre as chaves, as versões de Nina, o registro da posição do carro de Sam e a decisão de Owen em suas duas versões. O anexo sobre a cheia pode juntar a matéria daquela época, a agenda de Ruth e as lembranças distintas de Mae e Theo.
