@@ -140,6 +140,8 @@ O investigador começa mantendo a rota do boné. Depois suspende seu uso e regis
 
 No formulário de revisão do detalhe, o Workbench apresenta a decisão de uso apenas para rotas de apoio atingidas pela checagem. A decisão registra a justificativa e os parâmetros exatos da consulta, e o histórico da rota mostra quem a manteve, suspendeu ou retomou.
 
+A tela vincula uma nova decisão à revisão que a pessoa examinou. Se chegar um relato incompatível antes de salvar a decisão, a API pede uma nova checagem da ordem. As decisões já registradas continuam com a base que tinham quando foram tomadas.
+
 O [replay pela API](../../tests/parser_free_artifacts_http_integration.rs#L1066) usa `POST /v1/workspaces/{workspace}/situations/{situation}/epistemic/detail-exposure-review/route-use/{event}`. A entrada pede `argument_id`, `grounding_set_id`, `disposition` (`USE` ou `SUSPEND`), `rationale` e a mesma entrada de checagem em `review`. É preciso ter permissão de escrita. Só uma rota de apoio indicada pela checagem pode receber a decisão. O registro guarda a entrada e o resultado reavaliado no momento da decisão.
 
 O Workbench mostra a escolha mais recente por rota, `suspended_by_decision_id` nas rotas suspensas, `non_suspended_supporting_routes` no diagnóstico da conclusão e todos os eventos em `route_use_history`. Essa lista distingue o uso decidido pelo investigador da estrutura original, que permanece consultável. A decisão não altera a verdade da alegação e não suspende outros relatos da mesma testemunha.

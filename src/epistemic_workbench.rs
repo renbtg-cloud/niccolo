@@ -52,6 +52,8 @@ pub enum WorkbenchError {
     Invisible,
     #[error("epistemic authoring replay conflict")]
     Conflict,
+    #[error("exposure review changed")]
+    ExposureReviewChanged,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

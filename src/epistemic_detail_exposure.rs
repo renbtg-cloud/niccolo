@@ -6,6 +6,7 @@ use super::{
     scoped,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -64,6 +65,13 @@ pub struct Review {
 }
 
 impl Review {
+    pub fn with_sha256(&self) -> Result<serde_json::Value, WorkbenchError> {
+        let mut value = serde_json::to_value(self).map_err(|_| WorkbenchError::Invalid)?;
+        let bytes = serde_json::to_vec(&value).map_err(|_| WorkbenchError::Invalid)?;
+        value["review_sha256"] = serde_json::json!(format!("{:x}", Sha256::digest(bytes)));
+        Ok(value)
+    }
+
     pub(super) fn flags_route(&self, argument_id: Uuid, grounding_set_id: Uuid) -> bool {
         self.affected_routes.iter().any(|route| {
             route.argument_id == argument_id && route.grounding_set_id == grounding_set_id

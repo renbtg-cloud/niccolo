@@ -131,7 +131,7 @@ it('asks the backend to review only the selected detail and exposure', async () 
   const path = `/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/detail-exposure-review`;
   const decision = {
     argument_id: 'arg', grounding_set_id: 'hat-route', disposition: 'SUSPEND',
-    rationale: 'Check the archive source first.', review: body,
+    rationale: 'Check the archive source first.', review: body, expected_review_sha256: 'a'.repeat(64),
   };
   const client = new NiccoloClient(c, async (url, options) => {
     expect(options.method).toBe('POST');

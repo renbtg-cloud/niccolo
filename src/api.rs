@@ -3597,6 +3597,10 @@ impl From<WorkbenchError> for ApiError {
                 StatusCode::CONFLICT,
                 "epistemic workbench identity conflict",
             ),
+            WorkbenchError::ExposureReviewChanged => Self(
+                StatusCode::CONFLICT,
+                "exposure review changed. Check the order again before recording a decision",
+            ),
             WorkbenchError::Privileged | WorkbenchError::Database(_) => Self(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "epistemic workbench unavailable",
@@ -3928,7 +3932,7 @@ async fn review_detail_exposure(
 ) -> Result<Response, ApiError> {
     guard(&state, &headers, workspace, Capability::Read).await?;
     let review = detail_exposure::review(&state.pool, workspace, situation, input).await?;
-    Ok(no_store(json!(review), StatusCode::OK))
+    Ok(no_store(review.with_sha256()?, StatusCode::OK))
 }
 
 async fn record_exposure_order(

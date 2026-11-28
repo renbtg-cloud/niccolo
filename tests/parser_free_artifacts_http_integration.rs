@@ -1185,6 +1185,38 @@ async fn assert_same_day_exposure_order(
     assert_eq!(unrelated["disposition"], "ORDER_UNCERTAIN");
     assert_eq!(unrelated["order_reports"], json!([]));
 
+    let old_cutoff = review.clone();
+    review["known_through"] = json!("2026-11-25");
+    let before_conflict = compare(review.clone()).await;
+    assert_eq!(before_conflict["disposition"], "REVIEW_CANDIDATE");
+    let route = case_row(
+        &before_conflict,
+        "affected_routes",
+        "grounding_set_id",
+        hat_route,
+    );
+    let decision_path = format!(
+        "epistemic/detail-exposure-review/route-use/{}",
+        Uuid::new_v4()
+    );
+    let decision_input = json!({
+        "argument_id": route["argument_id"], "grounding_set_id": hat_route,
+        "disposition": "USE", "rationale": "Keep the route while checking the account.",
+        "review": review, "expected_review_sha256": before_conflict["review_sha256"],
+    });
+    let saved = case
+        .case_request(&decision_path, Some(decision_input.clone()))
+        .await;
+    let saved_basis = &saved["decision"]["basis"];
+    assert_eq!(
+        saved_basis["expected_review_sha256"],
+        before_conflict["review_sha256"]
+    );
+    assert_eq!(
+        saved_basis["result"]["order_reports"][0]["report_id"],
+        json!(prior)
+    );
+
     let later = case
         .case_node(
             "PROPOSITION",
@@ -1210,11 +1242,7 @@ async fn assert_same_day_exposure_order(
         Some(conflict),
     )
     .await;
-    assert_eq!(
-        compare(review.clone()).await["disposition"],
-        "REVIEW_CANDIDATE"
-    );
-    review["known_through"] = json!("2026-11-25");
+    assert_eq!(compare(old_cutoff).await["disposition"], "REVIEW_CANDIDATE");
     let conflicted = compare(review).await;
     assert_eq!(conflicted["disposition"], "ORDER_CONFLICT");
     assert_eq!(conflicted["detail_needs_review"], false);
@@ -1223,6 +1251,35 @@ async fn assert_same_day_exposure_order(
     for id in [prior, opposite] {
         case_row(&conflicted, "order_reports", "report_id", id);
     }
+    let (status, stale) = invoke(
+        case.router.clone(),
+        request(
+            "POST",
+            &format!("{uri}/route-use/{}", Uuid::new_v4()),
+            &case.token,
+            Some(decision_input.clone()),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        stale["error"]
+            .as_str()
+            .unwrap()
+            .contains("exposure review changed")
+    );
+    let decision_uri = format!(
+        "/v1/workspaces/{}/situations/{}/{decision_path}",
+        case.workspace, case.situation
+    );
+    let (status, replay) = invoke(
+        case.router.clone(),
+        request("POST", &decision_uri, &case.token, Some(decision_input)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["decision"]["basis"], *saved_basis);
 }
 
 #[tokio::test]

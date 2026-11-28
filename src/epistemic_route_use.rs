@@ -31,6 +31,7 @@ pub struct Input {
     pub disposition: Disposition,
     pub rationale: String,
     pub review: detail_exposure::Input,
+    pub expected_review_sha256: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -57,6 +58,7 @@ struct Choice {
     disposition: Disposition,
     rationale: String,
     basis: ReviewBasis,
+    expected_review_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -153,6 +155,7 @@ pub async fn record(
             disposition: input.disposition,
             rationale: input.rationale,
             basis: ReviewBasis::Exposure(input.review),
+            expected_review_sha256: input.expected_review_sha256,
         },
     )
     .await
@@ -183,6 +186,7 @@ pub async fn record_artifact_dependence(
                 relationship_id: input.relationship_id,
                 via_relationship_id: input.via_relationship_id,
             },
+            expected_review_sha256: None,
         },
     )
     .await
@@ -196,7 +200,15 @@ async fn record_choice(
     author: Uuid,
     choice: Choice,
 ) -> Result<(Decision, bool), WorkbenchError> {
-    if event_id.is_nil() || !valid_text(&choice.rationale, 4096) {
+    if event_id.is_nil()
+        || !valid_text(&choice.rationale, 4096)
+        || choice.expected_review_sha256.as_ref().is_some_and(|sha| {
+            sha.len() != 64
+                || !sha
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        })
+    {
         return Err(WorkbenchError::Invalid);
     }
     let rationale = choice.rationale.trim();
@@ -224,10 +236,16 @@ async fn record_choice(
             ReviewBasis::Exposure(input) => {
                 let result =
                     detail_exposure::review_in(&mut tx, workspace, situation, input).await?;
+                let snapshot = result.with_sha256()?;
+                if let Some(expected) = &choice.expected_review_sha256
+                    && snapshot["review_sha256"].as_str() != Some(expected.as_str())
+                {
+                    return Err(WorkbenchError::ExposureReviewChanged);
+                }
                 if !result.flags_route(choice.route.argument_id, choice.route.grounding_set_id) {
                     return Err(WorkbenchError::Invalid);
                 }
-                json!(result)
+                snapshot
             }
             ReviewBasis::ArtifactDependence {
                 relationship_id,
@@ -255,7 +273,10 @@ async fn record_choice(
                 json!({"conclusion_object_id":conclusion, "review":review})
             }
         };
-        let basis = json!({"input": review_input, "result": result}).to_string();
+        let mut basis = json!({"input": review_input, "result": result});
+        if let Some(expected) = &choice.expected_review_sha256 {
+            basis["expected_review_sha256"] = json!(expected);
+        }
         let created = sqlx::query(
             "INSERT INTO niccolo.epistemic_route_use_decisions
                (workspace_id,situation_id,event_id,argument_id,grounding_set_id,
@@ -276,7 +297,7 @@ async fn record_choice(
         .bind(choice.route.grounding_set_id)
         .bind(choice.disposition.db_value())
         .bind(rationale)
-        .bind(basis)
+        .bind(basis.to_string())
         .bind(author)
         .execute(&mut *tx)
         .await?
@@ -295,6 +316,7 @@ async fn record_choice(
         || decision.rationale != rationale
         || decision.recorded_by != author
         || decision.basis["input"] != review_input
+        || decision.basis["expected_review_sha256"] != json!(choice.expected_review_sha256)
     {
         return Err(WorkbenchError::Conflict);
     }

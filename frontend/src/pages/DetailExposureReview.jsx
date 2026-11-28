@@ -140,7 +140,9 @@ export function DetailExposureRouteDecisions({ result, input, client, groundingS
       return <SupportRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
         route={route} label={route.rationale} suspended={history.at(-1)?.disposition === 'SUSPEND'}
         history={history} onSaved={onSaved}
-        onRecord={(eventId, decision) => client.recordDetailExposureRouteUse(eventId, {...decision, review: input})}/>;
+        onRecord={(eventId, decision) => client.recordDetailExposureRouteUse(eventId, {
+          ...decision, review: input, expected_review_sha256: result.review_sha256,
+        })}/>;
     })}</ul>
   </details>;
 }
