@@ -6,14 +6,16 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use niccolo_evidence::{api, authz};
+use niccolo_evidence::{api, authz, situation_store};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 struct Setup {
     admin: PgPool,
+    secure: PgPool,
     router: Router,
     workspace: Uuid,
     other_workspace: Uuid,
@@ -86,7 +88,8 @@ async fn setup() -> Setup {
         .unwrap();
     Setup {
         admin,
-        router: api::router(secure),
+        router: api::router(secure.clone()),
+        secure,
         workspace,
         other_workspace,
         principal,
@@ -159,58 +162,45 @@ async fn create_is_idempotent_but_conflicting_replay_is_not_a_rewrite() {
     assert_eq!(status, StatusCode::CONFLICT);
 }
 
+async fn attach_historical_source(
+    f: &Setup,
+    situation: Uuid,
+    document: Uuid,
+) -> Result<situation_store::MutationResult, situation_store::SituationStoreError> {
+    authz::with_auth_digest(
+        authz::credential_digest(&f.writer).unwrap(),
+        situation_store::add_source(&f.secure, f.workspace, f.principal, situation, document),
+    )
+    .await
+}
+
 #[tokio::test]
 async fn incremental_source_changes_future_snapshot_not_past_snapshot() {
     let f = setup().await;
     let situation = Uuid::new_v4();
     create(&f, situation, &f.writer, "Understand the disagreement").await;
-    let source_path = format!(
-        "/v1/workspaces/{}/situations/{}/sources/{}",
-        f.workspace, situation, f.document
-    );
-    let (status, added) = call(
-        f.router.clone(),
-        request("POST", source_path.clone(), Some(&f.writer), None),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(added["revision"], 2);
-    assert_eq!(added["source_document_ids"][0], f.document.to_string());
+    let added = attach_historical_source(&f, situation, f.document).await.unwrap();
+    assert!(!added.replayed);
+    assert_eq!(added.snapshot.revision, 2);
+    assert_eq!(added.snapshot.sources, [f.document]);
 
-    let rev1_path = format!(
-        "/v1/workspaces/{}/situations/{}/revisions/1",
-        f.workspace, situation
-    );
+    let rev1_path = format!("{}/revisions/1", situation_path(f.workspace, situation));
     let (status, old) = call(
         f.router.clone(),
         request("GET", rev1_path, Some(&f.writer), None),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(old["source_document_ids"].as_array().unwrap().len(), 0);
+    assert_eq!(old["source_document_ids"], json!([]));
 
-    let (status, replay) = call(
-        f.router.clone(),
-        request("POST", source_path, Some(&f.writer), None),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(replay["revision"], 2);
-    assert_eq!(replay["replayed"], true);
+    let replay = attach_historical_source(&f, situation, f.document).await.unwrap();
+    assert_eq!(replay.snapshot, added.snapshot);
+    assert!(replay.replayed);
 
-    let foreign = format!(
-        "/v1/workspaces/{}/situations/{}/sources/{}",
-        f.workspace, situation, f.foreign_document
-    );
-    assert_eq!(
-        call(
-            f.router.clone(),
-            request("POST", foreign, Some(&f.writer), None)
-        )
-        .await
-        .0,
-        StatusCode::NOT_FOUND
-    );
+    assert!(matches!(
+        attach_historical_source(&f, situation, f.foreign_document).await,
+        Err(situation_store::SituationStoreError::Invisible),
+    ));
 }
 
 #[tokio::test]
@@ -679,145 +669,58 @@ async fn pdf_transcription_round_trips_as_human_context_without_a_source_record(
     assert_eq!(reports[0]["author_principal_id"], f.principal.to_string());
 }
 
-fn simple_text_pdf() -> Vec<u8> {
-    text_pdf(1)
-}
-
-fn text_pdf(page_count: usize) -> Vec<u8> {
-    let stream = "BT /F1 12 Tf 30 90 Td (Fixture passage) Tj ET";
-    let kids = (5..5 + page_count).map(|id| format!("{id} 0 R")).collect::<Vec<_>>().join(" ");
-    let mut objects = vec![
-        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
-        format!("<< /Type /Pages /Kids [{kids}] /Count {page_count} >>"),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
-        format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
-    ];
-    objects.extend(std::iter::repeat_n(
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>".to_owned(),
-        page_count,
-    ));
-    let mut pdf = "%PDF-1.4\n".to_owned();
-    let mut offsets = Vec::new();
-    for (index, object) in objects.iter().enumerate() {
-        offsets.push(pdf.len());
-        pdf.push_str(&format!("{} 0 obj\n{object}\nendobj\n", index + 1));
-    }
-    let xref = pdf.len();
-    let size = objects.len() + 1;
-    pdf.push_str(&format!("xref\n0 {size}\n0000000000 65535 f \n"));
-    for offset in offsets {
-        pdf.push_str(&format!("{offset:010} 00000 n \n"));
-    }
-    pdf.push_str(&format!("trailer\n<< /Root 1 0 R /Size {size} >>\nstartxref\n{xref}\n%%EOF\n"));
-    pdf.into_bytes()
-}
-
 #[tokio::test]
-async fn pdf_preview_is_authorized_and_does_not_create_a_source() {
-    let f = setup().await;
-    let path = format!("/v1/workspaces/{}/sources/pdf-preview", f.workspace);
-    let raw = |token: Option<&str>, media: &str, bytes: &[u8]| {
-        let mut builder = Request::builder().method("POST").uri(&path)
-            .header(header::CONTENT_TYPE, media);
-        if let Some(token) = token {
-            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
-        }
-        builder.body(Body::from(bytes.to_vec())).unwrap()
-    };
-    let pdf = simple_text_pdf();
-    let (status, _) = call(f.router.clone(), raw(None, "application/pdf", &pdf)).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    let (status, _) = call(f.router.clone(), raw(Some(&f.reader), "application/pdf", &pdf)).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _) = call(f.router.clone(), raw(Some(&f.writer), "text/plain", &pdf)).await;
-    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    let (status, _) = call(f.router.clone(), raw(Some(&f.writer), "application/pdf", b"not a PDF")).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    let (status, preview) = call(f.router.clone(), raw(Some(&f.writer), "application/pdf", &pdf)).await;
-    if status == StatusCode::SERVICE_UNAVAILABLE {
-        assert_eq!(preview["error"], "PDF preview requires pdftotext");
-        return;
-    }
-    assert_eq!(status, StatusCode::OK, "{preview}");
-    assert_eq!(preview["pages"][0]["number"], 1);
-    assert_eq!(preview["pages"][0]["text"], "Fixture passage");
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM niccolo.source_documents WHERE workspace_id=$1")
-        .bind(f.workspace)
-        .fetch_one(&f.admin)
-        .await
-        .unwrap();
-    assert_eq!(count, 1); // The fixture source is the only stored original.
-}
-
-#[tokio::test]
-async fn pdf_original_replays_and_downloads_exactly_without_evidence_fragments() {
+async fn historical_pdf_remains_listed_without_exposing_its_original() {
     let f = setup().await;
     let document = Uuid::new_v4();
-    let pdf = text_pdf(21);
-    let path = format!("/v1/workspaces/{}/sources/{document}", f.workspace);
-    for expected in [StatusCode::CREATED, StatusCode::OK] {
-        let upload = Request::post(&path)
-            .header(header::AUTHORIZATION, format!("Bearer {}", f.writer))
-            .header(header::CONTENT_TYPE, "application/pdf")
-            .header("x-source-locator", "original.pdf")
-            .body(Body::from(pdf.clone()))
-            .unwrap();
-        let (status, body) = call(f.router.clone(), upload).await;
-        assert_eq!(status, expected, "{body}");
-        assert_eq!(body["fragment_ids"], json!([]));
-    }
+    let payload = b"%PDF historical fixture";
+    let mut tx = f.admin.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_documents(workspace_id,document_id,format,locator,sha256,byte_length)
+         VALUES($1,$2,'PDF','original.pdf',$3,$4)",
+    )
+    .bind(f.workspace)
+    .bind(document)
+    .bind(format!("{:x}", Sha256::digest(payload)))
+    .bind(payload.len() as i64)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO niccolo.source_payloads(workspace_id,document_id,original_bytes)
+         VALUES($1,$2,$3)",
+    )
+    .bind(f.workspace)
+    .bind(document)
+    .bind(payload.as_slice())
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
     let situation = Uuid::new_v4();
-    let (status, _) = create(&f, situation, &f.writer, "Investigate a passage").await;
+    let (status, _) = create(&f, situation, &f.writer, "Trace a historical record").await;
     assert_eq!(status, StatusCode::CREATED);
     let situation_url = situation_path(f.workspace, situation);
     for (source, expected) in [
         (f.document, json!([])),
         (document, json!([{"document_id": document, "locator": "original.pdf"}])),
     ] {
-        let (status, _) = call(
-            f.router.clone(),
-            request("POST", format!("{situation_url}/sources/{source}"), Some(&f.writer), None),
-        ).await;
-        assert_eq!(status, StatusCode::CREATED);
+        attach_historical_source(&f, situation, source).await.unwrap();
         let (status, snapshot) = call(
             f.router.clone(),
             request("GET", situation_url.clone(), Some(&f.reader), None),
-        ).await;
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(snapshot["attached_pdfs"], expected);
     }
-    let preview_path = format!("{path}/pdf-preview");
-    let (status, _) = call(
-        f.router.clone(),
-        request("GET", preview_path.clone(), Some(&f.reader), None),
-    ).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
 
-    let (status, preview) = call(
-        f.router.clone(),
-        request("GET", preview_path.clone(), Some(&f.writer), None),
-    ).await;
-    if status == StatusCode::SERVICE_UNAVAILABLE {
-        assert_eq!(preview["error"], "PDF preview requires pdftotext");
-    } else {
-        assert_eq!(status, StatusCode::OK, "{preview}");
-        assert_eq!(preview["pages"][0]["text"], "Fixture passage");
-        assert_eq!(preview["pages"].as_array().unwrap().len(), 20);
-        assert_eq!(preview["next_page"], 21);
-        let (status, last) = call(
-            f.router.clone(),
-            request("GET", format!("{preview_path}?first_page=21"), Some(&f.writer), None),
-        ).await;
-        assert_eq!(status, StatusCode::OK, "{last}");
-        assert_eq!(last["pages"].as_array().unwrap().len(), 1);
-        assert_eq!(last["pages"][0]["number"], 21);
-        assert_eq!(last["next_page"], Value::Null);
+    let source = format!("/v1/workspaces/{}/sources/{document}", f.workspace);
+    for suffix in ["original", "pdf-preview"] {
+        let response = f.router.clone().oneshot(request(
+            "GET", format!("{source}/{suffix}"), Some(&f.writer), None,
+        )).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
-    let response = f.router.clone().oneshot(request(
-        "GET", format!("{path}/original"), Some(&f.reader), None,
-    )).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/pdf");
-    assert!(response.headers()[header::CONTENT_DISPOSITION].to_str().unwrap().ends_with(".pdf\""));
-    assert_eq!(response.into_body().collect().await.unwrap().to_bytes().as_ref(), &pdf);
 }
