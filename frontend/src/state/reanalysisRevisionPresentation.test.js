@@ -25,4 +25,13 @@ describe('reanalysis revision presentation', () => {
       {label:'Claims refined',count:1},
     ]);
   });
+
+  it('shows recorded changes to shared origins separately from source and claim changes', () => {
+    expect(reanalysisChanges({ shared_origin_changes: { added: [{}], removed: [{}, {}], changed: [{}] } })).toEqual([
+      { label: 'Shared origins added to frozen support', count: 1 },
+      { label: 'Shared origins absent from new frozen support', count: 2 },
+      { label: 'Shared origins with changed support', count: 1 },
+    ]);
+    expect(reanalysisChanges({ shared_origin_changes: { comparison_is_partial: true } })).toEqual([]);
+  });
 });

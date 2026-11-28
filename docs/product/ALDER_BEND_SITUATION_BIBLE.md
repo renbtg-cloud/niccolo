@@ -230,7 +230,7 @@ A página de revisão da análise mostra o trecho de origem e as rotas agrupadas
 
 Quando a resposta publicada cita duas rotas do grupo para sustentar a mesma alegação, essa origem comum também aparece junto à resposta. A interface confere os identificadores das citações publicadas.
 
-A comparação da reanálise identifica origens comuns incluídas na nova base, origens ausentes dessa base e origens cujas derivações ou rotas mudaram. A comparação sinaliza limites no material congelado de qualquer uma das duas análises.
+A seção de mudanças da reanálise mostra quantas origens comuns entraram na nova base, quantas ficaram ausentes e quantas tiveram suas derivações ou rotas alteradas. A interface sinaliza limites no material congelado de qualquer uma das duas análises.
 
 ## Material para desenvolver
 
