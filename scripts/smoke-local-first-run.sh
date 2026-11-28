@@ -96,6 +96,7 @@ if [[ "$started" != 1 ]]; then
   tail -n 30 .niccolo-local/ci-server.log >&2
   exit 1
 fi
+curl --max-time 5 --silent --show-error --fail "$base_url/readyz" >/dev/null
 curl --max-time 5 --silent --show-error --fail "$base_url/" >/dev/null
 for asset in app.js app.css; do
   curl --max-time 5 --silent --show-error --fail "$base_url/assets/$asset" \
