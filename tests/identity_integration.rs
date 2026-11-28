@@ -13,8 +13,11 @@ use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
-const CHAT: &[u8] =
-    b"[02/11/2026, 12:00] Ana: I will attend\n[02/11/2026, 12:01] Beto: I'll call\n";
+
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
+const CHAT: &[(&str, &str)] = &[("Ana", "I will attend"), ("Beto", "I'll call")];
+
 async fn fixture() -> (PgPool, PgPool, Uuid, Uuid, String, Router) {
     let a = PgPoolOptions::new()
         .max_connections(5)
@@ -55,18 +58,10 @@ async fn call(r: Router, q: Request<Body>) -> (StatusCode, Value) {
     let body = resp.into_body().collect().await.unwrap().to_bytes();
     (status, serde_json::from_slice(&body).unwrap_or(json!({})))
 }
-async fn upload(r: Router, w: Uuid, token: &str) -> Uuid {
-    let doc = Uuid::new_v4();
-    let req = Request::builder()
-        .uri(format!("/v1/workspaces/{w}/sources/{doc}"))
-        .method("POST")
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header(header::AUTHORIZATION, format!("Bearer {token}"))
-        .header("x-source-locator", "fixture://identity")
-        .body(Body::from(CHAT))
-        .unwrap();
-    assert_eq!(call(r, req).await.0, StatusCode::CREATED);
-    doc
+async fn historical_chat(admin: &PgPool, workspace: Uuid) -> Uuid {
+    let document = Uuid::new_v4();
+    historical_sources::seed(admin, workspace, document, "fixture://identity", CHAT).await;
+    document
 }
 fn identity_url(w: Uuid, p: Uuid) -> String {
     format!("/v1/workspaces/{w}/identities/{p}")
@@ -89,8 +84,8 @@ fn clear(d: Uuid, speaker: &str, reason: &str) -> Value {
 
 #[tokio::test]
 async fn explicit_assignment_then_correction_then_retraction_preserves_audit() {
-    let (_, _, w, p, t, r) = fixture().await;
-    let doc = upload(r.clone(), w, &t).await;
+    let (admin, _, w, p, t, r) = fixture().await;
+    let doc = historical_chat(&admin, w).await;
     let first = Uuid::new_v4();
     let second = Uuid::new_v4();
     assert_eq!(
@@ -174,9 +169,9 @@ async fn explicit_assignment_then_correction_then_retraction_preserves_audit() {
 }
 #[tokio::test]
 async fn same_speaker_label_across_documents_never_auto_merges() {
-    let (_, _, w, _, t, r) = fixture().await;
-    let d1 = upload(r.clone(), w, &t).await;
-    let d2 = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, t, r) = fixture().await;
+    let d1 = historical_chat(&admin, w).await;
+    let d2 = historical_chat(&admin, w).await;
     let p1 = Uuid::new_v4();
     let p2 = Uuid::new_v4();
     for p in [p1, p2] {
@@ -223,8 +218,8 @@ async fn same_speaker_label_across_documents_never_auto_merges() {
 }
 #[tokio::test]
 async fn retry_event_is_idempotent_and_conflicting_id_is_rejected() {
-    let (_, _, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, t, r) = fixture().await;
+    let d = historical_chat(&admin, w).await;
     let p = Uuid::new_v4();
     call(
         r.clone(),
@@ -268,8 +263,8 @@ async fn retry_event_is_idempotent_and_conflicting_id_is_rejected() {
 }
 #[tokio::test]
 async fn invented_speaker_and_nonexistent_person_are_refused() {
-    let (_, _, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, t, r) = fixture().await;
+    let d = historical_chat(&admin, w).await;
     let p = Uuid::new_v4();
     call(
         r.clone(),
@@ -306,8 +301,8 @@ async fn invented_speaker_and_nonexistent_person_are_refused() {
 }
 #[tokio::test]
 async fn read_only_cannot_assign_or_create_identity_but_can_read_history() {
-    let (admin, _, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, _, r) = fixture().await;
+    let d = historical_chat(&admin, w).await;
     let read = authz::provision_token(&admin, Uuid::new_v4(), w, true, false, 7)
         .await
         .unwrap();
@@ -345,7 +340,7 @@ async fn read_only_cannot_assign_or_create_identity_but_can_read_history() {
 #[tokio::test]
 async fn rls_and_db_permissions_protect_identity_tables() {
     let (admin, service, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let d = historical_chat(&admin, w).await;
     let p = Uuid::new_v4();
     call(
         r.clone(),
@@ -392,9 +387,9 @@ async fn rls_and_db_permissions_protect_identity_tables() {
 }
 #[tokio::test]
 async fn history_is_paginated_without_leaking_another_document() {
-    let (_, _, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
-    let other = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, t, r) = fixture().await;
+    let d = historical_chat(&admin, w).await;
+    let other = historical_chat(&admin, w).await;
     let p = Uuid::new_v4();
     call(
         r.clone(),
@@ -444,8 +439,8 @@ async fn history_is_paginated_without_leaking_another_document() {
 }
 #[tokio::test]
 async fn concurrent_replay_produces_exactly_one_identity_event() {
-    let (_, _, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, t, r) = fixture().await;
+    let d = historical_chat(&admin, w).await;
     let p = Uuid::new_v4();
     call(
         r.clone(),
@@ -482,8 +477,8 @@ async fn concurrent_replay_produces_exactly_one_identity_event() {
 }
 #[tokio::test]
 async fn parallel_distinct_corrections_have_deterministic_last_event() {
-    let (_, _, w, _, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let (admin, _, w, _, t, r) = fixture().await;
+    let d = historical_chat(&admin, w).await;
     let p = Uuid::new_v4();
     call(
         r.clone(),
@@ -530,7 +525,7 @@ async fn parallel_distinct_corrections_have_deterministic_last_event() {
 #[tokio::test]
 async fn every_event_uses_authenticated_actor_not_body_claim() {
     let (admin, _, w, p, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let d = historical_chat(&admin, w).await;
     let person = Uuid::new_v4();
     call(
         r.clone(),
@@ -587,7 +582,7 @@ async fn every_event_uses_authenticated_actor_not_body_claim() {
 #[tokio::test]
 async fn malformed_bindings_fail_closed() {
     let (admin, service, w, p, t, r) = fixture().await;
-    let d = upload(r.clone(), w, &t).await;
+    let d = historical_chat(&admin, w).await;
     let person = Uuid::new_v4();
     call(
         r.clone(),

@@ -13,9 +13,13 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "support/historical_sources.rs"]
+mod historical_sources;
+
 struct Harness {
     router: Router,
     admin: PgPool,
+    secure: PgPool,
     workspace: Uuid,
     situation: Uuid,
     principal: Uuid,
@@ -50,7 +54,8 @@ async fn setup() -> Harness {
         .await
         .unwrap();
     Harness {
-        router: api::router(secure),
+        router: api::router(secure.clone()),
+        secure,
         admin,
         workspace,
         situation,
@@ -66,16 +71,6 @@ fn req(method: &str, path: &str, token: &str, body: Option<Value>) -> Request<Bo
         .header(header::AUTHORIZATION, format!("Bearer {token}"))
         .header(header::CONTENT_TYPE, "application/json")
         .body(body.map_or_else(Body::empty, |v| Body::from(v.to_string())))
-        .unwrap()
-}
-fn source_req(path: &str, token: &str, body: &'static str) -> Request<Body> {
-    Request::builder()
-        .method("POST")
-        .uri(path)
-        .header(header::AUTHORIZATION, format!("Bearer {token}"))
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header("x-source-locator", "two-fragments.txt")
-        .body(Body::from(body))
         .unwrap()
 }
 async fn call(router: Router, request: Request<Body>) -> (StatusCode, Value) {
@@ -111,62 +106,28 @@ async fn seed(h: &Harness) -> Seed {
         StatusCode::CREATED
     );
     let document = Uuid::new_v4();
-    let source_path = format!("/v1/workspaces/{}/sources/{document}", h.workspace);
-    let (source_status,source)=call(h.router.clone(),source_req(&source_path,&h.writer,
-        "01/01/2026, 10:00 - Alice: André had a meeting\n01/01/2026, 11:00 - Bob: I heard the same story\n")).await;
-    assert_eq!(source_status, StatusCode::CREATED);
-    let evidence = source["fragment_ids"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|x| x.as_str().unwrap().parse::<Uuid>().unwrap())
-        .collect::<Vec<_>>();
-    assert!(
-        evidence.len() >= 2,
-        "test fixture requires two parsed source fragments"
-    );
-    assert_eq!(
-        call(
-            h.router.clone(),
-            req("POST", &format!("{sp}/sources/{document}"), &h.writer, None)
-        )
-        .await
-        .0,
-        StatusCode::CREATED
-    );
-    // A distinct source document must be attached BEFORE the analysis freezes
-    // its input; this third fragment allows cross-document dependence tests.
-    let second_document = Uuid::new_v4();
-    let second_source_path = format!("/v1/workspaces/{}/sources/{second_document}", h.workspace);
-    let (other_status, other_source) = call(
-        h.router.clone(),
-        source_req(
-            &second_source_path,
-            &h.writer,
-            "01/02/2026, 09:00 - Carol: Another report about the same meeting\n",
-        ),
+    let mut evidence = historical_sources::seed(
+        &h.admin,
+        h.workspace,
+        document,
+        "two-fragments.txt",
+        &[("Alice", "André had a meeting"), ("Bob", "I heard the same story")],
     )
     .await;
-    assert_eq!(other_status, StatusCode::CREATED);
-    let other_evidence = other_source["fragment_ids"].as_array().unwrap();
-    assert_eq!(other_evidence.len(), 1);
-    let other_id = other_evidence[0].as_str().unwrap().parse::<Uuid>().unwrap();
-    assert_eq!(
-        call(
-            h.router.clone(),
-            req(
-                "POST",
-                &format!("{sp}/sources/{second_document}"),
-                &h.writer,
-                None,
-            ),
+    historical_sources::attach(&h.secure, &h.writer, h.workspace, h.situation, document).await;
+    // Freeze a separate source for the cross-document dependence cases.
+    let second_document = Uuid::new_v4();
+    evidence.extend(
+        historical_sources::seed(
+            &h.admin,
+            h.workspace,
+            second_document,
+            "third-fragment.txt",
+            &[("Carol", "Another report about the same meeting")],
         )
-        .await
-        .0,
-        StatusCode::CREATED
+        .await,
     );
-    let mut evidence = evidence;
-    evidence.push(other_id);
+    historical_sources::attach(&h.secure, &h.writer, h.workspace, h.situation, second_document).await;
     let analysis = Uuid::new_v4();
     let analysis_path = format!("{sp}/analysis-snapshots/{analysis}");
     assert_eq!(
