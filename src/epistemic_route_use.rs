@@ -133,6 +133,52 @@ pub(super) async fn history(
     load(tx, workspace, situation, None).await
 }
 
+#[derive(Serialize)]
+pub(super) struct ReconsiderableSuspension {
+    #[serde(flatten)]
+    pub route: GroundingRouteRef,
+    pub suspension_event_id: Uuid,
+}
+
+pub(super) async fn reconsiderable_suspensions(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: Uuid,
+    situation: Uuid,
+    comparison: &Value,
+) -> Result<Vec<ReconsiderableSuspension>, WorkbenchError> {
+    // A newer use or suspension on a different basis takes precedence over an
+    // earlier suspension attributed to the selected sequence.
+    let rows: Vec<(Uuid, Uuid, Uuid)> = sqlx::query_as(
+        "SELECT argument_id, grounding_set_id, event_id
+         FROM (
+           SELECT DISTINCT ON (argument_id, grounding_set_id)
+             argument_id, grounding_set_id, event_id, disposition, basis
+           FROM niccolo.epistemic_route_use_decisions
+           WHERE workspace_id=$1 AND situation_id=$2
+           ORDER BY argument_id, grounding_set_id, event_no DESC
+         ) latest
+         WHERE disposition='SUSPEND' AND (basis->'input') @> $3::text::jsonb
+         ORDER BY argument_id, grounding_set_id",
+    )
+    .bind(workspace)
+    .bind(situation)
+    .bind(comparison.to_string())
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(argument_id, grounding_set_id, suspension_event_id)| ReconsiderableSuspension {
+                route: GroundingRouteRef {
+                    argument_id,
+                    grounding_set_id,
+                },
+                suspension_event_id,
+            },
+        )
+        .collect())
+}
+
 pub async fn record(
     pool: &PgPool,
     workspace: Uuid,
@@ -242,7 +288,11 @@ async fn record_choice(
                 {
                     return Err(WorkbenchError::ExposureReviewChanged);
                 }
-                if !result.flags_route(choice.route.argument_id, choice.route.grounding_set_id) {
+                let flagged =
+                    result.flags_route(choice.route.argument_id, choice.route.grounding_set_id);
+                let restoring =
+                    choice.disposition == Disposition::Use && result.can_restore(&choice.route);
+                if !flagged && !restoring {
                     return Err(WorkbenchError::Invalid);
                 }
                 snapshot

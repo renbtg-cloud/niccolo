@@ -64,3 +64,20 @@ it('allows an explicit use decision only for an affected supporting route', () =
   expect(html).not.toContain('independent route');
   expect(render(false)).toBe('');
 });
+
+it('allows a prior suspension to be revisited without resolving the source conflict', () => {
+  const route = {
+    argument_id: 'argument', grounding_set_id: 'hat-route', effect: 'SUPPORTS', rationale: 'Red hat detail',
+  };
+  const unrelated = { ...route, grounding_set_id: 'unrelated', rationale: 'Separate sighting' };
+  const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}>
+    <DetailExposureRouteDecisions
+      result={{ disposition: 'ORDER_CONFLICT', reconsiderable_suspensions: [route] }}
+      groundingSets={[route, unrelated]} routeHistory={[]}/>
+  </QueryClientProvider>);
+  expect(html).toContain('Reconsider an earlier suspension');
+  expect(html).toContain('Restore use');
+  expect(html).toContain('Red hat detail');
+  expect(html).not.toContain('Suspend use');
+  expect(html).not.toContain('Separate sighting');
+});

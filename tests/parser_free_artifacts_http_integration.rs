@@ -1210,7 +1210,7 @@ async fn assert_same_day_exposure_order(
     );
     let decision_input = json!({
         "argument_id": route["argument_id"], "grounding_set_id": hat_route,
-        "disposition": "USE", "rationale": "Keep the route while checking the account.",
+        "disposition": "SUSPEND", "rationale": "Set the route aside while checking the account.",
         "review": review, "expected_review_sha256": before_conflict["review_sha256"],
     });
     let saved = case
@@ -1252,7 +1252,7 @@ async fn assert_same_day_exposure_order(
     )
     .await;
     assert_eq!(compare(old_cutoff).await["disposition"], "REVIEW_CANDIDATE");
-    let conflicted = compare(review).await;
+    let conflicted = compare(review.clone()).await;
     assert_eq!(conflicted["disposition"], "ORDER_CONFLICT");
     assert_eq!(conflicted["detail_needs_review"], false);
     assert_eq!(conflicted["affected_routes"], json!([]));
@@ -1260,6 +1260,13 @@ async fn assert_same_day_exposure_order(
     for id in [prior, opposite] {
         case_row(&conflicted, "order_reports", "report_id", id);
     }
+    let reconsiderable = conflicted["reconsiderable_suspensions"].as_array().unwrap();
+    assert_eq!(reconsiderable.len(), 1);
+    assert_eq!(reconsiderable[0]["grounding_set_id"], json!(hat_route));
+    assert_eq!(
+        reconsiderable[0]["suspension_event_id"],
+        saved["decision"]["event_id"]
+    );
     let (status, stale) = invoke(
         case.router.clone(),
         request(
@@ -1289,6 +1296,43 @@ async fn assert_same_day_exposure_order(
     assert_eq!(status, StatusCode::OK);
     assert_eq!(replay["replayed"], true);
     assert_eq!(replay["decision"]["basis"], *saved_basis);
+
+    let mut restore = json!({
+        "argument_id": route["argument_id"], "grounding_set_id": hat_route,
+        "disposition": "USE", "rationale": "Restore it while keeping the two accounts visible.",
+        "review": review, "expected_review_sha256": conflicted["review_sha256"],
+    });
+    let write_choice = |payload: Value| async move {
+        let url = format!("{uri}/route-use/{}", Uuid::new_v4());
+        invoke(
+            case.router.clone(),
+            request("POST", &url, &case.token, Some(payload)),
+        )
+        .await
+    };
+    let mut unavailable = restore.clone();
+    let other_route = case_row(
+        &before_conflict,
+        "affected_routes",
+        "grounding_set_id",
+        identity_route,
+    );
+    unavailable["argument_id"] = other_route["argument_id"].clone();
+    unavailable["grounding_set_id"] = json!(identity_route);
+    assert_eq!(write_choice(unavailable).await.0, StatusCode::BAD_REQUEST);
+    restore["disposition"] = json!("SUSPEND");
+    assert_eq!(
+        write_choice(restore.clone()).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    restore["disposition"] = json!("USE");
+    let (status, restored) = write_choice(restore).await;
+    assert_eq!(status, StatusCode::CREATED, "{restored}");
+    assert_eq!(restored["decision"]["basis"]["result"], conflicted);
+    assert_eq!(restored["decision"]["disposition"], "USE");
+    let current = compare(review).await;
+    assert_eq!(current["disposition"], "ORDER_CONFLICT");
+    assert!(current.get("reconsiderable_suspensions").is_none());
 }
 
 async fn assert_undated_exposure_order(

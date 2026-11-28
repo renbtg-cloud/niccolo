@@ -115,7 +115,11 @@ export function DetailExposureReview({
       <DetailExposureResult result={review.data.value} nodes={nodes}>
         <ExposureOrderReports result={review.data.value} provenance={provenance}/>
         <DetailExposureRouteDecisions result={review.data.value} input={review.variables} client={client}
-          groundingSets={groundingSets} routeHistory={routeHistory} onSaved={onRouteChanged}/>
+          groundingSets={groundingSets} routeHistory={routeHistory} onSaved={async () => {
+            const comparison = review.variables;
+            await onRouteChanged();
+            if (currentComparison.current === comparison) review.mutate(comparison);
+          }}/>
       </DetailExposureResult>
       {review.data.value.exposure && <ExposureOrderReportForm client={client} review={review.variables}
         sources={sources} sourceOptions={sourceOptions} onSaved={(date, comparison) => {
@@ -132,17 +136,20 @@ function sameRoute(left, right) {
 }
 
 export function DetailExposureRouteDecisions({ result, input, client, groundingSets, routeHistory, onSaved }) {
-  if (!result.detail_needs_review) return null;
+  const reconsidering = result.disposition === 'ORDER_CONFLICT';
+  if (!result.detail_needs_review && !reconsidering) return null;
+  const reviewedRoutes = reconsidering ? (result.reconsiderable_suspensions ?? []) : result.affected_routes;
   const eligible = groundingSets.filter((grounding) => grounding.effect === 'SUPPORTS'
-    && result.affected_routes.some((route) => sameRoute(grounding, route)));
+    && reviewedRoutes.some((route) => sameRoute(grounding, route)));
   if (eligible.length === 0) return null;
 
   return <details>
-    <summary>Decide whether to use an affected support route</summary>
+    <summary>{reconsidering ? 'Reconsider an earlier suspension' : 'Decide whether to use an affected support route'}</summary>
     <ul>{eligible.map((route) => {
       const history = routeHistory.filter((decision) => sameRoute(decision.route, route));
       return <SupportRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
-        route={route} label={route.rationale} suspended={history.at(-1)?.disposition === 'SUSPEND'}
+        route={route} label={route.rationale} suspended={reconsidering || history.at(-1)?.disposition === 'SUSPEND'}
+        allowSuspension={!reconsidering}
         history={history} onSaved={onSaved}
         onRecord={(eventId, decision) => client.recordDetailExposureRouteUse(eventId, {
           ...decision, review: input, expected_review_sha256: result.review_sha256,

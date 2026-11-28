@@ -3,7 +3,7 @@ use super::{
     WorkbenchError,
     exposure_order::{self, Direction},
     public_prominence::{self, Observation, calendar_date, calendar_range},
-    scoped,
+    route_use, scoped,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -58,6 +58,8 @@ pub struct Review {
     date_order: Option<Direction>,
     order_reports: Vec<exposure_order::Report>,
     order_reports_truncated: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reconsiderable_suspensions: Vec<route_use::ReconsiderableSuspension>,
     disposition: Disposition,
     needs_finer_timing: bool,
     detail_needs_review: bool,
@@ -76,6 +78,12 @@ impl Review {
         self.affected_routes.iter().any(|route| {
             route.argument_id == argument_id && route.grounding_set_id == grounding_set_id
         })
+    }
+
+    pub(super) fn can_restore(&self, route: &super::GroundingRouteRef) -> bool {
+        self.reconsiderable_suspensions
+            .iter()
+            .any(|item| &item.route == route)
     }
 }
 
@@ -189,6 +197,17 @@ pub(super) async fn review_in(
 
     let detail_needs_review = disposition == Disposition::ReviewCandidate;
     let needs_finer_timing = disposition == Disposition::OrderUncertain;
+    let reconsiderable_suspensions = if disposition == Disposition::OrderConflict {
+        let comparison = serde_json::json!({
+            "witness_actor_id": input.witness_actor_id,
+            "exposure_record_id": input.exposure_record_id,
+            "testimony_detail": input.testimony_detail,
+            "candidate_source": input.candidate_source,
+        });
+        route_use::reconsiderable_suspensions(tx, workspace, situation, &comparison).await?
+    } else {
+        Vec::new()
+    };
     let affected_routes = if detail_needs_review {
         let rows: Vec<(Uuid, Uuid, Uuid)> = sqlx::query_as(
             "WITH RECURSIVE edges AS (
@@ -234,6 +253,7 @@ pub(super) async fn review_in(
         date_order,
         order_reports,
         order_reports_truncated,
+        reconsiderable_suspensions,
         disposition,
         needs_finer_timing,
         detail_needs_review,

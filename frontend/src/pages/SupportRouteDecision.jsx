@@ -3,12 +3,13 @@ import { useMutation } from '@tanstack/react-query';
 
 const encoder = new TextEncoder();
 
-export function SupportRouteDecision({route, label, suspended, history, onRecord, onSaved}) {
+export function SupportRouteDecision({route, label, suspended, history, onRecord, onSaved, allowSuspension = true}) {
   const [disposition, setDisposition] = useState('');
   const [rationale, setRationale] = useState('');
   const pending = useRef(null);
   const note = rationale.trim();
-  const ready = disposition && note && encoder.encode(note).length <= 4096;
+  const ready = disposition && (disposition !== 'SUSPEND' || allowSuspension)
+    && note && encoder.encode(note).length <= 4096;
   const mutation = useMutation({
     mutationFn: (body) => {
       const signature = JSON.stringify(body);
@@ -33,7 +34,8 @@ export function SupportRouteDecision({route, label, suspended, history, onRecord
       });
     }}>
       <label>Use of this route<select value={disposition} onChange={(event) => setDisposition(event.target.value)} required>
-        <option value="">Choose…</option><option value="USE">{suspended ? 'Restore use' : 'Keep in use'}</option><option value="SUSPEND">Suspend use</option>
+        <option value="">Choose…</option><option value="USE">{suspended ? 'Restore use' : 'Keep in use'}</option>
+        {allowSuspension && <option value="SUSPEND">Suspend use</option>}
       </select></label>
       <label>Justification<input value={rationale} onChange={(event) => setRationale(event.target.value)} maxLength={4096} required/></label>
       <button disabled={mutation.isPending || !ready} type="submit">Record route decision</button>
