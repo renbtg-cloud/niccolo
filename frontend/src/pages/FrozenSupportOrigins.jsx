@@ -21,3 +21,29 @@ export function FrozenSupportOrigins({basis}) {
     })}</ul>
   </section>;
 }
+
+export function PublishedSupportOrigins({basis, citations}) {
+  if (!basis?.shared_artifact_origins?.length || !citations?.length) return null;
+
+  const routesByClaim = new Map();
+  for (const citation of citations) {
+    if (!routesByClaim.has(citation.claim_id)) routesByClaim.set(citation.claim_id, new Set());
+    routesByClaim.get(citation.claim_id).add(routeKey(citation));
+  }
+  const findings = [];
+  for (const origin of basis.shared_artifact_origins) {
+    const originRoutes = new Set(origin.derivations.flatMap((derivation) => derivation.routes.map(routeKey)));
+    const counts = [...routesByClaim.values()].map((routes) =>
+      [...routes].filter((route) => originRoutes.has(route)).length,
+    );
+    if (counts.some((count) => count >= 2)) findings.push(origin);
+  }
+  if (findings.length === 0) return null;
+
+  return <section>
+    <h4>Shared origins in the published answer</h4>
+    <ul>{findings.map((origin) => <li key={`${origin.conclusion_object_id}:${origin.source_representation_id}`}>
+      Multiple routes cited for the same claim trace to {origin.source_artifact_label} · {origin.source_scope_locator}.
+    </li>)}</ul>
+  </section>;
+}

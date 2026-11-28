@@ -1,5 +1,5 @@
 import { FrozenContext } from './FrozenContext.jsx';
-import { FrozenSupportOrigins } from './FrozenSupportOrigins.jsx';
+import { FrozenSupportOrigins, PublishedSupportOrigins } from './FrozenSupportOrigins.jsx';
 import { isCurrentSession, useSessionStore } from '../stores/session.js';
 import { ClarificationAnswerForm, ClarificationCard } from './ClarificationCard.jsx';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -128,7 +128,7 @@ function ReviewContent(){
    </div>}
   {r&&<>
      <div className="review-heading"><div><strong>{r.goal||'Analysis without an explicit goal'}</strong><div><small>Frozen at Situation revision {r.input_revision}; current revision {r.current_situation_revision}.</small></div></div><span className={r.input_is_current?'status-current':'status-historical'}>{r.input_is_current?'Current input':'Situation changed'}</span></div>
-     {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
+     {output.data&&<article className="review-panel review-answer"><h3>Niccolò's answer</h3><p className="answer-text">{output.data.answer_text}</p><p className="coverage-note">{output.data.coverage_note}</p><PublishedSupportOrigins basis={reasoningInput.data?.workbench_support} citations={output.data.workbench_support_links}/>{!output.data.input_is_current&&<p className="historical-note">This answer belongs to historical input and is preserved rather than rewritten.</p>}</article>}
      {output.error && (output.data
        ? <p role="status">Showing the last loaded answer. Refresh failed.</p>
        : <div><p className="error" role="alert">Answer unavailable: {output.error.message}</p>
