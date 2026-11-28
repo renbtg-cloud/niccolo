@@ -4,7 +4,7 @@
 This displays recorded claims, declared links, and the published answer. It does
 NOT re-run an LLM, estimate truth probabilities, or infer missing source contents.
 """
-from collections import Counter
+from collections import Counter, defaultdict
 import csv
 import hashlib
 import json
@@ -28,12 +28,46 @@ def verify_files():
         actual = hashlib.sha256(path.read_bytes()).hexdigest()
         if actual != expected:
             raise ValueError("Export file integrity mismatch: " + relative)
-    return len(checksums)
+    return checksums
 
 
 def read_csv(relative):
     with (ROOT / relative).open("r", newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def show_workbench_support(checked, analysis_id, claims):
+    path = "data/workbench_support.json"
+    if path not in checked:
+        return
+    export = read_json(ROOT / path)
+    if (export["analysis_id"] != analysis_id
+            or export["format"] != "niccolo.presentation-workbench-support"
+            or export["format_version"] != 1):
+        raise ValueError("Workbench support belongs to a different analysis or format")
+
+    def route_key(route):
+        return route["argument_id"], route["grounding_set_id"]
+
+    support = export["support"]
+    citations = defaultdict(set)
+    for link in support["citations"]:
+        citations[link["claim_id"]].add(route_key(link))
+    print("\nRecorded Workbench route citations:")
+    claim_text = {claim["claim_id"]: claim["text"] for claim in claims}
+    for claim_id, routes in citations.items():
+        print("-", claim_text.get(claim_id, claim_id), "·", len(routes), "cited route(s)")
+    for origin in support["shared_artifact_origins"]:
+        routes = {route_key(route) for derivation in origin["derivations"]
+                  for route in derivation["routes"]}
+        for claim_id, cited in citations.items():
+            count = len(routes & cited)
+            if count >= 2:
+                print("  Shared origin for", claim_text.get(claim_id, claim_id), "·",
+                      count, "routes ·", origin["source_artifact_label"], "·",
+                      origin["source_scope_locator"])
+    if support["shared_artifact_origins_truncated"]:
+        print("The frozen analysis received a limited set of recorded derivations.")
 
 
 def explain():
@@ -44,7 +78,7 @@ def explain():
     print("Export format:", export["format"], "v", export["format_version"])
     print("Analysis:", bundle["analysis_id"])
     print("Input revision:", bundle["input_revision"])
-    print("Integrity-checked files:", checked)
+    print("Integrity-checked files:", len(checked))
     print("\nOriginal question / goal:\n", bundle["goal"])
     print("\nPublished result (recorded, not recomputed):\n", bundle["answer_text"])
     print("\nCoverage / qualifications:\n", bundle["coverage_note"])
@@ -68,6 +102,7 @@ def explain():
         )
         if row["qualification"]:
             print("  qualification:", row["qualification"])
+    show_workbench_support(checked, bundle["analysis_id"], claims)
     print("\nThese are counts of recorded links, NOT evidence weights,")
     print("independent witnesses, verification, or calibrated probabilities.")
     print("Source fragment contents and full model reasoning were NOT exported.")
