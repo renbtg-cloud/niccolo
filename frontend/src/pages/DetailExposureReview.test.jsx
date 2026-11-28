@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DetailExposureResult } from './DetailExposureReview.jsx';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DetailExposureResult, DetailExposureRouteDecisions } from './DetailExposureReview.jsx';
 
 const nodes = [
   { object_id: 'hat', text: 'Mara recalls a red hat.' },
@@ -34,4 +35,31 @@ it.each([
   expect(html).toContain(message);
   expect(html).not.toContain('Routes that depend on this detail');
   expect(html.includes('more precise date')).toBe(result.needs_finer_timing);
+});
+
+it('allows an explicit use decision only for an affected supporting route', () => {
+  const makeRoute = (id, effect, rationale) => ({
+    argument_id: 'argument', grounding_set_id: id, effect, rationale,
+  });
+  const affectedRoute = makeRoute('hat-route', 'SUPPORTS', 'Route relying on the red hat');
+  const opposition = makeRoute('opposition', 'OPPOSES', 'Opposing route');
+  const independent = makeRoute('independent', 'SUPPORTS', "Jules's independent route");
+  const history = [{
+    event_id: 'prior',
+    route: affectedRoute,
+    disposition: 'SUSPEND',
+    rationale: 'Verify the newspaper archive first.',
+  }];
+  const render = (needsReview) => renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}>
+    <DetailExposureRouteDecisions
+      result={{ detail_needs_review: needsReview, affected_routes: [affectedRoute, opposition] }}
+      groundingSets={[affectedRoute, opposition, independent]} routeHistory={history}/>
+  </QueryClientProvider>);
+  const html = render(true);
+  expect(html).toContain('Route relying on the red hat');
+  expect(html).toContain('Restore use');
+  expect(html).toContain('Verify the newspaper archive first.');
+  expect(html).not.toContain('Opposing route');
+  expect(html).not.toContain('independent route');
+  expect(render(false)).toBe('');
 });

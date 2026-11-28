@@ -134,7 +134,7 @@ export function PublicProminenceReports({ result, actors, provenance, onReview }
   </>;
 }
 
-export function PublicProminencePanel({ client, actors, nodes, provenance }) {
+export function PublicProminencePanel({ client, actors, nodes, provenance, groundingSets, routeHistory, onRouteChanged }) {
   const [draft, setDraft] = useState({
     subject_actor_id: '', audience_actor_id: '', cue: '', on: '', known_through: '',
   });
@@ -179,6 +179,7 @@ export function PublicProminencePanel({ client, actors, nodes, provenance }) {
     {review && <DetailExposureReview
       key={`${review.record.record_id}:${review.knownThrough}`} client={client} exposure={review.record}
       knownThrough={review.knownThrough} nodes={nodes} provenance={provenance}
+      groundingSets={groundingSets} routeHistory={routeHistory} onRouteChanged={onRouteChanged}
       witness={actors.find((actor) => actor.actor_id === review.record.audience_actor_id)?.display_label
         ?? review.record.audience_actor_id} onClose={() => setReview(null)}/>}
     {actors.length >= 2 && <PublicProminenceRecordForm client={client} actors={actors} nodes={nodes}

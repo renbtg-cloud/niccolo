@@ -80,6 +80,9 @@ export class NiccoloClient {
   reviewDetailExposure(body) {
     return this.request('POST', `${situationPath(this.config)}/epistemic/detail-exposure-review`, { body });
   }
+  recordDetailExposureRouteUse(eventId, body) {
+    return this.request('POST', `${situationPath(this.config)}/epistemic/detail-exposure-review/route-use/${eventId}`, { body });
+  }
   recordArtifactDependenceRouteUse(eventId, body) { return this.request('POST', `${situationPath(this.config)}/epistemic/artifact-dependence-review/route-use/${eventId}`, { body }); }
   draftExpertInput(text) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/input-draft`, { body: { text } }); }
   adoptExpertInputDraft(draftId, reviewed) { return this.request('POST', `${situationPath(this.config)}/epistemic/workbench/input-draft/${draftId}`, { body: reviewed }); }

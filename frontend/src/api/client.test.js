@@ -128,13 +128,23 @@ it('asks the backend to review only the selected detail and exposure', async () 
     candidate_source: { object_id: 'archive-photo', representation_id: 'photo-description' },
     testimony_from: '2026-11-20', testimony_through: '2026-11-20', known_through: '2026-11-21',
   };
+  const path = `/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/detail-exposure-review`;
+  const decision = {
+    argument_id: 'arg', grounding_set_id: 'hat-route', disposition: 'SUSPEND',
+    rationale: 'Check the archive source first.', review: body,
+  };
   const client = new NiccoloClient(c, async (url, options) => {
-    expect(url).toBe(`/v1/workspaces/${c.workspace}/situations/${c.situation}/epistemic/detail-exposure-review`);
     expect(options.method).toBe('POST');
-    expect(JSON.parse(options.body)).toEqual(body);
-    return response(200, { disposition: 'REVIEW_CANDIDATE' });
+    if (url === path) {
+      expect(JSON.parse(options.body)).toEqual(body);
+      return response(200, { disposition: 'REVIEW_CANDIDATE' });
+    }
+    expect(url).toBe(`${path}/route-use/event`);
+    expect(JSON.parse(options.body)).toEqual(decision);
+    return response(201, { decision: { event_id: 'event' } });
   });
   expect((await client.reviewDetailExposure(body)).value.disposition).toBe('REVIEW_CANDIDATE');
+  expect((await client.recordDetailExposureRouteUse('event', decision)).value.decision.event_id).toBe('event');
 });
 
 it('passes cancellation through a review read and rejects an aborted body', async () => {

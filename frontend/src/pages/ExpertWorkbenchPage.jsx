@@ -6,6 +6,7 @@ import { InterpretationRelianceReview } from './InterpretationRelianceReview.jsx
 import { InquiryComparisonPanel } from './InquiryComparisonPanel.jsx';
 import { ActorEpistemicStatePanel } from './ActorEpistemicStatePanel.jsx';
 import { PublicProminencePanel } from './PublicProminencePanel.jsx';
+import { SupportRouteDecision } from './SupportRouteDecision.jsx';
 import { NormativeAssessmentPanel } from './NormativeAssessmentPanel.jsx';
 import { ActorEpistemicActPanel } from './ActorEpistemicActPanel.jsx';
 import { ActionRecommendationPanel } from './ActionRecommendationPanel.jsx';
@@ -108,44 +109,6 @@ function RecordedArtifactDerivation({derived, source, via, qualification}) {
     <p><strong>{derived}</strong> was reported to draw on <strong>{source}</strong>.</p>
     {qualification && <p>{qualification}</p>}
   </>;
-}
-
-function ArtifactDependenceRouteDecision({client, basis, route, label, suspended, history, onSaved}) {
-  const [disposition, setDisposition] = useState('');
-  const [rationale, setRationale] = useState('');
-  const pending = useRef(null);
-  const mutation = useMutation({
-    mutationFn: (body) => {
-      const signature = JSON.stringify(body);
-      if (pending.current?.signature !== signature) pending.current = {signature, id: crypto.randomUUID()};
-      return client.recordArtifactDependenceRouteUse(pending.current.id, body);
-    },
-    onSuccess: async () => {
-      pending.current = null;
-      setDisposition('');
-      setRationale('');
-      await onSaved();
-    },
-  });
-  return <li>
-    <strong>{label}</strong> · {suspended ? 'Suspended' : 'In use'}
-    <form onSubmit={(event) => {
-      event.preventDefault();
-      if (mutation.isPending || !disposition || !rationale.trim()) return;
-      mutation.mutate({ ...route, ...basis, disposition, rationale:rationale.trim() });
-    }}>
-      <label>Use of this route<select value={disposition} onChange={(event) => setDisposition(event.target.value)} required>
-        <option value="">Choose…</option><option value="USE">{suspended ? 'Restore use' : 'Keep in use'}</option><option value="SUSPEND">Suspend use</option>
-      </select></label>
-      <label>Justification<input value={rationale} onChange={(event) => setRationale(event.target.value)} maxLength={4096} required/></label>
-      <button disabled={mutation.isPending || !disposition || !rationale.trim()} type="submit">Record route decision</button>
-      {mutation.error && <p className="error" role="alert">{mutation.error.message}</p>}
-    </form>
-    {history.length > 0 && <details><summary>Route decision history</summary><ul>{history.map((decision) => <li key={decision.event_id}>
-      {decision.disposition === 'SUSPEND' ? 'Suspended' : 'Use recorded'} · {decision.rationale}<br/>
-      <small>Recorded by {decision.recorded_by} · {decision.recorded_at}</small>
-    </li>)}</ul></details>}
-  </li>;
 }
 
 export function ExpertWorkbenchPage() {
@@ -447,7 +410,9 @@ export function ExpertWorkbenchPage() {
       })}</ul><small>Current judgments in their own revision chains remain separate, including disagreement. Earlier revisions are retained in assessment history.</small></details>}
       <InquiryComparisonPanel key={`${client.config.workspace}:${client.config.situation}`} snapshot={data} client={client} onChanged={()=>workbench.refetch()}/>
       {actors.isSuccess && <PublicProminencePanel key={`recognizability:${client.config.workspace}:${client.config.situation}`}
-        client={client} actors={actors.data} nodes={data.nodes} provenance={data.artifact_provenance ?? []}/>}
+        client={client} actors={actors.data} nodes={data.nodes} provenance={data.artifact_provenance ?? []}
+        groundingSets={data.grounding_sets} routeHistory={data.route_use_history ?? []}
+        onRouteChanged={() => workbench.refetch()}/>}
       <ActorEpistemicStatePanel key={`actor-states:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <NormativeAssessmentPanel key={`normative-assessments:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
       <ActorEpistemicActPanel key={`actor-acts:${client.config.workspace}:${client.config.situation}`} snapshot={data} actors={actors.data??[]} client={client} onChanged={()=>workbench.refetch()}/>
@@ -544,8 +509,9 @@ export function ExpertWorkbenchPage() {
                 <strong>Use of derived routes</strong>
                 <ul>{[...review.routes_to_review, ...(review.suspended_routes ?? [])].map((route) => {
                   const matches = (candidate) => candidate.argument_id === route.argument_id && candidate.grounding_set_id === route.grounding_set_id;
-                  return <ArtifactDependenceRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
-                    client={client} basis={basis} route={route} label={routeLabel(route)}
+                  return <SupportRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
+                    route={route} label={routeLabel(route)}
+                    onRecord={(id, input) => client.recordArtifactDependenceRouteUse(id, {...input, ...basis})}
                     suspended={review.suspended_routes?.some(matches)} onSaved={() => workbench.refetch()}
                     history={(data.route_use_history ?? []).filter((decision) => matches(decision.route) && decision.basis?.input?.relationship_id === review.relationship_id && decision.basis?.input?.via_relationship_id === via?.relationship_id)}/>;
                 })}</ul>

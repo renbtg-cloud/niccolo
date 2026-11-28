@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { SupportRouteDecision } from './SupportRouteDecision.jsx';
 
 const dispositionLabels = {
   REVIEW_CANDIDATE: 'The earlier reported exposure makes this detail worth reviewing.',
@@ -8,7 +9,7 @@ const dispositionLabels = {
   EXPOSURE_NOT_AVAILABLE_AT_CUTOFF: 'The exposure report was unavailable at the chosen cutoff.',
 };
 
-export function DetailExposureResult({ result, nodes }) {
+export function DetailExposureResult({ result, nodes, children }) {
   const labels = new Map(nodes.map((node) => [node.object_id, node.text]));
   const routes = result.affected_routes;
   return <section aria-label="Exposure review result">
@@ -24,10 +25,14 @@ export function DetailExposureResult({ result, nodes }) {
         <small> · Grounding set {route.grounding_set_id}</small>
       </li>)}</ul>
     </>}
+    {children}
   </section>;
 }
 
-export function DetailExposureReview({ client, exposure, witness, knownThrough, nodes, provenance, onClose }) {
+export function DetailExposureReview({
+  client, exposure, witness, knownThrough, nodes, provenance, groundingSets, routeHistory,
+  onRouteChanged, onClose,
+}) {
   const panel = useRef(null);
   const [draft, setDraft] = useState({
     testimony_detail: '', candidate_source: '', testimony_from: '', testimony_through: '',
@@ -87,6 +92,31 @@ export function DetailExposureReview({ client, exposure, witness, knownThrough, 
       </fieldset>
     </form> : <p>Link the testimony detail and its candidate origin to source passages first.</p>}
     {review.error && <p role="alert">{review.error.message}</p>}
-    {review.data && <DetailExposureResult result={review.data.value} nodes={nodes}/>}
+    {review.data && <DetailExposureResult result={review.data.value} nodes={nodes}>
+      <DetailExposureRouteDecisions result={review.data.value} input={review.variables} client={client}
+        groundingSets={groundingSets} routeHistory={routeHistory} onSaved={onRouteChanged}/>
+    </DetailExposureResult>}
   </section>;
+}
+
+function sameRoute(left, right) {
+  return left.argument_id === right.argument_id && left.grounding_set_id === right.grounding_set_id;
+}
+
+export function DetailExposureRouteDecisions({ result, input, client, groundingSets, routeHistory, onSaved }) {
+  if (!result.detail_needs_review) return null;
+  const eligible = groundingSets.filter((grounding) => grounding.effect === 'SUPPORTS'
+    && result.affected_routes.some((route) => sameRoute(grounding, route)));
+  if (eligible.length === 0) return null;
+
+  return <details>
+    <summary>Decide whether to use an affected support route</summary>
+    <ul>{eligible.map((route) => {
+      const history = routeHistory.filter((decision) => sameRoute(decision.route, route));
+      return <SupportRouteDecision key={`${route.argument_id}:${route.grounding_set_id}`}
+        route={route} label={route.rationale} suspended={history.at(-1)?.disposition === 'SUSPEND'}
+        history={history} onSaved={onSaved}
+        onRecord={(eventId, decision) => client.recordDetailExposureRouteUse(eventId, {...decision, review: input})}/>;
+    })}</ul>
+  </details>;
 }
